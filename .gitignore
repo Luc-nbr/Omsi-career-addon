@@ -2,4 +2,5 @@ node_modules/
 out/
 dist/
 release/
+release-new/
 *.log
