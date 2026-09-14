@@ -55,6 +55,21 @@ interface Props {
    * naar voren, de rest blijft als flauwe lijn staan.
    */
   activeLeg?: number
+  /**
+   * Alleen de rit `activeLeg` als route tekenen, en de rest niet. In de overlay
+   * verschijnt de route pas als de IBIS is ingetoetst: daarvoor weet niemand
+   * welke rit er gereden wordt, en is elke lijn een gok.
+   */
+  routeMode?: 'all' | 'active' | 'none'
+  /**
+   * Waar de bus is, voor zover we dat weten. OMSI geeft geen positie door, maar
+   * wel de volgende halte (uit de IBIS) en de kilometerteller. Vanaf de vorige
+   * halte schuift de bus zoveel meter over de route op, en nooit voorbij de
+   * volgende. De kaart rijdt dan met hem mee.
+   */
+  bus?: { legIndex: number; nextStop: number; metresSinceStop?: number }
+  /** Teksten van de overlay, die zijn eigen taalkeuze heeft. */
+  texts?: { waiting?: string; busNote?: string; centre?: string }
 }
 
 const MIN_MPP = 0.2
@@ -76,6 +91,12 @@ const ROUTE_LABEL_MPP = 14
 /** Afstand tussen de rijrichtingspijltjes op de route. */
 const ARROW_GAP_PX = 110
 
+/** Wie de kaart zelf versleept of zoomt, krijgt zoveel rust voordat hij terugveert naar de bus. */
+const MANUAL_MS = 6000
+
+/** Zoomstand als de kaart met de bus meerijdt: straten en zijstraten zijn nog te lezen. */
+const BUS_MPP = 0.9
+
 export function RouteMap({
   duty,
   geometry,
@@ -83,7 +104,10 @@ export function RouteMap({
   variant = 'panel',
   focusStopId,
   follow,
-  activeLeg
+  activeLeg,
+  routeMode = 'all',
+  bus,
+  texts
 }: Props): JSX.Element {
   const tr = useT()
   const boxRef = useRef<HTMLDivElement>(null)
@@ -180,12 +204,13 @@ export function RouteMap({
     return () => observer.disconnect()
   }, [])
 
-  const following = Boolean(follow?.toId)
+  const following = Boolean(follow?.toId) || Boolean(bus)
 
   const fitted = useRef<string>('')
   useEffect(() => {
     // Rijdt de kaart mee, dan bepaalt het stuk weg het beeld en niet de dienst.
-    if (following) return
+    // Een aangewezen halte gaat ook voor; die zet het effect hieronder in beeld.
+    if (following || (focusStopId && byId.has(focusStopId))) return
     const key = `${duty.tourNumber}|${bounds.minX}|${bounds.minY}|${size.w}x${size.h}`
     if (fitted.current === key) return
     fitted.current = key
@@ -201,7 +226,7 @@ export function RouteMap({
         MAX_MPP
       )
     })
-  }, [duty.tourNumber, bounds, size, following])
+  }, [duty.tourNumber, bounds, size, following, focusStopId, byId])
 
   /*
    * Meerijden: het stuk van de vorige naar de volgende halte vult het beeld.
@@ -236,6 +261,70 @@ export function RouteMap({
     if (stop) setView((old) => ({ cx: stop.x, cy: stop.y, mpp: Math.min(old.mpp, 1.6) }))
   }, [focusStopId, byId])
 
+  /** Per rit de lijn over de weg, met de afstand langs die lijn bij elke halte. */
+  const legTracks = useMemo(
+    () =>
+      duty.legs.map((leg, legIndex) => {
+        const route = routes?.[legIndex]
+        if (!route || route.length < 4) return undefined
+        return trackAlong(
+          route,
+          leg.stopIds.map((id) => byId.get(id))
+        )
+      }),
+    // routeKey en niet duty: de overlay krijgt elke tel een nieuwe kopie van dezelfde dienst.
+    [routeKey, routes, byId]
+  )
+
+  const busPoint = useMemo(() => {
+    if (!bus) return undefined
+    const track = legTracks[bus.legIndex]
+    const leg = duty.legs[bus.legIndex]
+    if (!track || !leg || leg.stopIds.length === 0) return undefined
+    const next = Math.min(Math.max(bus.nextStop, 0), leg.stopIds.length - 1)
+    const previous = next > 0 ? track.stops[next - 1] : undefined
+    const upcoming = track.stops[next]
+    let along: number
+    if (previous === undefined) {
+      // Nog voor de eerste halte, of de vorige staat niet op de kaart: bij de volgende.
+      along = upcoming ?? 0
+    } else {
+      along = previous + Math.max(0, bus.metresSinceStop ?? 0)
+      if (upcoming !== undefined && upcoming >= previous) along = Math.min(along, upcoming)
+    }
+    return pointAlong(track, along)
+  }, [bus, legTracks, duty])
+
+  /*
+   * Meerijden met de bus. Wie zelf sleept of zoomt krijgt MANUAL_MS rust, daarna
+   * veert de kaart terug. Zoomen mag blijven staan, tenzij het zo ver uit is dat
+   * je de straat niet meer kunt volgen.
+   */
+  const manualUntil = useRef(0)
+  const busRef = useRef(busPoint)
+  busRef.current = busPoint
+  const centreOnBus = useCallback((force: boolean) => {
+    const point = busRef.current
+    if (!point) return
+    if (!force && Date.now() < manualUntil.current) return
+    if (force) manualUntil.current = 0
+    setView((old) => {
+      const mpp = old.mpp <= FOLLOW_MAX_MPP * 2 ? old.mpp : BUS_MPP
+      if (Math.abs(old.cx - point.x) < 0.05 && Math.abs(old.cy - point.y) < 0.05 && mpp === old.mpp) return old
+      return { cx: point.x, cy: point.y, mpp }
+    })
+  }, [])
+  useEffect(() => centreOnBus(false), [busPoint, centreOnBus])
+  const hasBus = Boolean(busPoint)
+  useEffect(() => {
+    if (!hasBus) return
+    const timer = window.setInterval(() => centreOnBus(false), 500)
+    return () => window.clearInterval(timer)
+  }, [hasBus, centreOnBus])
+  const markManual = (): void => {
+    if (bus) manualUntil.current = Date.now() + MANUAL_MS
+  }
+
   // React luistert standaard passief naar het wieltje, dus zelf aanhaken —
   // anders scrollt de pagina mee terwijl je inzoomt.
   useEffect(() => {
@@ -243,6 +332,7 @@ export function RouteMap({
     if (!svg) return
     const onWheel = (event: WheelEvent): void => {
       event.preventDefault()
+      if (bus) manualUntil.current = Date.now() + MANUAL_MS
       const rect = svg.getBoundingClientRect()
       const px = event.clientX - rect.left
       const py = event.clientY - rect.top
@@ -260,7 +350,7 @@ export function RouteMap({
     }
     svg.addEventListener('wheel', onWheel, { passive: false })
     return () => svg.removeEventListener('wheel', onWheel)
-  }, [size])
+  }, [size, bus])
 
   const toScreen = useCallback(
     (x: number, y: number): [number, number] => [
@@ -272,12 +362,14 @@ export function RouteMap({
 
   const onPointerDown = (event: ReactPointerEvent<SVGSVGElement>): void => {
     ;(event.target as Element).setPointerCapture?.(event.pointerId)
+    markManual()
     dragRef.current = { x: event.clientX, y: event.clientY, cx: view.cx, cy: view.cy }
   }
 
   const onPointerMove = (event: ReactPointerEvent<SVGSVGElement>): void => {
     const drag = dragRef.current
     if (!drag) return
+    markManual()
     setView((old) => ({
       ...old,
       cx: drag.cx - (event.clientX - drag.x) * old.mpp,
@@ -289,8 +381,10 @@ export function RouteMap({
     dragRef.current = undefined
   }
 
-  const zoomBy = (factor: number): void =>
+  const zoomBy = (factor: number): void => {
+    markManual()
     setView((old) => ({ ...old, mpp: clamp(old.mpp * factor, MIN_MPP, MAX_MPP) }))
+  }
 
   const refit = (): void => {
     fitted.current = ''
@@ -390,6 +484,7 @@ export function RouteMap({
       legs.map((leg, legIndex) => {
         const route = routes?.[legIndex]
         const points: Array<[number, number]> = []
+        if (routeMode === 'none' || (routeMode === 'active' && legIndex !== activeLeg)) return points
         if (route && route.length >= 4) {
           for (let i = 0; i < route.length; i += 2) points.push(toScreen(route[i], route[i + 1]))
         } else {
@@ -397,7 +492,7 @@ export function RouteMap({
         }
         return points
       }),
-    [legs, routes, toScreen]
+    [legs, routes, toScreen, routeMode, activeLeg]
   )
 
   /** Pijltjes langs de lijn die laten zien welke kant je op rijdt, alleen op de huidige rit. */
@@ -436,6 +531,7 @@ export function RouteMap({
       <svg
         ref={svgRef}
         className="route-canvas"
+        data-hit
         viewBox={`0 0 ${size.w} ${size.h}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -450,7 +546,7 @@ export function RouteMap({
           */}
         {legs
           .map((leg, index) => ({ leg, index }))
-          .filter(({ leg }) => leg.length >= 2)
+          .filter(({ index }) => legLines[index].length >= 2)
           .sort((a, b) => rank(a.index, activeLeg) - rank(b.index, activeLeg))
           .map(({ leg, index }) => {
             const points = legLines[index].map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')
@@ -509,9 +605,23 @@ export function RouteMap({
         })}
 
         {start &&
+          !busPoint &&
           (() => {
             const [x, y] = toScreen(start.x, start.y)
             return <circle className="map-start-halo" cx={x} cy={y} r={Math.max(signR, 6) + 11} />
+          })()}
+
+        {busPoint &&
+          (() => {
+            const [x, y] = toScreen(busPoint.x, busPoint.y)
+            // Noord is boven, dus de koers is meteen de draaiing op het scherm.
+            const angle = (Math.atan2(busPoint.dx, busPoint.dy) * 180) / Math.PI
+            return (
+              <g className="map-bus" transform={`translate(${x.toFixed(1)} ${y.toFixed(1)})`}>
+                <circle className="bus-halo" r={15} />
+                <path className="bus-arrow" d="M0 -10 L7.5 7.5 L0 3.5 L-7.5 7.5 Z" transform={`rotate(${angle.toFixed(1)})`} />
+              </g>
+            )
           })()}
 
         {labels.map((label) => (
@@ -545,19 +655,104 @@ export function RouteMap({
         </g>
       </svg>
 
-      <div className="map-tools">
+      {/* data-hit: in de overlay laten alleen zulke plekken de muis niet door naar het spel. */}
+      <div className="map-tools" data-hit>
         <button type="button" onClick={() => zoomBy(1 / 1.6)} aria-label={tr('map.zoomIn')}>
           +
         </button>
         <button type="button" onClick={() => zoomBy(1.6)} aria-label={tr('map.zoomOut')}>
           −
         </button>
-        <button type="button" onClick={refit} aria-label={tr('map.fit')}>
-          ⤢
-        </button>
+        {bus ? (
+          <button
+            type="button"
+            onClick={() => centreOnBus(true)}
+            aria-label={texts?.centre}
+            title={texts?.centre}
+          >
+            ◎
+          </button>
+        ) : (
+          <button type="button" onClick={refit} aria-label={tr('map.fit')}>
+            ⤢
+          </button>
+        )}
       </div>
+
+      {routeMode === 'none' && texts?.waiting && <div className="map-note">{texts.waiting}</div>}
+      {busPoint && texts?.busNote && <div className="map-note map-note-quiet">{texts.busNote}</div>}
     </div>
   )
+}
+
+/** Een route met de afstand langs de lijn bij elk punt, en bij elke halte. */
+interface Track {
+  points: number[]
+  cumulative: number[]
+  /** Afstand langs de route bij elke halte van de rit; leeg als die halte niet op de kaart staat. */
+  stops: Array<number | undefined>
+}
+
+/**
+ * Legt de haltes op de route. Een rit komt vaak twee keer door dezelfde straat,
+ * dus elke halte wordt pas gezocht voorbij de vorige; anders springt de bus
+ * terug naar het eerste stuk.
+ */
+function trackAlong(points: number[], stops: Array<StopPoint | undefined>): Track {
+  const cumulative = [0]
+  for (let i = 2; i < points.length; i += 2) {
+    cumulative.push(cumulative[cumulative.length - 1] + Math.hypot(points[i] - points[i - 2], points[i + 1] - points[i - 1]))
+  }
+  const found: Array<number | undefined> = []
+  let from = 0
+  for (const stop of stops) {
+    if (!stop) {
+      found.push(undefined)
+      continue
+    }
+    let best = Infinity
+    let bestAlong = from
+    for (let k = 1; k < cumulative.length; k++) {
+      if (cumulative[k] < from) continue
+      const ax = points[(k - 1) * 2]
+      const ay = points[(k - 1) * 2 + 1]
+      const vx = points[k * 2] - ax
+      const vy = points[k * 2 + 1] - ay
+      const len2 = vx * vx + vy * vy
+      const t = len2 > 0 ? clamp(((stop.x - ax) * vx + (stop.y - ay) * vy) / len2, 0, 1) : 0
+      const along = cumulative[k - 1] + Math.sqrt(len2) * t
+      if (along < from) continue
+      const distance = Math.hypot(stop.x - (ax + vx * t), stop.y - (ay + vy * t))
+      if (distance < best) {
+        best = distance
+        bestAlong = along
+      }
+    }
+    found.push(bestAlong)
+    from = bestAlong
+  }
+  return { points, cumulative, stops: found }
+}
+
+/** Het punt op een afstand langs de route, met de rijrichting daar. */
+function pointAlong(track: Track, along: number): { x: number; y: number; dx: number; dy: number } {
+  const { points, cumulative } = track
+  const distance = clamp(along, 0, cumulative[cumulative.length - 1])
+  let low = 1
+  let high = cumulative.length - 1
+  while (low < high) {
+    const mid = (low + high) >> 1
+    if (cumulative[mid] < distance) low = mid + 1
+    else high = mid
+  }
+  const k = low
+  const span = cumulative[k] - cumulative[k - 1]
+  const t = span > 0 ? (distance - cumulative[k - 1]) / span : 0
+  const ax = points[(k - 1) * 2]
+  const ay = points[(k - 1) * 2 + 1]
+  const dx = points[k * 2] - ax
+  const dy = points[k * 2 + 1] - ay
+  return { x: ax + dx * t, y: ay + dy * t, dx, dy }
 }
 
 /**

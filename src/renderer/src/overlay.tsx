@@ -84,6 +84,18 @@ function Overlay(): JSX.Element | null {
   useEffect(() => window.overlay.onCycle(cycle), [cycle])
 
   /*
+   * De kilometerstand op het moment dat de IBIS een halte verder springt. Wat de
+   * bus daarna rijdt, legt hij af over de route vanaf die halte; zo rijdt de kaart
+   * mee zonder dat OMSI een positie hoeft door te geven.
+   */
+  const stopOdometer = useRef<{ key: string; km: number }>(undefined)
+  const passedNow = walkedStops(status)
+  const stopKey = status && passedNow !== undefined ? `${status.legIndex}|${passedNow}` : ''
+  if (status && stopKey && stopOdometer.current?.key !== stopKey) {
+    stopOdometer.current = { key: stopKey, km: status.odometerKm }
+  }
+
+  /*
    * Buiten de bewerkstand laat het venster muisklikken door naar het spel. Dat
    * moet ook: een venster dat klikken opvangt, vangt ze overal op. Alleen waar
    * echt een knop zit vragen we de muis even op, zodat het uitklappen werkt
@@ -108,11 +120,18 @@ function Overlay(): JSX.Element | null {
   if (!layout) return null
 
   const leg = status?.leg
-  const passed = walkedStops(status)
-  const toId = leg && passed !== undefined ? leg.stopIds[Math.min(passed, leg.stopIds.length - 1)] : undefined
-  const fromId = leg && passed !== undefined && passed > 0 ? leg.stopIds[passed - 1] : undefined
+  const passed = passedNow
+  // De IBIS is ingetoetst zodra de bus een haltenaam doorgeeft.
+  const ibisLoaded = Boolean(status?.reportsStops) && passed !== undefined
   // Alleen meerijden als de bus werkelijk vertelt waar hij is.
-  const follow = toId ? { fromId, toId } : undefined
+  const bus =
+    status && ibisLoaded && passed !== undefined && stopOdometer.current?.key === stopKey
+      ? {
+          legIndex: status.legIndex,
+          nextStop: passed,
+          metresSinceStop: Math.max(0, (status.odometerKm - stopOdometer.current.km) * 1000)
+        }
+      : undefined
 
   return (
     <div className={editing ? 'stage editing' : 'stage'}>
@@ -142,9 +161,17 @@ function Overlay(): JSX.Element | null {
             <RouteMap
               duty={duty}
               geometry={geometry}
-              nextStopId={toId}
-              follow={follow}
+              nextStopId={leg && passed !== undefined ? leg.stopIds[Math.min(passed, leg.stopIds.length - 1)] : undefined}
               activeLeg={status?.legIndex}
+              routeMode={ibisLoaded ? 'active' : 'none'}
+              bus={bus}
+              // Nog niets ingetoetst: de eerste halte van de rit in beeld, daar begint het.
+              focusStopId={ibisLoaded ? undefined : leg?.stopIds[0]}
+              texts={{
+                waiting: t(language, 'ovl.mapWaiting'),
+                busNote: t(language, 'ovl.busHere'),
+                centre: t(language, 'ovl.centre')
+              }}
               variant="panel"
             />
           ) : (

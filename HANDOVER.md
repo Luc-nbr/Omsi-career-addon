@@ -185,41 +185,37 @@ Nog open:
   enkele tegel; de kaart blijft leeg. Dat is juist, maar er staat nog geen
   uitleg bij in de interface.
 
-### 5.2 Wensen van de gebruiker voor de overlay (nog niet gebouwd)
+### 5.2 Wensen van de gebruiker voor de overlay
 
-Woordelijk gevraagd, in deze volgorde:
+Gebouwd:
+
+- **De kaart tekent pas een route als de IBIS is ingetoetst** (`status.reportsStops`
+  plus een halte-index), en dan alleen de rit die nu gereden wordt. Daarvoor staat
+  de eerste halte van de rit in beeld met `ovl.mapWaiting`.
+- **De kaart rijdt met de bus mee.** OMSI geeft geen positie door, maar wel de
+  volgende halte en de kilometerteller. Op het moment dat de halte-index
+  verspringt onthoudt `overlay.tsx` de stand; `RouteMap` legt de haltes op de
+  routelijn (`trackAlong`, elke halte pas voorbij de vorige, want een rit komt
+  vaak twee keer door dezelfde straat) en zet de bus zoveel meter over de route
+  verder, nooit voorbij de volgende halte. Pijl in rijrichting, `ovl.busHere`
+  eronder.
+- **Slepen of zoomen geeft zes seconden rust**, dan veert de kaart terug.
+  Centreerknop (`ovl.centre`) zet hem meteen terug. De kaart en de knoppen dragen
+  `data-hit`, zodat ze in de overlay de muis vangen.
+- Nagekeken met `scripts/screenshotNav.cjs` (nepframes, eigen overlayvenster,
+  raakt `live.json` niet aan) op Rheinhausen en Berlin-Spandau.
+
+Nog niet gebouwd:
 
 1. **Knop in de overlay zelf om de indeling aan te passen** — "een knopje met pas
-   layout aan". Nu kan dat alleen via de app of Ctrl+Alt+O. Vertaling staat al
-   klaar: `ovl.layout`. Let op: de overlay laat muisklikken door; een knop moet
-   `data-hit` dragen (zie het `mousemove`-mechanisme in `overlay.tsx`).
-2. **Centreerknop in het navigatiescherm** — vertaling `ovl.centre` staat klaar.
-3. **De kaart tekent pas een lijn als de IBIS gegevens heeft.** Zolang de
-   chauffeur lijn en route niet heeft ingetoetst, is elke lijn een gok. Teksten
-   staan klaar: `ovl.mapWaiting`.
-4. **Het infoscherm toont eerst wat er ingetoetst moet worden** (lijn + route uit
-   het IBIS-plan), en schakelt om zodra de plugin terugmeldt dat de IBIS gevuld
-   is. De schakelaar is `status.reportsStops` (waar als de bus een haltenaam
-   teruggeeft). Teksten: `ovl.ibisTitle`, `ovl.ibisWaiting`, `ovl.ibisNoSupport`.
-5. **Slepen om de route te bekijken, en na zes seconden stilte terugkeren** naar
-   de bus, met een stipje waar de bus staat.
-
-Voor punt 5 was het ontwerp al rond, alleen niet meer gebouwd:
-
-- `RouteMap` krijgt `travelledM`, `showRoute`, `showCentre`.
-- Een `manual`-toestand die aangaat bij wiel/sleep en na `IDLE_MS = 6000`
-  vanzelf uitgaat; het meerijden (`follow`) slaat over zolang `manual` aan staat.
-  De centreerknop zet hem meteen uit.
-- **Het stipje**: OMSI geeft geen positie door — de plugin-API kent er geen
-  variabele voor. Omni Navigation (dat bij de gebruiker geïnstalleerd staat) is
-  een Java-programma met een eigen plugin-DLL dat per tegel een wegenkaart als
-  plaatje maakt (`OmniNavigation\res\<kaart>\tile_X_Y.map.roadmap.png`); of die
-  DLL de positie van de bus uitleest is niet nagekeken. Maar de
-  kilometerteller komt wél mee: `status.odometerKm` is er net voor toegevoegd.
-  Onthoud de stand op het moment dat `stopIndex` verspringt, en zet de stip op
-  `(km_nu − km_bij_halte) / (hemelsbrede afstand × 1,25)` van de vorige naar de
-  volgende halte. Die 1,25 vangt op dat een straat niet recht loopt. Het is een
-  schatting en dat hoort er ook bij te staan (`ovl.busHere`).
+   layout aan". Nu kan dat via de app of Ctrl+Alt+O. Vertaling: `ovl.layout`.
+2. **Het infoscherm toont eerst wat er ingetoetst moet worden** (lijn + route uit
+   het IBIS-plan), en schakelt om zodra de IBIS gevuld is. Teksten:
+   `ovl.ibisTitle`, `ovl.ibisWaiting`, `ovl.ibisNoSupport`.
+3. **Situatie klaarzetten** (bus, startpositie bij de eerste halte, datum en tijd,
+   zodat de speler in OMSI alleen op Start drukt) — gevraagd, en op verzoek van de
+   gebruiker uitgesteld. Eerdere versie: commits 4a67952 en f6b4cc1, weer
+   verwijderd in ec31136.
 
 ### 5.3 Kleiner grut
 
