@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type JSX, type PointerEvent } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { MapGeometry } from '../../core/geo'
+import type { IbisPlan } from '../../core/ibis'
 import type { LiveStatus } from '../../core/live'
 import type { Duty, DutyLeg } from '../../core/types'
 import type { CareerApi } from '../../shared/api'
@@ -20,6 +21,8 @@ import './overlay.css'
 interface Frame {
   status?: LiveStatus
   duty?: Duty
+  /** Lijn en routes die in de IBIS moeten; de overlay toont ze tot ze erin staan. */
+  ibis?: IbisPlan
   /** De bus op de kaart van de dienst, uit het geheugen van OMSI. */
   vehicle?: { x: number; y: number; heading: number; headingFromMotion: boolean }
   /** Draait OMSI met onze plugin? */
@@ -131,6 +134,11 @@ function Overlay(): JSX.Element | null {
   const readable = Boolean(status?.omsiReadable)
   const scheduled = Boolean(status?.schedule?.matchesDuty)
   const ibisLoaded = readable ? scheduled : Boolean(status?.reportsStops) && passed !== undefined
+  /*
+   * Een bus zonder IBIS meldt nooit een halte. Die chauffeur eindeloos naar
+   * "toets de route in" laten kijken helpt hem niet; dan maar meteen de dienst.
+   */
+  const ibisCapable = status ? status.offersStops : true
   // Alleen schatten waar de bus is als OMSI zijn plek niet laat lezen.
   const bus =
     !frame.vehicle && status && ibisLoaded && passed !== undefined && stopOdometer.current?.key === stopKey
@@ -154,6 +162,8 @@ function Overlay(): JSX.Element | null {
         >
           {readable && !scheduled && duty ? (
             <SelectPanel duty={duty} status={status} language={language} />
+          ) : duty && !ibisLoaded && ibisCapable ? (
+            <IbisPanel duty={duty} ibis={frame.ibis} status={status} language={language} />
           ) : (
             <DutyPanel frame={frame} detail={layout.detail} language={language} onCycle={cycle} />
           )}
@@ -349,6 +359,7 @@ function DutyPanel({
             <i />
           </span>
         </button>
+        <LayoutButton language={language} />
       </div>
 
       {status.dutyComplete ? (
@@ -450,6 +461,80 @@ function DutyPanel({
 }
 
 /**
+ * Naar de bewerkstand, vanuit de overlay zelf.
+ *
+ * Hij draagt `data-hit`, want buiten de bewerkstand laat het venster klikken
+ * door naar het spel; alleen boven zo'n knop pakt het de muis even op.
+ */
+function LayoutButton({ language }: { language: Language }): JSX.Element {
+  return (
+    <button
+      type="button"
+      className="layout-button"
+      data-hit
+      title={t(language, 'ovl.layout')}
+      aria-label={t(language, 'ovl.layout')}
+      onClick={() => void window.career.editOverlay(true)}
+    >
+      {/* Twee panelen naast elkaar: dat is waar de knop over gaat. */}
+      <svg viewBox="0 0 16 14" aria-hidden="true">
+        <rect x="0.75" y="0.75" width="6" height="12.5" rx="1.5" />
+        <rect x="9.25" y="0.75" width="6" height="7" rx="1.5" />
+      </svg>
+    </button>
+  )
+}
+
+/**
+ * De dienst is gekozen, maar de IBIS weet nog van niets.
+ *
+ * Dit is het moment waarop de chauffeur iets moet intoetsen, dus staat er wat
+ * hij moet intoetsen -- en verder niets. Haltes en vertraging hebben pas
+ * betekenis zodra de IBIS antwoord geeft.
+ */
+function IbisPanel({
+  duty,
+  ibis,
+  status,
+  language
+}: {
+  duty: Duty
+  ibis?: IbisPlan
+  status?: LiveStatus
+  language: Language
+}): JSX.Element {
+  const legIndex = status?.legIndex ?? 0
+  const leg = duty.legs[legIndex] ?? duty.legs[0]
+  // De route van de rit die nu aan de beurt is; anders de eerste die er een heeft.
+  const route = ibis?.legs[legIndex]?.route ?? ibis?.legs.find((item) => item.route)?.route
+  const line = ibis?.line || leg?.lineNumber || '—'
+
+  return (
+    <div className="ibis-entry">
+      <div className="topline">
+        <b>{t(language, 'ovl.ibisTitle')}</b>
+        <LayoutButton language={language} />
+      </div>
+      <div className="grid">
+        <div>
+          <b>{line}</b>
+          <span>{t(language, 'ibis.line')}</span>
+        </div>
+        <div>
+          <b>{route ?? '—'}</b>
+          <span>{t(language, 'ibis.routeAtStart')}</span>
+        </div>
+      </div>
+      <div className="row">
+        <span className="sub">
+          {route ? t(language, 'ovl.ibisWaiting') : t(language, 'ibis.noTable')}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/**
  * Voordat de dienst in OMSI zelf gekozen is. Tijd, haltes en vertraging hebben
  * dan nog geen betekenis; wat de chauffeur wel nodig heeft, is wat hij in het
  * dienstregelingsmenu moet aanklikken.
@@ -470,6 +555,7 @@ function SelectPanel({
       <div className="topline">
         <span className="line">{duty.lineNumbers.join(' / ')}</span>
         <b>{t(language, 'ovl.selectTitle')}</b>
+        <LayoutButton language={language} />
       </div>
       <div className="row">
         <span className="value">

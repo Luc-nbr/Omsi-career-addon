@@ -16,7 +16,7 @@ const api: CareerApi = {
   saveSettings: (settings) => ipcRenderer.invoke('settings:write', settings),
   listDuties: (request: DutyRequest) => ipcRenderer.invoke('duty:list', request),
   ibis: (duty, vehicle, year) => ipcRenderer.invoke('duty:ibis', duty, vehicle, year),
-  setOverlay: (duty, open) => ipcRenderer.invoke('overlay:set', duty, open),
+  setOverlay: (duty, open, ibis) => ipcRenderer.invoke('overlay:set', duty, open, ibis),
   overlayIsOpen: () => ipcRenderer.invoke('overlay:isOpen'),
   onOverlayState: (handler) => {
     const listener = (_event: unknown, open: boolean): void => handler(open)
@@ -31,7 +31,7 @@ const api: CareerApi = {
   resetOverlayLayout: () => ipcRenderer.invoke('overlay:layout:reset'),
   confirmDuty: (assignment, vehicleOverride) => ipcRenderer.invoke('duty:confirm', assignment, vehicleOverride),
   cancelDuty: () => ipcRenderer.invoke('duty:cancel'),
-  beginDuty: (duty) => ipcRenderer.invoke('duty:begin', duty),
+  beginDuty: (duty, ibis) => ipcRenderer.invoke('duty:begin', duty, ibis),
   liveConnected: () => ipcRenderer.invoke('omsi:live'),
   printers: () => ipcRenderer.invoke('print:printers'),
   printReceipt: (payload, deviceName) => ipcRenderer.invoke('print:receipt', payload, deviceName),

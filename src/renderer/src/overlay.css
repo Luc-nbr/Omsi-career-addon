@@ -533,3 +533,59 @@
   color: #1d1607;
   font-weight: 700;
 }
+
+/* ---------- knop naar de bewerkstand ---------- */
+
+/*
+ * Staat in elke stand van het dienstpaneel, want dat is het enige dat altijd
+ * in beeld is. Gedimd zolang je hem niet nodig hebt: tijdens het rijden kijk je
+ * naar de dienst en niet naar de knoppen.
+ */
+.layout-button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+  padding: 3px 2px 3px 4px;
+}
+
+.layout-button svg {
+  display: block;
+  width: 15px;
+  height: 13px;
+  fill: none;
+  stroke: #5c6879;
+  stroke-width: 1.5;
+}
+
+.layout-button:hover svg {
+  stroke: #f0b429;
+}
+
+.topline .layout-button {
+  margin-left: -2px;
+}
+
+/* ---------- wachten op de IBIS ---------- */
+
+.ibis-entry .topline {
+  margin-bottom: 9px;
+}
+
+.ibis-entry .topline b {
+  flex: 1;
+  font-size: 12px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #8d9bad;
+  font-weight: 600;
+}
+
+.ibis-entry .grid b {
+  font-size: 22px;
+  color: #f0b429;
+}
+
+.ibis-entry .row {
+  margin-top: 9px;
+}

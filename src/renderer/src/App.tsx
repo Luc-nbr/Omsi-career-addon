@@ -206,7 +206,7 @@ export function App(): JSX.Element {
 
   const begin = useCallback(async () => {
     if (!duty || !confirmed) return
-    const { connected, launched, running } = await window.career.beginDuty(duty)
+    const { connected, launched, running } = await window.career.beginDuty(duty, ibis)
     setStarted(true)
     setOverlayOpen(true)
     // Alleen wachten als we het spel zelf hebben aangezwengeld.
@@ -247,8 +247,8 @@ export function App(): JSX.Element {
 
   const toggleOverlay = useCallback(async () => {
     if (!duty && !overlayOpen) return
-    setOverlayOpen(await window.career.setOverlay(duty, !overlayOpen))
-  }, [duty, overlayOpen])
+    setOverlayOpen(await window.career.setOverlay(duty, !overlayOpen, ibis))
+  }, [duty, overlayOpen, ibis])
 
   const finish = useCallback(async () => {
     if (!duty || !vehicle) return

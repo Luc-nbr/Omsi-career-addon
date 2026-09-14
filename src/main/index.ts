@@ -15,7 +15,7 @@ import { buildFleetIndex, pickVehicleForDuty, readMapFleet, type FleetIndex } fr
 import { readMapData, type Lane, type MapGeometry } from '../core/geo'
 import { LaneNetwork, routeForTrip } from '../core/routing'
 import { VehicleTracker, type VehiclePosition } from '../core/vehicle'
-import { buildIbisPlan } from '../core/ibis'
+import { buildIbisPlan, type IbisPlan } from '../core/ibis'
 import { describeLive, readLive } from '../core/live'
 import { findOmsiInstall } from '../core/install'
 import { isOmsiRunning, launchOmsi } from '../core/launch'
@@ -147,6 +147,8 @@ function fleet(): FleetIndex {
 let overlayWindow: BrowserWindow | null = null
 let overlayTimer: NodeJS.Timeout | undefined
 let overlayDuty: Duty | undefined
+/** Het IBIS-plan bij die dienst; de overlay toont het tot de IBIS gevuld is. */
+let overlayIbis: IbisPlan | undefined
 /**
  * In de bewerkstand kun je de vensters verslepen. Dat kan niet altijd aanstaan:
  * een venster dat muisklikken aanneemt, pakt ook de aandacht af van OMSI, en
@@ -221,13 +223,20 @@ function vehicleOnMap(live: ReturnType<typeof readLive>, duty: Duty | undefined)
 function pushFrame(): void {
   if (!overlayWindow || overlayWindow.isDestroyed()) return
   captureBaseline()
-  const live = readLive()
+  /*
+   * Alleen verse gegevens. Een live.json van een vorige keer blijft op schijf
+   * staan met alive:true, en dan bleef de overlay een dienst tonen die allang
+   * uitgereden was -- inclusief een dienstregelingsmenu dat niemand meer had
+   * openstaan.
+   */
+  const live = freshLive()
   const duty = currentDuty()
   overlayWindow.webContents.send('overlay:frame', {
     connected: Boolean(live?.alive),
     status: live ? describeLive(live, duty, baseline()) : undefined,
     vehicle: vehicleOnMap(live, duty),
     duty,
+    ibis: overlayIbis,
     editing: overlayEditing
   })
 }
@@ -278,8 +287,9 @@ function closeOverlay(): void {
   announceOverlay()
 }
 
-function openOverlay(duty: Duty): void {
+function openOverlay(duty: Duty, ibis?: IbisPlan): void {
   overlayDuty = duty
+  if (ibis) overlayIbis = ibis
   if (overlayIsOpen()) return
 
   // Het venster beslaat het hele scherm, zodat je een paneel overal neer kunt
@@ -587,6 +597,7 @@ function registerHandlers(): void {
   ipcMain.handle('duty:cancel', () => {
     closeOverlay()
     overlayDuty = undefined
+    overlayIbis = undefined
     if (!career) return careerPayload()
     return persist({ ...career, activeDuty: undefined })
   })
@@ -596,13 +607,13 @@ function registerHandlers(): void {
    * vastleggen. De app schrijft niets in de spelmap — de speler laadt zijn bus
    * en kaart zelf, wij geven de instructies.
    */
-  ipcMain.handle('duty:begin', async (_event, duty: Duty) => {
+  ipcMain.handle('duty:begin', async (_event, duty: Duty, ibis?: IbisPlan) => {
     if (career?.activeDuty && !career.activeDuty.startedAt) {
       persist({ ...career, activeDuty: { ...career.activeDuty, startedAt: new Date().toISOString() } })
     }
     captureBaseline()
     const live = freshLive()
-    openOverlay(duty)
+    openOverlay(duty, ibis)
 
     // Het spel erbij starten, tenzij het al draait.
     let launched = false
@@ -649,8 +660,8 @@ function registerHandlers(): void {
    * Open of dicht, zoals gevraagd, en niet omgekeerd: een knop die "wisselt"
    * sluit een overlay die de app voor dicht aanzag. Levert de werkelijke stand.
    */
-  ipcMain.handle('overlay:set', (_event, duty: Duty | undefined, open: boolean) => {
-    if (open && duty) openOverlay(duty)
+  ipcMain.handle('overlay:set', (_event, duty: Duty | undefined, open: boolean, ibis?: IbisPlan) => {
+    if (open && duty) openOverlay(duty, ibis)
     else if (!open) closeOverlay()
     return overlayIsOpen()
   })
@@ -711,6 +722,7 @@ function registerHandlers(): void {
     // Een afgeronde dienst heeft geen overlay meer nodig.
     closeOverlay()
     overlayDuty = undefined
+    overlayIbis = undefined
     if (!career) return careerPayload()
     return persist(completeDuty(career, duty, vehicle, measured))
   })
