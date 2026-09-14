@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from 'node:fs'
 import { dirname, extname, join, basename } from 'node:path'
-import { readOmsiLines, str } from './omsiFile'
+import { blockTag, readOmsiLines, str } from './omsiFile'
 
 /**
  * Een bestemming uit een Betriebshof-bestand (.hof). De `code` is het nummer dat
@@ -14,11 +14,35 @@ export interface Terminus {
   display: string
 }
 
-/** Eén wagenpark: welke bestemmingen deze bus kan tonen. */
+/**
+ * Een route uit het informatiesysteem van het wagenpark.
+ *
+ * Dit is wat de chauffeur in de IBIS intoetst: eerst de lijn, dan de route. De
+ * bestemming hoort bij de route en volgt er vanzelf uit - die hoef je niet apart
+ * in te voeren.
+ */
+export interface Route {
+  /** Routenummer; dit typ je in. */
+  code: string
+  /** Korte omschrijving, zoals "URUH-NERV". */
+  name: string
+  /** Bestemmingscode waar deze route op uitkomt. */
+  target: string
+  lineNumber: string
+  /**
+   * De haltes die deze route aandoet. Meerdere routes van dezelfde lijn kunnen
+   * op dezelfde bestemming uitkomen - 9202 rijdt vanaf Stadtgrenze, 9226 vanaf
+   * Reimerweg - en alleen deze lijst houdt ze uit elkaar.
+   */
+  stops: string[]
+}
+
+/** Eén wagenpark: welke bestemmingen en routes deze bus kent. */
 export interface Hof {
   file: string
   name: string
   termini: Terminus[]
+  routes: Route[]
 }
 
 /**
@@ -32,7 +56,7 @@ export interface Hof {
  */
 export function readHof(path: string): Hof {
   const lines = readOmsiLines(path)
-  const hof: Hof = { file: path, name: basename(path, extname(path)), termini: [] }
+  const hof: Hof = { file: path, name: basename(path, extname(path)), termini: [], routes: [] }
 
   let stringCount = 6
   const countIndex = lines.findIndex((line) => line.trim() === 'stringcount_terminus')
@@ -45,7 +69,7 @@ export function readHof(path: string): Hof {
   if (nameIndex >= 0) hof.name = str(lines[nameIndex + 1]) || hof.name
 
   for (let i = 0; i < lines.length; i++) {
-    const tag = lines[i].trim()
+    const tag = blockTag(lines[i])
 
     if (tag === '[addterminus]' || tag === '[addterminus_allexit]') {
       const code = str(lines[i + 1])
@@ -58,14 +82,47 @@ export function readHof(path: string): Hof {
     }
 
     /**
+     * Routes van het informatiesysteem: vier velden, in beide bestandsvormen
+     * hetzelfde. De nieuwere bestanden plakken er tabs achter, vandaar het
+     * trimmen.
+     */
+    if (tag === '[infosystem_trip]') {
+      const code = str(lines[i + 1])
+      const name = str(lines[i + 2])
+      const target = str(lines[i + 3])
+      const lineNumber = str(lines[i + 4])
+      if (code && target) {
+        // De haltelijst die erop volgt hoort bij deze route.
+        const stops: string[] = []
+        let j = i + 5
+        while (j < lines.length && blockTag(lines[j]) !== '[infosystem_busstop_list]') {
+          if (blockTag(lines[j])?.startsWith('[infosystem_trip')) break
+          j++
+        }
+        if (blockTag(lines[j]) === '[infosystem_busstop_list]') {
+          const count = Number.parseInt(str(lines[j + 1]), 10)
+          if (Number.isFinite(count)) {
+            for (let k = 0; k < count; k++) {
+              const stop = str(lines[j + 2 + k])
+              if (stop) stops.push(stop)
+            }
+          }
+        }
+        hof.routes.push({ code, name, target, lineNumber, stops })
+      }
+      i += 4
+      continue
+    }
+
+    /**
      * Nieuwere wagenparken gebruiken een lijstvorm die tot `[end]` loopt en per
      * regel tabgescheiden kolommen heeft — die bestanden zijn uit Excel
      * geëxporteerd, compleet met rijen opvultabs. Kolom 0 draagt vlaggen zoals
      * `{ALLEX}`, daarna volgen code, station en de displayteksten.
      */
-    if (tag.startsWith('[addterminus_list]')) {
+    if (tag === '[addterminus_list]') {
       for (let j = i + 1; j < lines.length; j++) {
-        if (lines[j].trim().startsWith('[end]')) {
+        if (blockTag(lines[j]) === '[end]') {
           i = j
           break
         }

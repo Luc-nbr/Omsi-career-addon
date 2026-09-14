@@ -158,93 +158,31 @@ kunnen verjaren, en kaarten die je nooit eerder speelde doen gewoon mee.
 
 ## IBIS
 
-De dienstkaart toont wat er bij het instappen in de IBIS moet: **Linie**,
-**Umlauf** en de **bestemmingscode**, plus de code van elke rit in de ritregel.
+De dienstkaart toont wat er in de IBIS moet: **Linie** en **Route**. Meer is het
+niet — de bestemming hoort bij de route en verschijnt vanzelf op de film, dus die
+staat er alleen ter controle bij.
 
-Die codes komen uit het wagenpark-bestand (`.hof`) dat naast het busmodel ligt.
-Eén bus heeft er vaak een stuk of tien, één per stad en per tijdvak, en ze
-verschillen echt: Johannesstift is in 1988 code `221` en in 1994 code `161`. De
-app kiest daarom het wagenpark dat de eindbestemmingen van de dienst kent én op
-de speeldatum al gold, en schrijft diezelfde keuze als `yard` in de situatie —
-anders zou de bus in het spel een ander wagenpark laden dan waar de getoonde
-codes uit komen.
+De routes komen uit de `[infosystem_trip]`-blokken van het wagenpark-bestand
+(`.hof`) dat naast het busmodel ligt: routenummer, omschrijving, bestemmingscode
+en lijn. Eén bus heeft vaak een stuk of tien wagenparken, één per stad en per
+tijdvak, en de codes verschillen echt — Johannesstift is in 1988 `221` en in 1994
+`161`. De app kiest daarom het wagenpark dat de eindbestemmingen van de dienst
+kent én op de speeldatum al gold.
 
-### De beperking die daarbij hoort
+Twee dingen die dat formaat oplegde:
 
-De startpositie van je bus staat in het situatiebestand en hangt aan de tegels
-van de kaart — die is niet te verzinnen. De app neemt daarom een bestaande
-situatie van die kaart als sjabloon over. OMSI schrijft na elke sessie
-`laststn.osn` per kaart, dus **een kaart die je één keer hebt gespeeld levert
-vanaf dan automatisch een sjabloon op**. Heeft een kaart er nog geen, dan zet de
-app alleen kaart en tijd goed en kies je zelf een bus.
+**Sleutelwoorden tellen alleen aan het regelbegin.** De `.hof`-bestanden leggen
+hun eigen blokformaat ingesprongen uit, als commentaar. Wie inspringing wegpoetst
+leest die uitleg als gegevens en krijgt een route met de naam
+`{routecode} (z.B. '540001', integer)`.
 
-## Opbouw
+**De bestemming alleen is niet genoeg.** Op lijn 92 eindigen `9202` (STAD-FREU)
+en `9226` (REIM-FREU) allebei op code 210. Welke van de twee klopt, blijkt uit de
+haltelijst die bij elke route staat: de app kiest de route die het meest met de
+rit overlapt, met het beginpunt als zwaarste weging.
 
-```
-src/core/      OMSI-logica, zonder Electron: bestandsformaten, diensten, carrière
-src/main/      Electron-hoofdproces met de IPC-handlers
-src/preload/   De brug naar de interface
-src/renderer/  React-interface
-scripts/       probe.ts (kern zonder UI), screenshot.cjs (app fotografeert zichzelf)
-```
-
-## Wat de app na afloop uitleest
-
-OMSI schrijft bij het afsluiten de hele wereldtoestand naar
-`maps/<kaart>/laststn.osn`, inclusief de variabelen van je eigen bus. Daar staat
-`kmcounter_km` in (de kilometerteller) en `IBIS_Delay_min` (de vertraging op het
-display). De app leest die waarden bij het starten en nogmaals bij het afronden,
-en het verschil is wat je werkelijk gereden hebt.
-
-Zolang het bestand nog de dienst bevat die de app erin heeft gezet, is OMSI nog
-niet afgesloten en valt er niets te meten; het logboek zegt dat dan ook.
-
-Dit is bewust zonder plugin gedaan. Een echte OMSI-begeleidingstool zoals
-OmniNavigation doet het anders: die laadt een eigen DLL in `plugins/` die
-`PluginStart`, `PluginFinalize` en `AccessStringVariable` exporteert, legt via
-een GUID in `omninavigation.cfg` contact met een losse applicatie, en leest zo
-live mee. Dat geeft gegevens tijdens de rit in plaats van erna, maar vraagt een
-C-compiler en een draaiend achtergrondproces.
-
-## Overlay met live gegevens
-
-Boven het spel hangt een doorzichtig, klikdoorlatend venster met de klok, je
-vertraging, de rit waar je mee bezig bent, de eerstvolgende halte, het aantal
-passagiers en of er iemand wil in- of uitstappen.
-
-De gegevens komen uit een eigen plugin in `plugin/`. OMSI's plugin-contract
-staat in zijn eigen RTTI:
-
-```
-TAccessVariable(varindex, value, write)        TStart(AOwner)
-TAccessSystemVariable(varindex, value, write)  TFinalize()
-TAccessStringVariable(varindex, str, write)
-```
-
-Een `.opl` in `plugins/` kent vier lijsten: `[varlist]`, `[stringvarlist]`,
-`[systemvarlist]` en `[triggers]`. **Elke lijst begint met het aantal namen**,
-daarna pas de namen; OMSI leest dat aantal in zijn velden `NoVar`, `NoStr` en
-`NoSys`. Zonder die regel meldt het spel `there was an error in line N` en wordt
-de plugin niet geladen. De index die OMSI meegeeft is de positie in die lijst,
-dus de volgorde moet gelijk lopen met de enums in `omsicareer.c`.
-
-Welke namen bruikbaar zijn, is uit OMSI zelf af te leiden. `TScriptVarIndizes`
-in de binary bevat de variabelen die OMSI in **elk** voertuig bijhoudt —
-`Velocity`, `humans_count`, `kmcounter_km`, `tank_percent`, `schedule_active`,
-`PAX_Entry_Req` — en die werken dus op iedere bus. De systeemvariabelen zijn te
-vinden via `(L.S.naam)` in de busscripts: `Time`, `Day`, `Month`, `Year`,
-`Weather_*`, `PrecipRate`. `Time` is seconden na middernacht; de scripts delen
-hem door 3600 voor uren.
-
-Variabelen als `IBIS_busstop_name` en `IBIS_Delay_min` bestaan alleen op bussen
-mét IBIS — ongeveer elf van de busmappen. De overlay gebruikt ze als ze er zijn
-en rekent de vertraging anders zelf uit tegen de dienstregeling. Een ster achter
-een waarde betekent dat hij afgeleid is en niet rechtstreeks uit OMSI komt.
-
-**Passagiersstemming bestaat niet als variabele.** OMSI houdt wel
-chauffeursbeoordelingen bij (`DG_Driver_Rating_Driving`, `_Ticket`, `_Comfort`),
-maar die belanden pas na afloop in `Drivers/*.odr`. De stemming in de overlay is
-daarom een afgeleide van vertraging en rijstijl, en staat als zodanig gemarkeerd.
+Ritten zonder route — een Betriebsfahrt naar de remise bijvoorbeeld — staan als
+zodanig op de kaart: die zet je met de hand op de film.
 
 ### Bouwen en plaatsen
 

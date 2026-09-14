@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { listHofs, normalise, pickHof } from './hof'
+import { listHofs, normalise, pickHof, type Route } from './hof'
 import type { Duty } from './types'
 
 /** Wat de chauffeur per rit in de IBIS zet. */
@@ -7,7 +7,14 @@ export interface IbisLeg {
   departure: number
   lineNumber: string
   terminus: string
-  /** Bestemmingscode; ontbreekt als het wagenpark deze bestemming niet kent. */
+  /**
+   * Routenummer. Dit is wat je na de lijn intoetst; de bestemming hoort bij de
+   * route en volgt er vanzelf uit.
+   */
+  route?: string
+  /** Korte omschrijving van de route, zoals "URUH-NERV". */
+  routeName?: string
+  /** Bestemmingscode. Alleen ter controle van wat er op de film verschijnt. */
   code?: string
   /** De tekst die dan op de bestemmingsfilm verschijnt. */
   display?: string
@@ -24,9 +31,34 @@ export interface IbisPlan {
   line: string
   tour: string
   legs: IbisLeg[]
-  /** Hoeveel van de ritten een code kregen, en hoeveel er in totaal zijn. */
+  /** Hoeveel ritten een routenummer kregen, en hoeveel er in totaal zijn. */
   resolved: number
   total: number
+  /** Kent dit wagenpark uberhaupt routes? Zo niet, dan blijft alleen de film over. */
+  hasRoutes: boolean
+}
+
+/**
+ * Kiest uit meerdere routes die op dezelfde bestemming uitkomen. De route die de
+ * meeste haltes met de rit deelt is de juiste; het beginpunt weegt het zwaarst,
+ * want daarin verschillen de varianten meestal.
+ */
+function bestByStops(candidates: Route[], stops: string[]): Route | undefined {
+  const wanted = new Set(stops.map(normalise))
+  const first = normalise(stops[0] ?? '')
+  let best: Route | undefined
+  let bestScore = -1
+  for (const route of candidates) {
+    if (route.stops.length === 0) continue
+    const overlap = route.stops.filter((stop) => wanted.has(normalise(stop))).length
+    const score = overlap / Math.max(route.stops.length, stops.length) +
+      (first && normalise(route.stops[0]) === first ? 1 : 0)
+    if (score > bestScore) {
+      bestScore = score
+      best = route
+    }
+  }
+  return best ?? candidates[0]
 }
 
 /**
@@ -43,12 +75,30 @@ export function buildIbisPlan(
   const termini = [...new Set(duty.legs.map((leg) => leg.terminus).filter(Boolean))]
   const match = pickHof(listHofs(join(omsiPath, vehicleRelativePath)), termini, year)
 
+  const routes = match?.hof.routes ?? []
+  const sameLine = (a: string, b: string) => a.trim() === b.trim()
+
   const legs: IbisLeg[] = duty.legs.map((leg) => {
     const terminus = match?.codes.get(normalise(leg.terminus))
+    /**
+     * De route is die van deze lijn die op deze bestemming uitkomt. Staan er
+     * meerdere varianten, dan is de eerste de gewone rit; de rest zijn
+     * afwijkende routes die we niet uit elkaar kunnen houden.
+     */
+    const candidates = terminus
+      ? routes.filter(
+          (entry) =>
+            sameLine(entry.lineNumber, leg.lineNumber) && entry.target.trim() === terminus.code.trim()
+        )
+      : []
+    const route = candidates.length > 1 ? bestByStops(candidates, leg.stops) : candidates[0]
+
     return {
       departure: leg.departure,
       lineNumber: leg.lineNumber,
       terminus: leg.terminus,
+      route: route?.code,
+      routeName: route?.name,
       code: terminus?.code,
       display: terminus?.display
     }
@@ -59,7 +109,8 @@ export function buildIbisPlan(
     line: duty.lineNumbers[0] ?? '',
     tour: duty.tourNumber,
     legs,
-    resolved: legs.filter((leg) => leg.code).length,
-    total: legs.length
+    resolved: legs.filter((leg) => leg.route).length,
+    total: legs.length,
+    hasRoutes: routes.length > 0
   }
 }

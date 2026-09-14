@@ -84,8 +84,8 @@ export function DutyCard({
               {formatTime(leg.departure)} – {formatTime(leg.arrival)}
             </span>
             <span className="leg-line">{leg.lineNumber}</span>
-            <span className="leg-code" title="Bestemmingscode voor de IBIS">
-              {ibis?.legs[index]?.code ?? '—'}
+            <span className="leg-code" title="Routenummer voor de IBIS">
+              {ibis?.legs[index]?.route ?? '—'}
             </span>
             <span className="leg-dest">
               <b>{leg.terminus}</b>
@@ -185,8 +185,9 @@ function LegDetail({
   index: number
   ibis?: IbisPlan
 }): JSX.Element {
-  const code = ibis?.legs[index]?.code
-  const film = ibis?.legs[index]?.display
+  const entry = ibis?.legs[index]
+  const route = entry?.route
+  const film = entry?.display
 
   return (
     <div className="leg-detail">
@@ -198,15 +199,16 @@ function LegDetail({
           </li>
         )}
         <li>
-          Zet de IBIS op lijn <b>{leg.lineNumber}</b>
-          {code ? (
+          Toets in de IBIS lijn <b>{leg.lineNumber}</b>
+          {route ? (
             <>
               {' '}
-              en bestemming <b>{code}</b>
-              {film ? ` — op de film verschijnt “${film}”` : ''}.
+              en route <b>{route}</b>
+              {entry?.routeName ? ` (${entry.routeName})` : ''}
+              {film ? `. Op de film verschijnt “${film}”` : ''}.
             </>
           ) : (
-            <> — deze bus heeft geen code voor {leg.terminus}, zet de film met de hand.</>
+            <> — deze bus kent geen route naar {leg.terminus}, zet de film met de hand.</>
           )}
         </li>
         <li>
@@ -304,10 +306,10 @@ function IbisPanel({ ibis }: { ibis?: IbisPlan }): JSX.Element {
     )
   }
 
-  const first = ibis.legs.find((leg) => leg.code)
-  // Bij elk keerpunt voert de chauffeur de code van de volgende rit in, dus de
-  // terugkerende codes zijn nuttiger dan een lijst van alle ritten.
-  const unique = [...new Map(ibis.legs.filter((l) => l.code).map((l) => [l.code, l])).values()]
+  const first = ibis.legs.find((leg) => leg.route)
+  // Bij elk keerpunt toets je de route van de volgende rit in; de terugkerende
+  // routes zijn nuttiger dan een regel per rit.
+  const unique = [...new Map(ibis.legs.filter((l) => l.route).map((l) => [l.route, l])).values()]
 
   return (
     <div className="ibis">
@@ -318,21 +320,20 @@ function IbisPanel({ ibis }: { ibis?: IbisPlan }): JSX.Element {
           <b>{ibis.line || '—'}</b>
         </div>
         <div className="ibis-field">
-          <span>Umlauf</span>
-          <b>{ibis.tour || '—'}</b>
-        </div>
-        <div className="ibis-field">
-          <span>Ziel bij vertrek</span>
-          <b>{first?.code ?? '—'}</b>
+          <span>Route bij vertrek</span>
+          <b>{first?.route ?? '—'}</b>
         </div>
       </div>
 
       {unique.length > 0 && (
         <div className="ibis-codes">
           {unique.map((leg) => (
-            <div className="ibis-code" key={leg.code}>
-              <b>{leg.code}</b>
-              <span>{leg.display ?? leg.terminus}</span>
+            <div className="ibis-code" key={leg.route}>
+              <b>{leg.route}</b>
+              <span>
+                {leg.routeName || leg.terminus}
+                {leg.display ? ` · film “${leg.display}”` : ''}
+              </span>
             </div>
           ))}
         </div>
@@ -341,18 +342,22 @@ function IbisPanel({ ibis }: { ibis?: IbisPlan }): JSX.Element {
       <p className="note">
         {ibis.resolved === ibis.total ? (
           <>
-            Codes uit wagenpark <b>{ibis.yard}</b>. Bij elk keerpunt voer je de code van de volgende
-            rit in.
+            Routes uit wagenpark <b>{ibis.yard}</b>. Je toetst lijn en route in; de bestemming hoort
+            bij de route en verschijnt vanzelf. Bij elk keerpunt voer je de route van de volgende rit
+            in.
           </>
         ) : ibis.resolved > 0 ? (
           <span className="warn">
-            Van {ibis.total} ritten hebben er {ibis.total - ibis.resolved} geen code in wagenpark{' '}
+            Van {ibis.total} ritten hebben er {ibis.total - ibis.resolved} geen route in wagenpark{' '}
             {ibis.yard}. Die bestemmingen zet je met de hand op de film.
+          </span>
+        ) : ibis.hasRoutes ? (
+          <span className="warn">
+            Deze bus kent de routes van deze lijn niet. Kies een bus die bij dit wagenpark hoort.
           </span>
         ) : (
           <span className="warn">
-            Deze bus kent de bestemmingen van deze kaart niet. Kies een bus die bij dit wagenpark
-            hoort, anders staan er alleen lege of verkeerde bestemmingen op de film.
+            Dit wagenpark heeft geen routetabel; deze bus zet je bestemming met de hand op de film.
           </span>
         )}
       </p>

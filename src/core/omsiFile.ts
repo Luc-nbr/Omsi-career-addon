@@ -51,8 +51,8 @@ export function readOmsiLines(path: string): string[] {
 export function parseBlocks(lines: string[], schema: BlockSchema): Block[] {
   const blocks: Block[] = []
   for (let i = 0; i < lines.length; i++) {
-    const tag = lines[i].trim()
-    if (!tag.startsWith('[') || !tag.endsWith(']')) continue
+    const tag = blockTag(lines[i])
+    if (!tag) continue
     const count = schema[tag]
     if (count === undefined) continue
     blocks.push({ tag, values: lines.slice(i + 1, i + 1 + count) })
@@ -64,6 +64,20 @@ export function parseBlocks(lines: string[], schema: BlockSchema): Block[] {
 /** Leest en parseert in één stap. */
 export function parseOmsiFile(path: string, schema: BlockSchema): Block[] {
   return parseBlocks(readOmsiLines(path), schema)
+}
+
+/**
+ * De tag van een regel, of `undefined` als het er geen is.
+ *
+ * Een sleutelwoord telt alleen als het aan het begin van de regel staat. De
+ * OMSI-bestanden leggen dat zelf uit en gebruiken het ook: de uitleg van een
+ * blokformaat staat er ingesprongen als commentaar boven. Wie inspringing
+ * wegpoetst leest die uitleg als gegevens - in de wagenparkbestanden levert dat
+ * een route op met de naam "{routecode} (z.B. '540001', integer)".
+ */
+export function blockTag(line: string): string | undefined {
+  const trimmed = line.replace(/\s+$/, '')
+  return trimmed.startsWith('[') && trimmed.endsWith(']') ? trimmed : undefined
 }
 
 /** Getal uit een veld; lege of onleesbare velden worden `fallback`. */
