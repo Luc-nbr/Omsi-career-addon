@@ -164,9 +164,12 @@ bekijken zonder papier te verbranden.
 
 ## Wat de app in OMSI verandert
 
-Niets. De app schrijft geen situatiebestanden, raakt `options.cfg` niet aan en
-start het spel niet op. Je laadt je kaart en je bus zelf in OMSI en kiest daarna
+Aan je bestanden niets. De app schrijft geen situatiebestanden en raakt
+`options.cfg` niet aan. Je laadt je kaart en je bus zelf in OMSI en kiest daarna
 in de app een dienst uit het rooster; de app levert alleen de instructies.
+
+Bij "Dienst starten" wordt het spel wel aangezwengeld als het nog niet draait —
+dat is puur `Omsi.exe` opstarten, zonder er iets voor klaar te zetten.
 
 Het enige dat in de spelmap terechtkomt is de plugin voor de overlay, en dat
 zijn twee bestanden in `plugins/` die je zo weer weghaalt.
