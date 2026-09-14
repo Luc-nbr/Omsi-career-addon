@@ -1,8 +1,8 @@
 # OMSI Career
 
-Career mode voor OMSI 2. Je kiest een kaart en hoe lang je wilt rijden, de app
-wijst een dienst toe uit de échte dienstregeling van die kaart, toont een
-dienstkaart en zet het spel klaar om hem te gaan rijden.
+Career mode voor OMSI 2. Je laadt je kaart en bus zelf in OMSI; de app stelt een
+rooster samen uit de échte dienstregeling van die kaart, geeft de instructies en
+de IBIS-codes, en hangt een overlay met live gegevens boven het spel.
 
 ## Hoe het werkt
 
@@ -56,9 +56,10 @@ op A mag volgen mag dan ook op C volgen. Union-find over eind- en beginpunten
 maakt dat expliciet en verdubbelt tot verviervoudigt het aantal keuzes op een
 eindpunt: van 1,5 naar 2,3 op Berlin-Spandau, van 1,9 naar 6,2 op HafenCity.
 
-Op elk eindpunt kiest de app willekeurig uit wat daar vertrekt — terug waar je
-vandaan kwam, of een andere lijn die daar ook begint. Dezelfde vraag levert twee
-keer achter elkaar een andere dienst op.
+Op elk eindpunt kiest de app willekeurig uit wat daar binnen dezelfde omloop
+vertrekt — meestal terug waar je vandaan kwam, soms een variant of een
+Betriebsfahrt. Welke omloop, welk tijdstip en welk stuk eruit is ook willekeurig,
+dus dezelfde vraag levert twee keer achter elkaar een andere dienst op.
 
 Een dienst loopt nooit over een stilstand van meer dan 45 minuten heen: daar
 wisselt in de praktijk de chauffeur.
