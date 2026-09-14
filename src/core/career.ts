@@ -109,6 +109,7 @@ export interface CareerSummary {
   /** Gereden kilometers, voor zover gemeten. */
   km: number
   earnings: number
+  /** Sleutel van de rang; de naam komt uit de vertaling ("rank.<sleutel>"). */
   rank: string
   /** Voortgang naar de volgende rang, 0 tot 1. */
   progress: number
@@ -118,11 +119,11 @@ export interface CareerSummary {
 
 /** Rangen op gereden uren; de eerste stap gaat snel, daarna wordt het rustiger. */
 const RANKS: Array<{ name: string; hours: number }> = [
-  { name: 'Leerling', hours: 0 },
-  { name: 'Chauffeur', hours: 5 },
-  { name: 'Ervaren chauffeur', hours: 20 },
-  { name: 'Lijninstructeur', hours: 50 },
-  { name: 'Wagenparkchef', hours: 100 }
+  { name: 'leerling', hours: 0 },
+  { name: 'chauffeur', hours: 5 },
+  { name: 'ervaren', hours: 20 },
+  { name: 'instructeur', hours: 50 },
+  { name: 'chef', hours: 100 }
 ]
 
 export function summarise(state: CareerState): CareerSummary {

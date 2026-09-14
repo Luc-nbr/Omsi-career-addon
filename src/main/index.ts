@@ -207,6 +207,22 @@ function openOverlay(duty: Duty): void {
 }
 
 /**
+ * Vult het kaartje aan met wie het afdrukt en wanneer. De datumnotatie volgt de
+ * taal van de app, want het kaartje is het enige dat de chauffeur in handen
+ * krijgt.
+ */
+function withDriver(payload: unknown): unknown {
+  const language = readSettings(userData()).language
+  const locale = { en: 'en-GB', de: 'de-DE', fr: 'fr-FR', nl: 'nl-NL' }[language]
+  return {
+    ...(payload as object),
+    language,
+    driver: career?.driver ?? '—',
+    printedAt: new Date().toLocaleString(locale)
+  }
+}
+
+/**
  * Rendert het dienstkaartje in een onzichtbaar venster en drukt het af.
  *
  * De pagina meldt zelf hoe hoog hij is geworden; daarmee wordt de pagina precies
@@ -360,11 +376,11 @@ function registerHandlers(): void {
   })
 
   ipcMain.handle('print:receipt', (_event, payload, deviceName?: string) =>
-    printReceipt({ ...payload, driver: career?.driver ?? 'onbekend', printedAt: new Date().toLocaleString('nl-NL') }, { deviceName, preview: false })
+    printReceipt(withDriver(payload), { deviceName, preview: false })
   )
 
   ipcMain.handle('print:preview', (_event, payload) =>
-    printReceipt({ ...payload, driver: career?.driver ?? 'onbekend', printedAt: new Date().toLocaleString('nl-NL') }, { preview: true })
+    printReceipt(withDriver(payload), { preview: true })
   )
 
   /**

@@ -4,6 +4,7 @@ import type { Duty, DutyLeg } from '../../core/types'
 import type { Vehicle } from '../../core/vehicles'
 import type { Assignment, PrinterInfo } from '../../shared/api'
 import { describeDays, formatDuration, formatTime } from '../../shared/format'
+import { useLanguage, useT } from './language'
 import { DutyMap } from './DutyMap'
 
 interface Props {
@@ -44,6 +45,8 @@ export function DutyCard({
   onPrinterChange
 }: Props): JSX.Element {
   const [openLeg, setOpenLeg] = useState<number>()
+  const language = useLanguage()
+  const tr = useT()
   const { duty } = assignment
 
   return (
@@ -53,8 +56,14 @@ export function DutyCard({
         <div>
           <div className="duty-title">{duty.mapName}</div>
           <div className="duty-sub">
-            {describeDays(duty.days)} · {duty.legs.length} ritten · {duty.totalStops} haltes ·{' '}
-            {duty.depot ? `remise ${duty.depot}` : 'remise onbekend'}
+            {tr('duty.head', {
+              days: describeDays(duty.days, language),
+              trips: duty.legs.length,
+              stops: duty.totalStops,
+              depot: duty.depot
+                ? tr('duty.depot', { name: duty.depot })
+                : tr('duty.depotUnknown')
+            })}
           </div>
         </div>
         <div className="duty-times">
@@ -62,7 +71,10 @@ export function DutyCard({
             {formatTime(duty.start)} – {formatTime(duty.end)}
           </b>
           <div className="duty-sub">
-            {formatDuration(duty.durationMinutes)} · aanmelden {formatTime(duty.signOn)}
+            {tr('duty.signOn', {
+              duration: formatDuration(duty.durationMinutes, language),
+              time: formatTime(duty.signOn)
+            })}
           </div>
         </div>
       </header>
@@ -93,7 +105,7 @@ export function DutyCard({
               {formatTime(leg.departure)} – {formatTime(leg.arrival)}
             </span>
             <span className="leg-line">{leg.lineNumber}</span>
-            <span className="leg-code" title="Routenummer voor de IBIS">
+            <span className="leg-code" title={tr('duty.routeNumber')}>
               {ibis?.legs[index]?.route ?? '—'}
             </span>
             <span className="leg-dest">
@@ -104,10 +116,13 @@ export function DutyCard({
                 op een andere naam, en OMSI heeft meerdere haltes die hetzelfde
                 heten. "eerste → laatste halte" zou dus een onwaarheid zijn.
               */}
-              <span>vanaf {leg.stops[0] ?? 'onbekend'}</span>
+              <span>{tr('duty.from', { stop: leg.stops[0] ?? tr('duty.unknown') })}</span>
             </span>
             <span className="leg-meta">
-              {leg.stops.length} haltes · {Math.round(leg.minutes)} min
+              {tr('duty.legMeta', {
+                stops: leg.stops.length,
+                minutes: Math.round(leg.minutes)
+              })}
             </span>
           </button>
           {openLeg === index && (
@@ -119,16 +134,16 @@ export function DutyCard({
       <div className="actions">
         {!started ? (
           <button type="button" className="btn" onClick={onBegin} disabled={busy || !vehicle}>
-            Dienst starten
+            {tr('act.start')}
           </button>
         ) : (
           <button type="button" className="btn" onClick={onFinish} disabled={busy}>
-            Dienst afronden
+            {tr('act.finish')}
           </button>
         )}
         {/* Ook voor het starten bruikbaar, om de overlay alvast neer te zetten. */}
         <button type="button" className="btn secondary" onClick={onToggleOverlay}>
-          {overlayOpen ? 'Overlay sluiten' : 'Overlay tonen'}
+          {tr(overlayOpen ? 'act.overlayHide' : 'act.overlayShow')}
         </button>
         {overlayOpen && (
           <button
@@ -136,15 +151,13 @@ export function DutyCard({
             className="btn secondary"
             onClick={() => void window.career.editOverlay(true)}
           >
-            Overlay aanpassen
+            {tr('act.overlayEdit')}
           </button>
         )}
         <span className="note">
-          {started
-            ? 'De kilometerstand is vastgelegd; bij afronden leest de app af wat je gereden hebt.'
-            : overlayOpen
-              ? 'Verslepen kan ook tijdens het rijden: Ctrl+Alt+O.'
-              : 'Laad deze bus in OMSI en druk hier op starten.'}
+          {tr(
+            started ? 'act.startedNote' : overlayOpen ? 'act.overlayNote' : 'act.loadNote'
+          )}
         </span>
       </div>
 
@@ -185,39 +198,41 @@ function PrintPanel({
 }): JSX.Element {
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string>()
+  const language = useLanguage()
+  const tr = useT()
 
   const run = useCallback(
     async (preview: boolean) => {
       setBusy(true)
       setNote(undefined)
       try {
-        const payload = { duty, ibis, vehicle }
+        const payload = { duty, ibis, vehicle, language }
         const result = preview
           ? await window.career.previewReceipt(payload)
           : await window.career.printReceipt(payload, printer || undefined)
-        if (!result.ok) setNote(result.reason ?? 'Het afdrukken is niet gelukt.')
-        else if (!preview) setNote('Kaartje afgedrukt.')
+        if (!result.ok) setNote(result.reason ?? tr('print.failed'))
+        else if (!preview) setNote(tr('print.done'))
       } finally {
         setBusy(false)
       }
     },
-    [duty, ibis, vehicle, printer]
+    [duty, ibis, vehicle, printer, language, tr]
   )
 
   return (
     <div className="ibis print-panel">
-      <h3 className="section-title">Dienstkaartje printen</h3>
+      <h3 className="section-title">{tr('print.title')}</h3>
       <div className="print-row">
         <select
           value={printer}
           onChange={(event) => onPrinterChange(event.target.value)}
-          aria-label="Printer"
+          aria-label={tr('print.printer')}
         >
-          {printers.length === 0 && <option value="">Geen printer gevonden</option>}
+          {printers.length === 0 && <option value="">{tr('print.noPrinter')}</option>}
           {printers.map((item) => (
             <option key={item.name} value={item.name}>
               {item.displayName}
-              {item.isDefault ? ' (standaard)' : ''}
+              {item.isDefault ? tr('print.default') : ''}
             </option>
           ))}
         </select>
@@ -227,14 +242,14 @@ function PrintPanel({
           disabled={busy || printers.length === 0}
           onClick={() => void run(false)}
         >
-          Afdrukken
+          {tr('print.print')}
         </button>
         <button type="button" className="btn secondary" disabled={busy} onClick={() => void run(true)}>
-          Voorbeeld
+          {tr('print.preview')}
         </button>
       </div>
       <p className="note">
-        {note ?? 'Opgemaakt voor bonpapier van 80 mm; de lengte volgt de inhoud.'}
+        {note ?? tr('print.note')}
       </p>
     </div>
   )
@@ -250,10 +265,11 @@ function PrintPanel({
  * zoek je je blind op.
  */
 function SelectPanel({ duty }: { duty: Duty }): JSX.Element {
+  const tr = useT()
   const first = duty.legs[0]
   return (
     <div className="ibis select-panel">
-      <h3 className="section-title">Zo kies je hem in OMSI</h3>
+      <h3 className="section-title">{tr('select.title')}</h3>
       <div className="ibis-grid">
         <div className="ibis-field">
           <span>Line</span>
@@ -269,14 +285,17 @@ function SelectPanel({ duty }: { duty: Duty }): JSX.Element {
         </div>
         <div className="ibis-field wide">
           <span>First stop</span>
-          <b>{first.stops[0] ?? 'onbekend'}</b>
+          <b>{first.stops[0] ?? tr('duty.unknown')}</b>
         </div>
       </div>
       <p className="note">
-        Menu <b>Set Time Table</b>: kies Line <b>{duty.lineFile}</b>, Tour{' '}
-        <b>{duty.tourNumber}</b>, de rit die om <b>{formatTime(first.departure)}</b> vertrekt naar{' '}
-        <b>{first.terminus}</b>, en als First stop <b>{first.stops[0] ?? 'de eerste halte'}</b> —
-        daar zet OMSI je neer.
+        {tr('select.howto', {
+          line: duty.lineFile,
+          tour: duty.tourNumber,
+          time: formatTime(first.departure),
+          terminus: first.terminus,
+          stop: first.stops[0] ?? tr('duty.unknown')
+        })}
       </p>
     </div>
   )
@@ -292,6 +311,7 @@ function LegDetail({
   index: number
   ibis?: IbisPlan
 }): JSX.Element {
+  const tr = useT()
   const entry = ibis?.legs[index]
   const route = entry?.route
   const film = entry?.display
@@ -301,26 +321,31 @@ function LegDetail({
       <ol className="instructions">
         {leg.layoverBefore > 0 && (
           <li>
-            Je staat {leg.layoverBefore} minuten stil op {leg.stops[0] ?? 'het eindpunt'}. Vertrek om{' '}
-            <b>{formatTime(leg.departure)}</b>.
+            {tr('leg.layover', {
+              minutes: leg.layoverBefore,
+              stop: leg.stops[0] ?? tr('duty.unknown'),
+              time: formatTime(leg.departure)
+            })}
           </li>
         )}
         <li>
-          Toets in de IBIS lijn <b>{leg.lineNumber}</b>
-          {route ? (
-            <>
-              {' '}
-              en route <b>{route}</b>
-              {entry?.routeName ? ` (${entry.routeName})` : ''}
-              {film ? `. Op de film verschijnt “${film}”` : ''}.
-            </>
-          ) : (
-            <> — deze bus kent geen route naar {leg.terminus}, zet de film met de hand.</>
-          )}
+          {route
+            ? tr('leg.ibis', {
+                line: leg.lineNumber,
+                route,
+                extra:
+                  (entry?.routeName ? ` (${entry.routeName})` : '') +
+                  (film ? tr('leg.blind', { text: film }) : '')
+              })
+            : tr('leg.ibisNoRoute', { line: leg.lineNumber, terminus: leg.terminus })}
         </li>
         <li>
-          Rijd naar <b>{leg.terminus}</b>: {leg.stops.length} haltes in {Math.round(leg.minutes)}{' '}
-          minuten, aankomst <b>{formatTime(leg.arrival)}</b>.
+          {tr('leg.driveTo', {
+            terminus: leg.terminus,
+            stops: leg.stops.length,
+            minutes: Math.round(leg.minutes),
+            time: formatTime(leg.arrival)
+          })}
         </li>
       </ol>
       <div className="stop-list">
@@ -349,40 +374,37 @@ function BusPanel({
   vehicleOverride: string
   onVehicleChange(path: string): void
 }): JSX.Element {
+  const tr = useT()
   const auto = assignment.vehicle
+  const yard = assignment.yard ? tr('bus.yard', { yard: assignment.yard }) : ''
 
   return (
     <div className="bus-panel">
       <div>
-        <h3 className="section-title">Aanbevolen bus</h3>
+        <h3 className="section-title">{tr('bus.title')}</h3>
         <div className="bus-name">
-          {vehicle ? `${vehicle.manufacturer} ${vehicle.type}` : 'Geen passende bus gevonden'}
+          {vehicle ? `${vehicle.manufacturer} ${vehicle.type}` : tr('bus.none')}
         </div>
         <p className="note">
           {!auto ? (
-            <span className="warn">
-              Geen enkele geïnstalleerde bus kent de eindbestemmingen van deze dienst. Kies er zelf
-              een; de bestemmingsfilms blijven dan mogelijk leeg.
-            </span>
+            <span className="warn">{tr('bus.noneNote')}</span>
           ) : vehicleOverride ? (
-            <>
-              Zelf gekozen. De app stelde {auto.manufacturer} {auto.type} voor.
-            </>
+            tr('bus.chosenSelf', { bus: `${auto.manufacturer} ${auto.type}` })
           ) : (
-            <>
-              Gekozen uit {assignment.alternatives ?? 1} passende bussen
-              {assignment.fromMapFleet
-                ? ' uit het wagenpark van de kaart'
-                : ' — geen ervan staat in het wagenpark van de kaart'}
-              {assignment.yard ? `, wagenpark ${assignment.yard}` : ''}.
-            </>
+            tr(assignment.fromMapFleet ? 'bus.chosenFleet' : 'bus.chosenOutside', {
+              count: assignment.alternatives ?? 1,
+              yard
+            })
           )}
         </p>
       </div>
       <div className="bus-picker">
-        <label htmlFor="bus">Andere bus</label>
+        <label htmlFor="bus">{tr('bus.other')}</label>
         <select id="bus" value={vehicleOverride} onChange={(event) => onVehicleChange(event.target.value)}>
-          <option value="">Automatisch{auto ? ` (${auto.manufacturer} ${auto.type})` : ''}</option>
+          <option value="">
+            {tr('bus.auto')}
+            {auto ? ` (${auto.manufacturer} ${auto.type})` : ''}
+          </option>
           {vehicleGroups.map(([folder, items]) => (
             <optgroup key={folder} label={folder}>
               {items.map((item) => (
@@ -404,11 +426,12 @@ function BusPanel({
  * precies deze dienst op precies deze kaart.
  */
 function IbisPanel({ ibis }: { ibis?: IbisPlan }): JSX.Element {
+  const tr = useT()
   if (!ibis) {
     return (
       <div className="ibis">
-        <h3 className="section-title">IBIS invoeren</h3>
-        <p className="note">Bestemmingscodes worden opgezocht…</p>
+        <h3 className="section-title">{tr('ibis.title')}</h3>
+        <p className="note">{tr('ibis.looking')}</p>
       </div>
     )
   }
@@ -420,14 +443,14 @@ function IbisPanel({ ibis }: { ibis?: IbisPlan }): JSX.Element {
 
   return (
     <div className="ibis">
-      <h3 className="section-title">IBIS invoeren</h3>
+      <h3 className="section-title">{tr('ibis.title')}</h3>
       <div className="ibis-grid">
         <div className="ibis-field">
-          <span>Linie</span>
+          <span>{tr('ibis.line')}</span>
           <b>{ibis.line || '—'}</b>
         </div>
         <div className="ibis-field">
-          <span>Route bij vertrek</span>
+          <span>{tr('ibis.routeAtStart')}</span>
           <b>{first?.route ?? '—'}</b>
         </div>
       </div>
@@ -439,7 +462,7 @@ function IbisPanel({ ibis }: { ibis?: IbisPlan }): JSX.Element {
               <b>{leg.route}</b>
               <span>
                 {leg.routeName || leg.terminus}
-                {leg.display ? ` · film “${leg.display}”` : ''}
+                {leg.display ? ` · ${tr('ibis.film', { text: leg.display })}` : ''}
               </span>
             </div>
           ))}
@@ -448,24 +471,19 @@ function IbisPanel({ ibis }: { ibis?: IbisPlan }): JSX.Element {
 
       <p className="note">
         {ibis.resolved === ibis.total ? (
-          <>
-            Routes uit wagenpark <b>{ibis.yard}</b>. Je toetst lijn en route in; de bestemming hoort
-            bij de route en verschijnt vanzelf. Bij elk keerpunt voer je de route van de volgende rit
-            in.
-          </>
+          tr('ibis.allResolved', { yard: ibis.yard ?? '' })
         ) : ibis.resolved > 0 ? (
           <span className="warn">
-            Van {ibis.total} ritten hebben er {ibis.total - ibis.resolved} geen route in wagenpark{' '}
-            {ibis.yard}. Die bestemmingen zet je met de hand op de film.
+            {tr('ibis.someMissing', {
+              total: ibis.total,
+              missing: ibis.total - ibis.resolved,
+              yard: ibis.yard ?? ''
+            })}
           </span>
         ) : ibis.hasRoutes ? (
-          <span className="warn">
-            Deze bus kent de routes van deze lijn niet. Kies een bus die bij dit wagenpark hoort.
-          </span>
+          <span className="warn">{tr('ibis.noRoutes')}</span>
         ) : (
-          <span className="warn">
-            Dit wagenpark heeft geen routetabel; deze bus zet je bestemming met de hand op de film.
-          </span>
+          <span className="warn">{tr('ibis.noTable')}</span>
         )}
       </p>
     </div>

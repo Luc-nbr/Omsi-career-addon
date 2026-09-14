@@ -1066,3 +1066,22 @@ input[type='range'] {
   border-color: var(--accent);
   background: var(--accent-soft);
 }
+
+.stop-leg-head {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border-radius: 6px;
+}
+
+.stop-leg-head:hover {
+  color: var(--text);
+}
+
+.stop-leg-on .stop-leg-head {
+  color: var(--text);
+}
+
+.stop-leg-on .stop-list {
+  border-left-color: var(--accent);
+}

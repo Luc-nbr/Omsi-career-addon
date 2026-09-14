@@ -1,6 +1,7 @@
 import type { JSX } from 'react'
 import type { Assignment } from '../../shared/api'
 import { describeDays, formatDuration, formatTime } from '../../shared/format'
+import { useLanguage, useT } from './language'
 
 interface Props {
   duties: Assignment[]
@@ -12,6 +13,8 @@ interface Props {
 
 /** Het rooster: welke diensten er te rijden zijn. */
 export function DutyList({ duties, selected, onSelect, clockMinutes }: Props): JSX.Element {
+  const language = useLanguage()
+  const tr = useT()
   return (
     <div className="duty-list">
       {duties.map((assignment, index) => {
@@ -30,16 +33,17 @@ export function DutyList({ duties, selected, onSelect, clockMinutes }: Props): J
             <span className="duty-item-line">{duty.lineFile}</span>
             <span className="duty-item-time">
               {formatTime(duty.start)} – {formatTime(duty.end)}
-              {soon && <em>nu</em>}
+              {soon && <em>{tr('list.now')}</em>}
             </span>
             <span className="duty-item-meta">
-              omloop {duty.tourNumber} · {formatDuration(duty.durationMinutes)} ·{' '}
-              {duty.legs.length} ritten · {describeDays(duty.days)}
+              {tr('list.tour', { tour: duty.tourNumber })} ·{' '}
+              {formatDuration(duty.durationMinutes, language)} ·{' '}
+              {tr('list.trips', { count: duty.legs.length })} · {describeDays(duty.days, language)}
             </span>
             <span className="duty-item-bus">
               {assignment.vehicle
                 ? `${assignment.vehicle.manufacturer} ${assignment.vehicle.type}`
-                : 'geen passende bus'}
+                : tr('list.noBus')}
             </span>
           </button>
         )

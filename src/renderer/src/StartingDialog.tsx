@@ -1,4 +1,5 @@
 import { useEffect, useState, type JSX } from 'react'
+import { useT } from './language'
 
 interface Props {
   /** Sluit vanzelf zodra de plugin meldt dat het spel er is. */
@@ -29,26 +30,27 @@ export function StartingDialog({ onDone, onDismiss }: Props): JSX.Element {
     }
   }, [onDone])
 
+  const tr = useT()
+
   return (
     <div className="backdrop">
       <section className="dialog">
         <div className="glow" />
-        <h2>Moment geduld</h2>
-        <p>
-          OMSI 2 wordt opgestart. Net als een diesel heeft dit even tijd nodig om warm te worden —
-          beheers uw emoties.
-        </p>
+        <h2>{tr('starting.title')}</h2>
+        <p>{tr('starting.body')}</p>
         <div className="dialog-foot">
           <span className="note">
-            {seconds < 25
-              ? 'Bezig met opstarten…'
-              : seconds < 60
-                ? 'De kaart wordt ingeladen; dat duurt even.'
-                : 'Nog steeds bezig. Grote kaarten nemen ruim de tijd.'}
+            {tr(
+              seconds < 25
+                ? 'starting.busy'
+                : seconds < 60
+                  ? 'starting.loading'
+                  : 'starting.still'
+            )}
             {seconds > 4 ? ` · ${seconds}s` : ''}
           </span>
           <button type="button" className="btn secondary" onClick={onDismiss}>
-            Sluiten
+            {tr('starting.close')}
           </button>
         </div>
       </section>

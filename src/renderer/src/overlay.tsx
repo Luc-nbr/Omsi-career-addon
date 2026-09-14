@@ -5,8 +5,8 @@ import type { LiveStatus } from '../../core/live'
 import type { Duty, DutyLeg } from '../../core/types'
 import type { CareerApi } from '../../shared/api'
 import { formatTime } from '../../shared/format'
+import { DEFAULT_LANGUAGE, loose, t, type Language } from '../../shared/i18n'
 import {
-  DETAIL_NAMES,
   PANELS,
   nextDetail,
   type DetailLevel,
@@ -41,12 +41,14 @@ function Overlay(): JSX.Element | null {
   const [frame, setFrame] = useState<Frame>({ connected: false, editing: false })
   const [layout, setLayout] = useState<OverlayLayout>()
   const [geometry, setGeometry] = useState<MapGeometry>()
+  const [language, setLanguage] = useState<Language>(DEFAULT_LANGUAGE)
 
   const { status, duty, editing } = frame
 
   useEffect(() => {
     window.overlay.onFrame(setFrame)
     void window.career.overlayLayout().then(setLayout)
+    void window.career.settings().then((settings) => setLanguage(settings.language))
   }, [])
 
   useEffect(() => {
@@ -117,19 +119,23 @@ function Overlay(): JSX.Element | null {
       {layout.dienst.visible && (
         <Panel
           info={PANELS[0]}
+          title={t(language, 'ovl.panelDuty')}
           state={layout.dienst}
           editing={editing}
+          language={language}
           onChange={(patch) => move('dienst', patch)}
         >
-          <DutyPanel frame={frame} detail={layout.detail} onCycle={cycle} />
+          <DutyPanel frame={frame} detail={layout.detail} language={language} onCycle={cycle} />
         </Panel>
       )}
 
       {layout.navigatie.visible && (
         <Panel
           info={PANELS[1]}
+          title={t(language, 'ovl.panelNav')}
           state={layout.navigatie}
           editing={editing}
+          language={language}
           onChange={(patch) => move('navigatie', patch)}
         >
           {duty && geometry ? (
@@ -138,10 +144,11 @@ function Overlay(): JSX.Element | null {
               geometry={geometry}
               nextStopId={toId}
               follow={follow}
+              activeLeg={status?.legIndex}
               variant="panel"
             />
           ) : (
-            <div className="empty">kaart wordt geladen…</div>
+            <div className="empty">{t(language, 'ovl.mapLoading')}</div>
           )}
         </Panel>
       )}
@@ -149,6 +156,7 @@ function Overlay(): JSX.Element | null {
       {editing && (
         <EditBar
           layout={layout}
+          language={language}
           onShow={(id) => move(id, { visible: true })}
           onReset={() => void window.career.resetOverlayLayout().then(setLayout)}
         />
@@ -160,14 +168,18 @@ function Overlay(): JSX.Element | null {
 /** Een verplaatsbaar element. Slepen en verschalen kan in de bewerkstand. */
 function Panel({
   info,
+  title,
   state,
   editing,
+  language,
   onChange,
   children
 }: {
   info: PanelInfo
+  title: string
   state: OverlayLayout['dienst']
   editing: boolean
+  language: Language
   onChange(patch: Partial<OverlayLayout['dienst']>): void
   children: JSX.Element | null
 }): JSX.Element {
@@ -216,8 +228,13 @@ function Panel({
     >
       {editing && (
         <header className="panel-bar" data-hit onPointerDown={startDrag}>
-          <span className="panel-title">{info.title}</span>
-          <button type="button" className="panel-hide" title="Uitzetten" onClick={() => onChange({ visible: false })}>
+          <span className="panel-title">{title}</span>
+          <button
+            type="button"
+            className="panel-hide"
+            title={t(language, 'ovl.hide')}
+            onClick={() => onChange({ visible: false })}
+          >
             ✕
           </button>
         </header>
@@ -229,7 +246,7 @@ function Panel({
         <span
           className="panel-grip"
           data-hit
-          title={info.autoHeight ? 'Breder of smaller' : 'Groter of kleiner'}
+          title={t(language, info.autoHeight ? 'ovl.resizeW' : 'ovl.resizeWH')}
           onPointerDown={startSize}
         />
       )}
@@ -245,19 +262,23 @@ function Panel({
 function DutyPanel({
   frame,
   detail,
+  language,
   onCycle
 }: {
   frame: Frame
   detail: DetailLevel
+  language: Language
   onCycle(): void
 }): JSX.Element {
+  const tr = (key: Parameters<typeof t>[1], vars?: Record<string, string | number>): string =>
+    t(language, key, vars)
   const { status, duty, connected } = frame
   const leg = status?.leg
 
   if (!status) {
     return (
       <div className="waiting">
-        <span className="dot" /> {connected ? 'Geen gegevens' : 'Wacht op OMSI…'}
+        <span className="dot" /> {tr(connected ? 'ovl.noData' : 'ovl.waiting')}
       </div>
     )
   }
@@ -272,14 +293,14 @@ function DutyPanel({
         <span className="clock">{formatTime(status.clockMinutes)}</span>
         {leg && <span className="line">{leg.lineNumber}</span>}
         <span className={`delay ${late ? 'late' : 'ontime'}`}>
-          {late ? `+${Math.round(status.delayMinutes)} min` : 'op tijd'}
+          {late ? tr('ovl.late', { minutes: Math.round(status.delayMinutes) }) : tr('ovl.ontime')}
           {status.delayFromIbis ? '' : '*'}
         </span>
         <button
           type="button"
           className="expand"
           data-hit
-          title={`${DETAIL_NAMES[detail]} — uitklappen (Ctrl+Alt+V)`}
+          title={tr('ovl.detail', { level: tr(`ovl.detail${detail}` as const) })}
           onClick={onCycle}
         >
           <span className={`pips pips-${detail}`}>
@@ -291,7 +312,7 @@ function DutyPanel({
       </div>
 
       {status.dutyComplete ? (
-        <div className="line-done">Dienst uitgereden — rond hem af in de app</div>
+        <div className="line-done">{tr('ovl.done')}</div>
       ) : (
         <>
           {/* Beknopt: bestemming en volgende halte op een regel. */}
@@ -299,56 +320,72 @@ function DutyPanel({
             <div className="tight">
               <span className="tight-stop">{stopName(leg, passed) ?? leg.terminus}</span>
               <span className="tight-rest">
-                {status.passengers}p · {Math.round(status.speedKmh)} km/u
-                {total > 0 && passed !== undefined ? ` · nog ${Math.max(0, total - passed)}` : ''}
+                {tr('ovl.tight', {
+                  passengers: status.passengers,
+                  speed: Math.round(status.speedKmh)
+                })}
+                {total > 0 && passed !== undefined
+                  ? tr('ovl.tightLeft', { left: Math.max(0, total - passed) })
+                  : ''}
               </span>
             </div>
           )}
 
           {detail > 0 && leg && (
             <div className="row">
-              <span className="label">Naar</span>
+              <span className="label">{tr('ovl.to')}</span>
               <span className="value">{leg.terminus}</span>
               <span className="sub">
-                aankomst {formatTime(leg.arrival)}
-                {duty ? ` · rit ${status.legIndex + 1} van ${duty.legs.length}` : ''}
+                {duty
+                  ? tr('ovl.arrival', {
+                      time: formatTime(leg.arrival),
+                      index: status.legIndex + 1,
+                      total: duty.legs.length
+                    })
+                  : tr('ovl.arrivalShort', { time: formatTime(leg.arrival) })}
               </span>
             </div>
           )}
 
           {detail === 1 && leg && (
             <div className="row">
-              <span className="label">Volgende halte</span>
+              <span className="label">{tr('ovl.nextStop')}</span>
               <span className="value">{stopName(leg, passed) ?? '—'}</span>
               {passed !== undefined && total > 0 && (
-                <span className="sub">nog {Math.max(0, total - passed)} van {total}</span>
+                <span className="sub">
+                  {tr('ovl.remaining', { left: Math.max(0, total - passed), total })}
+                </span>
               )}
             </div>
           )}
 
-          {detail === 2 && leg && <NextStops leg={leg} status={status} />}
+          {detail === 2 && leg && <NextStops leg={leg} status={status} language={language} />}
 
           {detail > 0 && (
             <div className="grid">
               <div>
                 <b>{status.passengers}</b>
-                <span>aan boord</span>
+                <span>{tr('ovl.onboard')}</span>
               </div>
               <div>
                 <b>{Math.round(status.speedKmh)}</b>
-                <span>km/u</span>
+                <span>{tr('ovl.speed')}</span>
               </div>
               <div className={status.hasPassengers ? `mood mood-${Math.round(status.mood * 4)}` : 'mood'}>
-                <b>{status.moodLabel}</b>
-                <span>stemming</span>
+                <b>{loose(language, `mood.${status.moodLabel}`, status.moodLabel)}</b>
+                <span>{tr('ovl.mood')}</span>
               </div>
             </div>
           )}
 
           {detail === 2 && (status.harshBrakes > 0 || status.harshAccels > 0) && (
             <div className="counters">
-              {status.harshBrakes > 0 && <span>{status.harshBrakes}× hard geremd</span>}
-              {status.harshAccels > 0 && <span>{status.harshAccels}× hard opgetrokken</span>}
+              {status.harshBrakes > 0 && (
+                <span>{tr('ovl.harshBrakes', { count: status.harshBrakes })}</span>
+              )}
+              {status.harshAccels > 0 && (
+                <span>{tr('ovl.harshAccels', { count: status.harshAccels })}</span>
+              )}
             </div>
           )}
         </>
@@ -356,7 +393,7 @@ function DutyPanel({
 
       {(status.entryRequest || status.exitRequest) && (
         <div className="request">
-          {status.entryRequest ? 'Iemand wil instappen' : 'Iemand wil uitstappen'}
+          {tr(status.entryRequest ? 'ovl.wantsIn' : 'ovl.wantsOut')}
         </div>
       )}
 
@@ -365,7 +402,7 @@ function DutyPanel({
         .filter((item) => detail === 2 || item.severity === 'warn')
         .map((item) => (
           <div key={item.id} className={`advice ${item.severity}`}>
-            {item.text}
+            {loose(language, `advice.${item.id}`, item.id, { count: item.count ?? 0 })}
           </div>
         ))}
     </>
@@ -375,27 +412,29 @@ function DutyPanel({
 /** De balk die alleen in de bewerkstand verschijnt. */
 function EditBar({
   layout,
+  language,
   onShow,
   onReset
 }: {
   layout: OverlayLayout
+  language: Language
   onShow(id: PanelId): void
   onReset(): void
 }): JSX.Element {
   const hidden = PANELS.filter((info) => !layout[info.id].visible)
+  const name = (id: PanelId): string =>
+    t(language, id === 'dienst' ? 'ovl.panelDuty' : 'ovl.panelNav')
   return (
     <div className="editbar" data-hit>
-      <b>Overlay aanpassen</b>
-      <span className="editbar-hint">
-        sleep aan de balk, trek aan de hoek — Ctrl+Alt+O sluit dit
-      </span>
+      <b>{t(language, 'ovl.editTitle')}</b>
+      <span className="editbar-hint">{t(language, 'ovl.editHint')}</span>
 
       {hidden.length > 0 && (
         <div className="editbar-add">
-          <span>Uitgezet:</span>
+          <span>{t(language, 'ovl.hidden')}</span>
           {hidden.map((info) => (
             <button key={info.id} type="button" onClick={() => onShow(info.id)}>
-              + {info.title}
+              + {name(info.id)}
             </button>
           ))}
         </div>
@@ -403,10 +442,10 @@ function EditBar({
 
       <div className="editbar-buttons">
         <button type="button" onClick={onReset}>
-          Standaard herstellen
+          {t(language, 'ovl.reset')}
         </button>
         <button type="button" className="done" onClick={() => void window.career.editOverlay(false)}>
-          Klaar
+          {t(language, 'ovl.ready')}
         </button>
       </div>
     </div>
@@ -420,7 +459,17 @@ function EditBar({
  * ingetoetst. Zolang dat niet is gebeurd staat de hele rit er gewoon, vanaf het
  * begin — dan weet je tenminste wat er aankomt.
  */
-function NextStops({ leg, status }: { leg: DutyLeg; status: LiveStatus }): JSX.Element {
+function NextStops({
+  leg,
+  status,
+  language
+}: {
+  leg: DutyLeg
+  status: LiveStatus
+  language: Language
+}): JSX.Element {
+  const tr = (key: Parameters<typeof t>[1], vars?: Record<string, string | number>): string =>
+    t(language, key, vars)
   const total = leg.stops.length
   const passed = walkedStops(status)
   const at = passed ?? 0
@@ -433,16 +482,12 @@ function NextStops({ leg, status }: { leg: DutyLeg; status: LiveStatus }): JSX.E
   return (
     <div className="nav">
       <div className="nav-head">
-        <span className="label">Halte</span>{' '}
+        <span className="label">{tr('ovl.stop')}</span>{' '}
         {passed !== undefined ? (
-          <span className="sub">
-            nog {Math.max(0, total - at)} van {total}
-          </span>
+          <span className="sub">{tr('ovl.remaining', { left: Math.max(0, total - at), total })}</span>
         ) : (
           <span className="sub">
-            {status.offersStops
-              ? 'toets lijn en route in op de IBIS, dan volgt de kaart mee'
-              : 'deze bus geeft geen halte door — dit is de hele rit'}
+            {tr(status.offersStops ? 'ovl.ibisHint' : 'ovl.noStopInfo')}
           </span>
         )}
       </div>
@@ -462,16 +507,14 @@ function NextStops({ leg, status }: { leg: DutyLeg; status: LiveStatus }): JSX.E
             <li key={`${index2}-${name}`} className={`stop ${state}`}>
               <span className="pin" />
               <span className="name">{name}</span>
-              {index2 === total - 1 && <span className="tag">eindpunt</span>}
+              {index2 === total - 1 && <span className="tag">{tr('ovl.endpoint')}</span>}
             </li>
           )
         })}
       </ol>
 
       {left > 0 && (
-        <div className="nav-rest">
-          en nog {left} verder naar {leg.terminus}
-        </div>
+        <div className="nav-rest">{tr('ovl.andMore', { count: left, terminus: leg.terminus })}</div>
       )}
     </div>
   )

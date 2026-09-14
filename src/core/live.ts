@@ -95,9 +95,11 @@ export function readLive(): LiveData | undefined {
 
 /** Een waarschuwing voor de chauffeur, met een reden erbij. */
 export interface Advice {
+  /** Sleutel van de melding; de tekst komt uit de vertaling ("advice.<id>"). */
   id: string
-  text: string
   severity: 'info' | 'warn'
+  /** Getal in de melding, als er een in voorkomt. */
+  count?: number
 }
 
 export interface LiveStatus {
@@ -113,6 +115,8 @@ export interface LiveStatus {
   leg?: DutyLeg
   /** Eerstvolgende halte volgens de IBIS; leeg op bussen zonder IBIS. */
   nextStop: string
+  /** Kilometerstand van de bus; hiermee schatten we hoe ver hij gevorderd is. */
+  odometerKm: number
   /** Hoeveelste halte van deze rit, als de bus dat doorgeeft. */
   stopIndex?: number
   stopsTotal: number
@@ -130,6 +134,7 @@ export interface LiveStatus {
    * heeft niemand die ergens iets van vindt.
    */
   mood: number
+  /** Sleutel van de stemming; de tekst komt uit de vertaling ("mood.<sleutel>"). */
   moodLabel: string
   hasPassengers: boolean
   harshBrakes: number
@@ -158,33 +163,25 @@ function buildAdvice(data: LiveData, baseline?: { harshBrakes: number; harshAcce
   const advice: Advice[] = []
 
   if (has(data, BIT.lightsLow) && data.brightness < 0.35 && data.lightsLow < 0.5) {
-    advice.push({ id: 'licht', text: 'Het is donker en je dimlicht staat uit.', severity: 'warn' })
+    advice.push({ id: 'licht', severity: 'warn' })
   }
 
   if (data.velocity > 5 && (data.entryOpen > 0.5 || data.exitOpen > 0.5)) {
-    advice.push({ id: 'deuren', text: 'Je rijdt met een deur open.', severity: 'warn' })
+    advice.push({ id: 'deuren', severity: 'warn' })
   }
 
   if (data.precipRate > 0.05) {
-    advice.push({
-      id: 'nat',
-      text: 'Het regent — reken op langere remwegen.',
-      severity: 'info'
-    })
+    advice.push({ id: 'nat', severity: 'info' })
   }
 
   const brakes = data.harshBrakes - (baseline?.harshBrakes ?? 0)
   // Alleen een punt als er iemand in de bus zit om het te voelen.
   if (brakes >= 3 && data.passengers > 0) {
-    advice.push({
-      id: 'remmen',
-      text: `${brakes} keer hard geremd; je passagiers merken dat.`,
-      severity: 'warn'
-    })
+    advice.push({ id: 'remmen', severity: 'warn', count: brakes })
   }
 
   if (has(data, BIT.engineOn) && data.engineOn < 0.5 && data.passengers > 0) {
-    advice.push({ id: 'motor', text: 'De motor staat uit met passagiers aan boord.', severity: 'info' })
+    advice.push({ id: 'motor', severity: 'info' })
   }
 
   return advice
@@ -251,6 +248,7 @@ export function describeLive(
     legIndex,
     leg,
     nextStop: data.busstop.trim(),
+    odometerKm: data.km + data.metres / 1000,
     /*
      * Alleen een voortgang tonen als de bus werkelijk iets meldt. Een index van
      * nul zonder haltenaam betekent dat de IBIS nog niet is ingetoetst, en dan
@@ -267,14 +265,14 @@ export function describeLive(
     delayFromIbis: fromIbis !== undefined,
     mood,
     moodLabel: !hasPassengers
-      ? 'leeg'
+      ? 'empty'
       : mood > 0.8
-        ? 'tevreden'
+        ? 'happy'
         : mood > 0.55
-          ? 'rustig'
+          ? 'calm'
           : mood > 0.3
-            ? 'ongeduldig'
-            : 'geïrriteerd',
+            ? 'impatient'
+            : 'annoyed',
     hasPassengers,
     harshBrakes,
     harshAccels,

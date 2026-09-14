@@ -1,7 +1,7 @@
 import { useState, type JSX } from 'react'
 import type { CareerPayload } from '../../shared/api'
 import { formatDuration, formatMoney } from '../../shared/format'
-import { LANGUAGES, t, type Language } from '../../shared/i18n'
+import { LANGUAGES, rankName, t, type Language } from '../../shared/i18n'
 import { Flag } from './Flag'
 
 interface Props {
@@ -40,16 +40,19 @@ export function Sidebar({
             if (name !== undefined && name !== state.driver) onRename(name)
             setName(undefined)
           }}
-          aria-label="Naam van de chauffeur"
+          aria-label={t(language, 'welcome.name')}
         />
-        <div className="rank">{summary.rank}</div>
+        <div className="rank">{rankName(language, summary.rank)}</div>
         {summary.nextRank && (
           <>
             <div className="progress">
               <div style={{ width: `${Math.round(summary.progress * 100)}%` }} />
             </div>
             <div className="progress-label">
-              {Math.round(summary.progress * 100)}% op weg naar {summary.nextRank}
+              {t(language, 'side.toward', {
+                percent: Math.round(summary.progress * 100),
+                rank: summary.nextRank ? rankName(language, summary.nextRank) : ''
+              })}
             </div>
           </>
         )}
@@ -62,11 +65,14 @@ export function Sidebar({
             className="profile-picker"
             value={state.id ?? ''}
             onChange={(event) => onSelectProfile(event.target.value)}
-            aria-label="Ander profiel"
+            aria-label={t(language, 'side.otherProfile')}
           >
             {profiles.map((profile) => (
               <option key={profile.id} value={profile.id}>
-                {profile.driver} — {profile.duties} diensten
+                {t(language, 'side.profileDuties', {
+                  driver: profile.driver,
+                  count: profile.duties
+                })}
               </option>
             ))}
           </select>
@@ -75,7 +81,7 @@ export function Sidebar({
           <input
             value={newName}
             autoFocus
-            placeholder="Naam van de chauffeur"
+            placeholder={t(language, 'welcome.name')}
             onChange={(event) => setNewName(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && newName.trim()) {
@@ -90,7 +96,7 @@ export function Sidebar({
           />
         ) : (
           <button type="button" className="link-button" onClick={() => setAdding(true)}>
-            + Nieuw profiel
+            {t(language, 'side.newProfile')}
           </button>
         )}
       </div>
@@ -98,19 +104,19 @@ export function Sidebar({
       <div className="stats">
         <div className="stat">
           <b>{summary.duties}</b>
-          <span>diensten</span>
+          <span>{t(language, 'side.duties')}</span>
         </div>
         <div className="stat">
-          <b>{formatDuration(summary.minutes)}</b>
-          <span>gereden</span>
+          <b>{formatDuration(summary.minutes, language)}</b>
+          <span>{t(language, 'side.driven')}</span>
         </div>
         <div className="stat">
           <b>{summary.km > 0 ? `${summary.km} km` : summary.stops}</b>
-          <span>{summary.km > 0 ? 'kilometers' : 'haltes'}</span>
+          <span>{t(language, summary.km > 0 ? 'side.km' : 'side.stops')}</span>
         </div>
         <div className="stat">
-          <b>{formatMoney(summary.earnings)}</b>
-          <span>verdiend</span>
+          <b>{formatMoney(summary.earnings, language)}</b>
+          <span>{t(language, 'side.earned')}</span>
         </div>
       </div>
 
@@ -132,22 +138,27 @@ export function Sidebar({
       </div>
 
       <div>
-        <h2 className="section-title">Logboek</h2>
+        <h2 className="section-title">{t(language, 'side.log')}</h2>
         {state.entries.length === 0 ? (
-          <p className="empty">Nog geen diensten gereden.</p>
+          <p className="empty">{t(language, 'side.noEntries')}</p>
         ) : (
           state.entries.slice(0, 25).map((entry) => (
             <div className="log-entry" key={entry.id}>
               <b>
-                Lijn {entry.lineNumbers.join('/')} · {formatDuration(entry.durationMinutes)}
+                {t(language, 'side.logLine', {
+                  lines: entry.lineNumbers.join('/'),
+                  duration: formatDuration(entry.durationMinutes, language)
+                })}
               </b>
               <span>
                 {entry.mapName} ·{' '}
                 {entry.drivenKm !== undefined && entry.drivenKm > 0
                   ? `${entry.drivenKm.toFixed(1)} km`
-                  : `${entry.stopCount} haltes`}
-                {entry.delayMinutes !== undefined ? ` · ${entry.delayMinutes} min vertraging` : ''} ·{' '}
-                {formatMoney(entry.pay)}
+                  : t(language, 'side.logStops', { count: entry.stopCount })}
+                {entry.delayMinutes !== undefined
+                  ? ` · ${t(language, 'side.logDelay', { minutes: entry.delayMinutes })}`
+                  : ''}{' '}
+                · {formatMoney(entry.pay, language)}
               </span>
             </div>
           ))

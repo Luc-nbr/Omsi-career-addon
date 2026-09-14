@@ -191,3 +191,17 @@
 .map-tools button:hover {
   border-color: var(--muted, #8d9bad);
 }
+
+/*
+ * Ritten die nu niet aan de beurt zijn. Een dienst rijdt heen en terug over
+ * dezelfde straat en de haltepalen staan aan weerskanten, dus even fel tekenen
+ * levert twee lijnen met pijlen die de andere kant op wijzen.
+ */
+.route-other .route-casing {
+  stroke: transparent;
+}
+
+.route-other .route-line {
+  stroke: #33506f;
+  stroke-width: 2.5;
+}

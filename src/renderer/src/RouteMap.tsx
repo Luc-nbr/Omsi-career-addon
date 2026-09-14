@@ -10,6 +10,7 @@ import {
 } from 'react'
 import type { MapGeometry, StopPoint } from '../../core/geo'
 import type { Duty } from '../../core/types'
+import { useT } from './language'
 import './routemap.css'
 
 /** Een halte zoals hij op de route voorkomt, met zijn plek in de volgorde. */
@@ -46,6 +47,13 @@ interface Props {
    * dienst -- ingezoomd genoeg om de straat te kunnen volgen.
    */
   follow?: { fromId?: string; toId?: string }
+  /**
+   * De rit waar het nu om gaat. Een dienst rijdt heen en terug over dezelfde
+   * straat, langs de haltepalen aan weerskanten; alle ritten even fel tekenen
+   * levert een dubbele lijn met pijlen die elkaar tegenspreken. Deze rit komt
+   * naar voren, de rest blijft als flauwe lijn staan.
+   */
+  activeLeg?: number
 }
 
 const MIN_MPP = 0.2
@@ -70,8 +78,10 @@ export function RouteMap({
   nextStopId,
   variant = 'panel',
   focusStopId,
-  follow
+  follow,
+  activeLeg
 }: Props): JSX.Element {
+  const tr = useT()
   const boxRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const [size, setSize] = useState({ w: 640, h: 320 })
@@ -337,10 +347,11 @@ export function RouteMap({
     return result
   }, [start, routeStops, otherStops, showRouteNames, showOtherNames, toScreen, size, signR])
 
-  /** Pijltjes die laten zien welke kant je op rijdt. */
+  /** Pijltjes die laten zien welke kant je op rijdt, alleen op de huidige rit. */
   const arrows = useMemo(() => {
     const found: Array<{ key: string; x: number; y: number; angle: number }> = []
     legs.forEach((leg, legIndex) => {
+      if (activeLeg !== undefined && legIndex !== activeLeg) return
       for (let i = 1; i < leg.length; i++) {
         const [ax, ay] = toScreen(leg[i - 1].x, leg[i - 1].y)
         const [bx, by] = toScreen(leg[i].x, leg[i].y)
@@ -359,7 +370,7 @@ export function RouteMap({
       }
     })
     return found
-  }, [legs, toScreen])
+  }, [legs, toScreen, activeLeg])
 
   const hoveredStop = hovered ? byId.get(hovered) : undefined
   const scaleBar = niceScale(view.mpp, big ? 140 : 90)
@@ -383,17 +394,25 @@ export function RouteMap({
           <path className="map-road" d={roadPaths.road} strokeWidth={roadWidth} />
         </g>
 
-        {legs.map((leg, index) => {
-          if (leg.length < 2) return null
-          const points = leg.map((stop) => toScreen(stop.x, stop.y).join(',')).join(' ')
-          const done = passedBefore >= 0 && leg[leg.length - 1].order < passedBefore
-          return (
-            <g key={index} className={done ? 'route-done' : undefined}>
-              <polyline className="route-casing" points={points} />
-              <polyline className="route-line" points={points} />
-            </g>
-          )
-        })}
+        {/*
+          * Eerst de ritten die nu niet aan de beurt zijn en daarna de huidige:
+          * in SVG bepaalt de volgorde in de DOM wat bovenop ligt.
+          */}
+        {legs
+          .map((leg, index) => ({ leg, index }))
+          .filter(({ leg }) => leg.length >= 2)
+          .sort((a, b) => rank(a.index, activeLeg) - rank(b.index, activeLeg))
+          .map(({ leg, index }) => {
+            const points = leg.map((stop) => toScreen(stop.x, stop.y).join(',')).join(' ')
+            const other = activeLeg !== undefined && index !== activeLeg
+            const done = passedBefore >= 0 && leg[leg.length - 1].order < passedBefore
+            return (
+              <g key={index} className={other ? 'route-other' : done ? 'route-done' : undefined}>
+                <polyline className="route-casing" points={points} />
+                <polyline className="route-line" points={points} />
+              </g>
+            )
+          })}
 
         {arrows.map((arrow) => (
           <path
@@ -477,13 +496,13 @@ export function RouteMap({
       </svg>
 
       <div className="map-tools">
-        <button type="button" onClick={() => zoomBy(1 / 1.6)} aria-label="Inzoomen">
+        <button type="button" onClick={() => zoomBy(1 / 1.6)} aria-label={tr('map.zoomIn')}>
           +
         </button>
-        <button type="button" onClick={() => zoomBy(1.6)} aria-label="Uitzoomen">
+        <button type="button" onClick={() => zoomBy(1.6)} aria-label={tr('map.zoomOut')}>
           −
         </button>
-        <button type="button" onClick={refit} aria-label="Hele route in beeld">
+        <button type="button" onClick={refit} aria-label={tr('map.fit')}>
           ⤢
         </button>
       </div>
@@ -530,6 +549,11 @@ function StopSign({
       )}
     </g>
   )
+}
+
+/** De rit die aan de beurt is komt als laatste, dus bovenop. */
+function rank(index: number, active?: number): number {
+  return active !== undefined && index === active ? 1 : 0
 }
 
 function clamp(value: number, low: number, high: number): number {

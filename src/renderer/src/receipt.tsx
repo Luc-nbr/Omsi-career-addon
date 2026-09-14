@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import type { IbisPlan } from '../../core/ibis'
 import type { Duty } from '../../core/types'
 import { describeDays, formatDuration, formatTime } from '../../shared/format'
+import { DEFAULT_LANGUAGE, t, type Language } from '../../shared/i18n'
 import './receipt.css'
 
 interface ReceiptData {
@@ -11,6 +12,8 @@ interface ReceiptData {
   vehicle?: string
   driver: string
   printedAt: string
+  /** De taal van de app; het kaartje gaat mee met wat de chauffeur leest. */
+  language?: Language
 }
 
 declare global {
@@ -47,32 +50,39 @@ function Receipt(): JSX.Element | null {
 
   if (!data) return null
   const { duty, ibis, vehicle, driver, printedAt } = data
+  const language = data.language ?? DEFAULT_LANGUAGE
+  const tr = (key: Parameters<typeof t>[1], vars?: Record<string, string | number>): string =>
+    t(language, key, vars)
   const first = duty.legs[0]
 
   return (
     <div className="receipt">
       <div className="head">
         <div className="brand">OMSI CAREER</div>
-        <div className="sub">dienstkaart</div>
+        <div className="sub">{tr('receipt.sub')}</div>
       </div>
 
       <hr />
 
-      <div className="line-badge">LIJN {duty.lineFile}</div>
+      <div className="line-badge">{tr('receipt.line', { line: duty.lineFile })}</div>
       <div className="times">
         {formatTime(duty.start)} – {formatTime(duty.end)}
       </div>
       <div className="meta">
-        {formatDuration(duty.durationMinutes)} · {duty.legs.length} ritten · {duty.totalStops} haltes
+        {tr('receipt.meta', {
+          duration: formatDuration(duty.durationMinutes, language),
+          trips: duty.legs.length,
+          stops: duty.totalStops
+        })}
       </div>
       <div className="meta">
         {duty.mapName} · {describeDays(duty.days)}
       </div>
-      <div className="meta">Aanmelden {formatTime(duty.signOn)}</div>
+      <div className="meta">{tr('receipt.signOn', { time: formatTime(duty.signOn) })}</div>
 
       <hr />
 
-      <div className="section">IN OMSI INSTELLEN</div>
+      <div className="section">{tr('receipt.setup')}</div>
       <div className="kv">
         <span>Line</span>
         <b>{duty.lineFile}</b>
@@ -87,7 +97,7 @@ function Receipt(): JSX.Element | null {
       </div>
       <div className="kv">
         <span>First stop</span>
-        <b>{first.stops[0] ?? 'onbekend'}</b>
+        <b>{first.stops[0] ?? tr('duty.unknown')}</b>
       </div>
 
       {ibis && ibis.line && (
@@ -95,7 +105,7 @@ function Receipt(): JSX.Element | null {
           <hr />
           <div className="section">IBIS</div>
           <div className="kv">
-            <span>Linie</span>
+            <span>{tr('ibis.line')}</span>
             <b>{ibis.line}</b>
           </div>
           <div className="kv">
@@ -107,7 +117,7 @@ function Receipt(): JSX.Element | null {
 
       <hr />
 
-      <div className="section">RITTEN</div>
+      <div className="section">{tr('receipt.trips')}</div>
       {duty.legs.map((leg, index) => {
         const route = ibis?.legs[index]?.route
         return (
@@ -118,9 +128,12 @@ function Receipt(): JSX.Element | null {
               <span className="d">{leg.terminus}</span>
             </div>
             <div className="leg-sub">
-              vanaf {leg.stops[0] ?? 'onbekend'} · {leg.stops.length} haltes ·{' '}
-              {Math.round(leg.minutes)} min
-              {leg.layoverBefore > 0 ? ` · ${leg.layoverBefore} min wachten` : ''}
+              {tr('receipt.legSub', {
+                stop: leg.stops[0] ?? tr('duty.unknown'),
+                stops: leg.stops.length,
+                minutes: Math.round(leg.minutes)
+              })}
+              {leg.layoverBefore > 0 ? tr('receipt.wait', { minutes: leg.layoverBefore }) : ''}
             </div>
           </div>
         )
@@ -128,13 +141,13 @@ function Receipt(): JSX.Element | null {
 
       <hr />
 
-      {vehicle && <div className="meta">Bus: {vehicle}</div>}
-      {ibis?.yard && <div className="meta">Wagenpark: {ibis.yard}</div>}
-      <div className="meta">Chauffeur: {driver}</div>
+      {vehicle && <div className="meta">{tr('receipt.bus', { bus: vehicle })}</div>}
+      {ibis?.yard && <div className="meta">{tr('receipt.fleet', { yard: ibis.yard })}</div>}
+      <div className="meta">{tr('receipt.driver', { driver })}</div>
 
       <div className="foot">
         <div>{printedAt}</div>
-        <div className="wish">goede dienst</div>
+        <div className="wish">{tr('receipt.farewell')}</div>
       </div>
     </div>
   )

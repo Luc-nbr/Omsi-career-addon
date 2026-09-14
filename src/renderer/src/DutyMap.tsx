@@ -3,6 +3,7 @@ import type { MapGeometry } from '../../core/geo'
 import type { IbisPlan } from '../../core/ibis'
 import type { Duty } from '../../core/types'
 import { formatTime } from '../../shared/format'
+import { useT } from './language'
 import { RouteMap } from './RouteMap'
 
 interface Props {
@@ -20,6 +21,7 @@ interface Props {
 export function DutyMap({ duty, ibis }: Props): JSX.Element {
   const [geometry, setGeometry] = useState<MapGeometry>()
   const [open, setOpen] = useState(false)
+  const tr = useT()
 
   useEffect(() => {
     let current = true
@@ -32,13 +34,13 @@ export function DutyMap({ duty, ibis }: Props): JSX.Element {
     }
   }, [duty.mapFolder])
 
-  const startName = duty.legs[0]?.stops[0] ?? 'onbekend'
+  const startName = duty.legs[0]?.stops[0] ?? tr('duty.unknown')
 
   if (!geometry) {
     return (
       <div className="ibis">
-        <h3 className="section-title">Waar zet je de bus</h3>
-        <p className="note">Kaart wordt uitgelezen…</p>
+        <h3 className="section-title">{tr('map.title')}</h3>
+        <p className="note">{tr('map.reading')}</p>
       </div>
     )
   }
@@ -48,11 +50,8 @@ export function DutyMap({ duty, ibis }: Props): JSX.Element {
   if (!hasStart) {
     return (
       <div className="ibis">
-        <h3 className="section-title">Waar zet je de bus</h3>
-        <p className="note">
-          Bij <b>{startName}</b>. Deze kaart geeft geen halteposities prijs, dus een kaartje kan
-          hier niet.
-        </p>
+        <h3 className="section-title">{tr('map.title')}</h3>
+        <p className="note">{tr('map.noPositions', { stop: startName })}</p>
       </div>
     )
   }
@@ -60,16 +59,14 @@ export function DutyMap({ duty, ibis }: Props): JSX.Element {
   return (
     <div className="ibis">
       <div className="map-head">
-        <h3 className="section-title">Waar zet je de bus</h3>
+        <h3 className="section-title">{tr('map.title')}</h3>
         <button type="button" className="ghost" onClick={() => setOpen(true)}>
-          Bekijk route
+          {tr('map.view')}
         </button>
       </div>
-      <p className="note map-lead">
-        Bij <b>{startName}</b> — het bord met de ring. Zet de camera daar neer en kies dan je bus.
-      </p>
+      <p className="note map-lead">{tr('map.lead', { stop: startName })}</p>
       <div className="map-box">
-        <RouteMap duty={duty} geometry={geometry} />
+        <RouteMap duty={duty} geometry={geometry} activeLeg={0} />
       </div>
       {open && (
         <RouteWindow duty={duty} ibis={ibis} geometry={geometry} onClose={() => setOpen(false)} />
@@ -91,6 +88,9 @@ function RouteWindow({
   onClose(): void
 }): JSX.Element {
   const [focus, setFocus] = useState<string>()
+  // Een dienst rijdt heen en terug; je kijkt naar een rit tegelijk.
+  const [leg, setLeg] = useState(0)
+  const tr = useT()
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -100,8 +100,8 @@ function RouteWindow({
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  const startName = duty.legs[0]?.stops[0] ?? 'onbekend'
-  const firstRoute = ibis?.legs.find((leg) => leg.route)
+  const startName = duty.legs[0]?.stops[0] ?? tr('duty.unknown')
+  const firstRoute = ibis?.legs.find((trip) => trip.route)
 
   return (
     <div className="map-window" role="dialog" aria-modal="true" aria-label="Route bekijken">
@@ -110,33 +110,41 @@ function RouteWindow({
           <div>
             <div className="duty-title">{duty.mapName}</div>
             <div className="duty-sub">
-              lijn {duty.lineNumbers.join(' & ')} · omloop {duty.tourNumber} ·{' '}
-              {formatTime(duty.start)} – {formatTime(duty.end)}
+              {tr('map.windowSub', {
+                lines: duty.lineNumbers.join(' & '),
+                tour: duty.tourNumber,
+                from: formatTime(duty.start),
+                to: formatTime(duty.end)
+              })}
             </div>
           </div>
           <button type="button" className="ghost" onClick={onClose}>
-            Sluiten
+            {tr('map.close')}
           </button>
         </header>
 
         <div className="map-window-body">
-          <RouteMap duty={duty} geometry={geometry} variant="full" focusStopId={focus} />
+          <RouteMap
+            duty={duty}
+            geometry={geometry}
+            variant="full"
+            focusStopId={focus}
+            activeLeg={leg}
+          />
 
           <aside className="map-side">
             <div className="entry-card">
-              <span className="entry-tag">Instappunt</span>
+              <span className="entry-tag">{tr('map.entry')}</span>
               <b className="entry-name">{startName}</b>
-              <span className="note">
-                Hier zet je de bus neer. Op de kaart is het het bord met de ring eromheen.
-              </span>
+              <span className="note">{tr('map.entryNote')}</span>
               {firstRoute && (
                 <div className="entry-ibis ibis-grid">
                   <div className="ibis-field">
-                    <span>Linie</span>
+                    <span>{tr('ibis.line')}</span>
                     <b>{firstRoute.lineNumber}</b>
                   </div>
                   <div className="ibis-field">
-                    <span>Route</span>
+                    <span>{tr('map.legRoute', { route: '' }).trim()}</span>
                     <b>{firstRoute.route}</b>
                   </div>
                 </div>
@@ -144,21 +152,38 @@ function RouteWindow({
             </div>
 
             <div className="stop-scroll">
-              {duty.legs.map((leg, index) => (
-                <div key={`${leg.tripFile}-${leg.departure}`} className="stop-leg">
-                  <div className="stop-leg-head">
-                    <b>{formatTime(leg.departure)}</b> lijn {leg.lineNumber} → {leg.terminus}
+              {duty.legs.map((trip, index) => (
+                <div
+                  key={`${trip.tripFile}-${trip.departure}`}
+                  className={`stop-leg ${index === leg ? 'stop-leg-on' : ''}`}
+                >
+                  <button
+                    type="button"
+                    className="stop-leg-head"
+                    onClick={() => setLeg(index)}
+                    aria-pressed={index === leg}
+                  >
+                    {tr('map.legHead', {
+                      time: formatTime(trip.departure),
+                      line: trip.lineNumber,
+                      terminus: trip.terminus
+                    })}
                     {ibis?.legs[index]?.route ? (
-                      <span className="stop-route">route {ibis.legs[index].route}</span>
+                      <span className="stop-route">
+                        {tr('map.legRoute', { route: ibis.legs[index].route ?? '' })}
+                      </span>
                     ) : null}
-                  </div>
+                  </button>
                   <ol className="stop-list">
-                    {leg.stops.map((name, at) => (
-                      <li key={`${leg.stopIds[at]}-${at}`}>
+                    {trip.stops.map((name, at) => (
+                      <li key={`${trip.stopIds[at]}-${at}`}>
                         <button
                           type="button"
                           className="stop-jump"
-                          onClick={() => setFocus(leg.stopIds[at])}
+                          onClick={() => {
+                            setLeg(index)
+                            setFocus(trip.stopIds[at])
+                          }}
                         >
                           {name}
                         </button>

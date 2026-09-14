@@ -18,6 +18,7 @@ import { Sidebar } from './Sidebar'
 import { StartingDialog } from './StartingDialog'
 import { Welcome } from './Welcome'
 import { DEFAULT_LANGUAGE, t, type Language } from '../../shared/i18n'
+import { LanguageProvider } from './language'
 
 declare global {
   interface Window {
@@ -29,11 +30,12 @@ declare global {
 const LENGTHS = [30, 45, 60, 90, 120, 150, 180, 240, 300, 360, 420, 480]
 
 /** Staat de overlay-plugin klaar in OMSI? */
-function PluginNote({ status }: { status?: PluginStatus }): JSX.Element {
-  if (!status) return <span className="note">Plugin controleren…</span>
-  if (status.error) return <span className="note warn">Overlay: {status.error}</span>
-  if (status.changed) return <span className="note">Overlay-plugin bijgewerkt in OMSI.</span>
-  return <span className="note">Overlay-plugin staat klaar in OMSI.</span>
+function PluginNote({ status, language }: { status?: PluginStatus; language: Language }): JSX.Element {
+  if (!status) return <span className="note">{t(language, 'app.pluginChecking')}</span>
+  if (status.error)
+    return <span className="note warn">{t(language, 'app.pluginError', { error: status.error })}</span>
+  if (status.changed) return <span className="note">{t(language, 'app.pluginUpdated')}</span>
+  return <span className="note">{t(language, 'app.pluginReady')}</span>
 }
 
 export function App(): JSX.Element {
@@ -82,7 +84,7 @@ export function App(): JSX.Element {
       try {
         const status = await window.career.status()
         if (!status.found) {
-          setError('Geen OMSI 2-installatie gevonden. Staat het spel op een andere schijf?')
+          setError(t(language, 'app.noOmsi'))
           return
         }
         const [loadedMaps, loadedVehicles, loadedCareer] = await Promise.all([
@@ -158,8 +160,7 @@ export function App(): JSX.Element {
       setDuties(found)
       if (found.length === 0) {
         setError(
-          `Geen dienst van ongeveer ${formatDuration(LENGTHS[lengthIndex])} in dit dagdeel op deze kaart. ` +
-            'Kies een andere lengte of een ruimer dagdeel.'
+          t(language, 'app.noDuty', { length: formatDuration(LENGTHS[lengthIndex], language) })
         )
       }
     } catch (cause) {
@@ -167,7 +168,7 @@ export function App(): JSX.Element {
     } finally {
       setBusy(false)
     }
-  }, [mapFolder, lengthIndex, timeWindow])
+  }, [mapFolder, lengthIndex, timeWindow, language])
 
   const begin = useCallback(async () => {
     if (!duty) return
@@ -244,7 +245,7 @@ export function App(): JSX.Element {
   if (error && !ready) {
     return (
       <div className="main">
-        <h1>Er ging iets mis</h1>
+        <h1>{t(language, 'app.errorTitle')}</h1>
         <p className="subtitle">{error}</p>
       </div>
     )
@@ -265,6 +266,7 @@ export function App(): JSX.Element {
   }
 
   return (
+    <LanguageProvider language={language}>
     <div className="app">
       <Sidebar
         language={language}
@@ -279,40 +281,37 @@ export function App(): JSX.Element {
         <StartingDialog
           onDone={() => {
             setStarting(false)
-            setNote('OMSI staat klaar. Laad je kaart en bus, en stel de dienst in.')
+            setNote(t(language, 'app.omsiReady'))
           }}
           onDismiss={() => setStarting(false)}
         />
       )}
 
       <main className="main">
-        <h1>Dienst kiezen</h1>
-        <p className="subtitle">
-          Laad je kaart en bus zelf in OMSI. Kies hier daarna een dienst; de app geeft de
-          instructies, de IBIS-codes en de overlay.
-        </p>
+        <h1>{t(language, 'app.title')}</h1>
+        <p className="subtitle">{t(language, 'app.subtitle')}</p>
 
         <section className="card">
           <div className="field-grid">
             <div>
-              <label htmlFor="map">Kaart</label>
+              <label htmlFor="map">{t(language, 'app.map')}</label>
               <select id="map" value={mapFolder} onChange={(event) => setMapFolder(event.target.value)}>
                 {maps.map((item) => (
                   <option key={item.folder} value={item.folder}>
-                    {item.name} — {item.tours} omlopen
+                    {item.name} — {t(language, 'app.mapTours', { count: item.tours })}
                   </option>
                 ))}
               </select>
               {selectedMap && (
                 <p className="note" style={{ marginTop: 8 }}>
-                  Speelt in {selectedMap.year}
+                  {t(language, 'app.mapEra', { year: selectedMap.year })}
                 </p>
               )}
             </div>
 
             <div>
-              <label htmlFor="length">Dienstlengte</label>
-              <div className="length-value">{formatDuration(LENGTHS[lengthIndex])}</div>
+              <label htmlFor="length">{t(language, 'app.length')}</label>
+              <div className="length-value">{formatDuration(LENGTHS[lengthIndex], language)}</div>
               <input
                 id="length"
                 type="range"
@@ -324,7 +323,7 @@ export function App(): JSX.Element {
             </div>
 
             <div>
-              <label>Dagdeel</label>
+              <label>{t(language, 'app.daypart')}</label>
               <div className="chips">
                 {(Object.keys(TIME_WINDOWS) as Array<DutyRequest['window']>).map((key) => (
                   <button
@@ -334,7 +333,7 @@ export function App(): JSX.Element {
                     aria-pressed={timeWindow === key}
                     onClick={() => setTimeWindow(key)}
                   >
-                    {TIME_WINDOWS[key].label}
+                    {t(language, `window.${key}` as const)}
                   </button>
                 ))}
               </div>
@@ -343,9 +342,9 @@ export function App(): JSX.Element {
 
           <div className="actions">
             <button type="button" className="btn" onClick={search} disabled={busy}>
-              {duties.length > 0 ? 'Ander rooster' : 'Diensten zoeken'}
+              {t(language, duties.length > 0 ? 'app.searchAgain' : 'app.search')}
             </button>
-            <PluginNote status={plugin} />
+            <PluginNote status={plugin} language={language} />
           </div>
 
           {error && ready && (
@@ -362,7 +361,7 @@ export function App(): JSX.Element {
 
         {duties.length > 0 && (
           <section className="card">
-            <h2 className="section-title">Rooster — {duties.length} diensten</h2>
+            <h2 className="section-title">{t(language, 'app.roster', { count: duties.length })}</h2>
             <DutyList duties={duties} selected={selected} onSelect={setSelected} />
           </section>
         )}
@@ -387,8 +386,9 @@ export function App(): JSX.Element {
                 onPrinterChange={setPrinter}
               />
             )
-          : duties.length > 0 && <p className="empty">Kies hierboven een dienst.</p>}
+          : duties.length > 0 && <p className="empty">{t(language, 'app.pickDuty')}</p>}
       </main>
     </div>
+    </LanguageProvider>
   )
 }
