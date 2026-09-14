@@ -16,6 +16,8 @@ import { DutyCard } from './DutyCard'
 import { DutyList } from './DutyList'
 import { Sidebar } from './Sidebar'
 import { StartingDialog } from './StartingDialog'
+import { Welcome } from './Welcome'
+import { DEFAULT_LANGUAGE, t, type Language } from '../../shared/i18n'
 
 declare global {
   interface Window {
@@ -59,7 +61,21 @@ export function App(): JSX.Element {
   const [printers, setPrinters] = useState<PrinterInfo[]>([])
   const [printer, setPrinter] = useState('')
   const finishRef = useRef<(() => Promise<void>) | undefined>(undefined)
-  const [newName, setNewName] = useState('')
+  const [language, setLanguage] = useState<Language>(DEFAULT_LANGUAGE)
+
+  // De taalkeuze staat los van de chauffeur; hij hoort bij deze computer.
+  useEffect(() => {
+    void window.career.settings().then((settings) => setLanguage(settings.language))
+  }, [])
+
+  useEffect(() => {
+    document.documentElement.lang = language
+  }, [language])
+
+  const chooseLanguage = useCallback((next: Language) => {
+    setLanguage(next)
+    void window.career.saveSettings({ language: next })
+  }, [])
 
   useEffect(() => {
     void (async () => {
@@ -169,11 +185,9 @@ export function App(): JSX.Element {
     )
   }, [duty])
 
-  const createProfile = useCallback(async () => {
-    if (!newName.trim()) return
-    setCareer(await window.career.createProfile(newName))
-    setNewName('')
-  }, [newName])
+  const createProfile = useCallback(async (name: string) => {
+    setCareer(await window.career.createProfile(name))
+  }, [])
 
   /**
    * Zolang de dienst loopt kijken we of hij is uitgereden: eindtijd voorbij en
@@ -239,51 +253,22 @@ export function App(): JSX.Element {
   if (!ready) {
     return (
       <div className="main">
-        <h1>Dienstregeling inlezen…</h1>
-        <p className="subtitle">Alle kaarten, omlopen en voertuigen worden doorgenomen.</p>
+        <h1>{t(language, 'app.loading')}</h1>
+        <p className="subtitle">{t(language, 'app.loadingSub')}</p>
       </div>
     )
   }
 
   // Zonder profiel valt er niets te loggen; eerst een chauffeur aanmaken.
   if (career && !career.state) {
-    return (
-      <div className="main">
-        <h1>Nieuwe chauffeur</h1>
-        <p className="subtitle">
-          Je diensten, kilometers en verdiensten worden per chauffeur bijgehouden en lokaal
-          opgeslagen. Hoe heet je?
-        </p>
-        <section className="card" style={{ maxWidth: 420 }}>
-          <label htmlFor="naam">Naam</label>
-          <input
-            id="naam"
-            value={newName}
-            autoFocus
-            placeholder="Bijvoorbeeld Luc"
-            onChange={(event) => setNewName(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && newName.trim()) void createProfile()
-            }}
-          />
-          <div className="actions">
-            <button
-              type="button"
-              className="btn"
-              disabled={!newName.trim()}
-              onClick={() => void createProfile()}
-            >
-              Profiel aanmaken
-            </button>
-          </div>
-        </section>
-      </div>
-    )
+    return <Welcome language={language} onLanguage={chooseLanguage} onCreate={createProfile} />
   }
 
   return (
     <div className="app">
       <Sidebar
+        language={language}
+        onLanguage={chooseLanguage}
         career={career}
         onRename={async (name) => setCareer(await window.career.renameDriver(name))}
         onSelectProfile={async (id) => setCareer(await window.career.selectProfile(id))}

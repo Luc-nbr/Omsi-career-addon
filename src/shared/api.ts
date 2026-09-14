@@ -5,6 +5,7 @@ import type { IbisPlan } from '../core/ibis'
 import type { PluginStatus } from '../core/pluginInstall'
 import type { Duty } from '../core/types'
 import type { Vehicle } from '../core/vehicles'
+import type { Settings } from '../core/settings'
 import type { OverlayLayout } from './overlay'
 
 /** Kaart zoals de UI hem toont. */
@@ -93,6 +94,8 @@ export interface CareerApi {
   vehicles(): Promise<Vehicle[]>
   /** Halteposities van een kaart, om te tonen waar je de bus neerzet. */
   geometry(mapFolder: string): Promise<MapGeometry>
+  settings(): Promise<Settings>
+  saveSettings(settings: Settings): Promise<Settings>
   /** Zet de overlay in of uit de bewerkstand; geeft terug of hij nu aan staat. */
   editOverlay(on?: boolean): Promise<boolean>
   /** Meldt of de muis boven een knop van de overlay hangt. */

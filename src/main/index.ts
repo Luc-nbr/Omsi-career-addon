@@ -20,6 +20,7 @@ import { isOmsiRunning, launchOmsi } from '../core/launch'
 import { ensurePlugin, pluginSourceDir, type PluginStatus } from '../core/pluginInstall'
 import { readOverlayLayout, writeOverlayLayout } from '../core/overlayLayout'
 import { receiptHeightMicrons, RECEIPT_WIDTH_MICRONS } from '../core/receipt'
+import { readSettings, writeSettings, type Settings } from '../core/settings'
 import { findTemplate, readSituationTime } from '../core/situation'
 import { listMaps, loadMap } from '../core/timetable'
 import { listVehicles } from '../core/vehicles'
@@ -496,6 +497,12 @@ function registerHandlers(): void {
     if (overlayEditing) return
     passMouseThrough(!on)
   })
+
+  ipcMain.handle('settings:read', () => readSettings(userData()))
+
+  ipcMain.handle('settings:write', (_event, settings: Settings) =>
+    writeSettings(userData(), settings)
+  )
 
   ipcMain.handle('overlay:layout', () => readOverlayLayout(userData()))
 

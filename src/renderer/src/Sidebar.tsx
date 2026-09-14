@@ -1,8 +1,11 @@
 import { useState, type JSX } from 'react'
 import type { CareerPayload } from '../../shared/api'
 import { formatDuration, formatMoney } from '../../shared/format'
+import { LANGUAGES, t, type Language } from '../../shared/i18n'
 
 interface Props {
+  language: Language
+  onLanguage(language: Language): void
   career?: CareerPayload
   onRename(name: string): void
   onSelectProfile(id: string): void
@@ -10,7 +13,14 @@ interface Props {
 }
 
 /** Chauffeursprofiel, cijfers en logboek. */
-export function Sidebar({ career, onRename, onSelectProfile, onNewProfile }: Props): JSX.Element {
+export function Sidebar({
+  language,
+  onLanguage,
+  career,
+  onRename,
+  onSelectProfile,
+  onNewProfile
+}: Props): JSX.Element {
   const [name, setName] = useState<string>()
   const [adding, setAdding] = useState(false)
   const [newName, setNewName] = useState('')
@@ -101,6 +111,21 @@ export function Sidebar({ career, onRename, onSelectProfile, onNewProfile }: Pro
           <b>{formatMoney(summary.earnings)}</b>
           <span>verdiend</span>
         </div>
+      </div>
+
+      <div className="lang-row">
+        <label htmlFor="taal">{t(language, 'welcome.language')}</label>
+        <select
+          id="taal"
+          value={language}
+          onChange={(event) => onLanguage(event.target.value as Language)}
+        >
+          {LANGUAGES.map((option) => (
+            <option key={option.code} value={option.code}>
+              {option.native}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div>
