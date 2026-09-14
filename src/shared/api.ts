@@ -1,6 +1,5 @@
 import type { CareerState, CareerSummary } from '../core/career'
 import type { IbisPlan } from '../core/ibis'
-import type { SessionResult } from '../core/session'
 import type { Duty } from '../core/types'
 import type { Vehicle } from '../core/vehicles'
 
@@ -41,22 +40,13 @@ export interface Assignment {
   alternatives?: number
 }
 
-export interface LaunchRequest {
-  duty: Duty
-  vehicle: Vehicle
-  year: number
-  dayOfYear: number
-  windowed: boolean
-  /** Wagenpark waarvan de bestemmingscodes gelden. */
-  yard?: string
-}
-
-export interface LaunchResult {
-  files: string[]
-  vehiclePlaced: boolean
-  /** Of het OMSI-startscherm de dienst met zijn bovenste keuze laadt. */
-  startsFromMenu: boolean
-  template?: string
+/** Wat er van een dienst terecht is gekomen, gemeten via de plugin. */
+export interface SessionResult {
+  drivenKm: number
+  elapsedMinutes: number
+  delayMinutes?: number
+  /** Onwaar zolang OMSI niet draait; dan valt er niets te meten. */
+  finished: boolean
 }
 
 /** Wat de renderer via `window.career` kan aanroepen. */
@@ -64,14 +54,16 @@ export interface CareerApi {
   status(): Promise<OmsiStatus>
   maps(): Promise<MapSummary[]>
   vehicles(): Promise<Vehicle[]>
-  generateDuty(request: DutyRequest): Promise<Assignment | null>
+  /** Een rooster om uit te kiezen. */
+  listDuties(request: DutyRequest): Promise<Assignment[]>
   ibis(duty: Duty, vehicle: Vehicle, year: number): Promise<IbisPlan>
   /** Opent of sluit de overlay boven het spel. Geeft terug of hij nu open is. */
   toggleOverlay(duty: Duty): Promise<boolean>
-  launch(request: LaunchRequest): Promise<LaunchResult>
+  /** Start de dienst: overlay openen en de kilometerstand vastleggen. */
+  beginDuty(duty: Duty): Promise<{ connected: boolean }>
   career(): Promise<{ state: CareerState; summary: CareerSummary }>
   /** Leest uit OMSI's eigen situatiebestand wat er van de dienst terechtkwam. */
-  checkSession(): Promise<SessionResult | null>
+  checkSession(): Promise<SessionResult>
   completeDuty(
     duty: Duty,
     vehicle: string,

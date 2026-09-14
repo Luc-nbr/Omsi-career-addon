@@ -155,6 +155,29 @@ export function generateDuty(
   return undefined
 }
 
+/**
+ * Stelt een rooster samen: meerdere verschillende diensten om uit te kiezen.
+ *
+ * Twee diensten gelden als gelijk zodra ze met dezelfde rit op hetzelfde tijdstip
+ * beginnen. Er wordt ruimer gezocht dan `count`, want de wandeling loopt soms
+ * dood en dezelfde beginrit komt vaker boven.
+ */
+export function generateDuties(
+  map: OmsiMap,
+  network: Network,
+  options: DutyOptions,
+  count = 8
+): Duty[] {
+  const found = new Map<string, Duty>()
+  for (let attempt = 0; attempt < count * 12 && found.size < count; attempt++) {
+    const duty = generateDuty(map, network, options)
+    if (!duty) continue
+    const key = `${duty.legs[0].tripFile}@${duty.start}`
+    if (!found.has(key)) found.set(key, duty)
+  }
+  return [...found.values()].sort((a, b) => a.start - b.start)
+}
+
 /** Gemiddeld aantal vervolgritten op een eindpunt: maat voor de keuzevrijheid. */
 export function branchingFactor(map: OmsiMap, network?: Network): number {
   const net = network ?? buildNetwork(map)

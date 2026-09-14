@@ -7,11 +7,11 @@ import {
   type Assignment,
   type CareerApi,
   type DutyRequest,
-  type LaunchResult,
   type MapSummary
 } from '../../shared/api'
-import { dayOfYear, formatDuration } from '../../shared/format'
+import { formatDuration } from '../../shared/format'
 import { DutyCard } from './DutyCard'
+import { DutyList } from './DutyList'
 import { Sidebar } from './Sidebar'
 
 declare global {
@@ -35,16 +35,16 @@ export function App(): JSX.Element {
   const [mapFolder, setMapFolder] = useState('')
   const [lengthIndex, setLengthIndex] = useState(4)
   const [timeWindow, setTimeWindow] = useState<DutyRequest['window']>('heledag')
-  const [windowed, setWindowed] = useState(false)
 
-  const [assignment, setAssignment] = useState<Assignment>()
-  /** Leeg betekent: de bus gebruiken die de app erbij koos. */
+  const [duties, setDuties] = useState<Assignment[]>([])
+  const [selected, setSelected] = useState<number>()
+  /** Leeg betekent: de bus gebruiken die de app voorstelt. */
   const [vehicleOverride, setVehicleOverride] = useState('')
   const [ibis, setIbis] = useState<IbisPlan>()
   const [busy, setBusy] = useState(false)
-  const [launched, setLaunched] = useState<LaunchResult>()
-  const [sessionNote, setSessionNote] = useState<string>()
+  const [started, setStarted] = useState(false)
   const [overlayOpen, setOverlayOpen] = useState(false)
+  const [note, setNote] = useState<string>()
 
   useEffect(() => {
     void (async () => {
@@ -71,6 +71,7 @@ export function App(): JSX.Element {
   }, [])
 
   const selectedMap = useMemo(() => maps.find((m) => m.folder === mapFolder), [maps, mapFolder])
+  const assignment = selected !== undefined ? duties[selected] : undefined
   const duty = assignment?.duty
 
   const vehicle = useMemo(() => {
@@ -89,10 +90,7 @@ export function App(): JSX.Element {
     return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]))
   }, [vehicles])
 
-  /**
-   * De bestemmingscodes hangen aan de gekozen bus én aan het jaar van de kaart,
-   * dus ze worden opnieuw opgehaald zodra een van beide wijzigt.
-   */
+  /** Bestemmingscodes hangen aan de bus en aan het tijdvak van de kaart. */
   useEffect(() => {
     if (!duty || !vehicle || !selectedMap) {
       setIbis(undefined)
@@ -107,26 +105,25 @@ export function App(): JSX.Element {
     }
   }, [duty, vehicle, selectedMap])
 
-  const assign = useCallback(async () => {
+  const search = useCallback(async () => {
     setBusy(true)
     setError(undefined)
-    setLaunched(undefined)
-    setSessionNote(undefined)
+    setNote(undefined)
+    setSelected(undefined)
+    setStarted(false)
     setVehicleOverride('')
     try {
-      const result = await window.career.generateDuty({
+      const found = await window.career.listDuties({
         mapFolder,
         targetMinutes: LENGTHS[lengthIndex],
         window: timeWindow
       })
-      if (!result) {
+      setDuties(found)
+      if (found.length === 0) {
         setError(
           `Geen dienst van ongeveer ${formatDuration(LENGTHS[lengthIndex])} in dit dagdeel op deze kaart. ` +
             'Kies een andere lengte of een ruimer dagdeel.'
         )
-        setAssignment(undefined)
-      } else {
-        setAssignment(result)
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
@@ -135,64 +132,48 @@ export function App(): JSX.Element {
     }
   }, [mapFolder, lengthIndex, timeWindow])
 
-  const start = useCallback(async () => {
-    if (!duty || !vehicle || !selectedMap) return
-    setBusy(true)
-    setError(undefined)
-    try {
-      setLaunched(
-        await window.career.launch({
-          duty,
-          vehicle,
-          year: selectedMap.year,
-          dayOfYear: selectedMap.dayOfYear || dayOfYear(new Date()),
-          windowed,
-          yard: ibis?.yard
-        })
-      )
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
-    } finally {
-      setBusy(false)
-    }
-  }, [duty, vehicle, selectedMap, windowed, ibis])
-
-  /**
-   * Afronden leest eerst uit OMSI's eigen situatiebestand wat er gebeurd is.
-   * Dat bestand wordt pas bij het afsluiten weggeschreven, dus zolang het spel
-   * nog draait valt er niets te meten.
-   */
-  const finish = useCallback(async () => {
-    if (!duty || !vehicle) return
-    setBusy(true)
-    try {
-      const result = await window.career.checkSession()
-      if (result && !result.finished) {
-        setSessionNote(
-          'OMSI heeft de sessie nog niet weggeschreven. Sluit het spel af — pas dan kan de app ' +
-            'aflezen hoeveel je gereden hebt.'
-        )
-        return
-      }
-      setCareer(
-        await window.career.completeDuty(
-          duty,
-          `${vehicle.manufacturer} ${vehicle.type}`,
-          result ? { drivenKm: result.drivenKm, delayMinutes: result.delayMinutes } : undefined
-        )
-      )
-      setAssignment(undefined)
-      setLaunched(undefined)
-      setSessionNote(undefined)
-    } finally {
-      setBusy(false)
-    }
-  }, [duty, vehicle])
+  const begin = useCallback(async () => {
+    if (!duty) return
+    const { connected } = await window.career.beginDuty(duty)
+    setStarted(true)
+    setOverlayOpen(true)
+    setNote(
+      connected
+        ? undefined
+        : 'De overlay staat klaar, maar OMSI draait nog niet — of de plugin is niet geladen. ' +
+            'Zodra het spel loopt vult hij zich vanzelf.'
+    )
+  }, [duty])
 
   const toggleOverlay = useCallback(async () => {
     if (!duty) return
     setOverlayOpen(await window.career.toggleOverlay(duty))
   }, [duty])
+
+  const finish = useCallback(async () => {
+    if (!duty || !vehicle) return
+    setBusy(true)
+    try {
+      const result = await window.career.checkSession()
+      setCareer(
+        await window.career.completeDuty(duty, `${vehicle.manufacturer} ${vehicle.type}`, {
+          drivenKm: result.drivenKm,
+          delayMinutes: result.delayMinutes
+        })
+      )
+      setDuties([])
+      setSelected(undefined)
+      setStarted(false)
+      setOverlayOpen(false)
+      setNote(
+        result.finished && result.drivenKm > 0
+          ? `Dienst geboekt: ${result.drivenKm.toFixed(1)} km gereden.`
+          : 'Dienst geboekt. OMSI draaide niet, dus de kilometers zijn niet gemeten.'
+      )
+    } finally {
+      setBusy(false)
+    }
+  }, [duty, vehicle])
 
   if (error && !ready) {
     return (
@@ -220,10 +201,10 @@ export function App(): JSX.Element {
       />
 
       <main className="main">
-        <h1>Nieuwe dienst</h1>
+        <h1>Dienst kiezen</h1>
         <p className="subtitle">
-          Kies waar en hoe lang je wilt rijden. De ritten komen uit de dienstregeling van de kaart en
-          sluiten op elkaar aan; de bus zoeken we erbij.
+          Laad je kaart en bus zelf in OMSI. Kies hier daarna een dienst; de app geeft de
+          instructies, de IBIS-codes en de overlay.
         </p>
 
         <section className="card">
@@ -240,14 +221,6 @@ export function App(): JSX.Element {
               {selectedMap && (
                 <p className="note" style={{ marginTop: 8 }}>
                   Speelt in {selectedMap.year}
-                  {!selectedMap.hasTemplate && (
-                    <>
-                      {' · '}
-                      <span className="warn">
-                        nog nooit gespeeld, dus de bus kan niet automatisch klaargezet worden
-                      </span>
-                    </>
-                  )}
                 </p>
               )}
             </div>
@@ -284,18 +257,9 @@ export function App(): JSX.Element {
           </div>
 
           <div className="actions">
-            <button type="button" className="btn" onClick={assign} disabled={busy}>
-              {assignment ? 'Andere dienst' : 'Dienst toewijzen'}
+            <button type="button" className="btn" onClick={search} disabled={busy}>
+              {duties.length > 0 ? 'Ander rooster' : 'Diensten zoeken'}
             </button>
-            <label className="note" style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
-              <input
-                type="checkbox"
-                checked={windowed}
-                onChange={(event) => setWindowed(event.target.checked)}
-                style={{ width: 'auto' }}
-              />
-              In venster starten
-            </label>
           </div>
 
           {error && ready && (
@@ -303,30 +267,38 @@ export function App(): JSX.Element {
               {error}
             </p>
           )}
+          {note && (
+            <p className="note" style={{ marginTop: 12 }}>
+              {note}
+            </p>
+          )}
         </section>
 
-        {assignment ? (
-          <DutyCard
-            assignment={assignment}
-            ibis={ibis}
-            vehicle={vehicle}
-            vehicleGroups={vehicleGroups}
-            vehicleOverride={vehicleOverride}
-            onVehicleChange={setVehicleOverride}
-            launched={launched}
-            sessionNote={sessionNote}
-            busy={busy}
-            onStart={start}
-            onFinish={finish}
-            onToggleOverlay={toggleOverlay}
-            overlayOpen={overlayOpen}
-          />
-        ) : (
-          <p className="empty">
-            Nog geen dienst toegewezen. Kies hierboven een kaart en lengte en druk op “Dienst
-            toewijzen”.
-          </p>
+        {duties.length > 0 && (
+          <section className="card">
+            <h2 className="section-title">Rooster — {duties.length} diensten</h2>
+            <DutyList duties={duties} selected={selected} onSelect={setSelected} />
+          </section>
         )}
+
+        {assignment
+          ? (
+              <DutyCard
+                assignment={assignment}
+                ibis={ibis}
+                vehicle={vehicle}
+                vehicleGroups={vehicleGroups}
+                vehicleOverride={vehicleOverride}
+                onVehicleChange={setVehicleOverride}
+                busy={busy}
+                started={started}
+                overlayOpen={overlayOpen}
+                onBegin={begin}
+                onToggleOverlay={toggleOverlay}
+                onFinish={finish}
+              />
+            )
+          : duties.length > 0 && <p className="empty">Kies hierboven een dienst.</p>}
       </main>
     </div>
   )

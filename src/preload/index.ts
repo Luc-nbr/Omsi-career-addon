@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { CareerApi, DutyRequest, LaunchRequest } from '../shared/api'
+import type { CareerApi, DutyRequest } from '../shared/api'
 
 /**
  * De renderer praat alleen via deze brug met het bestandssysteem; er staat geen
@@ -9,10 +9,10 @@ const api: CareerApi = {
   status: () => ipcRenderer.invoke('omsi:status'),
   maps: () => ipcRenderer.invoke('omsi:maps'),
   vehicles: () => ipcRenderer.invoke('omsi:vehicles'),
-  generateDuty: (request: DutyRequest) => ipcRenderer.invoke('duty:generate', request),
+  listDuties: (request: DutyRequest) => ipcRenderer.invoke('duty:list', request),
   ibis: (duty, vehicle, year) => ipcRenderer.invoke('duty:ibis', duty, vehicle, year),
   toggleOverlay: (duty) => ipcRenderer.invoke('overlay:toggle', duty),
-  launch: (request: LaunchRequest) => ipcRenderer.invoke('duty:launch', request),
+  beginDuty: (duty) => ipcRenderer.invoke('duty:begin', duty),
   career: () => ipcRenderer.invoke('career:load'),
   checkSession: () => ipcRenderer.invoke('duty:session'),
   completeDuty: (duty, vehicle, measured) =>

@@ -1,88 +1,19 @@
-import { copyFileSync, existsSync, readdirSync, writeFileSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { existsSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { readOmsiLines, str } from './omsiFile'
 
 /**
- * Een situatiebestand (.osn) legt vast waar het spel begint: kaart, datum, tijd
- * en welk voertuig van jou is. OMSI schrijft ze in UTF-16LE met BOM en CRLF.
+ * Situatiebestanden (.osn) worden alleen gelezen, nooit geschreven.
+ *
+ * De app zet niets meer klaar in de spelmap: de speler laadt zijn kaart en bus
+ * zelf in OMSI en kiest daarna een dienst. Wat we hier nog uit een situatie
+ * halen is het tijdvak van een kaart, en dat bepaalt welk wagenpark-bestand
+ * geldt — Johannesstift is in 1988 code 221 en in 1994 code 161.
  */
-export interface SituationRequest {
-  mapFolder: string
-  name: string
-  description: string
-  year: number
-  /** Dag van het jaar, 1-366. */
-  dayOfYear: number
-  /** Tijd in minuten na middernacht; boven 1440 rolt de datum door. */
-  minutes: number
-  vehicle?: {
-    relativePath: string
-    lineNumber: string
-    terminus: string
-    /** Het wagenpark (.hof) waarvan de bestemmingscodes gelden. */
-    yard?: string
-  }
-}
-
-export interface SituationResult {
-  /** Alle weggeschreven situatiebestanden. */
-  files: string[]
-  /**
-   * Of de bus daadwerkelijk klaargezet kon worden. Dat lukt alleen als er voor
-   * deze kaart een situatie bestaat om de positie uit over te nemen.
-   */
-  vehiclePlaced: boolean
-  /**
-   * Of het OMSI-startscherm de dienst met zijn bovenste keuze laadt. Dat is zo
-   * zodra de dienst ook in `maps/<kaart>/laststn.osn` staat.
-   */
-  startsFromMenu: boolean
-  template?: string
-}
-
-const BOM = Buffer.from([0xff, 0xfe])
 
 /** Geeft de index van de regel met deze tag, of -1. */
 function indexOfTag(lines: string[], tag: string): number {
   return lines.findIndex((line) => line.trim() === tag)
-}
-
-/** Vervangt de vaste waarderegels direct na een tag. */
-function setBlock(lines: string[], tag: string, values: string[]): boolean {
-  const index = indexOfTag(lines, tag)
-  if (index < 0) return false
-  values.forEach((value, offset) => {
-    lines[index + 1 + offset] = value
-  })
-  return true
-}
-
-/** Naam en omschrijving staan vooraan en lopen door tot `[end]`. */
-function setHeading(lines: string[], name: string, description: string): void {
-  const nameIndex = indexOfTag(lines, '[name]')
-  const descriptionIndex = indexOfTag(lines, '[description]')
-  const endIndex = indexOfTag(lines, '[end]')
-  if (nameIndex < 0 || descriptionIndex < 0 || endIndex < 0) return
-  lines.splice(nameIndex + 1, endIndex - nameIndex - 1, name, '[description]', description)
-}
-
-/**
- * Zet een stringvariabele van het eigen voertuig. `[stringvars]` bevat eerst het
- * aantal, daarna afwisselend naam en waarde. `SetLineTo` en `Matrix_Nr` bepalen
- * de lijn, `IBIS_cabindisplay` de bestemming op het display.
- */
-function setStringVar(lines: string[], name: string, value: string): void {
-  const start = indexOfTag(lines, '[stringvars]')
-  if (start < 0) return
-  const count = Number.parseInt(str(lines[start + 1]), 10)
-  if (!Number.isFinite(count)) return
-  for (let i = 0; i < count; i++) {
-    const nameIndex = start + 2 + i * 2
-    if (str(lines[nameIndex]) === name) {
-      lines[nameIndex + 1] = value
-      return
-    }
-  }
 }
 
 /** Wijst de kaart aan waar een situatiebestand over gaat. */
@@ -98,7 +29,7 @@ function situationMap(file: string): string {
   }
 }
 
-/** Heeft dit bestand een eigen voertuig, en dus een bruikbare startpositie? */
+/** Heeft dit bestand een eigen voertuig? Dan is het een echt gespeelde situatie. */
 function hasOwnVehicle(file: string): boolean {
   try {
     return indexOfTag(readOmsiLines(file), '[ismyVehicle]') >= 0
@@ -108,13 +39,8 @@ function hasOwnVehicle(file: string): boolean {
 }
 
 /**
- * Zoekt een situatie om als sjabloon te gebruiken. De positie van de bus staat
- * in het bestand en is niet te verzinnen: die hangt aan de tegels van de kaart.
- * Een sjabloon mét voertuig levert dus een compleet klaargezette dienst; zonder
- * sjabloon zetten we alleen kaart en tijd goed en kiest de speler zelf een bus.
- *
- * OMSI bewaart na elke sessie `laststn.osn` per kaart. Wie een kaart één keer
- * heeft gereden, heeft er vanaf dan automatisch een sjabloon voor.
+ * Zoekt een situatie die bij deze kaart hoort. OMSI bewaart na elke sessie
+ * `laststn.osn` per kaart, en in `Situations/` staan de meegeleverde scenario's.
  */
 export function findTemplate(omsiPath: string, mapFolder: string): string | undefined {
   const candidates: string[] = []
@@ -133,9 +59,8 @@ export function findTemplate(omsiPath: string, mapFolder: string): string | unde
 }
 
 /**
- * Het jaar en de dag die OMSI voor deze kaart gebruikte. Kaarten met een Chrono-
- * map spelen in een bepaald tijdvak: Berlin-Spandau staat op 1986 en zou met een
- * modern jaartal de verkeerde tijdlaag laden. Het sjabloon weet wat klopt.
+ * Het jaar en de dag waarin een kaart speelt. Kaarten met een Chrono-map horen
+ * bij een tijdvak: Berlin-Spandau staat op 1988, HafenCity op 2016.
  */
 export function readSituationTime(file: string): { year: number; dayOfYear: number } | undefined {
   try {
@@ -149,86 +74,4 @@ export function readSituationTime(file: string): { year: number; dayOfYear: numb
   } catch {
     return undefined
   }
-}
-
-/** Schrijft de situatie en levert het pad op. */
-export function writeSituation(omsiPath: string, request: SituationRequest): SituationResult {
-  const template = findTemplate(omsiPath, request.mapFolder)
-  if (!template) {
-    throw new Error(
-      `Geen situatiebestand gevonden voor de kaart "${request.mapFolder}". ` +
-        'Start die kaart één keer in OMSI; daarna kan de dienst automatisch klaargezet worden.'
-    )
-  }
-
-  const lines = readOmsiLines(template)
-  const placeVehicle = Boolean(request.vehicle) && indexOfTag(lines, '[ismyVehicle]') >= 0
-
-  const dayOverflow = Math.floor(request.minutes / 1440)
-  const minuteOfDay = ((request.minutes % 1440) + 1440) % 1440
-
-  setHeading(lines, request.name, request.description)
-  setBlock(lines, '[map]', [`maps\\${request.mapFolder}\\global.cfg`])
-  setBlock(lines, '[time]', [
-    String(request.year),
-    String(request.dayOfYear + dayOverflow),
-    String(Math.floor(minuteOfDay / 60)),
-    String(minuteOfDay % 60),
-    '0'
-  ])
-
-  if (placeVehicle && request.vehicle) {
-    // Alleen het voertuigpad wijzigen; de coördinaten eronder blijven staan.
-    const index = indexOfTag(lines, '[vehicle]')
-    if (index >= 0) lines[index + 1] = request.vehicle.relativePath
-    setStringVar(lines, 'SetLineTo', ` ${request.vehicle.lineNumber} `)
-    setStringVar(lines, 'Matrix_Nr', ` ${request.vehicle.lineNumber} `)
-    setStringVar(lines, 'IBIS_cabindisplay', request.vehicle.terminus)
-    // Het wagenpark bepaalt welke bestemmingscodes gelden; zonder dit zou de
-    // dienstkaart codes tonen uit een ander wagenpark dan de bus in het spel laadt.
-    if (request.vehicle.yard) setStringVar(lines, 'yard', request.vehicle.yard)
-  }
-
-  const content = Buffer.concat([BOM, Buffer.from(lines.join('\r\n'), 'utf16le')])
-  const templateWeather = `${template}.owt`
-
-  const write = (target: string): void => {
-    writeFileSync(target, content)
-    // Het weerbestand hoort bij de situatie; zonder valt OMSI terug op standaard.
-    if (existsSync(templateWeather)) {
-      try {
-        copyFileSync(templateWeather, `${target}.owt`)
-      } catch {
-        // Weer is bijzaak; de dienst werkt ook zonder.
-      }
-    }
-  }
-
-  const files: string[] = []
-
-  // Onder een eigen naam, zodat de dienst ook via "Load situation:" te kiezen is.
-  const named = join(omsiPath, 'Situations', 'OMSI Career.osn')
-  write(named)
-  files.push(named)
-
-  /**
-   * En als laatste situatie van de kaart. Het startscherm van OMSI biedt drie
-   * keuzes, waarvan "Load last situation on map" de bovenste is; die opent
-   * precies dit bestand. Daarmee laadt Start de dienst zonder dat de speler
-   * nog iets hoeft aan te wijzen.
-   */
-  let startsFromMenu = false
-  const lastSituation = join(omsiPath, 'maps', request.mapFolder, 'laststn.osn')
-  try {
-    // De echte laatste situatie van de speler eenmalig bewaren.
-    const backup = `${lastSituation}.omsicareer-backup`
-    if (existsSync(lastSituation) && !existsSync(backup)) copyFileSync(lastSituation, backup)
-    write(lastSituation)
-    files.push(lastSituation)
-    startsFromMenu = true
-  } catch {
-    // Lukt dit niet, dan blijft de dienst bereikbaar via "Load situation:".
-  }
-
-  return { files, vehiclePlaced: placeVehicle, startsFromMenu, template: basename(template) }
 }

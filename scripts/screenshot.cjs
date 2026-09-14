@@ -41,15 +41,20 @@ app.whenReady().then(async () => {
   const clicked = await window.webContents.executeJavaScript(
     `(() => {
        const button = [...document.querySelectorAll('button')]
-         .find((b) => b.textContent.includes('Dienst toewijzen'))
+         .find((b) => b.textContent.includes('Diensten zoeken'))
        if (!button) return false
        button.click()
        return true
      })()`
   )
   console.log(`knop gevonden: ${clicked}`)
-  await wait(4000)
-  await shoot(window, '02-dienstkaart')
+  await wait(5000)
+  await shoot(window, '02-rooster')
+
+  // Eerste dienst uit het rooster kiezen.
+  await window.webContents.executeJavaScript(`document.querySelector('.duty-item')?.click()`)
+  await wait(2500)
+  await shoot(window, '03-dienstkaart')
 
   // Eén rit openklappen en de instructies in beeld scrollen.
   await window.webContents.executeJavaScript(
@@ -60,7 +65,7 @@ app.whenReady().then(async () => {
     `document.querySelector('.leg-detail')?.scrollIntoView({ block: 'center' })`
   )
   await wait(600)
-  await shoot(window, '03-instructies')
+  await shoot(window, '04-instructies')
 
   app.quit()
 })

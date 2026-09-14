@@ -122,23 +122,15 @@ op naam, en dat kost geld per jaar.
 
 ## Wat de app in OMSI verandert
 
-OMSI heeft geen startparameter om een situatie te openen; de enige switches zijn
-`-editor`, `-windowed`, `-debug`, `-nolog`, `-logall` en `-savelogs`. De dienst
-wordt daarom via bestanden klaargezet:
+Niets. De app schrijft geen situatiebestanden, raakt `options.cfg` niet aan en
+start het spel niet op. Je laadt je kaart en je bus zelf in OMSI en kiest daarna
+in de app een dienst uit het rooster; de app levert alleen de instructies.
 
-- `maps/<kaart>/laststn.osn` — de laatste situatie van die kaart. Het startscherm
-  van OMSI biedt drie keuzes (`Load last situation on map`, `Load map without
-  busses`, `Load situation:`) en de bovenste opent precies dit bestand. Daarmee
-  laadt **Start** de dienst zonder dat je nog iets hoeft aan te wijzen. De
-  originele situatie wordt eenmalig bewaard als `laststn.osn.omsicareer-backup`.
-- `Situations/OMSI Career.osn` — dezelfde dienst onder een eigen naam, voor wie
-  liever `Load situation:` gebruikt.
-- `options.cfg` — alleen het blok `[last_map]`, met een back-up ernaast
-  (`options.cfg.omsicareer-backup`).
+Het enige dat in de spelmap terechtkomt is de plugin voor de overlay, en dat
+zijn twee bestanden in `plugins/` die je zo weer weghaalt.
 
-Welk keuzerondje voorgeselecteerd staat, bewaart OMSI nergens: `options.cfg` kent
-alleen `[last_map]` en `[last_driver]`. Het valt dus terug op de bovenste keuze,
-en dat is de keuze die wij vullen.
+Dat scheelt ook zorgen: geen sjabloon-afhankelijkheid meer, geen back-ups die
+kunnen verjaren, en kaarten die je nooit eerder speelde doen gewoon mee.
 
 ## IBIS
 

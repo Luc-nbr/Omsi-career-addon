@@ -2,7 +2,7 @@ import { useState, type JSX } from 'react'
 import type { IbisPlan } from '../../core/ibis'
 import type { DutyLeg } from '../../core/types'
 import type { Vehicle } from '../../core/vehicles'
-import type { Assignment, LaunchResult } from '../../shared/api'
+import type { Assignment } from '../../shared/api'
 import { describeDays, formatDuration, formatTime } from '../../shared/format'
 
 interface Props {
@@ -12,13 +12,13 @@ interface Props {
   vehicleGroups: Array<[string, Vehicle[]]>
   vehicleOverride: string
   onVehicleChange(path: string): void
-  launched?: LaunchResult
-  sessionNote?: string
   busy: boolean
-  onStart(): void
-  onFinish(): void
-  onToggleOverlay(): void
+  /** Of de dienst al loopt: dan is de kilometerstand vastgelegd. */
+  started: boolean
   overlayOpen: boolean
+  onBegin(): void
+  onToggleOverlay(): void
+  onFinish(): void
 }
 
 /** De dienstkaart: wat de chauffeur moet rijden, rit voor rit. */
@@ -29,13 +29,12 @@ export function DutyCard({
   vehicleGroups,
   vehicleOverride,
   onVehicleChange,
-  launched,
-  sessionNote,
   busy,
-  onStart,
-  onFinish,
+  started,
+  overlayOpen,
+  onBegin,
   onToggleOverlay,
-  overlayOpen
+  onFinish
 }: Props): JSX.Element {
   const [openLeg, setOpenLeg] = useState<number>()
   const { duty } = assignment
@@ -107,25 +106,27 @@ export function DutyCard({
       ))}
 
       <div className="actions">
-        <button type="button" className="btn" onClick={onStart} disabled={busy || !vehicle}>
-          Rijden in OMSI
-        </button>
-        <button type="button" className="btn secondary" onClick={onToggleOverlay}>
-          {overlayOpen ? 'Overlay sluiten' : 'Overlay tonen'}
-        </button>
-        {launched && (
-          <button type="button" className="btn secondary" onClick={onFinish}>
-            Dienst afronden
+        {!started ? (
+          <button type="button" className="btn" onClick={onBegin} disabled={busy || !vehicle}>
+            Dienst starten
           </button>
+        ) : (
+          <>
+            <button type="button" className="btn" onClick={onFinish} disabled={busy}>
+              Dienst afronden
+            </button>
+            <button type="button" className="btn secondary" onClick={onToggleOverlay}>
+              {overlayOpen ? 'Overlay sluiten' : 'Overlay tonen'}
+            </button>
+          </>
         )}
+        <span className="note">
+          {started
+            ? 'De kilometerstand is vastgelegd; bij afronden leest de app af wat je gereden hebt.'
+            : 'Laad deze bus in OMSI en druk hier op starten.'}
+        </span>
       </div>
 
-      {sessionNote && (
-        <p className="note warn" style={{ marginTop: 10 }}>
-          {sessionNote}
-        </p>
-      )}
-      {launched && <LaunchNote launched={launched} />}
     </section>
   )
 }
@@ -200,7 +201,7 @@ function BusPanel({
   return (
     <div className="bus-panel">
       <div>
-        <h3 className="section-title">Toegewezen bus</h3>
+        <h3 className="section-title">Aanbevolen bus</h3>
         <div className="bus-name">
           {vehicle ? `${vehicle.manufacturer} ${vehicle.type}` : 'Geen passende bus gevonden'}
         </div>
@@ -312,31 +313,5 @@ function IbisPanel({ ibis }: { ibis?: IbisPlan }): JSX.Element {
         )}
       </p>
     </div>
-  )
-}
-
-/** Uitleg na het starten: wat de speler in OMSI nog moet doen. */
-function LaunchNote({ launched }: { launched: LaunchResult }): JSX.Element {
-  if (!launched.vehiclePlaced) {
-    return (
-      <p className="note" style={{ marginTop: 10 }}>
-        OMSI start op de juiste kaart en tijd, maar deze kaart had nog geen situatiebestand: kies je
-        bus zelf. Na deze sessie onthoudt OMSI de plek en gaat het de volgende keer vanzelf.
-      </p>
-    )
-  }
-  return (
-    <p className="note" style={{ marginTop: 10 }}>
-      {launched.startsFromMenu ? (
-        <>
-          OMSI start op. Laat in het startscherm <b>Load last situation on map</b> staan en druk op{' '}
-          <b>Start</b> — de dienst wordt dan geladen zoals hierboven.
-        </>
-      ) : (
-        <>
-          OMSI start op. Kies in het startscherm <b>Load situation</b> en daarin <b>OMSI Career</b>.
-        </>
-      )}
-    </p>
   )
 }

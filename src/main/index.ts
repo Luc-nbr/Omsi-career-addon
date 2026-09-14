@@ -1,25 +1,16 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'node:path'
 import { completeDuty, loadCareer, saveCareer, summarise, type CareerState } from '../core/career'
-import { buildNetwork, generateDuty, SIGN_ON_MINUTES, type Network } from '../core/duty'
+import { buildNetwork, generateDuties, type Network } from '../core/duty'
 import { buildFleetIndex, pickVehicleForDuty, readMapFleet, type FleetIndex } from '../core/fleet'
 import { buildIbisPlan } from '../core/ibis'
 import { describeLive, readLive } from '../core/live'
 import { findOmsiInstall } from '../core/install'
-import { launchOmsi } from '../core/launch'
-import { findTemplate, readSituationTime, writeSituation } from '../core/situation'
-import { compareSession, readMapSession, type SessionState } from '../core/session'
+import { findTemplate, readSituationTime } from '../core/situation'
 import { listMaps, loadMap } from '../core/timetable'
 import { listVehicles } from '../core/vehicles'
 import type { Duty, OmsiMap } from '../core/types'
-import {
-  TIME_WINDOWS,
-  type Assignment,
-  type DutyRequest,
-  type LaunchRequest,
-  type MapSummary
-} from '../shared/api'
-import { dayOfYearForDays } from '../shared/format'
+import { TIME_WINDOWS, type Assignment, type DutyRequest, type MapSummary } from '../shared/api'
 
 /** Kaarten inlezen kost merkbaar tijd, dus we doen het één keer per sessie. */
 const mapCache = new Map<string, OmsiMap>()
@@ -28,11 +19,10 @@ const mapFleetCache = new Map<string, Set<string>>()
 const mapEraCache = new Map<string, { year: number; dayOfYear: number }>()
 let fleetIndex: FleetIndex | undefined
 /**
- * Nulmeting bij het starten van een dienst. OMSI schrijft laststn.osn pas bij
- * het afsluiten, dus door voor en na te lezen weten we wat er werkelijk gereden
- * is - zonder plugin en zonder dat de speler cijfers moet invoeren.
+ * Nulmeting bij het begin van een dienst, gelezen uit de live gegevens van de
+ * plugin. Het verschil met de stand aan het eind is wat er werkelijk gereden is.
  */
-let pending: { mapFolder: string; situationName: string; before: SessionState } | undefined
+let pending: { odometerKm: number; clockMinutes: number } | undefined
 let omsiPath: string | undefined
 let career: CareerState
 
@@ -70,13 +60,20 @@ function fleetOf(folder: string): Set<string> {
   return fleet
 }
 
-/** Het tijdvak waarin een kaart speelt, overgenomen uit haar situatiebestand. */
+/**
+ * Het tijdvak waarin een kaart speelt. Bij voorkeur uit haar situatiebestand;
+ * heeft de kaart er geen, dan draagt de mapnaam het jaartal vaak zelf
+ * ("Vienna_2005_Line_24A"). Dat jaar bepaalt welk wagenpark-bestand geldt, dus
+ * terugvallen op het huidige jaar zou de verkeerde bestemmingscodes opleveren.
+ */
 function era(folder: string): { year: number; dayOfYear: number } {
   const cached = mapEraCache.get(folder)
   if (cached) return cached
+
   const template = findTemplate(omsi(), folder)
+  const fromName = folder.match(/(19\d{2}|20[0-2]\d)/)
   const time = (template && readSituationTime(template)) || {
-    year: new Date().getFullYear(),
+    year: fromName ? Number.parseInt(fromName[1], 10) : new Date().getFullYear(),
     dayOfYear: 180
   }
   mapEraCache.set(folder, time)
@@ -86,11 +83,6 @@ function era(folder: string): { year: number; dayOfYear: number } {
 function fleet(): FleetIndex {
   if (!fleetIndex) fleetIndex = buildFleetIndex(omsi())
   return fleetIndex
-}
-
-/** De naam die de situatie krijgt; ook de sleutel om hem later te herkennen. */
-function situationName(duty: { tourNumber: string; lineNumbers: string[] }): string {
-  return `Dienst ${duty.tourNumber} — lijn ${duty.lineNumbers.join('/')}`
 }
 
 /**
@@ -188,100 +180,72 @@ function registerHandlers(): void {
   ipcMain.handle('omsi:vehicles', () => listVehicles(omsi()))
 
   /**
-   * Een toewijzing is dienst plus bus. De bus wordt erbij gezocht zodra de
-   * dienst er is, want pas dan weten we welke eindbestemmingen hij moet kunnen
-   * tonen.
+   * Levert een rooster om uit te kiezen. Bij elke dienst wordt een passende bus
+   * gezocht — die is een aanbeveling, want de speler laadt zijn bus zelf in OMSI.
    */
-  ipcMain.handle('duty:generate', (_event, request: DutyRequest): Assignment | null => {
+  ipcMain.handle('duty:list', (_event, request: DutyRequest): Assignment[] => {
     const window = TIME_WINDOWS[request.window] ?? TIME_WINDOWS.heledag
     const loaded = map(request.mapFolder)
     const net = network(request.mapFolder)
+    const { year } = era(request.mapFolder)
+    const mapFleet = fleetOf(request.mapFolder)
 
     // Lukt het binnen het gevraagde dagdeel niet, dan verruimen we stapsgewijs.
-    let duty
+    let duties: ReturnType<typeof generateDuties> = []
     for (const tolerance of [undefined, 40, 75]) {
-      duty = generateDuty(loaded, net, {
+      duties = generateDuties(loaded, net, {
         targetMinutes: request.targetMinutes,
         toleranceMinutes: tolerance,
         earliestStart: window.from,
         latestStart: window.to
       })
-      if (duty) break
+      if (duties.length > 0) break
     }
-    if (!duty) return null
 
-    const { year } = era(request.mapFolder)
-    const choice = pickVehicleForDuty(fleet(), duty, year, fleetOf(request.mapFolder))
-    return {
-      duty,
-      vehicle: choice?.vehicle ?? null,
-      yard: choice?.yard,
-      fit: choice?.fit,
-      fromMapFleet: choice?.fromMapFleet,
-      alternatives: choice?.alternatives
-    }
+    return duties.map((duty) => {
+      const choice = pickVehicleForDuty(fleet(), duty, year, mapFleet)
+      return {
+        duty,
+        vehicle: choice?.vehicle ?? null,
+        yard: choice?.yard,
+        fit: choice?.fit,
+        fromMapFleet: choice?.fromMapFleet,
+        alternatives: choice?.alternatives
+      }
+    })
   })
 
   ipcMain.handle('duty:ibis', (_event, duty, vehicle, year: number) =>
     buildIbisPlan(omsi(), vehicle.relativePath, duty, year)
   )
 
-  ipcMain.handle('duty:launch', (_event, request: LaunchRequest) => {
-    const { duty, vehicle } = request
-    const { year } = era(duty.mapFolder)
-    /**
-     * Het wagenpark moet altijd meegeschreven worden. Blijft het leeg, dan
-     * houdt de bus het wagenpark van het sjabloon - en dat is zomaar Grundorf
-     * op een Berlijnse dienst, waarna de getoonde codes nergens op slaan.
-     */
-    const yard =
-      request.yard ?? buildIbisPlan(omsi(), vehicle.relativePath, duty, year).yard
-    /**
-     * De dienst rijdt alleen op bepaalde dagen, dus de datum in het spel moet
-     * een dag zijn waarop dat klopt. Anders staat de dienstregeling er wel,
-     * maar rijdt het omliggende verkeer een ander patroon.
-     */
-    const dayOfYear = dayOfYearForDays(request.year, request.dayOfYear, duty.days)
-
-    const result = writeSituation(omsi(), {
-      mapFolder: duty.mapFolder,
-      name: situationName(duty),
-      description:
-        `${duty.legs.length} ritten vanaf ${duty.depot || 'de remise'}, ` +
-        `aanmelden om ${String(Math.floor(duty.signOn / 60) % 24).padStart(2, '0')}:` +
-        `${String(duty.signOn % 60).padStart(2, '0')}.`,
-      year: request.year,
-      dayOfYear,
-      minutes: duty.start - SIGN_ON_MINUTES,
-      vehicle: {
-        relativePath: vehicle.relativePath,
-        lineNumber: duty.lineNumbers[0] ?? '',
-        terminus: duty.legs[0]?.terminus ?? '',
-        yard
-      }
-    })
-
-    // Nulmeting: de situatie zoals wij hem net hebben weggeschreven.
-    const before = readMapSession(omsi(), duty.mapFolder)
-    pending = before
-      ? { mapFolder: duty.mapFolder, situationName: situationName(duty), before }
+  /**
+   * De dienst begint: overlay openen en de kilometerstand vastleggen. De app
+   * schrijft niets in de spelmap — de speler heeft zijn bus en kaart zelf al
+   * geladen, wij geven alleen de instructies.
+   */
+  ipcMain.handle('duty:begin', (_event, duty: Duty) => {
+    const live = readLive()
+    pending = live
+      ? { odometerKm: live.km + live.metres / 1000, clockMinutes: live.time / 60 }
       : undefined
-
-    launchOmsi({ omsiPath: omsi(), mapFolder: duty.mapFolder, windowed: request.windowed })
-    return result
+    openOverlay(duty)
+    return { connected: Boolean(live?.alive) }
   })
 
-  /**
-   * Vergelijkt de huidige situatie met de nulmeting. Zolang OMSI het bestand
-   * niet heeft overschreven, is de sessie nog niet afgesloten en zegt het niets.
-   */
+  /** Wat er sinds het begin van de dienst gereden is, volgens de plugin. */
   ipcMain.handle('duty:session', () => {
-    if (!pending) return null
-    return compareSession(
-      pending.before,
-      readMapSession(omsi(), pending.mapFolder),
-      pending.situationName
-    )
+    const live = readLive()
+    if (!live?.alive) return { drivenKm: 0, elapsedMinutes: 0, finished: false }
+    if (!pending) return { drivenKm: 0, elapsedMinutes: 0, finished: true }
+
+    const elapsed = live.time / 60 - pending.clockMinutes
+    return {
+      drivenKm: Math.max(0, live.km + live.metres / 1000 - pending.odometerKm),
+      elapsedMinutes: elapsed >= 0 ? elapsed : elapsed + 1440,
+      delayMinutes: describeLive(live).delayMinutes,
+      finished: true
+    }
   })
 
   ipcMain.handle('overlay:toggle', (_event, duty: Duty) => {
