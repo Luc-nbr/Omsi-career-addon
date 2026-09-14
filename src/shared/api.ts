@@ -45,6 +45,15 @@ export interface DutyDate {
   kind: 'school' | 'break' | 'holiday'
 }
 
+/** Wat er van het klaarzetten terecht is gekomen. */
+export interface PreparedSituation {
+  file: string
+  vehiclePlaced: boolean
+  spawnPlaced: boolean
+  template?: string
+  date: DutyDate
+}
+
 export interface Assignment {
   duty: Duty
   /**
@@ -153,6 +162,14 @@ export interface CareerApi {
     duty: Duty,
     ibis?: IbisPlan
   ): Promise<{ connected: boolean; launched: boolean; running: boolean }>
+  /** Schrijft het situatiebestand waarmee OMSI de dienst startklaar laadt. */
+  prepareDuty(
+    duty: Duty,
+    vehiclePath: string | undefined,
+    date: DutyDate | undefined,
+    lineNumber: string,
+    terminus: string
+  ): Promise<PreparedSituation>
   /** Geeft de plugin gegevens door? Zo ja, dan draait OMSI en is de kaart geladen. */
   liveConnected(): Promise<boolean>
   /** Printers die Windows kent, standaardprinter vooraan. */

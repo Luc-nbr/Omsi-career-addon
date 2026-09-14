@@ -19,9 +19,9 @@ Electron 33 + electron-vite + React 19 + TypeScript. `npm run dev` voor
 ontwikkelen, `npm run typecheck`, `npm run build`, `npm run dist` voor de
 installer.
 
-**De app schrijft niets in de spelmap** behalve de overlay-plugin in `plugins/`.
-Dat is een bewuste grens: eerdere experimenten met situatiebestanden zijn
-teruggedraaid.
+**De app schrijft twee dingen in de spelmap**: de overlay-plugin in `plugins/`
+en, als je op "Zet klaar in OMSI" drukt, `Situations\OMSI Career.osn` met de
+kaart, de datum, de tijd en de bus bij de eerste halte. Verder niets.
 
 ---
 

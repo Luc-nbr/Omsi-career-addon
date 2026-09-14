@@ -89,6 +89,8 @@ export interface TileGrid {
   offset(tx: number, ty: number): [number, number]
   /** Breedte en hoogte van een tegel in deze rij. */
   size(ty: number): number
+  /** De omgekeerde weg: van kaartmeters naar tegel en plek binnen die tegel. */
+  at(x: number, y: number): { tx: number; ty: number; localX: number; localZ: number }
 }
 
 export function readTileGrid(mapPath: string): TileGrid | undefined {
@@ -114,7 +116,16 @@ export function readTileGrid(mapPath: string): TileGrid | undefined {
     // Zonder global.cfg is het geen kaart die OMSI laadt; dan maar gewone tegels.
   }
   if (!world) {
-    return { origin, offset: (tx, ty) => [(tx - tx0) * TILE_M, (ty - ty0) * TILE_M], size: () => TILE_M }
+    return {
+      origin,
+      offset: (tx, ty) => [(tx - tx0) * TILE_M, (ty - ty0) * TILE_M],
+      size: () => TILE_M,
+      at: (x, y) => {
+        const tx = tx0 + Math.floor(x / TILE_M)
+        const ty = ty0 + Math.floor(y / TILE_M)
+        return { tx, ty, localX: x - (tx - tx0) * TILE_M, localZ: y - (ty - ty0) * TILE_M }
+      }
+    }
   }
 
   // Oost-west is een tegel zo breed als op zijn eigen breedtegraad; noord-zuid
@@ -127,7 +138,15 @@ export function readTileGrid(mapPath: string): TileGrid | undefined {
   return {
     origin,
     offset: (tx, ty) => [(tx - tx0) * worldTileSize(ty), rowOffset(ty)],
-    size: worldTileSize
+    size: worldTileSize,
+    at: (x, y) => {
+      // De rijen worden naar het noorden smaller, dus tellend zoeken.
+      let ty = ty0
+      while (rowOffset(ty + 1) <= y && ty - ty0 < 4096) ty++
+      const width = worldTileSize(ty)
+      const tx = tx0 + Math.floor(x / width)
+      return { tx, ty, localX: x - (tx - tx0) * width, localZ: y - rowOffset(ty) }
+    }
   }
 }
 

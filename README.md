@@ -171,11 +171,27 @@ in de app een dienst uit het rooster; de app levert alleen de instructies.
 Bij "Dienst starten" wordt het spel wel aangezwengeld als het nog niet draait —
 dat is puur `Omsi.exe` opstarten, zonder er iets voor klaar te zetten.
 
-Het enige dat in de spelmap terechtkomt is de plugin voor de overlay, en dat
-zijn twee bestanden in `plugins/` die je zo weer weghaalt.
+## Klaarzetten in OMSI
 
-Dat scheelt ook zorgen: geen sjabloon-afhankelijkheid meer, geen back-ups die
-kunnen verjaren, en kaarten die je nooit eerder speelde doen gewoon mee.
+"Zet klaar in OMSI" schrijft één situatiebestand, `Situations\OMSI Career.osn`.
+Daarin staan de kaart, de datum waarop deze omloop rijdt, de tijd tien minuten
+voor vertrek, de gekozen bus en zijn plek bij de eerste halte. In het spel kies
+je die situatie en drukt op Start.
+
+De plek is geen schatting: de bus komt op de rijstrook waar een bus bij die
+halte zou stoppen, met de neus in de rijrichting, en op de hoogte uit het
+`.terrain`-bestand van die tegel. Nagerekend door het geschreven bestand terug
+te lezen: op Berlin-Spandau en Hamburg 1 meter van de halte, nul meter van de
+rijstrook, koers precies gelijk.
+
+Er is wel een sjabloon voor nodig. Een voertuigblok bevat de stand van honderden
+scriptvariabelen van dat busmodel, en dat is niet te verzinnen; OMSI bewaart na
+elke sessie `laststn.osn` per kaart, dus wie een kaart één keer heeft gereden
+heeft er vanaf dan een. Zonder sjabloon met voertuig worden kaart, datum en tijd
+wel gezet en kies je de bus zelf.
+
+Verder komt er niets in de spelmap: alleen de plugin voor de overlay, twee
+bestanden in `plugins/` die je zo weer weghaalt.
 
 ## IBIS
 

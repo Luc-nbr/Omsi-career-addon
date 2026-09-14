@@ -13,7 +13,7 @@ import {
 import { dateForMask, dayKind, readCalendar, type Calendar } from '../core/calendar'
 import { buildNetwork, generateDuties, type Network } from '../core/duty'
 import { buildFleetIndex, pickVehicleForDuty, readMapFleet, type FleetIndex } from '../core/fleet'
-import { readMapData, type Lane, type MapGeometry } from '../core/geo'
+import { readMapData, readTileGrid, type Lane, type MapGeometry } from '../core/geo'
 import { LaneNetwork, routeForTrip, type TripRoute } from '../core/routing'
 import { VehicleTracker, type VehiclePosition } from '../core/vehicle'
 import { buildIbisPlan, type IbisPlan } from '../core/ibis'
@@ -24,7 +24,9 @@ import { ensurePlugin, pluginSourceDir, type PluginStatus } from '../core/plugin
 import { readOverlayLayout, writeOverlayLayout } from '../core/overlayLayout'
 import { receiptHeightMicrons, RECEIPT_WIDTH_MICRONS } from '../core/receipt'
 import { readSettings, writeSettings, type Settings } from '../core/settings'
-import { findTemplate, readSituationTime } from '../core/situation'
+import { formatTime } from '../shared/format'
+import { findTemplate, readSituationTime, writeSituation } from '../core/situation'
+import { spawnAtStop } from '../core/spawn'
 import { listMaps, loadMap } from '../core/timetable'
 import { listVehicles } from '../core/vehicles'
 import type { Duty, OmsiMap } from '../core/types'
@@ -165,6 +167,16 @@ function dutyDate(folder: string, days: number): DutyDate | undefined {
     iso: found.date.toISOString().slice(0, 10),
     kind: dayKind(calendar(folder), found.date)
   }
+}
+
+/** Waar de bus bij de eerste halte komt te staan. */
+function spawnFor(folder: string, stopId: string | undefined) {
+  if (!stopId) return undefined
+  const stop = mapGeometry(folder).stops.find((item) => item.id === stopId)
+  const path = map(folder).path
+  const grid = readTileGrid(path)
+  if (!stop || !grid) return undefined
+  return spawnAtStop(path, grid, laneNetwork(folder), stop)
 }
 
 function fleet(): FleetIndex {
@@ -532,6 +544,45 @@ function registerHandlers(): void {
         routeCache.set(key, route)
         return route
       })
+    }
+  )
+
+  /**
+   * Zet de dienst klaar in OMSI: een situatiebestand met de kaart, de datum
+   * waarop deze omloop rijdt, de tijd vlak voor vertrek en de bus bij de eerste
+   * halte, met de neus de goede kant op. In het spel hoef je dan alleen nog
+   * "OMSI Career" te kiezen en op Start te drukken.
+   *
+   * Dit is het enige dat de app in de spelmap schrijft, naast de plugin.
+   */
+  ipcMain.handle(
+    'duty:prepare',
+    (
+      _event,
+      duty: Duty,
+      vehiclePath: string | undefined,
+      date: DutyDate | undefined,
+      lineNumber: string,
+      terminus: string
+    ) => {
+      const when = date ?? dutyDate(duty.mapFolder, duty.days | duty.period)
+      if (!when) throw new Error('Geen datum gevonden waarop deze omloop rijdt.')
+
+      const first = duty.legs[0]
+      const spawn = vehiclePath ? spawnFor(duty.mapFolder, first?.stopIds[0]) : undefined
+
+      const result = writeSituation(omsi(), {
+        mapFolder: duty.mapFolder,
+        name: `OMSI Career \u2014 lijn ${duty.lineFile}, omloop ${duty.tourNumber}`,
+        description: `Vertrek ${formatTime(duty.start)} vanaf ${first?.stops[0] ?? '?'}.`,
+        year: when.year,
+        dayOfYear: when.dayOfYear,
+        // Aanmelden: tien minuten voor vertrek, tijd genoeg voor de IBIS.
+        minutes: duty.signOn,
+        vehicle: vehiclePath ? { relativePath: vehiclePath, lineNumber, terminus } : undefined,
+        spawn
+      })
+      return { ...result, date: when }
     }
   )
 

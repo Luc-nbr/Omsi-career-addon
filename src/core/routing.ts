@@ -231,6 +231,44 @@ export class LaneNetwork {
   }
 
   /** Afstand tot de dichtstbijzijnde rijstrook binnen 40 m, anders Infinity. */
+  /**
+   * Waar de bus bij een halte op de weg komt te staan, en met de neus welke
+   * kant op. Dezelfde keuze als bij het plannen: de dichtstbijzijnde rijstrook
+   * waarvoor de halte rechts van de rijrichting ligt, want daar stopt een bus.
+   */
+  spawnAt(stop: StopPoint): { x: number; y: number; heading: number } | undefined {
+    let best: { x: number; y: number; heading: number; penalty: number } | undefined
+    const gx = Math.floor(stop.x / GRID_M)
+    const gy = Math.floor(stop.y / GRID_M)
+    for (let ox = -1; ox <= 1; ox++) {
+      for (let oy = -1; oy <= 1; oy++) {
+        const cell = this.segments.get(`${gx + ox},${gy + oy}`)
+        if (!cell) continue
+        for (let k = 0; k < cell.length; k += 2) {
+          const lane = cell[k]
+          const hit = this.project(lane, cell[k + 1], stop.x, stop.y)
+          if (hit.distance > STOP_REACH_M) continue
+          const direction = this.lanes[lane].direction
+          for (const forward of [true, false]) {
+            if ((forward && direction === 1) || (!forward && direction === 0)) continue
+            const rightSide = forward ? !hit.left : hit.left
+            const penalty = hit.distance + (rightSide ? 0 : WRONG_SIDE_M)
+            if (best && penalty >= best.penalty) continue
+            const dx = forward ? hit.dx : -hit.dx
+            const dy = forward ? hit.dy : -hit.dy
+            best = {
+              x: hit.x,
+              y: hit.y,
+              heading: (Math.atan2(dx, dy) * 180) / Math.PI,
+              penalty
+            }
+          }
+        }
+      }
+    }
+    return best ? { x: best.x, y: best.y, heading: best.heading } : undefined
+  }
+
   distanceToLane(x: number, y: number): number {
     let best = Infinity
     const gx = Math.floor(x / GRID_M)
