@@ -1,7 +1,7 @@
 import { useEffect, useState, type JSX } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { LiveStatus } from '../../core/live'
-import type { Duty } from '../../core/types'
+import type { Duty, DutyLeg } from '../../core/types'
 import { formatTime } from '../../shared/format'
 import './overlay.css'
 
@@ -76,36 +76,14 @@ function Overlay(): JSX.Element {
         </div>
       )}
 
-      <div className="row">
-        <span className="label">Halte</span>
-        {status.reportsStops ? (
-          <>
-            <span className="value">{status.nextStop}</span>
-            {status.stopIndex !== undefined && status.stopsTotal > 0 && (
-              <>
-                <span className="sub">
-                  {Math.min(status.stopIndex, status.stopsTotal)} van {status.stopsTotal} gehad
-                </span>
-                <div className="progress">
-                  <div
-                    style={{
-                      width: `${Math.round(
-                        (Math.min(status.stopIndex, status.stopsTotal) / status.stopsTotal) * 100
-                      )}%`
-                    }}
-                  />
-                </div>
-              </>
-            )}
-          </>
-        ) : (
-          <span className="sub">
-            {status.offersStops
-              ? 'de bus meldt nog geen halte — staat de IBIS al op lijn en route?'
-              : 'deze bus geeft geen halte-informatie door'}
-          </span>
-        )}
-      </div>
+      {leg ? (
+        <NextStops leg={leg} status={status} />
+      ) : (
+        <div className="row">
+          <span className="label">Halte</span>
+          <span className="sub">geen rit gevonden voor dit tijdstip</span>
+        </div>
+      )}
 
       <div className="grid">
         <div>
@@ -140,6 +118,59 @@ function Overlay(): JSX.Element {
           {item.text}
         </div>
       ))}
+    </div>
+  )
+}
+
+/**
+ * De haltes die nog komen, als een lijndiagram.
+ *
+ * Waar je bent komt uit de IBIS; die vult zich pas als de lijn en route zijn
+ * ingetoetst. Zolang dat niet is gebeurd staat de hele rit er gewoon, vanaf het
+ * begin — dan weet je tenminste wat er aankomt.
+ */
+function NextStops({ leg, status }: { leg: DutyLeg; status: LiveStatus }): JSX.Element {
+  const total = leg.stops.length
+  const known = status.reportsStops && status.stopIndex !== undefined
+  const passed = known ? Math.min(Math.max(status.stopIndex ?? 0, 0), total) : 0
+
+  // Eentje terug geeft richting; verder vooruit past niet in de cabine.
+  const from = Math.max(0, passed - 1)
+  const shown = leg.stops.slice(from, from + 6)
+  const left = total - (from + shown.length)
+
+  return (
+    <div className="nav">
+      <div className="nav-head">
+        <span className="label">Halte</span>
+        {known ? (
+          <span className="sub">
+            nog {Math.max(0, total - passed)} van {total}
+          </span>
+        ) : (
+          <span className="sub">
+            {status.offersStops
+              ? 'toets lijn en route in op de IBIS, dan volgt de kaart mee'
+              : 'deze bus geeft geen halte door — dit is de hele rit'}
+          </span>
+        )}
+      </div>
+
+      <ol className="strip">
+        {shown.map((name, index) => {
+          const at = from + index
+          const state = !known ? 'ahead' : at < passed ? 'done' : at === passed ? 'now' : 'ahead'
+          return (
+            <li key={`${at}-${name}`} className={`stop ${state}`}>
+              <span className="pin" />
+              <span className="name">{name}</span>
+              {at === total - 1 && <span className="tag">eindpunt</span>}
+            </li>
+          )
+        })}
+      </ol>
+
+      {left > 0 && <div className="nav-rest">en nog {left} verder naar {leg.terminus}</div>}
     </div>
   )
 }

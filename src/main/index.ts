@@ -296,9 +296,15 @@ function registerHandlers(): void {
     const cached = geometryCache.get(folder)
     if (cached) return cached
     const loaded = map(folder)
-    const ids = new Set<string>()
+    const ids = new Set<string>(loaded.stops.keys())
     for (const trip of loaded.trips.values()) for (const stop of trip.stops) ids.add(stop.id)
-    const geometry = readMapGeometry(loaded.path, ids)
+    const geometry = readMapGeometry(loaded.path, ids, omsi())
+    // Busstops.cfg is de bron voor de namen; wat er in de tegel staat is de
+    // naam van het object en heet lang niet altijd naar de halte.
+    for (const stop of geometry.stops) {
+      const known = loaded.stops.get(stop.id)
+      if (known?.name) stop.name = known.name
+    }
     geometryCache.set(folder, geometry)
     return geometry
   })

@@ -69,7 +69,7 @@ export function DutyCard({
 
       <SelectPanel duty={duty} />
 
-      <DutyMap duty={duty} />
+      <DutyMap duty={duty} ibis={ibis} />
 
       <BusPanel
         assignment={assignment}
