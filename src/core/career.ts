@@ -21,6 +21,9 @@ export interface CareerEntry {
   drivenKm?: number
   /** Vertraging volgens de IBIS aan het eind van de dienst, in minuten. */
   delayMinutes?: number
+  /** Gemeten rijstijl: hoe vaak er hard geremd of opgetrokken is. */
+  harshBrakes?: number
+  harshAccels?: number
 }
 
 export interface CareerState {
@@ -71,7 +74,12 @@ export function completeDuty(
   state: CareerState,
   duty: Duty,
   vehicle: string,
-  measured?: { drivenKm?: number; delayMinutes?: number }
+  measured?: {
+    drivenKm?: number
+    delayMinutes?: number
+    harshBrakes?: number
+    harshAccels?: number
+  }
 ): CareerState {
   const entry: CareerEntry = {
     id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
@@ -87,7 +95,9 @@ export function completeDuty(
     vehicle,
     pay: dutyPay(duty),
     drivenKm: measured?.drivenKm,
-    delayMinutes: measured?.delayMinutes
+    delayMinutes: measured?.delayMinutes,
+    harshBrakes: measured?.harshBrakes,
+    harshAccels: measured?.harshAccels
   }
   return { ...state, entries: [entry, ...state.entries] }
 }

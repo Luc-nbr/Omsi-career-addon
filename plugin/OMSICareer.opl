@@ -17,8 +17,11 @@ Day
 Month
 Year
 
+	De eerste zeventien hieronder houdt OMSI in elk voertuig bij; de rest komt
+	uit de scripts van het busmodel en kan ontbreken.
+
 [varlist]
-10
+23
 Velocity
 humans_count
 schedule_active
@@ -29,6 +32,19 @@ kmcounter_m
 PAX_Entry_Req
 PAX_Exit_Req
 GivenTicket
+PAX_Entry_Open
+PAX_Exit_Open
+AI_Scheduled_AtStation
+Envir_Brightness
+StreetCond
+precipRate
+precipType
+lights_abbl
+lights_blinker_l
+lights_blinker_r
+lights_brems
+engine_on
+IBIS_busstop_index
 
 [stringvarlist]
 6

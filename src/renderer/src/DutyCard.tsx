@@ -113,15 +113,14 @@ export function DutyCard({
             Dienst starten
           </button>
         ) : (
-          <>
-            <button type="button" className="btn" onClick={onFinish} disabled={busy}>
-              Dienst afronden
-            </button>
-            <button type="button" className="btn secondary" onClick={onToggleOverlay}>
-              {overlayOpen ? 'Overlay sluiten' : 'Overlay tonen'}
-            </button>
-          </>
+          <button type="button" className="btn" onClick={onFinish} disabled={busy}>
+            Dienst afronden
+          </button>
         )}
+        {/* Ook voor het starten bruikbaar, om de overlay alvast neer te zetten. */}
+        <button type="button" className="btn secondary" onClick={onToggleOverlay}>
+          {overlayOpen ? 'Overlay sluiten' : 'Overlay tonen'}
+        </button>
         <span className="note">
           {started
             ? 'De kilometerstand is vastgelegd; bij afronden leest de app af wat je gereden hebt.'

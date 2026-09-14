@@ -47,6 +47,12 @@ export interface SessionResult {
   drivenKm: number
   elapsedMinutes: number
   delayMinutes?: number
+  /** Gemeten rijstijl over deze dienst. */
+  harshBrakes?: number
+  harshAccels?: number
+  topSpeed?: number
+  /** De eindtijd is voorbij en de bus staat stil. */
+  dutyComplete: boolean
   /** Onwaar zolang OMSI niet draait; dan valt er niets te meten. */
   finished: boolean
 }
@@ -85,7 +91,12 @@ export interface CareerApi {
   completeDuty(
     duty: Duty,
     vehicle: string,
-    measured?: { drivenKm?: number; delayMinutes?: number }
+    measured?: {
+      drivenKm?: number
+      delayMinutes?: number
+      harshBrakes?: number
+      harshAccels?: number
+    }
   ): Promise<CareerPayload>
   renameDriver(name: string): Promise<CareerPayload>
 }

@@ -153,3 +153,57 @@ header {
   color: #f0b429;
   font-weight: 600;
 }
+
+/* ---------- voortgang, tellers en adviezen ---------- */
+
+.row .progress {
+  height: 4px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  margin-top: 5px;
+}
+
+.row .progress > div {
+  height: 100%;
+  background: #f0b429;
+}
+
+.counters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  color: #8d9bad;
+  font-size: 11.5px;
+}
+
+.counters span {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 5px;
+  padding: 2px 7px;
+}
+
+.advice {
+  margin-top: 7px;
+  border-radius: 6px;
+  padding: 5px 9px;
+  font-size: 12.5px;
+  border-left: 2px solid;
+}
+
+.advice.warn {
+  background: rgba(255, 143, 107, 0.14);
+  border-color: #ff8f6b;
+  color: #ffb9a1;
+}
+
+.advice.info {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: #6c7a8c;
+  color: #b6c2d1;
+}
+
+.panel.done {
+  border-left-color: #57d6a8;
+}

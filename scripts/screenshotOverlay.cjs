@@ -34,13 +34,30 @@ app.whenReady().then(async () => {
     await wait(500)
   }
 
-  await main.webContents.executeJavaScript(
-    `[...document.querySelectorAll('button')].find((b) => b.textContent.includes('Dienst toewijzen'))?.click()`
-  )
-  await wait(4000)
+  // Profiel aanmaken als dat nog moet.
+  if (await main.webContents.executeJavaScript(`Boolean(document.querySelector('#naam'))`)) {
+    await main.webContents.executeJavaScript(
+      `(() => {
+         const input = document.querySelector('#naam')
+         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+         setter.call(input, 'Testchauffeur')
+         input.dispatchEvent(new Event('input', { bubbles: true }))
+       })()`
+    )
+    await wait(400)
+    await main.webContents.executeJavaScript(
+      `[...document.querySelectorAll('button')].find((b) => b.textContent.includes('Profiel aanmaken'))?.click()`
+    )
+    await wait(1500)
+  }
 
-  // Vertrektijd van de eerste rit uit de dienstkaart halen, zodat de overlay
-  // een echte rit te pakken heeft.
+  await main.webContents.executeJavaScript(
+    `[...document.querySelectorAll('button')].find((b) => b.textContent.includes('Diensten zoeken'))?.click()`
+  )
+  await wait(5000)
+  await main.webContents.executeJavaScript(`document.querySelector('.duty-item')?.click()`)
+  await wait(2500)
+
   const first = await main.webContents.executeJavaScript(
     `document.querySelector('.leg-time')?.textContent?.trim() ?? ''`
   )
@@ -49,30 +66,38 @@ app.whenReady().then(async () => {
   console.log(`eerste rit vertrekt ${first}; klok gezet op ${Math.floor(seconds / 3600)}:${String(Math.floor((seconds % 3600) / 60)).padStart(2, '0')}`)
 
   mkdirSync(liveDir, { recursive: true })
+  // seen-masker: alle universele variabelen plus lights_abbl (bit 17) en
+  // IBIS_busstop_index (bit 22), zodat de overlay die mag gebruiken.
+  const seen = 0x1ffff | (1 << 17) | (1 << 21) | (1 << 22)
   writeFileSync(
     liveFile,
     JSON.stringify({
       alive: true,
+      seen,
       time: seconds,
-      day: 14,
-      month: 6,
-      year: 1988,
+      day: 14, month: 6, year: 1988,
       velocity: 38.4,
       passengers: 23,
       scheduleActive: 1,
       targetIndex: 3,
       tankPercent: 0.62,
-      km: 152207,
-      metres: 880,
-      entryRequest: 1,
-      exitRequest: 0,
-      ticket: 0,
+      km: 152207, metres: 880,
+      entryRequest: 1, exitRequest: 0, ticket: 0,
+      entryOpen: 0, exitOpen: 0,
+      atStation: 0,
+      brightness: 0.18,
+      streetCond: 0.4,
+      precipRate: 0.4,
+      precipType: 1,
+      lightsLow: 0,
+      blinkerLeft: 0, blinkerRight: 0, brakeLight: 0,
+      engineOn: 1,
+      busstopIndex: 4,
+      maxBrake: 3.9, maxAccel: 1.9, topSpeed: 61.2,
+      harshBrakes: 4, harshAccels: 1,
       busstop: 'U Rathaus Spandau',
-      delayMin: '2',
-      delaySec: '40',
-      line: ' 92 ',
-      terminus: 'Reimerweg',
-      matrix: ' 92 '
+      delayMin: '2', delaySec: '40',
+      line: ' 92 ', terminus: 'Reimerweg', matrix: ' 92 '
     })
   )
 

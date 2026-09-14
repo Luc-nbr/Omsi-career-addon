@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type JSX } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react'
 import type { IbisPlan } from '../../core/ibis'
 import type { PluginStatus } from '../../core/pluginInstall'
 import type { Vehicle } from '../../core/vehicles'
@@ -53,6 +53,7 @@ export function App(): JSX.Element {
   const [overlayOpen, setOverlayOpen] = useState(false)
   const [note, setNote] = useState<string>()
   const [plugin, setPlugin] = useState<PluginStatus>()
+  const finishRef = useRef<(() => Promise<void>) | undefined>(undefined)
   const [newName, setNewName] = useState('')
 
   useEffect(() => {
@@ -167,6 +168,20 @@ export function App(): JSX.Element {
     setNewName('')
   }, [newName])
 
+  /**
+   * Zolang de dienst loopt kijken we of hij is uitgereden: eindtijd voorbij en
+   * de bus stil. Dan boekt de app hem zelf, zoals een chauffeur die afmeldt.
+   */
+  useEffect(() => {
+    if (!started) return
+    const timer = setInterval(() => {
+      void window.career.checkSession().then((result) => {
+        if (result.dutyComplete) void finishRef.current?.()
+      })
+    }, 5000)
+    return () => clearInterval(timer)
+  }, [started])
+
   const toggleOverlay = useCallback(async () => {
     if (!duty) return
     setOverlayOpen(await window.career.toggleOverlay(duty))
@@ -180,7 +195,9 @@ export function App(): JSX.Element {
       setCareer(
         await window.career.completeDuty(duty, `${vehicle.manufacturer} ${vehicle.type}`, {
           drivenKm: result.drivenKm,
-          delayMinutes: result.delayMinutes
+          delayMinutes: result.delayMinutes,
+          harshBrakes: result.harshBrakes,
+          harshAccels: result.harshAccels
         })
       )
       setDuties([])
@@ -189,13 +206,19 @@ export function App(): JSX.Element {
       setOverlayOpen(false)
       setNote(
         result.finished && result.drivenKm > 0
-          ? `Dienst geboekt: ${result.drivenKm.toFixed(1)} km gereden.`
-          : 'Dienst geboekt. OMSI draaide niet, dus de kilometers zijn niet gemeten.'
+          ? `Dienst geboekt: ${result.drivenKm.toFixed(1)} km` +
+              (result.harshBrakes ? `, ${result.harshBrakes}× hard geremd` : ', vloeiend gereden') +
+              '.'
+          : 'Dienst geboekt. OMSI draaide niet, dus er viel niets te meten.'
       )
     } finally {
       setBusy(false)
     }
   }, [duty, vehicle])
+
+  useEffect(() => {
+    finishRef.current = finish
+  }, [finish])
 
   if (error && !ready) {
     return (

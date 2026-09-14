@@ -33,7 +33,9 @@ let fleetIndex: FleetIndex | undefined
  * Nulmeting bij het begin van een dienst, gelezen uit de live gegevens van de
  * plugin. Het verschil met de stand aan het eind is wat er werkelijk gereden is.
  */
-let pending: { odometerKm: number; clockMinutes: number } | undefined
+let pending:
+  | { odometerKm: number; clockMinutes: number; harshBrakes: number; harshAccels: number }
+  | undefined
 let omsiPath: string | undefined
 let career: CareerState | undefined
 let pluginStatus: PluginStatus | undefined
@@ -111,7 +113,7 @@ function pushFrame(): void {
   const live = readLive()
   overlayWindow.webContents.send('overlay:frame', {
     connected: Boolean(live?.alive),
-    status: live ? describeLive(live, overlayDuty) : undefined,
+    status: live ? describeLive(live, overlayDuty, pending) : undefined,
     duty: overlayDuty
   })
 }
@@ -129,7 +131,9 @@ function openOverlay(duty: Duty): void {
 
   overlayWindow = new BrowserWindow({
     width: 330,
-    height: 320,
+    // Ruim genoeg voor de adviezen eronder; de panelen groeien mee met wat er
+    // te melden valt en de rest van het venster is doorzichtig.
+    height: 470,
     x: 24,
     y: 24,
     frame: false,
@@ -263,7 +267,12 @@ function registerHandlers(): void {
   ipcMain.handle('duty:begin', async (_event, duty: Duty) => {
     const live = readLive()
     pending = live
-      ? { odometerKm: live.km + live.metres / 1000, clockMinutes: live.time / 60 }
+      ? {
+          odometerKm: live.km + live.metres / 1000,
+          clockMinutes: live.time / 60,
+          harshBrakes: live.harshBrakes,
+          harshAccels: live.harshAccels
+        }
       : undefined
     openOverlay(duty)
 
@@ -284,14 +293,19 @@ function registerHandlers(): void {
   /** Wat er sinds het begin van de dienst gereden is, volgens de plugin. */
   ipcMain.handle('duty:session', () => {
     const live = readLive()
-    if (!live?.alive) return { drivenKm: 0, elapsedMinutes: 0, finished: false }
-    if (!pending) return { drivenKm: 0, elapsedMinutes: 0, finished: true }
+    if (!live?.alive) return { drivenKm: 0, elapsedMinutes: 0, dutyComplete: false, finished: false }
+    if (!pending) return { drivenKm: 0, elapsedMinutes: 0, dutyComplete: false, finished: true }
 
     const elapsed = live.time / 60 - pending.clockMinutes
+    const status = describeLive(live, overlayDuty, pending)
     return {
       drivenKm: Math.max(0, live.km + live.metres / 1000 - pending.odometerKm),
       elapsedMinutes: elapsed >= 0 ? elapsed : elapsed + 1440,
-      delayMinutes: describeLive(live).delayMinutes,
+      delayMinutes: status.delayMinutes,
+      harshBrakes: status.harshBrakes,
+      harshAccels: status.harshAccels,
+      topSpeed: live.topSpeed,
+      dutyComplete: status.dutyComplete,
       finished: true
     }
   })
