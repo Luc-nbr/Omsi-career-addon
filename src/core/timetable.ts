@@ -8,7 +8,7 @@ import type { BusStop, OmsiMap, Tour, Trip, TripProfile } from './types'
  * staan er expliciet in omdat het aantal bepaalt waar het volgende blok begint.
  */
 const BUSSTOP_SCHEMA = { '[busstop]': 6 }
-const LINE_SCHEMA = { '[newtour]': 3, '[addtrip]': 3 }
+const LINE_SCHEMA = { '[newtour]': 3, '[addtrip]': 3, '[userallowed]': 0 }
 
 /**
  * Ritten kennen twee haltevormen. `[station_typ2]` is de nieuwe, met alleen een
@@ -72,10 +72,19 @@ export function readTours(path: string): Tour[] {
   const lineFile = basename(path, extname(path))
   const tours: Tour[] = []
   let current: Tour | undefined
+  /*
+   * De vlag staat boven de omlopen, dus hij is bekend voordat de eerste
+   * langskomt; toch pas achteraf toekennen, voor het geval een kaart hem
+   * onderaan zet.
+   */
+  let userAllowed = false
   for (const block of parseOmsiFile(path, LINE_SCHEMA)) {
-    if (block.tag === '[newtour]') {
+    if (block.tag === '[userallowed]') {
+      userAllowed = true
+    } else if (block.tag === '[newtour]') {
       current = {
         lineFile,
+        userAllowed,
         number: str(block.values[0]),
         depot: str(block.values[1]),
         // Alle dagen als het veld ontbreekt; dan sluit niets onnodig af.
@@ -94,6 +103,7 @@ export function readTours(path: string): Tour[] {
       })
     }
   }
+  for (const tour of tours) tour.userAllowed = userAllowed
   return tours
 }
 
@@ -127,13 +137,25 @@ export function loadMap(mapsPath: string, folder: string): OmsiMap | undefined {
     }
   }
 
+  /*
+   * Alleen lijnen die de speler in het dienstregelingsmenu kan aanklikken. De
+   * rest is verkeer: stadsbanen, S-Bahnen, goederentreinen, en op sommige
+   * kaarten een vliegtuig. Die leverden diensten op die je in het spel niet
+   * kon kiezen en die over een spoor- of vliegroute liepen.
+   *
+   * Markeert een kaart geen enkele lijn -- oudere kaarten kennen de vlag niet
+   * -- dan houden we ze allemaal; niets tonen is daar erger dan te veel.
+   */
+  const usable = tours.filter((tour) => tour.trips.length > 0)
+  const allowed = usable.filter((tour) => tour.userAllowed)
+
   return {
     folder,
     name: readMapName(path) || folder,
     path,
     stops: readBusStops(ttData),
     trips,
-    tours: tours.filter((tour) => tour.trips.length > 0)
+    tours: allowed.length > 0 ? allowed : usable
   }
 }
 

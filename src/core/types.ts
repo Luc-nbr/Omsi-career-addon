@@ -45,6 +45,13 @@ export interface TourTrip {
 export interface Tour {
   /** Naam van het .ttl-bestand, meestal het lijnnummer. */
   lineFile: string
+  /**
+   * Mag de speler deze lijn rijden? OMSI zet daarvoor een blok `[userallowed]`
+   * in het lijnbestand. Zonder dat blok staat de lijn niet in het
+   * dienstregelingsmenu: stadsbanen, treinen, en op Berlin-Spandau zelfs een
+   * helikopter en een vliegtuig.
+   */
+  userAllowed: boolean
   number: string
   depot: string
   /**
