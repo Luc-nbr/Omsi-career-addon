@@ -16,6 +16,14 @@ files:
 
 asar: true
 
+# De plugin gaat mee als losse bestanden onder resources/plugin, zodat zowel het
+# installatieprogramma als de app ze naar OMSI kan kopieren.
+extraResources:
+  - from: plugin/out/OMSICareerPlugin.dll
+    to: plugin/OMSICareerPlugin.dll
+  - from: plugin/OMSICareer.opl
+    to: plugin/OMSICareer.opl
+
 win:
   target:
     - target: nsis
@@ -29,6 +37,8 @@ portable:
   artifactName: ${productName} ${version} draagbaar.${ext}
 
 nsis:
+  # Zet ook de overlay-plugin in de OMSI-map; zie build/installer.nsh.
+  include: build/installer.nsh
   # Geen eenkliksinstallatie: de speler mag zien waar het heen gaat en kiezen.
   oneClick: false
   perMachine: false

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type JSX } from 'react'
 import type { CareerState, CareerSummary } from '../../core/career'
 import type { IbisPlan } from '../../core/ibis'
+import type { PluginStatus } from '../../core/pluginInstall'
 import type { Vehicle } from '../../core/vehicles'
 import {
   TIME_WINDOWS,
@@ -25,6 +26,14 @@ type CareerPayload = { state: CareerState; summary: CareerSummary }
 /** Dienstlengtes die je kunt kiezen, in minuten. Korter dan een half uur niet. */
 const LENGTHS = [30, 45, 60, 90, 120, 150, 180, 240, 300, 360, 420, 480]
 
+/** Staat de overlay-plugin klaar in OMSI? */
+function PluginNote({ status }: { status?: PluginStatus }): JSX.Element {
+  if (!status) return <span className="note">Plugin controleren…</span>
+  if (status.error) return <span className="note warn">Overlay: {status.error}</span>
+  if (status.changed) return <span className="note">Overlay-plugin bijgewerkt in OMSI.</span>
+  return <span className="note">Overlay-plugin staat klaar in OMSI.</span>
+}
+
 export function App(): JSX.Element {
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string>()
@@ -45,6 +54,7 @@ export function App(): JSX.Element {
   const [started, setStarted] = useState(false)
   const [overlayOpen, setOverlayOpen] = useState(false)
   const [note, setNote] = useState<string>()
+  const [plugin, setPlugin] = useState<PluginStatus>()
 
   useEffect(() => {
     void (async () => {
@@ -64,6 +74,8 @@ export function App(): JSX.Element {
         setCareer(loadedCareer)
         setMapFolder(loadedMaps[0]?.folder ?? '')
         setReady(true)
+        // Losstaand: de overlay-plugin klaarzetten mag de rest niet ophouden.
+        void window.career.pluginStatus().then(setPlugin)
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause))
       }
@@ -260,6 +272,7 @@ export function App(): JSX.Element {
             <button type="button" className="btn" onClick={search} disabled={busy}>
               {duties.length > 0 ? 'Ander rooster' : 'Diensten zoeken'}
             </button>
+            <PluginNote status={plugin} />
           </div>
 
           {error && ready && (

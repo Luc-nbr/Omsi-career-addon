@@ -1,5 +1,6 @@
 import type { CareerState, CareerSummary } from '../core/career'
 import type { IbisPlan } from '../core/ibis'
+import type { PluginStatus } from '../core/pluginInstall'
 import type { Duty } from '../core/types'
 import type { Vehicle } from '../core/vehicles'
 
@@ -54,6 +55,8 @@ export interface CareerApi {
   status(): Promise<OmsiStatus>
   maps(): Promise<MapSummary[]>
   vehicles(): Promise<Vehicle[]>
+  /** Zet de overlay-plugin klaar in OMSI en meldt de stand. */
+  pluginStatus(): Promise<PluginStatus>
   /** Een rooster om uit te kiezen. */
   listDuties(request: DutyRequest): Promise<Assignment[]>
   ibis(duty: Duty, vehicle: Vehicle, year: number): Promise<IbisPlan>

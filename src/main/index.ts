@@ -6,6 +6,7 @@ import { buildFleetIndex, pickVehicleForDuty, readMapFleet, type FleetIndex } fr
 import { buildIbisPlan } from '../core/ibis'
 import { describeLive, readLive } from '../core/live'
 import { findOmsiInstall } from '../core/install'
+import { ensurePlugin, pluginSourceDir, type PluginStatus } from '../core/pluginInstall'
 import { findTemplate, readSituationTime } from '../core/situation'
 import { listMaps, loadMap } from '../core/timetable'
 import { listVehicles } from '../core/vehicles'
@@ -25,6 +26,7 @@ let fleetIndex: FleetIndex | undefined
 let pending: { odometerKm: number; clockMinutes: number } | undefined
 let omsiPath: string | undefined
 let career: CareerState
+let pluginStatus: PluginStatus | undefined
 
 const careerFile = () => join(app.getPath('userData'), 'career.json')
 
@@ -178,6 +180,22 @@ function registerHandlers(): void {
   )
 
   ipcMain.handle('omsi:vehicles', () => listVehicles(omsi()))
+
+  /**
+   * De overlay werkt alleen als de plugin in OMSI staat. Het installatieprogramma
+   * zet hem er neer als het Steam via het register vindt; staat OMSI elders, dan
+   * gebeurt het hier alsnog.
+   */
+  ipcMain.handle('plugin:status', () => {
+    if (!pluginStatus) {
+      pluginStatus = ensurePlugin(
+        omsi(),
+        pluginSourceDir(process.resourcesPath, app.isPackaged),
+        app.isPackaged ? undefined : join(process.cwd(), 'plugin')
+      )
+    }
+    return pluginStatus
+  })
 
   /**
    * Levert een rooster om uit te kiezen. Bij elke dienst wordt een passende bus
