@@ -26,12 +26,40 @@ export interface CareerEntry {
   harshAccels?: number
 }
 
+/**
+ * De dienst die de chauffeur heeft aangenomen en nog niet heeft afgerond.
+ *
+ * Hij staat in het profiel en niet alleen in het scherm: wie de app sluit of
+ * herstart, heeft zijn dienst daarna nog. Alleen afronden of annuleren haalt
+ * hem weg.
+ */
+export interface ActiveDuty {
+  /** De dienst zoals hij is toegewezen, met de bus die er toen bij gezocht is. */
+  assignment: unknown
+  /** Pad van de bus waarmee hij gereden wordt, als de chauffeur een andere koos. */
+  vehicleOverride: string
+  confirmedAt: string
+  /** Wanneer op "Dienst starten" is gedrukt; daarvoor is hij bevestigd maar niet begonnen. */
+  startedAt?: string
+  /**
+   * Stand van kilometerteller en klok bij het begin. Vastgelegd zodra de plugin
+   * na het starten verse gegevens geeft; draaide OMSI nog niet, dan iets later.
+   */
+  baseline?: {
+    odometerKm: number
+    clockMinutes: number
+    harshBrakes: number
+    harshAccels: number
+  }
+}
+
 export interface CareerState {
   /** Id van het profiel; komt overeen met de bestandsnaam. */
   id?: string
   driver: string
   startedAt: string
   entries: CareerEntry[]
+  activeDuty?: ActiveDuty
 }
 
 /** Basisuurloon van een buschauffeur in de app-economie. */
@@ -51,7 +79,11 @@ export function loadCareer(file: string): CareerState {
       id: parsed.id,
       driver: parsed.driver ?? 'Nieuwe chauffeur',
       startedAt: parsed.startedAt ?? new Date().toISOString(),
-      entries: Array.isArray(parsed.entries) ? parsed.entries : []
+      entries: Array.isArray(parsed.entries) ? parsed.entries : [],
+      activeDuty:
+        parsed.activeDuty && typeof parsed.activeDuty === 'object' && parsed.activeDuty.assignment
+          ? parsed.activeDuty
+          : undefined
     }
   } catch {
     // Een kapot logboek mag de app niet blokkeren; we beginnen dan opnieuw.
@@ -99,7 +131,8 @@ export function completeDuty(
     harshBrakes: measured?.harshBrakes,
     harshAccels: measured?.harshAccels
   }
-  return { ...state, entries: [entry, ...state.entries] }
+  // Afgerond is afgerond: de dienst laat het profiel los.
+  return { ...state, entries: [entry, ...state.entries], activeDuty: undefined }
 }
 
 export interface CareerSummary {

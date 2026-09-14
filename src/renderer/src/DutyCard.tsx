@@ -15,9 +15,13 @@ interface Props {
   vehicleOverride: string
   onVehicleChange(path: string): void
   busy: boolean
+  /** Aangenomen: de dienst staat in het profiel en ligt vast tot afronden of annuleren. */
+  confirmed: boolean
   /** Of de dienst al loopt: dan is de kilometerstand vastgelegd. */
   started: boolean
   overlayOpen: boolean
+  onConfirm(): void
+  onCancel(): void
   onBegin(): void
   onToggleOverlay(): void
   onFinish(): void
@@ -35,8 +39,11 @@ export function DutyCard({
   vehicleOverride,
   onVehicleChange,
   busy,
+  confirmed,
   started,
   overlayOpen,
+  onConfirm,
+  onCancel,
   onBegin,
   onToggleOverlay,
   onFinish,
@@ -89,6 +96,7 @@ export function DutyCard({
         vehicleGroups={vehicleGroups}
         vehicleOverride={vehicleOverride}
         onVehicleChange={onVehicleChange}
+        locked={confirmed}
       />
 
       <IbisPanel ibis={ibis} />
@@ -132,13 +140,23 @@ export function DutyCard({
       ))}
 
       <div className="actions">
-        {!started ? (
+        {/* Kiezen, bevestigen, starten, afronden: pas bevestigd ligt de dienst vast. */}
+        {!confirmed ? (
+          <button type="button" className="btn" onClick={onConfirm} disabled={busy || !vehicle}>
+            {tr('act.confirm')}
+          </button>
+        ) : !started ? (
           <button type="button" className="btn" onClick={onBegin} disabled={busy || !vehicle}>
             {tr('act.start')}
           </button>
         ) : (
           <button type="button" className="btn" onClick={onFinish} disabled={busy}>
             {tr('act.finish')}
+          </button>
+        )}
+        {confirmed && (
+          <button type="button" className="btn secondary" onClick={onCancel} disabled={busy}>
+            {tr('act.cancel')}
           </button>
         )}
         {/* Ook voor het starten bruikbaar, om de overlay alvast neer te zetten. */}
@@ -156,7 +174,13 @@ export function DutyCard({
         )}
         <span className="note">
           {tr(
-            started ? 'act.startedNote' : overlayOpen ? 'act.overlayNote' : 'act.loadNote'
+            !confirmed
+              ? 'act.confirmNote'
+              : started
+                ? 'act.startedNote'
+                : overlayOpen
+                  ? 'act.overlayNote'
+                  : 'act.loadNote'
           )}
         </span>
       </div>
@@ -366,13 +390,16 @@ function BusPanel({
   vehicle,
   vehicleGroups,
   vehicleOverride,
-  onVehicleChange
+  onVehicleChange,
+  locked
 }: {
   assignment: Assignment
   vehicle?: Vehicle
   vehicleGroups: Array<[string, Vehicle[]]>
   vehicleOverride: string
   onVehicleChange(path: string): void
+  /** Na het bevestigen hoort de bus bij de dienst en wisselt hij niet meer. */
+  locked: boolean
 }): JSX.Element {
   const tr = useT()
   const auto = assignment.vehicle
@@ -400,7 +427,12 @@ function BusPanel({
       </div>
       <div className="bus-picker">
         <label htmlFor="bus">{tr('bus.other')}</label>
-        <select id="bus" value={vehicleOverride} onChange={(event) => onVehicleChange(event.target.value)}>
+        <select
+          id="bus"
+          value={vehicleOverride}
+          disabled={locked}
+          onChange={(event) => onVehicleChange(event.target.value)}
+        >
           <option value="">
             {tr('bus.auto')}
             {auto ? ` (${auto.manufacturer} ${auto.type})` : ''}

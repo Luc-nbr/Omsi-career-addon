@@ -43,9 +43,6 @@ let fleetIndex: FleetIndex | undefined
  * Nulmeting bij het begin van een dienst, gelezen uit de live gegevens van de
  * plugin. Het verschil met de stand aan het eind is wat er werkelijk gereden is.
  */
-let pending:
-  | { odometerKm: number; clockMinutes: number; harshBrakes: number; harshAccels: number }
-  | undefined
 let omsiPath: string | undefined
 let career: CareerState | undefined
 let pluginStatus: PluginStatus | undefined
@@ -157,13 +154,58 @@ let overlayDuty: Duty | undefined
  */
 let overlayEditing = false
 
+/**
+ * Nulmeting van de lopende dienst: het verschil met de stand aan het eind is wat
+ * er werkelijk gereden is. Hij staat in het profiel, zodat hij een herstart van
+ * de app overleeft.
+ */
+function baseline(): NonNullable<CareerState['activeDuty']>['baseline'] {
+  return career?.activeDuty?.baseline
+}
+
+/** De lopende dienst: die van de overlay, of anders die uit het profiel (na een herstart). */
+function currentDuty(): Duty | undefined {
+  return overlayDuty ?? (career?.activeDuty?.assignment as Assignment | undefined)?.duty
+}
+
+/** Verse gegevens van een draaiend OMSI, of niets. */
+function freshLive(): ReturnType<typeof readLive> {
+  const live = readLive()
+  return live && live.alive && (live.ageMs ?? 0) < 15000 ? live : undefined
+}
+
+/**
+ * Leg de nulmeting vast zodra dat kan: bij het starten als OMSI al draait,
+ * anders bij de eerste verse gegevens daarna. Een oud live-bestand van een
+ * vorige keer telt niet; dat zou kilometers van toen als begin nemen.
+ */
+function captureBaseline(): void {
+  const active = career?.activeDuty
+  if (!career || !active?.startedAt || active.baseline) return
+  const live = freshLive()
+  if (!live) return
+  persist({
+    ...career,
+    activeDuty: {
+      ...active,
+      baseline: {
+        odometerKm: live.km + live.metres / 1000,
+        clockMinutes: live.time / 60,
+        harshBrakes: live.harshBrakes,
+        harshAccels: live.harshAccels
+      }
+    }
+  })
+}
+
 function pushFrame(): void {
   if (!overlayWindow || overlayWindow.isDestroyed()) return
+  captureBaseline()
   const live = readLive()
   overlayWindow.webContents.send('overlay:frame', {
     connected: Boolean(live?.alive),
-    status: live ? describeLive(live, overlayDuty, pending) : undefined,
-    duty: overlayDuty,
+    status: live ? describeLive(live, currentDuty(), baseline()) : undefined,
+    duty: currentDuty(),
     editing: overlayEditing
   })
 }
@@ -506,20 +548,37 @@ function registerHandlers(): void {
   )
 
   /**
-   * De dienst begint: overlay openen en de kilometerstand vastleggen. De app
-   * schrijft niets in de spelmap — de speler heeft zijn bus en kaart zelf al
-   * geladen, wij geven alleen de instructies.
+   * De chauffeur neemt een dienst aan. Vanaf nu staat hij in het profiel en
+   * blijft hij daar tot hij is afgerond of geannuleerd. Een tweede dienst
+   * aannemen terwijl er een loopt kan niet.
+   */
+  ipcMain.handle('duty:confirm', (_event, assignment: Assignment, vehicleOverride: string) => {
+    if (!career || career.activeDuty) return careerPayload()
+    return persist({
+      ...career,
+      activeDuty: { assignment, vehicleOverride, confirmedAt: new Date().toISOString() }
+    })
+  })
+
+  /** De aangenomen dienst teruggeven, zonder hem in het logboek te zetten. */
+  ipcMain.handle('duty:cancel', () => {
+    closeOverlay()
+    overlayDuty = undefined
+    if (!career) return careerPayload()
+    return persist({ ...career, activeDuty: undefined })
+  })
+
+  /**
+   * De dienst begint: overlay openen, het spel starten en de kilometerstand
+   * vastleggen. De app schrijft niets in de spelmap — de speler laadt zijn bus
+   * en kaart zelf, wij geven de instructies.
    */
   ipcMain.handle('duty:begin', async (_event, duty: Duty) => {
-    const live = readLive()
-    pending = live
-      ? {
-          odometerKm: live.km + live.metres / 1000,
-          clockMinutes: live.time / 60,
-          harshBrakes: live.harshBrakes,
-          harshAccels: live.harshAccels
-        }
-      : undefined
+    if (career?.activeDuty && !career.activeDuty.startedAt) {
+      persist({ ...career, activeDuty: { ...career.activeDuty, startedAt: new Date().toISOString() } })
+    }
+    captureBaseline()
+    const live = freshLive()
     openOverlay(duty)
 
     // Het spel erbij starten, tenzij het al draait.
@@ -543,14 +602,16 @@ function registerHandlers(): void {
      * Die telt gewoon mee: wie het spel sluit voordat hij afrondt, hoort zijn
      * kilometers niet kwijt te zijn.
      */
+    captureBaseline()
     const live = readLive()
+    const start = baseline()
     if (!live) return { drivenKm: 0, elapsedMinutes: 0, dutyComplete: false, finished: false }
-    if (!pending) return { drivenKm: 0, elapsedMinutes: 0, dutyComplete: false, finished: true }
+    if (!start) return { drivenKm: 0, elapsedMinutes: 0, dutyComplete: false, finished: true }
 
-    const elapsed = live.time / 60 - pending.clockMinutes
-    const status = describeLive(live, overlayDuty, pending)
+    const elapsed = live.time / 60 - start.clockMinutes
+    const status = describeLive(live, currentDuty(), start)
     return {
-      drivenKm: Math.max(0, live.km + live.metres / 1000 - pending.odometerKm),
+      drivenKm: Math.max(0, live.km + live.metres / 1000 - start.odometerKm),
       elapsedMinutes: elapsed >= 0 ? elapsed : elapsed + 1440,
       delayMinutes: status.delayMinutes,
       harshBrakes: status.harshBrakes,
@@ -626,8 +687,8 @@ function registerHandlers(): void {
   ipcMain.handle('career:complete', (_event, duty, vehicle: string, measured) => {
     // Een afgeronde dienst heeft geen overlay meer nodig.
     closeOverlay()
+    overlayDuty = undefined
     if (!career) return careerPayload()
-    pending = undefined
     return persist(completeDuty(career, duty, vehicle, measured))
   })
 

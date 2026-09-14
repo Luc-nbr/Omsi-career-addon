@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Duty, DutyLeg } from './types'
 
@@ -56,7 +56,18 @@ export interface LiveData {
   line: string
   terminus: string
   matrix: string
+  /** Hoe oud het bestand is, in milliseconden. Zet de app zelf, niet de plugin. */
+  ageMs?: number
 }
+
+/**
+ * Ouder dan dit is een live-bestand geen live meer. De plugin schrijft tien keer
+ * per seconde; wie OMSI hard afsluit laat een bestand achter dat "alive" zegt.
+ */
+const LIVE_STALE_MS = 15000
+
+/** Zoveel moet er sinds het starten gereden zijn voordat een dienst vanzelf af kan zijn. */
+const MIN_DRIVEN_KM = 1
 
 /**
  * Bitposities in `seen`, gelijk aan de volgorde in OMSICareer.opl. Alles vanaf
@@ -86,7 +97,9 @@ export function readLive(): LiveData | undefined {
   const file = livePath()
   if (!existsSync(file)) return undefined
   try {
-    return JSON.parse(readFileSync(file, 'utf8')) as LiveData
+    const data = JSON.parse(readFileSync(file, 'utf8')) as LiveData
+    data.ageMs = Date.now() - statSync(file).mtimeMs
+    return data
   } catch {
     // Het bestand wordt atomair vervangen, maar een halve lezing blijft mogelijk.
     return undefined
@@ -197,7 +210,7 @@ function buildAdvice(data: LiveData, baseline?: { harshBrakes: number; harshAcce
 export function describeLive(
   data: LiveData,
   duty?: Duty,
-  baseline?: { harshBrakes: number; harshAccels: number }
+  baseline?: { harshBrakes: number; harshAccels: number; odometerKm?: number; clockMinutes?: number }
 ): LiveStatus {
   const clockMinutes = data.time / 60
 
@@ -277,7 +290,37 @@ export function describeLive(
     harshBrakes,
     harshAccels,
     advice: buildAdvice(data, baseline),
-    // Uitgereden: de eindtijd is voorbij en de bus staat stil.
-    dutyComplete: Boolean(duty) && clockMinutes >= (duty as Duty).end && data.velocity < 2
+    dutyComplete: duty ? isDutyComplete(data, duty, baseline) : false
   }
+}
+
+/**
+ * Is de dienst werkelijk uitgereden?
+ *
+ * Alleen "eindtijd voorbij en de bus staat stil" was te weinig: stond de klok in
+ * het spel toevallig later dan de dienst, of lag er nog een live-bestand van een
+ * vorige keer, dan was een net gestarte dienst na vijf seconden al "af" en boekte
+ * de app hem weg. Nu moet er ook echt gereden zijn: OMSI draait, de gegevens zijn
+ * vers, er is sinds het starten minstens een kilometer afgelegd en minstens de
+ * helft van de dienstduur verstreken.
+ */
+function isDutyComplete(
+  data: LiveData,
+  duty: Duty,
+  baseline?: { odometerKm?: number; clockMinutes?: number }
+): boolean {
+  if (!data.alive || (data.ageMs !== undefined && data.ageMs > LIVE_STALE_MS)) return false
+  if (baseline?.odometerKm === undefined || baseline.clockMinutes === undefined) return false
+
+  const driven = data.km + data.metres / 1000 - baseline.odometerKm
+  if (driven < MIN_DRIVEN_KM) return false
+
+  const clock = data.time / 60
+  let elapsed = clock - baseline.clockMinutes
+  if (elapsed < 0) elapsed += 1440
+  if (elapsed < duty.durationMinutes / 2) return false
+
+  // Diensten na middernacht hebben eindtijden boven 24:00; de klok springt terug.
+  const clockOnDutyDay = duty.end >= 1440 && clock < duty.start - 60 ? clock + 1440 : clock
+  return clockOnDutyDay >= duty.end && data.velocity < 2
 }

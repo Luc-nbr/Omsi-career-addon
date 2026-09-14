@@ -522,6 +522,26 @@ const TEXT = {
   },
 
   // ---------- knoppen ----------
+  'act.confirm': { en: 'Accept duty', de: 'Dienst annehmen', fr: 'Accepter le service', nl: 'Dienst bevestigen' },
+  'act.cancel': { en: 'Cancel duty', de: 'Dienst abgeben', fr: 'Annuler le service', nl: 'Dienst annuleren' },
+  'act.cancelAsk': {
+    en: 'Cancel this duty? It will not be entered in your logbook.',
+    de: 'Diesen Dienst abgeben? Er wird nicht ins Fahrtenbuch eingetragen.',
+    fr: 'Annuler ce service ? Il ne sera pas inscrit dans votre carnet de bord.',
+    nl: 'Deze dienst annuleren? Hij komt dan niet in je logboek.'
+  },
+  'act.confirmNote': {
+    en: 'Check the bus and the route, then accept the duty. It stays yours until you finish it.',
+    de: 'Prüfe Bus und Strecke und nimm dann den Dienst an. Er bleibt deiner, bis du ihn beendest.',
+    fr: 'Vérifiez le bus et l’itinéraire, puis acceptez le service. Il reste le vôtre jusqu’à ce que vous le terminiez.',
+    nl: 'Controleer de bus en de route en bevestig dan de dienst. Hij blijft van jou tot je hem afrondt.'
+  },
+  'app.activeDuty': {
+    en: 'You have an accepted duty. Finish or cancel it before choosing another.',
+    de: 'Du hast einen angenommenen Dienst. Beende oder gib ihn ab, bevor du einen anderen wählst.',
+    fr: 'Vous avez un service accepté. Terminez-le ou annulez-le avant d’en choisir un autre.',
+    nl: 'Je hebt een bevestigde dienst. Rond hem af of annuleer hem voordat je een andere kiest.'
+  },
   'act.start': { en: 'Start duty', de: 'Dienst beginnen', fr: 'Commencer le service', nl: 'Dienst starten' },
   'act.finish': { en: 'Finish duty', de: 'Dienst beenden', fr: 'Terminer le service', nl: 'Dienst afronden' },
   'act.overlayShow': { en: 'Show overlay', de: 'Overlay zeigen', fr: 'Afficher la surcouche', nl: 'Overlay tonen' },

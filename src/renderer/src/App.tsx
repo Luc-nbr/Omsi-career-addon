@@ -113,6 +113,24 @@ export function App(): JSX.Element {
   const assignment = selected !== undefined ? duties[selected] : undefined
   const duty = assignment?.duty
 
+  /*
+   * De aangenomen dienst staat in het profiel. Na het laden, na een herstart of
+   * na het wisselen van profiel wordt hij hier teruggezet, en zolang hij er is
+   * valt er niets anders te kiezen.
+   */
+  const active = career?.state?.activeDuty
+  const confirmed = Boolean(active)
+  const activeKey = active ? `${career?.state?.id}|${active.confirmedAt}` : ''
+  useEffect(() => {
+    if (!active) return
+    const held = active.assignment as Assignment
+    setMapFolder(held.duty.mapFolder)
+    setDuties([held])
+    setSelected(0)
+    setVehicleOverride(active.vehicleOverride)
+    setStarted(Boolean(active.startedAt))
+  }, [activeKey])
+
   const vehicle = useMemo(() => {
     if (vehicleOverride) return vehicles.find((v) => v.relativePath === vehicleOverride)
     return assignment?.vehicle ?? undefined
@@ -145,6 +163,7 @@ export function App(): JSX.Element {
   }, [duty, vehicle, selectedMap])
 
   const search = useCallback(async () => {
+    if (confirmed) return
     setBusy(true)
     setError(undefined)
     setNote(undefined)
@@ -168,10 +187,25 @@ export function App(): JSX.Element {
     } finally {
       setBusy(false)
     }
-  }, [mapFolder, lengthIndex, timeWindow, language])
+  }, [mapFolder, lengthIndex, timeWindow, language, confirmed])
+
+  const confirmDuty = useCallback(async () => {
+    if (!assignment || confirmed) return
+    setCareer(await window.career.confirmDuty(assignment, vehicleOverride))
+  }, [assignment, confirmed, vehicleOverride])
+
+  const cancelDuty = useCallback(async () => {
+    if (!confirmed || !window.confirm(t(language, 'act.cancelAsk'))) return
+    setCareer(await window.career.cancelDuty())
+    setDuties([])
+    setSelected(undefined)
+    setStarted(false)
+    setStarting(false)
+    setNote(undefined)
+  }, [confirmed, language])
 
   const begin = useCallback(async () => {
-    if (!duty) return
+    if (!duty || !confirmed) return
     const { connected, launched, running } = await window.career.beginDuty(duty)
     setStarted(true)
     setOverlayOpen(true)
@@ -184,7 +218,7 @@ export function App(): JSX.Element {
           ? 'OMSI draait al. De overlay vult zich zodra de plugin gegevens doorgeeft.'
           : 'OMSI kon niet gestart worden. Start het spel zelf; de overlay staat klaar.'
     )
-  }, [duty])
+  }, [duty, confirmed])
 
   const createProfile = useCallback(async (name: string) => {
     setCareer(await window.career.createProfile(name))
@@ -302,7 +336,12 @@ export function App(): JSX.Element {
           <div className="field-grid">
             <div>
               <label htmlFor="map">{t(language, 'app.map')}</label>
-              <select id="map" value={mapFolder} onChange={(event) => setMapFolder(event.target.value)}>
+              <select
+                id="map"
+                value={mapFolder}
+                disabled={confirmed}
+                onChange={(event) => setMapFolder(event.target.value)}
+              >
                 {maps.map((item) => (
                   <option key={item.folder} value={item.folder}>
                     {item.name} — {t(language, 'app.mapTours', { count: item.tours })}
@@ -348,11 +387,16 @@ export function App(): JSX.Element {
           </div>
 
           <div className="actions">
-            <button type="button" className="btn" onClick={search} disabled={busy}>
+            <button type="button" className="btn" onClick={search} disabled={busy || confirmed}>
               {t(language, duties.length > 0 ? 'app.searchAgain' : 'app.search')}
             </button>
             <PluginNote status={plugin} language={language} />
           </div>
+          {confirmed && (
+            <p className="note" style={{ marginTop: 12 }}>
+              {t(language, 'app.activeDuty')}
+            </p>
+          )}
 
           {error && ready && (
             <p className="note warn" style={{ marginTop: 12 }}>
@@ -366,7 +410,7 @@ export function App(): JSX.Element {
           )}
         </section>
 
-        {duties.length > 0 && (
+        {duties.length > 0 && !confirmed && (
           <section className="card">
             <h2 className="section-title">{t(language, 'app.roster', { count: duties.length })}</h2>
             <DutyList duties={duties} selected={selected} onSelect={setSelected} />
@@ -383,8 +427,11 @@ export function App(): JSX.Element {
                 vehicleOverride={vehicleOverride}
                 onVehicleChange={setVehicleOverride}
                 busy={busy}
+                confirmed={confirmed}
                 started={started}
                 overlayOpen={overlayOpen}
+                onConfirm={confirmDuty}
+                onCancel={cancelDuty}
                 onBegin={begin}
                 onToggleOverlay={toggleOverlay}
                 onFinish={finish}

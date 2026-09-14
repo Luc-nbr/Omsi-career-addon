@@ -120,6 +120,13 @@ export interface CareerApi {
   onOverlayState(handler: (open: boolean) => void): () => void
   /** Voor de overlay zelf: sluit hem. */
   closeOverlay(): Promise<void>
+  /**
+   * Neemt een dienst aan. Hij staat daarna in het profiel en blijft vast tot hij
+   * is afgerond of geannuleerd; zolang kan er geen andere worden aangenomen.
+   */
+  confirmDuty(assignment: Assignment, vehicleOverride: string): Promise<CareerPayload>
+  /** Geeft de aangenomen dienst terug zonder hem te boeken. */
+  cancelDuty(): Promise<CareerPayload>
   /** Start de dienst: overlay openen en de kilometerstand vastleggen. */
   beginDuty(duty: Duty): Promise<{ connected: boolean; launched: boolean; running: boolean }>
   /** Geeft de plugin gegevens door? Zo ja, dan draait OMSI en is de kaart geladen. */
