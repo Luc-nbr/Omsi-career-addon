@@ -1,0 +1,35 @@
+{
+  "name": "omsi-career",
+  "version": "0.1.0",
+  "description": "Career mode voor OMSI 2: diensten toewijzen, dienstkaart tonen en het spel voorgeconfigureerd starten.",
+  "main": "./out/main/index.js",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "probe": "tsx scripts/probe.ts"
+  },
+  "dependencies": {
+    "iconv-lite": "^0.6.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.2.1",
+    "electron-vite": "^2.3.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11"
+  },
+  "allowScripts": {
+    "electron@33.4.11": true,
+    "esbuild@0.21.5": true,
+    "esbuild@0.28.2": true
+  }
+}
