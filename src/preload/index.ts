@@ -32,8 +32,8 @@ const api: CareerApi = {
   confirmDuty: (assignment, vehicleOverride) => ipcRenderer.invoke('duty:confirm', assignment, vehicleOverride),
   cancelDuty: () => ipcRenderer.invoke('duty:cancel'),
   beginDuty: (duty, ibis) => ipcRenderer.invoke('duty:begin', duty, ibis),
-  prepareDuty: (duty, vehiclePath, date, lineNumber, terminus) =>
-    ipcRenderer.invoke('duty:prepare', duty, vehiclePath, date, lineNumber, terminus),
+  prepareDuty: (duty, vehiclePath, date, lineNumber, terminus, yard) =>
+    ipcRenderer.invoke('duty:prepare', duty, vehiclePath, date, lineNumber, terminus, yard),
   liveConnected: () => ipcRenderer.invoke('omsi:live'),
   printers: () => ipcRenderer.invoke('print:printers'),
   printReceipt: (payload, deviceName) => ipcRenderer.invoke('print:receipt', payload, deviceName),

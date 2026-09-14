@@ -168,7 +168,8 @@ export interface CareerApi {
     vehiclePath: string | undefined,
     date: DutyDate | undefined,
     lineNumber: string,
-    terminus: string
+    terminus: string,
+    yard?: string
   ): Promise<PreparedSituation>
   /** Geeft de plugin gegevens door? Zo ja, dan draait OMSI en is de kaart geladen. */
   liveConnected(): Promise<boolean>

@@ -563,7 +563,8 @@ function registerHandlers(): void {
       vehiclePath: string | undefined,
       date: DutyDate | undefined,
       lineNumber: string,
-      terminus: string
+      terminus: string,
+      yard?: string
     ) => {
       const when = date ?? dutyDate(duty.mapFolder, duty.days | duty.period)
       if (!when) throw new Error('Geen datum gevonden waarop deze omloop rijdt.')
@@ -579,7 +580,7 @@ function registerHandlers(): void {
         dayOfYear: when.dayOfYear,
         // Aanmelden: tien minuten voor vertrek, tijd genoeg voor de IBIS.
         minutes: duty.signOn,
-        vehicle: vehiclePath ? { relativePath: vehiclePath, lineNumber, terminus } : undefined,
+        vehicle: vehiclePath ? { relativePath: vehiclePath, lineNumber, terminus, yard } : undefined,
         spawn
       })
       return { ...result, date: when }

@@ -184,11 +184,17 @@ halte zou stoppen, met de neus in de rijrichting, en op de hoogte uit het
 te lezen: op Berlin-Spandau en Hamburg 1 meter van de halte, nul meter van de
 rijstrook, koers precies gelijk.
 
-Er is wel een sjabloon voor nodig. Een voertuigblok bevat de stand van honderden
-scriptvariabelen van dat busmodel, en dat is niet te verzinnen; OMSI bewaart na
-elke sessie `laststn.osn` per kaart, dus wie een kaart één keer heeft gereden
-heeft er vanaf dan een. Zonder sjabloon met voertuig worden kaart, datum en tijd
-wel gezet en kies je de bus zelf.
+Er is geen sjabloon voor nodig; het bestand wordt zelf opgebouwd. Een situatie
+heeft veertien blokken en verder niets, en de twee lijsten met de stand van de
+scriptvariabelen van de bus zijn geteld -- eerst het aantal paren, dan de paren
+-- en mogen dus leeg zijn. Dat is voor een dienst die begint juist wat je wilt:
+de bus start met zijn eigen beginwaarden, motor uit en deuren dicht, in plaats
+van met de stand van een willekeurige vorige rit in een andere bus. Alleen de
+lijn, het lijnnummer op de matrix en de bestemming op het display zetten we.
+
+Daardoor werkt het ook op een kaart die je nooit eerder hebt gespeeld. Alleen
+kaarten zonder tegels -- een addon die half is uitgepakt -- vallen af; daar is
+geen halte om de bus bij neer te zetten.
 
 Verder komt er niets in de spelmap: alleen de plugin voor de overlay, twee
 bestanden in `plugins/` die je zo weer weghaalt.

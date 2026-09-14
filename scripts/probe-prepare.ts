@@ -35,11 +35,6 @@ for (const folder of readdirSync(maps)) {
   if (only.length > 0 && !only.includes(folder)) continue
   const loaded = loadMap(maps, folder)
   if (!loaded) continue
-  const template = findTemplate(omsi, folder)
-  if (!template) {
-    console.log(`${folder.padEnd(22)} geen sjabloon (kaart nog nooit gespeeld)`)
-    continue
-  }
 
   const duties = generateDuties(loaded, buildNetwork(loaded), { targetMinutes: 60 }, 1)
   const duty = duties[0]
@@ -61,7 +56,13 @@ for (const folder of readdirSync(maps)) {
   }
 
   const spawn = spawnAtStop(loaded.path, grid, network, stop)
-  const era = readSituationTime(template) ?? { year: 2015, dayOfYear: 180 }
+  // Het tijdvak komt uit een bestaande situatie als die er is, anders uit de naam.
+  const template = findTemplate(omsi, folder)
+  const fromName = folder.match(/(19\d{2}|20[0-2]\d)/)
+  const era = (template ? readSituationTime(template) : undefined) ?? {
+    year: fromName ? Number.parseInt(fromName[1], 10) : 2015,
+    dayOfYear: 180
+  }
   const when = dateForMask(readCalendar(loaded.path), era.year, era.dayOfYear, duty.days | duty.period)
 
   // Naar een eigen map schrijven; de spelmap blijft onaangeroerd.

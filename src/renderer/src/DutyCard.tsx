@@ -71,7 +71,8 @@ export function DutyCard({
         vehicle?.relativePath,
         assignment.date,
         ibis?.line || duty.legs[0]?.lineNumber || '',
-        duty.legs[0]?.terminus ?? ''
+        duty.legs[0]?.terminus ?? '',
+        ibis?.yard
       )
       setPrepared(tr(result.spawnPlaced ? 'act.prepared' : 'act.preparedNoSpawn'))
     } catch (cause) {

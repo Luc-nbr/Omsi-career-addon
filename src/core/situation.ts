@@ -36,6 +36,8 @@ export interface SituationRequest {
     relativePath: string
     lineNumber: string
     terminus: string
+    /** Wagenpark waar de bestemmingscodes uit komen; staat achter in het blok. */
+    yard?: string
   }
   /** Waar het bestand heen gaat; standaard de Situations-map van OMSI. */
   into?: string
@@ -126,47 +128,128 @@ export function readSituationTime(file: string): { year: number; dayOfYear: numb
 }
 
 
-/** Vervangt de vaste waarderegels direct na een tag. */
-function setBlock(lines: string[], tag: string, values: string[]): boolean {
-  const index = indexOfTag(lines, tag)
-  if (index < 0) return false
-  values.forEach((value, offset) => {
-    lines[index + 1 + offset] = value
-  })
-  return true
-}
 
-/** Naam en omschrijving staan vooraan en lopen door tot `[end]`. */
-function setHeading(lines: string[], name: string, description: string): void {
-  const nameIndex = indexOfTag(lines, '[name]')
-  const endIndex = indexOfTag(lines, '[end]')
-  if (nameIndex < 0 || endIndex < 0 || endIndex < nameIndex) return
-  lines.splice(nameIndex + 1, endIndex - nameIndex - 1, name, '[description]', description)
-}
 
-/**
- * Zet een stringvariabele van het eigen voertuig. `[stringvars]` bevat eerst het
- * aantal, daarna afwisselend naam en waarde. `SetLineTo` en `Matrix_Nr` bepalen
- * de lijn, `IBIS_cabindisplay` de bestemming op het display.
- */
-function setStringVar(lines: string[], from: number, name: string, value: string): void {
-  const start = lines.indexOf('[stringvars]', from)
-  if (start < 0) return
-  const count = Number.parseInt(str(lines[start + 1]), 10)
-  if (!Number.isFinite(count)) return
-  for (let i = 0; i < count; i++) {
-    const nameIndex = start + 2 + i * 2
-    if (str(lines[nameIndex]) === name) {
-      lines[nameIndex + 1] = value
-      return
-    }
-  }
-}
 
 /** Een draaiing om de staande as, zoals OMSI hem noteert: x, y, z, w. */
 function yawQuaternion(headingDegrees: number): [string, string, string, string] {
   const half = ((headingDegrees * Math.PI) / 180) / 2
   return ['0.000000', Math.sin(half).toFixed(6), '0.000000', Math.cos(half).toFixed(6)]
+}
+
+/**
+ * Bouwt het situatiebestand zelf op.
+ *
+ * Een situatie heeft veertien blokken en verder niets: naam, kaart, tijd,
+ * camera, het eigen voertuig en twee lijsten met de stand van zijn
+ * scriptvariabelen. Die lijsten zijn geteld -- eerst het aantal paren, dan de
+ * paren -- en mogen dus ook leeg zijn. Dat is precies wat je wilt voor een
+ * dienst die begint: de bus start met wat zijn eigen scripts als beginwaarde
+ * hebben, motor uit en deuren dicht, in plaats van met de stand van een
+ * willekeurige vorige rit in een andere bus.
+ *
+ * Daardoor is er geen sjabloon meer nodig en werkt het ook op een kaart die je
+ * nooit eerder hebt gespeeld.
+ */
+function buildSituation(request: SituationRequest): string[] {
+  const dayOverflow = Math.floor(request.minutes / 1440)
+  const minuteOfDay = ((request.minutes % 1440) + 1440) % 1440
+  const spawn = request.spawn
+  const vehicle = request.vehicle
+
+  const lines: string[] = [
+    '[name]',
+    request.name,
+    '[description]',
+    request.description,
+    '[end]',
+    '',
+    '[map]',
+    `maps\\${request.mapFolder}\\global.cfg`,
+    '',
+    '[time]',
+    String(request.year),
+    String(request.dayOfYear + dayOverflow),
+    String(Math.floor(minuteOfDay / 60)),
+    String(minuteOfDay % 60),
+    '0',
+    ''
+  ]
+
+  if (spawn) {
+    lines.push(
+      '[centerkachel]',
+      String(spawn.tx),
+      String(spawn.ty),
+      '',
+      // De kaartcamera kijkt waar de bus staat; de drie hoeken erna zijn een
+      // schuine blik van bovenaf, zoals OMSI er zelf een wegschrijft.
+      '[mapcam]',
+      spawn.x.toFixed(6),
+      (spawn.height + 3).toFixed(6),
+      spawn.z.toFixed(6),
+      '0',
+      '-25',
+      '30',
+      ''
+    )
+  }
+
+  // Waar de chauffeur zit ten opzichte van de bus; OMSI schrijft hier dezelfde
+  // waarden weg, ongeacht het voertuig.
+  lines.push('[egopos]', '10', '0', '10', '0', '0', '')
+
+  if (vehicle && spawn) {
+    const q = yawQuaternion(spawn.heading)
+    lines.push(
+      '----------------------------------------------',
+      '',
+      'Fahrzeug Nr. 0:',
+      '',
+      '[vehicle]',
+      vehicle.relativePath,
+      spawn.x.toFixed(3),
+      spawn.height.toFixed(3),
+      spawn.z.toFixed(3),
+      q[0],
+      q[1],
+      q[2],
+      q[3],
+      // Stilstaand beginnen.
+      '0.000',
+      '0.000',
+      '0.000',
+      String(spawn.tx),
+      String(spawn.ty),
+      // Kilometerstand; die telt in de app niet mee, we meten het verschil.
+      '0.000',
+      vehicle.yard ?? '',
+      '',
+      '[ismyVehicle]',
+      '',
+      // Leeg: de bus begint met zijn eigen beginwaarden.
+      '[vars]',
+      '0',
+      '',
+      '[stringvars]',
+      '3',
+      'SetLineTo',
+      ` ${vehicle.lineNumber} `,
+      'Matrix_Nr',
+      ` ${vehicle.lineNumber} `,
+      'IBIS_cabindisplay',
+      vehicle.terminus,
+      '',
+      '----------------------------------------------',
+      '',
+      '[myvehicle]',
+      '0',
+      ''
+    )
+  }
+
+  lines.push('[view]', '3', '')
+  return lines
 }
 
 /**
@@ -178,69 +261,30 @@ function yawQuaternion(headingDegrees: number): [string, string, string, string]
  * kaart één keer heeft gereden heeft er vanaf dan een.
  */
 export function writeSituation(omsiPath: string, request: SituationRequest): SituationResult {
-  const template = findTemplate(omsiPath, request.mapFolder)
-  if (!template) {
-    throw new Error(
-      `Geen situatiebestand gevonden voor de kaart "${request.mapFolder}". ` +
-        'Start die kaart \u00e9\u00e9n keer in OMSI; daarna kan de dienst automatisch klaargezet worden.'
-    )
-  }
-
-  const lines = readOmsiLines(template)
-  const vehicleAt = indexOfTag(lines, '[vehicle]')
-  const placeVehicle = Boolean(request.vehicle) && vehicleAt >= 0 && indexOfTag(lines, '[ismyVehicle]') >= 0
-
-  const dayOverflow = Math.floor(request.minutes / 1440)
-  const minuteOfDay = ((request.minutes % 1440) + 1440) % 1440
-
-  setHeading(lines, request.name, request.description)
-  setBlock(lines, '[map]', [`maps\\${request.mapFolder}\\global.cfg`])
-  setBlock(lines, '[time]', [
-    String(request.year),
-    String(request.dayOfYear + dayOverflow),
-    String(Math.floor(minuteOfDay / 60)),
-    String(minuteOfDay % 60),
-    '0'
-  ])
-
-  let spawnPlaced = false
-  if (placeVehicle && request.vehicle) {
-    lines[vehicleAt + 1] = request.vehicle.relativePath
-    if (request.spawn) {
-      const { tx, ty, x, z, height, heading } = request.spawn
-      lines[vehicleAt + 2] = x.toFixed(3)
-      lines[vehicleAt + 3] = height.toFixed(3)
-      lines[vehicleAt + 4] = z.toFixed(3)
-      const q = yawQuaternion(heading)
-      for (let i = 0; i < 4; i++) lines[vehicleAt + 5 + i] = q[i]
-      // Stilstaand beginnen; de drie getallen erna zijn de snelheid.
-      for (let i = 0; i < 3; i++) lines[vehicleAt + 9 + i] = '0.000'
-      lines[vehicleAt + 12] = String(tx)
-      lines[vehicleAt + 13] = String(ty)
-      // De camera kijkt waar de bus staat, anders begin je elders op de kaart.
-      setBlock(lines, '[centerkachel]', [String(tx), String(ty)])
-      setBlock(lines, '[mapcam]', [x.toFixed(6), (height + 2).toFixed(6), z.toFixed(6)])
-      spawnPlaced = true
-    }
-    setStringVar(lines, vehicleAt, 'SetLineTo', ` ${request.vehicle.lineNumber} `)
-    setStringVar(lines, vehicleAt, 'Matrix_Nr', ` ${request.vehicle.lineNumber} `)
-    setStringVar(lines, vehicleAt, 'IBIS_cabindisplay', request.vehicle.terminus)
-  }
-
+  const lines = buildSituation(request)
   const folder = request.into ?? join(omsiPath, 'Situations')
   mkdirSync(folder, { recursive: true })
   const file = join(folder, 'OMSI Career.osn')
   writeFileSync(file, Buffer.concat([BOM, Buffer.from(lines.join('\r\n'), 'utf16le')]))
 
-  // Het weerbestand hoort bij de situatie; zonder valt OMSI terug op standaard.
-  const templateWeather = `${template}.owt`
-  if (existsSync(templateWeather)) {
+  /*
+   * Het weer hoort bij de situatie. Zonder bestand valt OMSI terug op zijn
+   * standaard; een bestaande situatie van deze kaart levert iets dat bij de
+   * streek past, dus die nemen we over als hij er is.
+   */
+  const template = findTemplate(omsiPath, request.mapFolder)
+  if (template && existsSync(`${template}.owt`)) {
     try {
-      copyFileSync(templateWeather, `${file}.owt`)
+      copyFileSync(`${template}.owt`, `${file}.owt`)
     } catch {
       // Weer is bijzaak; de dienst werkt ook zonder.
     }
   }
 
-  return { file, vehiclePlaced: placeVehicle, spawnPlaced, template: basename(template) }
+  return {
+    file,
+    vehiclePlaced: Boolean(request.vehicle && request.spawn),
+    spawnPlaced: Boolean(request.spawn),
+    template: template ? basename(template) : undefined
+  }
 }
