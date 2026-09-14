@@ -2,6 +2,7 @@ import type { CareerState, CareerSummary } from '../core/career'
 import type { ProfileSummary } from '../core/profiles'
 import type { MapGeometry } from '../core/geo'
 import type { IbisPlan } from '../core/ibis'
+import type { TripRoute } from '../core/routing'
 import type { PluginStatus } from '../core/pluginInstall'
 import type { Duty } from '../core/types'
 import type { Vehicle } from '../core/vehicles'
@@ -33,8 +34,25 @@ export interface DutyRequest {
 }
 
 /** Een toegewezen dienst met de bus die erbij gezocht is. */
+/** De dag waarop deze omloop volgens de dienstregeling rijdt. */
+export interface DutyDate {
+  year: number
+  /** Dag van het jaar, 1-366; zo noteert OMSI hem in een situatiebestand. */
+  dayOfYear: number
+  /** ISO-datum, voor het tonen: jjjj-mm-dd. */
+  iso: string
+  /** Schooldag, schoolvakantie of feestdag -- dat bepaalt welke omloop rijdt. */
+  kind: 'school' | 'break' | 'holiday'
+}
+
 export interface Assignment {
   duty: Duty
+  /**
+   * Op welke datum je deze dienst in OMSI moet zetten. Het spel toont in het
+   * dienstregelingsmenu alleen de omlopen die op de ingestelde dag rijden, en
+   * dat hangt niet alleen van de weekdag af maar ook van schoolvakanties.
+   */
+  date?: DutyDate
   /** Null als geen enkele geinstalleerde bus bij deze dienst past. */
   vehicle: Vehicle | null
   yard?: string
@@ -98,7 +116,10 @@ export interface CareerApi {
    * De route van elke rit als lijn over de kaart, afwisselend x en y in meters.
    * Een lege lijn als de haltes van die rit niet op de kaart staan.
    */
-  routes(mapFolder: string, legs: Array<{ tripFile: string; stopIds: string[] }>): Promise<number[][]>
+  routes(
+    mapFolder: string,
+    legs: Array<{ tripFile: string; stopIds: string[] }>
+  ): Promise<TripRoute[]>
   settings(): Promise<Settings>
   saveSettings(settings: Settings): Promise<Settings>
   /** Zet de overlay in of uit de bewerkstand; geeft terug of hij nu aan staat. */

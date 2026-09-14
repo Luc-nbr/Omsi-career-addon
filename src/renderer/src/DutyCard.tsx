@@ -2,8 +2,8 @@ import { useCallback, useState, type JSX } from 'react'
 import type { IbisPlan } from '../../core/ibis'
 import type { Duty, DutyLeg } from '../../core/types'
 import type { Vehicle } from '../../core/vehicles'
-import type { Assignment, PrinterInfo } from '../../shared/api'
-import { describeDays, formatDuration, formatTime } from '../../shared/format'
+import type { Assignment, DutyDate, PrinterInfo } from '../../shared/api'
+import { describeDays, formatDate, formatDuration, formatTime } from '../../shared/format'
 import { useLanguage, useT } from './language'
 import { DutyMap } from './DutyMap'
 
@@ -86,7 +86,7 @@ export function DutyCard({
         </div>
       </header>
 
-      <SelectPanel duty={duty} />
+      <SelectPanel duty={duty} date={assignment.date} />
 
       <DutyMap duty={duty} ibis={ibis} />
 
@@ -288,8 +288,9 @@ function PrintPanel({
  * KI-OVF. Het lijnnummer uit de rit (8343) staat niet in dat lijstje, dus daar
  * zoek je je blind op.
  */
-function SelectPanel({ duty }: { duty: Duty }): JSX.Element {
+function SelectPanel({ duty, date }: { duty: Duty; date?: DutyDate }): JSX.Element {
   const tr = useT()
+  const language = useLanguage()
   const first = duty.legs[0]
   return (
     <div className="ibis select-panel">
@@ -321,6 +322,17 @@ function SelectPanel({ duty }: { duty: Duty }): JSX.Element {
           stop: first.stops[0] ?? tr('duty.unknown')
         })}
       </p>
+      {date && (
+        <p className="note">
+          <b>
+            {tr('select.date', {
+              date: formatDate(date.iso, language),
+              kind: tr(`day.${date.kind}` as const)
+            })}
+          </b>{' '}
+          {tr('select.dateWhy')}
+        </p>
+      )}
     </div>
   )
 }

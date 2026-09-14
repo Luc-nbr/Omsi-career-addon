@@ -9,6 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent
 } from 'react'
 import type { MapGeometry, StopPoint } from '../../core/geo'
+import type { TripRoute } from '../../core/routing'
 import type { Duty } from '../../core/types'
 import { useT } from './language'
 import { RoadLayer } from './roadLayer'
@@ -201,7 +202,7 @@ export function RouteMap({
    * geen object: de overlay krijgt elke tel een nieuwe kopie van dezelfde dienst.
    */
   const routeKey = `${duty.mapFolder}|${duty.legs.map((leg) => `${leg.tripFile}:${leg.stopIds.join(',')}`).join(';')}`
-  const [routes, setRoutes] = useState<number[][]>()
+  const [routes, setRoutes] = useState<TripRoute[]>()
   useEffect(() => {
     let current = true
     setRoutes(undefined)
@@ -305,7 +306,7 @@ export function RouteMap({
   const legTracks = useMemo(
     () =>
       duty.legs.map((leg, legIndex) => {
-        const route = routes?.[legIndex]
+        const route = routes?.[legIndex]?.points
         if (!route || route.length < 4) return undefined
         return trackAlong(
           route,
@@ -616,7 +617,7 @@ export function RouteMap({
   const legLines = useMemo(
     () =>
       legs.map((leg, legIndex) => {
-        const route = routes?.[legIndex]
+        const route = routes?.[legIndex]?.points
         const points: Array<[number, number]> = []
         if (routeMode === 'none' || (routeMode === 'active' && legIndex !== activeLeg)) return points
         if (route && route.length >= 4) {
@@ -628,6 +629,38 @@ export function RouteMap({
       }),
     [legs, routes, toScreen, routeMode, activeLeg]
   )
+
+  /**
+   * De stukken waar de planner geen weg vond. Daar staat een rechte lijn van
+   * halte naar halte, en die snijdt dwars door het landschap; als gewone route
+   * getekend lijkt het alsof de bus daar langs moet. Gestreept en gedempt leest
+   * het als wat het is: onbekend.
+   */
+  const pieces = useMemo(() => {
+    const solid: Array<{ key: string; line: Array<[number, number]> }> = []
+    const guessed: Array<{ key: string; line: Array<[number, number]> }> = []
+    legs.forEach((_leg, legIndex) => {
+      const line = legLines[legIndex]
+      if (line.length < 2) return
+      const flags = routes?.[legIndex]?.guessed
+      if (!flags || flags.length === 0) {
+        solid.push({ key: `${legIndex}-heel`, line })
+        return
+      }
+      // In stukken hakken op de overgang tussen gevonden en geraden.
+      let from = 0
+      for (let i = 1; i <= line.length - 1; i++) {
+        const done = i === line.length - 1
+        if (!done && Boolean(flags[i]) === Boolean(flags[from])) continue
+        const piece = line.slice(from, done ? line.length : i + 1)
+        if (piece.length > 1) {
+          ;(flags[from] ? guessed : solid).push({ key: `${legIndex}-${from}`, line: piece })
+        }
+        from = i
+      }
+    })
+    return { solid, guessed }
+  }, [legs, legLines, routes])
 
   /**
    * De route van de huidige rit gesneden op de plek van de bus: wat gereden is
@@ -726,14 +759,24 @@ export function RouteMap({
                 </g>
               )
             }
-            const points = asPoints(legLines[index])
             return (
               <g key={index} className={other ? 'route-other' : done ? 'route-done' : undefined}>
-                <polyline className="route-casing" points={points} />
-                <polyline className="route-line" points={points} />
+                {pieces.solid
+                  .filter((piece) => piece.key.startsWith(`${index}-`))
+                  .map((piece) => (
+                    <g key={piece.key}>
+                      <polyline className="route-casing" points={asPoints(piece.line)} />
+                      <polyline className="route-line" points={asPoints(piece.line)} />
+                    </g>
+                  ))}
               </g>
             )
           })}
+
+        {/* De stukken zonder gevonden weg: gestreept, zodat ze niet als route lezen. */}
+        {pieces.guessed.map((piece) => (
+          <polyline key={`gok-${piece.key}`} className="route-guess" points={asPoints(piece.line)} />
+        ))}
 
         {arrows.map((arrow) => (
           <path

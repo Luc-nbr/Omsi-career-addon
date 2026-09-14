@@ -109,4 +109,10 @@ export interface Duty {
   lineNumbers: string[]
   /** Dagen waarop deze dienst rijdt; alle ritten delen minstens een dag. */
   days: number
+  /**
+   * In welke periode de dienst geldt: feestdag, schooldag, schoolvakantie. Nul
+   * als de kaart geen onderscheid maakt. Samen met `days` bepaalt dit op welke
+   * datum de omloop in het dienstregelingsmenu van OMSI staat.
+   */
+  period: number
 }

@@ -13,13 +13,20 @@ const TRACK_STOP_M = 15
  * er gaten in; en een halte die er ver naast ligt, hoort bij een andere weg.
  * Anders plant de routeplanner van halte naar halte.
  */
+/** Een route met per lijnstuk of hij echt gevonden is of geraden. */
+export interface TripRoute {
+  points: number[]
+  /** Per lijnstuk (punt i naar i+1): waar is dit een rechte gok? */
+  guessed: boolean[]
+}
+
 export function routeForTrip(
   mapPath: string,
   omsiPath: string,
   tripFile: string,
   stops: StopPoint[],
   network: () => LaneNetwork
-): number[] {
+): TripRoute {
   const track = readTrackLine(mapPath, omsiPath, tripFile)
   if (track && track.missing === 0 && track.gaps.every((gap) => gap <= 1)) {
     const p = track.points
@@ -29,9 +36,11 @@ export function routeForTrip(
       }
       return false
     })
-    if (onTrack) return p
+    if (onTrack) return { points: p, guessed: [] }
   }
-  return network().routeStops(stops)
+  const guessed: boolean[] = []
+  const points = network().routeStops(stops, guessed)
+  return { points, guessed }
 }
 
 function distanceToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
@@ -199,13 +208,24 @@ export class LaneNetwork {
    * De route langs een reeks haltes, als één lijn. Waar geen weg te vinden is,
    * loopt de lijn recht naar de volgende halte; dan is er op zijn minst iets.
    */
-  routeStops(stops: StopPoint[]): number[] {
+  routeStops(stops: StopPoint[], guessed?: boolean[]): number[] {
     const points: number[] = []
     for (let i = 1; i < stops.length; i++) {
       const a = stops[i - 1]
       const b = stops[i]
       if (Math.hypot(a.x - b.x, a.y - b.y) < 1) continue
-      append(points, this.route(a, b) ?? [a.x, a.y, b.x, b.y])
+      const found = this.route(a, b)
+      const before = Math.max(0, points.length / 2 - 1)
+      append(points, found ?? [a.x, a.y, b.x, b.y])
+      if (guessed) {
+        /*
+         * Geen weg gevonden: dan staat er een rechte lijn van halte naar halte.
+         * Die markeren we, want op de kaart is zo'n lijn niet van een echte
+         * route te onderscheiden en snijdt hij dwars door het landschap.
+         */
+        const after = Math.max(0, points.length / 2 - 1)
+        for (let k = before; k < after; k++) guessed[k] = !found
+      }
     }
     return points
   }

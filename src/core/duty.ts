@@ -49,6 +49,11 @@ function walk(
   let last = start
   // Doorsnede van de dagen waarop alle gekozen ritten rijden.
   let days = start.days
+  /*
+   * En van de perioden. Een schoolomloop en een vakantieomloop staan nooit
+   * samen in het menu, dus ze horen ook niet in dezelfde dienst.
+   */
+  let period = start.period
 
   for (;;) {
     const enough = legs.length >= MIN_LEGS && last.arrival - start.departure >= target - tolerance
@@ -56,12 +61,15 @@ function walk(
 
     // Alleen vervolgen die de dienst niet over de bovengrens heen tillen.
     const options = continuationsOf(network, last, days).filter(
-      (next) => next.arrival - start.departure <= target + tolerance
+      (next) =>
+        next.arrival - start.departure <= target + tolerance &&
+        (period === 0 || next.period === 0 || (period & next.period) !== 0)
     )
     if (options.length === 0) break
 
     last = pick(options, random)
     days &= last.days
+    period = period === 0 || last.period === 0 ? period | last.period : period & last.period
     legs.push(last)
   }
   return legs
@@ -99,7 +107,11 @@ function toDuty(map: OmsiMap, legs: TripRun[]): Duty {
     durationMinutes: end.arrival - start.departure,
     totalStops: dutyLegs.reduce((sum, leg) => sum + leg.stops.length, 0),
     lineNumbers: [...new Set(dutyLegs.map((leg) => leg.lineNumber).filter(Boolean))],
-    days: legs.reduce((mask, run) => mask & run.days, legs[0].days)
+    days: legs.reduce((mask, run) => mask & run.days, legs[0].days),
+    period: legs.reduce(
+      (mask, run) => (mask === 0 || run.period === 0 ? mask | run.period : mask & run.period),
+      legs[0].period
+    )
   }
 }
 

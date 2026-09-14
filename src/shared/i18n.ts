@@ -346,6 +346,37 @@ const TEXT = {
     nl: 'Menu Set Time Table: kies Line {line}, Tour {tour}, de rit die om {time} vertrekt naar {terminus}, en als First stop {stop} — daar zet OMSI je neer.'
   },
 
+  'select.date': {
+    en: 'Set the date to {date} — {kind}.',
+    de: 'Stelle das Datum auf {date} — {kind}.',
+    fr: 'Réglez la date sur {date} — {kind}.',
+    nl: 'Zet de datum op {date} — {kind}.'
+  },
+  'select.dateWhy': {
+    en: 'OMSI only lists the tours that run on the day you set.',
+    de: 'OMSI zeigt nur die Umläufe, die am eingestellten Tag fahren.',
+    fr: 'OMSI n’affiche que les roulements qui circulent à la date réglée.',
+    nl: 'OMSI toont alleen de omlopen die op de ingestelde dag rijden.'
+  },
+  'day.school': {
+    en: 'a school day',
+    de: 'ein Schultag',
+    fr: 'un jour d’école',
+    nl: 'een schooldag'
+  },
+  'day.break': {
+    en: 'school holidays',
+    de: 'Schulferien',
+    fr: 'vacances scolaires',
+    nl: 'schoolvakantie'
+  },
+  'day.holiday': {
+    en: 'a public holiday',
+    de: 'ein Feiertag',
+    fr: 'un jour férié',
+    nl: 'een feestdag'
+  },
+
   // ---------- kaart ----------
   'map.title': {
     en: 'Where to put the bus',

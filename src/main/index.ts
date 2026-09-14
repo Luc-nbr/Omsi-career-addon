@@ -10,10 +10,11 @@ import {
   setActive,
   writeProfile
 } from '../core/profiles'
+import { dateForMask, dayKind, readCalendar, type Calendar } from '../core/calendar'
 import { buildNetwork, generateDuties, type Network } from '../core/duty'
 import { buildFleetIndex, pickVehicleForDuty, readMapFleet, type FleetIndex } from '../core/fleet'
 import { readMapData, type Lane, type MapGeometry } from '../core/geo'
-import { LaneNetwork, routeForTrip } from '../core/routing'
+import { LaneNetwork, routeForTrip, type TripRoute } from '../core/routing'
 import { VehicleTracker, type VehiclePosition } from '../core/vehicle'
 import { buildIbisPlan, type IbisPlan } from '../core/ibis'
 import { describeLive, readLive } from '../core/live'
@@ -27,7 +28,13 @@ import { findTemplate, readSituationTime } from '../core/situation'
 import { listMaps, loadMap } from '../core/timetable'
 import { listVehicles } from '../core/vehicles'
 import type { Duty, OmsiMap } from '../core/types'
-import { TIME_WINDOWS, type Assignment, type DutyRequest, type MapSummary } from '../shared/api'
+import {
+  TIME_WINDOWS,
+  type Assignment,
+  type DutyDate,
+  type DutyRequest,
+  type MapSummary
+} from '../shared/api'
 import { defaultLayout, type OverlayLayout } from '../shared/overlay'
 
 /** Kaarten inlezen kost merkbaar tijd, dus we doen het één keer per sessie. */
@@ -35,10 +42,11 @@ const mapCache = new Map<string, OmsiMap>()
 const networkCache = new Map<string, Network>()
 const mapFleetCache = new Map<string, Set<string>>()
 const mapEraCache = new Map<string, { year: number; dayOfYear: number }>()
+const calendarCache = new Map<string, Calendar>()
 const geometryCache = new Map<string, MapGeometry>()
 const laneCache = new Map<string, Lane[]>()
 const laneNetworkCache = new Map<string, LaneNetwork>()
-const routeCache = new Map<string, number[]>()
+const routeCache = new Map<string, TripRoute>()
 let fleetIndex: FleetIndex | undefined
 /**
  * Nulmeting bij het begin van een dienst, gelezen uit de live gegevens van de
@@ -132,6 +140,31 @@ function era(folder: string): { year: number; dayOfYear: number } {
   }
   mapEraCache.set(folder, time)
   return time
+}
+
+/** Feestdagen en schoolvakanties van een kaart; die bepalen welke omloop rijdt. */
+function calendar(folder: string): Calendar {
+  const cached = calendarCache.get(folder)
+  if (cached) return cached
+  const built = readCalendar(map(folder).path)
+  calendarCache.set(folder, built)
+  return built
+}
+
+/**
+ * De datum waarop een omloop rijdt, gezocht vanaf het tijdvak van de kaart.
+ * Zonder de juiste datum staat de omloop niet in het dienstregelingsmenu.
+ */
+function dutyDate(folder: string, days: number): DutyDate | undefined {
+  const start = era(folder)
+  const found = dateForMask(calendar(folder), start.year, start.dayOfYear, days)
+  if (!found) return undefined
+  return {
+    year: found.year,
+    dayOfYear: found.dayOfYear,
+    iso: found.date.toISOString().slice(0, 10),
+    kind: dayKind(calendar(folder), found.date)
+  }
 }
 
 function fleet(): FleetIndex {
@@ -485,7 +518,7 @@ function registerHandlers(): void {
    */
   ipcMain.handle(
     'map:routes',
-    (_event, folder: string, legs: Array<{ tripFile: string; stopIds: string[] }>): number[][] => {
+    (_event, folder: string, legs: Array<{ tripFile: string; stopIds: string[] }>): TripRoute[] => {
       const loaded = map(folder)
       const geometry = mapGeometry(folder)
       const stopAt = new Map(geometry.stops.map((stop) => [stop.id, stop]))
@@ -494,7 +527,7 @@ function registerHandlers(): void {
         const cached = routeCache.get(key)
         if (cached) return cached
         const stops = leg.stopIds.map((id) => stopAt.get(id)).filter((stop) => stop !== undefined)
-        if (stops.length < 2) return []
+        if (stops.length < 2) return { points: [], guessed: [] }
         const route = routeForTrip(loaded.path, omsi(), leg.tripFile, stops, () => laneNetwork(folder))
         routeCache.set(key, route)
         return route
@@ -567,6 +600,7 @@ function registerHandlers(): void {
       const choice = pickVehicleForDuty(fleet(), duty, year, mapFleet)
       return {
         duty,
+        date: dutyDate(request.mapFolder, duty.days | duty.period),
         vehicle: choice?.vehicle ?? null,
         yard: choice?.yard,
         fit: choice?.fit,

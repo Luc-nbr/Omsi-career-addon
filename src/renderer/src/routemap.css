@@ -252,3 +252,16 @@
 .stop-next .sign-glow {
   stroke: rgba(63, 208, 122, 0.7);
 }
+
+/*
+ * Stukken waar geen weg gevonden is. Daar staat een rechte lijn van halte naar
+ * halte die dwars door het landschap snijdt; gestreept en gedempt leest dat als
+ * "onbekend" in plaats van als een route waar je langs moet.
+ */
+.route-guess {
+  fill: none;
+  stroke: #7d8aa0;
+  stroke-width: 3;
+  stroke-dasharray: 7 7;
+  stroke-linecap: round;
+}

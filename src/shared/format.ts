@@ -30,6 +30,25 @@ export function formatDuration(minutes: number, language: Language = DEFAULT_LAN
   return `${Math.floor(total / 60)}${hour} ${String(total % 60).padStart(2, '0')}${minute}`
 }
 
+const LOCALE: Record<Language, string> = {
+  en: 'en-GB',
+  de: 'de-DE',
+  fr: 'fr-FR',
+  nl: 'nl-NL'
+}
+
+/** `jjjj-mm-dd` naar iets leesbaars: "maandag 5 januari". */
+export function formatDate(iso: string, language: Language = DEFAULT_LANGUAGE): string {
+  const date = new Date(`${iso}T12:00:00Z`)
+  if (Number.isNaN(date.getTime())) return iso
+  return date.toLocaleDateString(LOCALE[language] ?? LOCALE[DEFAULT_LANGUAGE], {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    timeZone: 'UTC'
+  })
+}
+
 const MONEY_LOCALE: Record<Language, string> = {
   en: 'en-IE',
   de: 'de-DE',
