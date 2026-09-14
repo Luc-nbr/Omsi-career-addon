@@ -34,17 +34,35 @@ for (const folder of readdirSync(maps)) {
     continue
   }
 
+  /*
+   * Naar het lijnstuk meten en niet naar de hoekpunten: een rechte spline van
+   * driehonderd meter heeft er maar twee, en dan lijkt een halte er middenop
+   * honderdvijftig meter vandaan te liggen.
+   */
+  const toSegment = (px: number, py: number, ax: number, ay: number, bx: number, by: number): number => {
+    const vx = bx - ax
+    const vy = by - ay
+    const len = vx * vx + vy * vy
+    const part = len > 0 ? Math.max(0, Math.min(1, ((px - ax) * vx + (py - ay) * vy) / len)) : 0
+    return Math.hypot(px - (ax + vx * part), py - (ay + vy * part))
+  }
+
   const distances = geometry.stops.map((stop) => {
     let best = Infinity
     for (const line of roads) {
-      for (let i = 0; i < line.points.length; i += 2) {
-        const dx = line.points[i] - stop.x
-        const dy = line.points[i + 1] - stop.y
-        const d = dx * dx + dy * dy
+      for (let i = 2; i < line.points.length; i += 2) {
+        const d = toSegment(
+          stop.x,
+          stop.y,
+          line.points[i - 2],
+          line.points[i - 1],
+          line.points[i],
+          line.points[i + 1]
+        )
         if (d < best) best = d
       }
     }
-    return Math.sqrt(best)
+    return best
   })
 
   distances.sort((a, b) => a - b)
