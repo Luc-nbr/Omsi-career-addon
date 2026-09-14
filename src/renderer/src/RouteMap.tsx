@@ -11,6 +11,7 @@ import {
 import type { MapGeometry, StopPoint } from '../../core/geo'
 import type { Duty } from '../../core/types'
 import { useT } from './language'
+import { RoadLayer } from './roadLayer'
 import './routemap.css'
 
 /** Een halte zoals hij op de route voorkomt, met zijn plek in de volgorde. */
@@ -72,6 +73,9 @@ const FOLLOW_PAD_M = 130
 const OTHER_LABEL_MPP = 2.5
 const ROUTE_LABEL_MPP = 14
 
+/** Afstand tussen de rijrichtingspijltjes op de route. */
+const ARROW_GAP_PX = 110
+
 export function RouteMap({
   duty,
   geometry,
@@ -84,6 +88,7 @@ export function RouteMap({
   const tr = useT()
   const boxRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
   const [size, setSize] = useState({ w: 640, h: 320 })
   const [view, setView] = useState<View>({ cx: 0, cy: 0, mpp: 8 })
   const [hovered, setHovered] = useState<string>()
@@ -127,6 +132,28 @@ export function RouteMap({
   }, [legs])
 
   const start = routeStops.find((stop) => stop.isStart)
+
+  /*
+   * De weg die elke rit rijdt, uitgerekend in het hoofdproces. Zolang die er niet
+   * is, lopen de lijnen recht van halte naar halte. De sleutel is een tekst en
+   * geen object: de overlay krijgt elke tel een nieuwe kopie van dezelfde dienst.
+   */
+  const routeKey = `${duty.mapFolder}|${duty.legs.map((leg) => `${leg.tripFile}:${leg.stopIds.join(',')}`).join(';')}`
+  const [routes, setRoutes] = useState<number[][]>()
+  useEffect(() => {
+    let current = true
+    setRoutes(undefined)
+    const request = duty.legs.map(({ tripFile, stopIds }) => ({ tripFile, stopIds }))
+    window.career
+      .routes(duty.mapFolder, request)
+      .then((found) => {
+        if (current) setRoutes(found)
+      })
+      .catch(() => undefined)
+    return () => {
+      current = false
+    }
+  }, [routeKey])
 
   /** Waar de route ligt, met wat lucht eromheen. */
   const bounds = useMemo(() => {
@@ -270,27 +297,37 @@ export function RouteMap({
     setSize((old) => ({ ...old }))
   }
 
-  /* Het wegennet staat in wereldcoördinaten in een groep die geschaald wordt;
-   * dan hoeft er bij het slepen geen enkel pad opnieuw gerekend te worden. */
-  const roadPaths = useMemo(() => {
-    const parts: Record<string, string[]> = { road: [], rail: [] }
-    for (const line of geometry.roads) {
-      const bucket = parts[line.kind]
-      if (!bucket) continue
-      let d = `M${line.points[0].toFixed(1)} ${line.points[1].toFixed(1)}`
-      for (let i = 2; i < line.points.length; i += 2) {
-        d += `L${line.points[i].toFixed(1)} ${line.points[i + 1].toFixed(1)}`
-      }
-      bucket.push(d)
+  /* Het wegennet gaat op een canvas onder de SVG; zie roadLayer.ts waarom. */
+  const roads = useMemo(() => new RoadLayer(geometry), [geometry])
+  const drawnMpp = useRef(0)
+  useEffect(() => {
+    const canvas = canvasRef.current
+    const ctx = canvas?.getContext('2d')
+    if (!canvas || !ctx) return
+    const dpr = window.devicePixelRatio || 1
+    const width = Math.round(size.w * dpr)
+    const height = Math.round(size.h * dpr)
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width
+      canvas.height = height
     }
-    return { road: parts.road.join(''), rail: parts.rail.join('') }
-  }, [geometry])
-
-  const k = 1 / view.mpp
-  const worldTransform = `translate(${size.w / 2 - view.cx * k} ${size.h / 2 + view.cy * k}) scale(${k} ${-k})`
-  // Wegbreedte in meters, maar nooit zo dun dat de lijn verdwijnt.
-  const roadWidth = Math.max(7, view.mpp * 1.1)
-  const railWidth = Math.max(3, view.mpp * 0.7)
+    const roadView = { ...view, w: size.w, h: size.h, dpr }
+    // Tijdens het zoomen de oude tekening schalen, en pas als het wieltje stil
+    // is scherp opnieuw tekenen: uitgezoomd kost dat een tiende seconde.
+    const zooming = drawnMpp.current !== 0 && drawnMpp.current !== view.mpp
+    const frame = requestAnimationFrame(() => roads.draw(ctx, roadView, !zooming))
+    const settle = zooming
+      ? window.setTimeout(() => {
+          drawnMpp.current = view.mpp
+          roads.draw(ctx, roadView, true)
+        }, 160)
+      : undefined
+    if (!zooming) drawnMpp.current = view.mpp
+    return () => {
+      cancelAnimationFrame(frame)
+      window.clearTimeout(settle)
+    }
+  }, [roads, view, size])
 
   /** Hoever de dienst gevorderd is, als volgnummer van de eerstvolgende halte. */
   const passedBefore = useMemo(() => {
@@ -347,36 +384,55 @@ export function RouteMap({
     return result
   }, [start, routeStops, otherStops, showRouteNames, showOtherNames, toScreen, size, signR])
 
-  /** Pijltjes die laten zien welke kant je op rijdt, alleen op de huidige rit. */
+  /** Elke rit als lijn op het scherm: over de weg als de route er is, anders recht. */
+  const legLines = useMemo(
+    () =>
+      legs.map((leg, legIndex) => {
+        const route = routes?.[legIndex]
+        const points: Array<[number, number]> = []
+        if (route && route.length >= 4) {
+          for (let i = 0; i < route.length; i += 2) points.push(toScreen(route[i], route[i + 1]))
+        } else {
+          for (const stop of leg) points.push(toScreen(stop.x, stop.y))
+        }
+        return points
+      }),
+    [legs, routes, toScreen]
+  )
+
+  /** Pijltjes langs de lijn die laten zien welke kant je op rijdt, alleen op de huidige rit. */
   const arrows = useMemo(() => {
     const found: Array<{ key: string; x: number; y: number; angle: number }> = []
-    legs.forEach((leg, legIndex) => {
+    legLines.forEach((line, legIndex) => {
       if (activeLeg !== undefined && legIndex !== activeLeg) return
-      for (let i = 1; i < leg.length; i++) {
-        const [ax, ay] = toScreen(leg[i - 1].x, leg[i - 1].y)
-        const [bx, by] = toScreen(leg[i].x, leg[i].y)
+      // Om de zoveel beeldpunten langs de lijn, waar hij ook buigt.
+      let next = ARROW_GAP_PX / 2
+      let walked = 0
+      for (let i = 1; i < line.length && found.length < 200; i++) {
+        const [ax, ay] = line[i - 1]
+        const [bx, by] = line[i]
         const span = Math.hypot(bx - ax, by - ay)
-        if (span < 64) continue
-        const steps = Math.min(3, Math.floor(span / 90))
-        for (let s = 1; s <= steps; s++) {
-          const t = s / (steps + 1)
-          found.push({
-            key: `${legIndex}-${i}-${s}`,
-            x: ax + (bx - ax) * t,
-            y: ay + (by - ay) * t,
-            angle: (Math.atan2(by - ay, bx - ax) * 180) / Math.PI
-          })
+        while (span > 0 && next <= walked + span) {
+          const t = (next - walked) / span
+          const x = ax + (bx - ax) * t
+          const y = ay + (by - ay) * t
+          if (x > -20 && y > -20 && x < size.w + 20 && y < size.h + 20) {
+            found.push({ key: `${legIndex}-${i}-${next}`, x, y, angle: (Math.atan2(by - ay, bx - ax) * 180) / Math.PI })
+          }
+          next += ARROW_GAP_PX
         }
+        walked += span
       }
     })
     return found
-  }, [legs, toScreen, activeLeg])
+  }, [legLines, activeLeg, size])
 
   const hoveredStop = hovered ? byId.get(hovered) : undefined
   const scaleBar = niceScale(view.mpp, big ? 140 : 90)
 
   return (
     <div className={`route-map ${big ? 'route-map-full' : ''}`} ref={boxRef}>
+      <canvas ref={canvasRef} className="route-roads" aria-hidden="true" />
       <svg
         ref={svgRef}
         className="route-canvas"
@@ -388,12 +444,6 @@ export function RouteMap({
         role="img"
         aria-label={`Kaart van de route, vertrek bij ${start?.name ?? 'onbekend'}`}
       >
-        <g transform={worldTransform}>
-          <path className="map-rail" d={roadPaths.rail} strokeWidth={railWidth} />
-          <path className="map-road-casing" d={roadPaths.road} strokeWidth={roadWidth + 2.5} />
-          <path className="map-road" d={roadPaths.road} strokeWidth={roadWidth} />
-        </g>
-
         {/*
           * Eerst de ritten die nu niet aan de beurt zijn en daarna de huidige:
           * in SVG bepaalt de volgorde in de DOM wat bovenop ligt.
@@ -403,7 +453,7 @@ export function RouteMap({
           .filter(({ leg }) => leg.length >= 2)
           .sort((a, b) => rank(a.index, activeLeg) - rank(b.index, activeLeg))
           .map(({ leg, index }) => {
-            const points = leg.map((stop) => toScreen(stop.x, stop.y).join(',')).join(' ')
+            const points = legLines[index].map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')
             const other = activeLeg !== undefined && index !== activeLeg
             const done = passedBefore >= 0 && leg[leg.length - 1].order < passedBefore
             return (

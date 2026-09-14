@@ -1,7 +1,17 @@
 import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { blockTag, num, readOmsiLines, str } from './omsiFile'
-import { parseSpline, splineKind, splinePoints, type SplineKind } from './roads'
+import {
+  objectPaths,
+  PATH_RAIL,
+  PATH_ROAD,
+  parseSpline,
+  placeObjectPath,
+  splineInfo,
+  splineLane,
+  splinePoints,
+  type SplineKind
+} from './roads'
 
 /**
  * Waar de haltes van een kaart liggen.
@@ -35,13 +45,91 @@ export interface MapGeometry {
   roads: RoadLine[]
 }
 
-/** Een OMSI-tegel is 300 meter in het vierkant. */
+/**
+ * Een rijstrook voor de routeplanner: waar hij ligt en welke kant hij op mag.
+ * Blijft in het hoofdproces; de interface heeft er niets aan.
+ */
+export interface Lane {
+  /** Afwisselend x en y in kaartmeters, in tekenrichting. */
+  points: number[]
+  /** 0 in tekenrichting, 1 ertegenin, 2 beide kanten op. */
+  direction: number
+  /** Het spline- of objectbestand, om een haperend net te kunnen nazoeken. */
+  source: string
+}
+
+/** Een gewone OMSI-tegel is 300 meter in het vierkant. */
 const TILE_M = 300
 
 const TILE_NAME = /^tile_(-?\d+)_(-?\d+)\.map$/i
 
-/** Alleen deze twee zijn de moeite van het tekenen waard. */
-const DRAWN: SplineKind[] = ['road', 'rail']
+/**
+ * Tegels met echte wereldcoördinaten volgen het Mercator-raster van
+ * OpenStreetMap op 65.536 tegels rond de aarde; hun maat hangt af van de
+ * breedtegraad. Berlin-Spandau is zo gebouwd: op 52,5° is een tegel 371,7 m, en
+ * wie 300 aanhoudt ziet de wegen op elke tegelgrens 71,7 m verspringen.
+ * Formules: forum.omnibussimulator.de, "How do I calculate RWC tile position and size".
+ */
+const WORLD_TILES = 65536
+const EQUATOR_M = 6378137 * Math.PI * 2
+
+function worldTileSize(ty: number): number {
+  const latitude = Math.atan(Math.sinh((Math.PI * 2 * ty) / WORLD_TILES))
+  return (EQUATOR_M / WORLD_TILES) * Math.cos(latitude)
+}
+
+/**
+ * Waar een tegel op de kaart ligt. Kaartcoördinaten tellen vanaf de hoek van de
+ * tegel linksonder; wie iets anders dan de geometrie op de kaart wil leggen,
+ * zoals een route, moet hetzelfde raster gebruiken.
+ */
+export interface TileGrid {
+  origin: { tx: number; ty: number }
+  /** Meters van de kaarthoek tot de hoek linksonder van deze tegel. */
+  offset(tx: number, ty: number): [number, number]
+  /** Breedte en hoogte van een tegel in deze rij. */
+  size(ty: number): number
+}
+
+export function readTileGrid(mapPath: string): TileGrid | undefined {
+  let tx0 = Infinity
+  let ty0 = Infinity
+  try {
+    for (const entry of readdirSync(mapPath)) {
+      const match = TILE_NAME.exec(entry)
+      if (!match) continue
+      tx0 = Math.min(tx0, Number.parseInt(match[1], 10))
+      ty0 = Math.min(ty0, Number.parseInt(match[2], 10))
+    }
+  } catch {
+    return undefined
+  }
+  if (!Number.isFinite(tx0)) return undefined
+  const origin = { tx: tx0, ty: ty0 }
+
+  let world = false
+  try {
+    world = readOmsiLines(join(mapPath, 'global.cfg')).some((line) => blockTag(line) === '[worldcoordinates]')
+  } catch {
+    // Zonder global.cfg is het geen kaart die OMSI laadt; dan maar gewone tegels.
+  }
+  if (!world) {
+    return { origin, offset: (tx, ty) => [(tx - tx0) * TILE_M, (ty - ty0) * TILE_M], size: () => TILE_M }
+  }
+
+  // Oost-west is een tegel zo breed als op zijn eigen breedtegraad; noord-zuid
+  // tellen de rijhoogtes op, want die worden naar het noorden steeds kleiner.
+  const rows: number[] = [0]
+  const rowOffset = (ty: number): number => {
+    for (let k = rows.length; k <= ty - ty0; k++) rows[k] = rows[k - 1] + worldTileSize(ty0 + k - 1)
+    return rows[ty - ty0] ?? 0
+  }
+  return {
+    origin,
+    offset: (tx, ty) => [(tx - tx0) * worldTileSize(ty), rowOffset(ty)],
+    size: worldTileSize
+  }
+}
 
 const EMPTY: MapGeometry = { widthM: 0, heightM: 0, stops: [], roads: [] }
 
@@ -58,29 +146,39 @@ export function readMapGeometry(
   wantedIds: Set<string>,
   omsiPath: string
 ): MapGeometry {
-  if (wantedIds.size === 0) return EMPTY
+  return readMapData(mapPath, wantedIds, omsiPath).geometry
+}
 
-  type RawStop = { id: string; tx: number; ty: number; x: number; y: number; name: string }
-  type RawRoad = { kind: SplineKind; tx: number; ty: number; points: number[] }
-  const rawStops: RawStop[] = []
-  const rawRoads: RawRoad[] = []
-  let minTx = Infinity
-  let maxTx = -Infinity
-  let minTy = Infinity
-  let maxTy = -Infinity
+/** Als readMapGeometry, en daarbij de rijstroken met hun rijrichting. */
+export function readMapData(
+  mapPath: string,
+  wantedIds: Set<string>,
+  omsiPath: string
+): { geometry: MapGeometry; lanes: Lane[] } {
+  const grid = readTileGrid(mapPath)
+  if (wantedIds.size === 0 || !grid) return { geometry: EMPTY, lanes: [] }
 
-  let entries: string[]
-  try {
-    entries = readdirSync(mapPath)
-  } catch {
-    return EMPTY
-  }
+  const stops: StopPoint[] = []
+  const roads: RoadLine[] = []
+  const lanes: Lane[] = []
+  let widthM = 0
+  let heightM = 0
 
-  for (const entry of entries) {
+  for (const entry of readdirSync(mapPath)) {
     const match = TILE_NAME.exec(entry)
     if (!match) continue
     const tx = Number.parseInt(match[1], 10)
     const ty = Number.parseInt(match[2], 10)
+    const [dx, dy] = grid.offset(tx, ty)
+    widthM = Math.max(widthM, dx + grid.size(ty))
+    heightM = Math.max(heightM, dy + grid.size(ty))
+    const shift = (points: number[]): number[] => {
+      for (let i = 0; i < points.length; i += 2) {
+        points[i] += dx
+        points[i + 1] += dy
+      }
+      return points
+    }
 
     let lines: string[]
     try {
@@ -89,17 +187,30 @@ export function readMapGeometry(
       continue
     }
 
-    minTx = Math.min(minTx, tx)
-    maxTx = Math.max(maxTx, tx)
-    minTy = Math.min(minTy, ty)
-    maxTy = Math.max(maxTy, ty)
-
     for (let i = 0; i < lines.length; i++) {
       const tag = blockTag(lines[i])
       if (tag === '[object]') {
         // velden: vlag, bestandspad, id, x, y, hoogte, rotatie, ...
         const id = str(lines[i + 3])
-        if (!wantedIds.has(id)) continue
+        if (!wantedIds.has(id)) {
+          // Geen halte, maar misschien wel een kruising of een stuk straat.
+          const source = str(lines[i + 2])
+          const paths = objectPaths(omsiPath, source)
+          if (paths.length === 0) continue
+          const ox = num(lines[i + 4])
+          const oy = num(lines[i + 5])
+          const rot = num(lines[i + 7])
+          for (const path of paths) {
+            const kind = path.type === PATH_ROAD ? 'road' : path.type === PATH_RAIL ? 'rail' : undefined
+            if (!kind || !(path.length > 0)) continue
+            const points = placeObjectPath(ox, oy, rot, path)
+            if (points.length < 4) continue
+            shift(points)
+            roads.push({ kind, points })
+            if (kind === 'road') lanes.push({ points, direction: path.direction, source })
+          }
+          continue
+        }
         // De naam staat achter de getallen; pak de eerste regel die geen getal is.
         let name = ''
         for (let k = i + 10; k < i + 14 && k < lines.length; k++) {
@@ -109,44 +220,58 @@ export function readMapGeometry(
             break
           }
         }
-        rawStops.push({ id, tx, ty, x: num(lines[i + 4]), y: num(lines[i + 5]), name })
+        stops.push({ id, x: dx + num(lines[i + 4]), y: dy + num(lines[i + 5]), name })
         continue
       }
 
-      if (tag !== '[spline]') continue
-      const kind = splineKind(omsiPath, str(lines[i + 2]))
-      if (!DRAWN.includes(kind)) continue
+      // `[spline_h]` is een spline met een hoogteverloop, verder hetzelfde
+      // blok; Berlin-Spandau heeft er bijna vijfhonderd.
+      if (tag !== '[spline]' && tag !== '[spline_h]') continue
+      const source = str(lines[i + 2])
+      const info = splineInfo(omsiPath, source)
+      if (info.kind !== 'road' && info.kind !== 'rail') continue
       const shape = parseSpline(lines, i)
       if (!shape) continue
-      const points = splinePoints(shape.x, shape.y, shape.rotationDeg, shape.length, shape.radius)
-      if (points.length >= 4) rawRoads.push({ kind, tx, ty, points })
+      const place = (offset: number): number[] =>
+        shift(splinePoints(shape.x, shape.y, shape.rotationDeg, shape.length, shape.radius, offset))
+
+      if (info.kind === 'rail') {
+        for (const offset of info.offsets) roads.push({ kind: 'rail', points: place(shape.mirror ? -offset : offset) })
+        continue
+      }
+
+      /*
+       * Per rijstrook tekenen en niet de middenlijn. Kruisingen komen per
+       * rijstrook uit hun object; met alleen een middenlijn is een straat
+       * smaller dan de kruising waar hij op uitkomt, en hangen er blokken aan
+       * de weg. Een vierbaansweg wordt zo vanzelf ook breder dan een landweg.
+       * Twee rijrichtingen op dezelfde strook worden één lijn.
+       */
+      const drawn = new Map<string, number[]>()
+      for (const path of info.paths) {
+        if (path.type !== PATH_ROAD) continue
+        const lane = splineLane(shape, path)
+        const key = lane.offset.toFixed(1)
+        let points = drawn.get(key)
+        if (!points) {
+          points = place(lane.offset)
+          drawn.set(key, points)
+          roads.push({ kind: 'road', points })
+        }
+        lanes.push({ points, direction: lane.direction, source })
+      }
     }
   }
 
-  if (rawStops.length === 0 || !Number.isFinite(minTx)) return EMPTY
-
-  const stops = rawStops.map((item) => ({
-    id: item.id,
-    x: (item.tx - minTx) * TILE_M + item.x,
-    y: (item.ty - minTy) * TILE_M + item.y,
-    name: item.name
-  }))
-
-  const roads = rawRoads.map((item) => {
-    const offsetX = (item.tx - minTx) * TILE_M
-    const offsetY = (item.ty - minTy) * TILE_M
-    const points = new Array<number>(item.points.length)
-    for (let i = 0; i < item.points.length; i += 2) {
-      points[i] = offsetX + item.points[i]
-      points[i + 1] = offsetY + item.points[i + 1]
-    }
-    return { kind: item.kind, points }
-  })
+  if (stops.length === 0) return { geometry: EMPTY, lanes: [] }
 
   return {
-    widthM: (maxTx - minTx + 1) * TILE_M,
-    heightM: (maxTy - minTy + 1) * TILE_M,
-    stops,
-    roads
+    geometry: {
+      widthM,
+      heightM,
+      stops,
+      roads
+    },
+    lanes
   }
 }

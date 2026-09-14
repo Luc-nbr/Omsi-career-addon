@@ -12,7 +12,8 @@ import {
 } from '../core/profiles'
 import { buildNetwork, generateDuties, type Network } from '../core/duty'
 import { buildFleetIndex, pickVehicleForDuty, readMapFleet, type FleetIndex } from '../core/fleet'
-import { readMapGeometry, type MapGeometry } from '../core/geo'
+import { readMapData, type Lane, type MapGeometry } from '../core/geo'
+import { LaneNetwork, routeForTrip } from '../core/routing'
 import { buildIbisPlan } from '../core/ibis'
 import { describeLive, readLive } from '../core/live'
 import { findOmsiInstall } from '../core/install'
@@ -34,6 +35,9 @@ const networkCache = new Map<string, Network>()
 const mapFleetCache = new Map<string, Set<string>>()
 const mapEraCache = new Map<string, { year: number; dayOfYear: number }>()
 const geometryCache = new Map<string, MapGeometry>()
+const laneCache = new Map<string, Lane[]>()
+const laneNetworkCache = new Map<string, LaneNetwork>()
+const routeCache = new Map<string, number[]>()
 let fleetIndex: FleetIndex | undefined
 /**
  * Nulmeting bij het begin van een dienst, gelezen uit de live gegevens van de
@@ -61,6 +65,38 @@ function map(folder: string): OmsiMap {
   if (!loaded) throw new Error(`Kaart "${folder}" kon niet worden geladen.`)
   mapCache.set(folder, loaded)
   return loaded
+}
+
+/**
+ * Halteposities en wegennet van een kaart. Het doorlezen van de tegels kost een
+ * fractie van een seconde tot ruim een seconde, dus eenmaal per kaart. De
+ * rijstroken blijven hier; de interface heeft alleen de tekening nodig.
+ */
+function mapGeometry(folder: string): MapGeometry {
+  const cached = geometryCache.get(folder)
+  if (cached) return cached
+  const loaded = map(folder)
+  const ids = new Set<string>(loaded.stops.keys())
+  for (const trip of loaded.trips.values()) for (const stop of trip.stops) ids.add(stop.id)
+  const { geometry, lanes } = readMapData(loaded.path, ids, omsi())
+  // Busstops.cfg is de bron voor de namen; wat er in de tegel staat is de
+  // naam van het object en heet lang niet altijd naar de halte.
+  for (const stop of geometry.stops) {
+    const known = loaded.stops.get(stop.id)
+    if (known?.name) stop.name = known.name
+  }
+  geometryCache.set(folder, geometry)
+  laneCache.set(folder, lanes)
+  return geometry
+}
+
+function laneNetwork(folder: string): LaneNetwork {
+  const cached = laneNetworkCache.get(folder)
+  if (cached) return cached
+  mapGeometry(folder)
+  const built = new LaneNetwork(laneCache.get(folder) ?? [])
+  laneNetworkCache.set(folder, built)
+  return built
 }
 
 function network(folder: string): Network {
@@ -344,22 +380,31 @@ function registerHandlers(): void {
    * Halteposities van een kaart. Het doorlezen van de tegels kost een fractie
    * van een seconde tot ruim een seconde, dus eenmaal per kaart.
    */
-  ipcMain.handle('map:geometry', (_event, folder: string): MapGeometry => {
-    const cached = geometryCache.get(folder)
-    if (cached) return cached
-    const loaded = map(folder)
-    const ids = new Set<string>(loaded.stops.keys())
-    for (const trip of loaded.trips.values()) for (const stop of trip.stops) ids.add(stop.id)
-    const geometry = readMapGeometry(loaded.path, ids, omsi())
-    // Busstops.cfg is de bron voor de namen; wat er in de tegel staat is de
-    // naam van het object en heet lang niet altijd naar de halte.
-    for (const stop of geometry.stops) {
-      const known = loaded.stops.get(stop.id)
-      if (known?.name) stop.name = known.name
+  ipcMain.handle('map:geometry', (_event, folder: string): MapGeometry => mapGeometry(folder))
+
+  /**
+   * De route van elke rit van een dienst, als lijn over de kaart. Eenmaal per
+   * rit uitgerekend; het rijstrokennet wordt pas opgebouwd als een rit geen
+   * bruikbare route van OMSI zelf heeft.
+   */
+  ipcMain.handle(
+    'map:routes',
+    (_event, folder: string, legs: Array<{ tripFile: string; stopIds: string[] }>): number[][] => {
+      const loaded = map(folder)
+      const geometry = mapGeometry(folder)
+      const stopAt = new Map(geometry.stops.map((stop) => [stop.id, stop]))
+      return legs.map((leg) => {
+        const key = `${folder}|${leg.tripFile}|${leg.stopIds.join(',')}`
+        const cached = routeCache.get(key)
+        if (cached) return cached
+        const stops = leg.stopIds.map((id) => stopAt.get(id)).filter((stop) => stop !== undefined)
+        if (stops.length < 2) return []
+        const route = routeForTrip(loaded.path, omsi(), leg.tripFile, stops, () => laneNetwork(folder))
+        routeCache.set(key, route)
+        return route
+      })
     }
-    geometryCache.set(folder, geometry)
-    return geometry
-  })
+  )
 
   ipcMain.handle('omsi:live', () => Boolean(readLive()?.alive))
 

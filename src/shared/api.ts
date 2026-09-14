@@ -94,6 +94,11 @@ export interface CareerApi {
   vehicles(): Promise<Vehicle[]>
   /** Halteposities van een kaart, om te tonen waar je de bus neerzet. */
   geometry(mapFolder: string): Promise<MapGeometry>
+  /**
+   * De route van elke rit als lijn over de kaart, afwisselend x en y in meters.
+   * Een lege lijn als de haltes van die rit niet op de kaart staan.
+   */
+  routes(mapFolder: string, legs: Array<{ tripFile: string; stopIds: string[] }>): Promise<number[][]>
   settings(): Promise<Settings>
   saveSettings(settings: Settings): Promise<Settings>
   /** Zet de overlay in of uit de bewerkstand; geeft terug of hij nu aan staat. */

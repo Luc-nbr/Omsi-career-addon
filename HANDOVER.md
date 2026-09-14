@@ -38,6 +38,9 @@ teruggedraaid.
 - **Valkuil: heredocs eten backslashes.** Python-scripts met `\` erin (paden,
   regex) moeten met het Write-gereedschap geschreven worden, niet via
   `python - <<'PY'`. Dit is meerdere keren misgegaan.
+- **Valkuil: PowerShell 5.1 verminkt UTF-8.** `Get-Content -Raw` leest de
+  bronbestanden als Windows-1252; wie dat met `Set-Content` terugschrijft maakt
+  van "één" "Ã©Ã©n". Tijdelijke wijzigingen met het Edit-gereedschap doen.
 - De gebruiker draait Smart App Control; ongetekende exes worden geblokkeerd.
   `Start OMSI Career.cmd` start de app via `node_modules\electron\dist\electron.exe`.
 
@@ -56,8 +59,10 @@ teruggedraaid.
 | `fleet.ts` | Wagenpark van de kaart uit `ailists.cfg`, en buskeuze |
 | `hof.ts` | `.hof`-bestanden: bestemmingscodes en routes per wagenpark |
 | `ibis.ts` | Bouwt het IBIS-plan (lijn + route per rit) |
-| `geo.ts` | Halteposities en wegennet uit de tegels |
-| `roads.ts` | Spline-meetkunde en -classificatie |
+| `geo.ts` | Tegelraster, halteposities, wegennet en rijstroken uit de tegels |
+| `roads.ts` | Spline- en objectbanen: meetkunde, soort verkeer, rijrichting |
+| `track.ts` | Route van een rit uit OMSI's eigen `.ttr` |
+| `routing.ts` | Rijstrokennet en routeplanner van halte naar halte; kiest per rit `.ttr` of planner |
 | `live.ts` | Leest `live.json` van de plugin, maakt er een `LiveStatus` van |
 | `career.ts` | Loopbaan: diensten, uren, rangen |
 | `profiles.ts` | Profielen in `%APPDATA%\omsi-career\profiles\` |
@@ -79,7 +84,10 @@ teruggedraaid.
 - `App.tsx` — hoofdscherm, laadt instellingen, zet de `LanguageProvider`.
 - `Welcome.tsx` — eerste start: taal kiezen en een account aanmaken.
 - `DutyCard.tsx` — de dienstkaart met alle deelpanelen.
-- `RouteMap.tsx` — de kaart (wegennet, halteborden, zoomen, slepen).
+- `RouteMap.tsx` — de kaart (halteborden, routes, zoomen, slepen), in SVG.
+- `roadLayer.ts` — het wegennet op een canvas onder die SVG; per vak van 300 m
+  gesneden en uitgezoomd gebufferd. Als één SVG-pad kostte slepen over
+  HamburgLi20 350 ms per beeld, zo 7 ms.
 - `DutyMap.tsx` — het paneel eromheen plus het routevenster.
 - `overlay.tsx` — de overlay boven het spel.
 - `receipt.tsx` — het kaartje voor de bonprinter.
@@ -94,12 +102,22 @@ Zie `README.md` voor de details; die zijn duur betaald en staan er goed in.
 
 ## 4. Wat is nagerekend (niet aannemen — gemeten)
 
-Deze getallen komen uit `scripts/probe-geo.ts` en `scripts/probe-roads.ts`.
-Draai ze opnieuw als je aan `geo.ts` of `roads.ts` komt.
+Deze getallen komen uit de probes in `scripts/` (zie §6). Draai ze opnieuw als je
+aan `geo.ts`, `roads.ts`, `track.ts` of `routing.ts` komt.
 
 **Tegelmeetkunde (`geo.ts`, `roads.ts`)**
 
-- Een tegel is 300 × 300 m; `tile_X_Y.map`.
+- Een tegel is 300 × 300 m; `tile_X_Y.map`. **Behalve** als `global.cfg` een
+  regel `[worldcoordinates]` heeft: dan volgen de tegels het Mercator-raster van
+  OpenStreetMap op 65.536 tegels, en is een tegel `2π·6378137/65536 · cos(φ)`
+  meter, met `φ = atan(sinh(2π·y/65536))`. Berlin-Spandau is zo gebouwd (371,7 m).
+  Met 300 m lagen daar alle 341 splinekoppelingen over een tegelgrens precies
+  71,7 m verkeerd; met het raster 2 van de 341. Zie `readTileGrid()`.
+- Blokken die weg dragen: `[spline]`, `[spline_h]` (zelfde indeling, met
+  hoogteverloop) en `[object]` waarvan de `.sco` `[path]`-blokken heeft.
+  Kruisingen, rotondes en in Hamburg hele straten zijn zulke objecten.
+- Een `[spline]` kan een losse regel `mirror` hebben (Thüringer Wald): het
+  dwarsprofiel ligt gespiegeld, rijstroken wisselen van kant én van richting.
 - In een `[object]`-blok zijn veld 4 en 5 de grondcoördinaten, veld 6 de hoogte.
 - In een `[spline]`-blok staat de hoogte **tussen** de twee grondcoördinaten in.
 - Richting: graden, noord is nul, met de klok mee. Recht:
@@ -109,50 +127,63 @@ Draai ze opnieuw als je aan `geo.ts` of `roads.ts` komt.
   tegelversie: de meeste blokken noemen de vorige én de volgende spline, een deel
   alleen de vorige. In Rheinhausen staan ze door elkaar. `parseSpline()` kiest per
   blok op inhoud (een koppelveld is een heel getal, een lengte is nooit negatief).
-- Proef op de som: het eindpunt van elke spline valt op het beginpunt van de
-  volgende, **mediane afwijking 0,000 m over 37.772 koppelingen** in acht kaarten.
+- Proef op de som (`probe-geo.ts`): het eindpunt van elke spline valt op het
+  beginpunt van de volgende. Kijk naar het aantal **boven 1 m**, niet alleen naar
+  de mediaan: die stond in Spandau op 0,000 terwijl een op de vier koppelingen
+  72 m verkeerd lag. Nu hooguit 16 per kaart.
 
-**Classificatie van splines**
+**Banen: soort, plek, richting**
 
-Het `.sli`-bestand zegt zelf wat het is: elk `[path]`-blok noemt zijn
-verkeerssoort in het eerste veld — 0 AI-wegverkeer, 1 voetgangers, 2 spoor. OMSI
-documenteert dat in `Splines\Ruede\rail_concrete_01.sli`. Op de naam filteren
-werkt niet: Thüringer Wald gebruikt achthonderd verschillende splinebestanden.
+- `.sli`: `[path]` en `[path_2]` (één veld extra; de DDR-straten van Spandau
+  hebben alleen die). Velden: soort verkeer (0 weg, 1 voetganger, 2 spoor),
+  zijwaartse afstand (rechts positief), hoogte, breedte, richting.
+- `.sco`: `[path]` met x, y, hoogte, richting, straal, lengte, twee hellingen,
+  soort verkeer, breedte, rijrichting, knipperlicht.
+- Rijrichting: 0 met de baan mee, 1 ertegenin, 2 beide. Nagemeten tegen de
+  routes die OMSI zelf in `.ttr`-bestanden rijdt (`probe-tracks.ts`): Hamburg109
+  14.830 banen mee en 0 tegen; TH_Wald 39.593 tegen 4, maar alleen mét `mirror`.
+- Objecten draaien met de klok mee en de baanrichting telt op bij die van het
+  object (`probe-objjoin.ts`).
+- Op de naam filteren werkt niet: Thüringer Wald gebruikt achthonderd
+  verschillende splinebestanden.
+
+**Routes (`track.ts`, `routing.ts`)**
+
+- Niet alleen treinen hebben een `.ttr`: Grundorf 3/3 ritten, TH_Wald 165/165,
+  Hamburg109 113/124. Rheinhausen heeft er geen. Een `[track_entry]` is: id van
+  spline of object in de tegel, volgnummer van de baan daarin (stoepen tellen
+  mee), volgnummer van de tegel in `global.cfg`, volgnummer in de tegel, lengte.
+- Een `.ttr` wordt niet bijgewerkt als de kaart verandert; hij wordt alleen
+  gebruikt als alle banen gevonden zijn, alles naadloos aansluit en elke halte
+  binnen 15 m ligt. Anders plant `LaneNetwork`.
+- Planner tegen OMSI's eigen routes (`probe-routing.ts`): mediaan 100% van de lijn
+  binnen 5 m in TH_Wald, HamburgLi20, Grundorf. Gevonden haltestukken: Spandau
+  1392/1474, Rheinhausen 948/972, HamburgLi20 4116/4209. Wat mist valt terug op
+  een rechte lijn.
+- Losse rijstrookuiteinden koppelen aan een evenwijdige rijstrook binnen 12 m is
+  nodig (zonder: Spandau 978, TH_Wald 878). Rijstrookwissels zijn geprobeerd en
+  weer verwijderd: +9 stukken, twee keer zo traag.
 
 ---
 
 ## 5. Openstaand werk
 
-### 5.1 De wegen kloppen niet overal — gemeten, diagnose rond
+### 5.1 Wegennet en routes — opgelost, met twee losse eindjes
 
-De gebruiker meldde dat de route door leegte loopt terwijl er wegen naast liggen.
-`npx tsx scripts/probe-roads.ts` meet per kaart hoe ver een halte van de
-dichtstbijzijnde weg ligt:
+Het wegennet was niet te dun omdat kaarten geen splines gebruiken, maar omdat we
+de helft niet lazen (`[spline_h]`, `[path_2]`, objecten met rijbanen) en Spandau
+op het verkeerde tegelraster lag. Haltes binnen 25 m van een weg: nu 93–100% op
+elke kaart (was 2–93%). Routes volgen de weg, zie §4.
 
-```
-Berlin-Spandau     718 wegen | mediaan  19,6 m | binnen 25 m: 56%
-Grundorf            45 wegen | mediaan   4,9 m | binnen 25 m: 93%
-HafenCityHamburg   387 wegen | mediaan 367,0 m | binnen 25 m:  7%
-Hamburg109          53 wegen | mediaan 784,2 m | binnen 25 m:  4%
-Hamburg109_2        44 wegen | mediaan 797,7 m | binnen 25 m:  2%
-HamburgLi20        467 wegen | mediaan 306,7 m | binnen 25 m:  9%
-Rheinhausen       1101 wegen | mediaan  33,6 m | binnen 25 m: 42%
-TH_Wald           1102 wegen | mediaan  24,5 m | binnen 25 m: 51%
-```
+Nog open:
 
-**De meetkunde is niet stuk.** Grundorf zit op 4,9 m mediaan — dat is precies wat
-je verwacht van een halte aan de weg. Het probleem is dekking: veel kaarten
-bouwen hun straten helemaal niet uit splines. Hamburg109 gebruikt 275 keer
-`rail_concrete_01.sli` en maar 35 keer `invis_street.sli`; de zichtbare straten
-zijn scenery-objecten, en die dragen geen `[path]` (nagekeken: van 12.468
-objecten nul).
-
-Aanbevolen aanpak — niet meer wegen verzinnen, maar eerlijk zijn over dekking:
-
-1. Reken bij het inlezen de dekking uit (aandeel haltes binnen 25 m van een weg).
-2. Onder pakweg 35% de weglaag **niet tekenen**. Een half wegennet leest als een
-   kapotte kaart; alleen de route en de haltes is rustiger en klopt wel.
-3. Zet de dekking in `MapGeometry`, zodat de interface de keuze kan maken.
+- **Trams en stadsbanen rijden over de weg.** Lijn 5 in Rheinhausen is een
+  stadsbaan zonder `.ttr`; de planner kent alleen wegrijstroken en neemt de straat
+  naast het spoor. Oplossing: ook een spoornet bouwen en per rit kiezen welk net
+  de haltes het best bedient.
+- **Onvolledig geïnstalleerde kaarten** zoals `Vienna_2005_Line_24A` hebben geen
+  enkele tegel; de kaart blijft leeg. Dat is juist, maar er staat nog geen
+  uitleg bij in de interface.
 
 ### 5.2 Wensen van de gebruiker voor de overlay (nog niet gebouwd)
 
@@ -180,8 +211,10 @@ Voor punt 5 was het ontwerp al rond, alleen niet meer gebouwd:
   vanzelf uitgaat; het meerijden (`follow`) slaat over zolang `manual` aan staat.
   De centreerknop zet hem meteen uit.
 - **Het stipje**: OMSI geeft geen positie door — de plugin-API kent er geen
-  variabele voor, en Omni Navigation (dat bij de gebruiker geïnstalleerd staat)
-  komt niet verder; dat is een Lazarus-venster dat alleen tekst uitleest. Maar de
+  variabele voor. Omni Navigation (dat bij de gebruiker geïnstalleerd staat) is
+  een Java-programma met een eigen plugin-DLL dat per tegel een wegenkaart als
+  plaatje maakt (`OmniNavigation\res\<kaart>\tile_X_Y.map.roadmap.png`); of die
+  DLL de positie van de bus uitleest is niet nagekeken. Maar de
   kilometerteller komt wél mee: `status.odometerKm` is er net voor toegevoegd.
   Onthoud de stand op het moment dat `stopIndex` verspringt, en zet de stip op
   `(km_nu − km_bij_halte) / (hemelsbrede afstand × 1,25)` van de vorige naar de
@@ -190,11 +223,9 @@ Voor punt 5 was het ontwerp al rond, alleen niet meer gebouwd:
 
 ### 5.3 Kleiner grut
 
-- De blauwe routelijn loopt recht van halte naar halte, niet door de bochten van
-  de straat. OMSI legt voor buslijnen geen vaste route vast (alleen treinen
-  hebben `.ttr`). Het is te berekenen: het splinenetwerk is een graaf en de
-  haltes liggen erop, dus een kortste pad tussen opeenvolgende haltes kan. Dat is
-  een klus van een uur of wat en staat los van 5.1.
+- De routes worden in het hoofdproces uitgerekend, synchroon. Het rijstrokennet
+  opbouwen kost tot een seconde (HamburgLi20); het inlezen van TH_Wald 2,5 s. Zo
+  lang staat de overlay stil. Verhuizen naar een worker kan.
 - De drie standen van het overlay-paneel zijn nog niet naast elkaar bekeken: er
   staat een oude `live.json` op de machine van de gebruiker waarin de dienst als
   uitgereden staat, en dan valt het paneel in alle standen terug op één regel.
@@ -209,6 +240,13 @@ Er staan probes in `scripts/`:
 
 - `probe-geo.ts` — haltes, wegen, snelheid, en de aansluitingsproef.
 - `probe-roads.ts` — afstand van haltes tot de dichtstbijzijnde weg.
+- `probe-objjoin.ts` — draairichting van objecten, aan de aansluiting gemeten.
+- `probe-tracks.ts` — routes uit `.ttr`: aansluiting, haltes, rijrichting.
+- `probe-routing.ts` — de routeplanner, en hoe dicht hij bij OMSI's routes blijft.
+- `render-roads.ts`, `render-area.ts` + `rasterize.cjs` — het wegennet of een
+  uitsnede met rijrichtingen als plaatje, om een haperende plek te bekijken.
+- `screenshotMap.cjs` — de kaart in de echte app op een gekozen kaart, met
+  tijdelijke gebruikersmap, plus framtijden van slepen en zoomen.
 - `probe.ts`, `probeChain.ts` — dienstregeling en ketens.
 
 Schermafdrukken maken kan door het hoofdproces te laden in een klein
