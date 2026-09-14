@@ -75,13 +75,31 @@ enum {
 #define STR_MAX 96
 #define WRITE_INTERVAL_MS 100
 
-/* Boven deze vertraging telt het als hard remmen, in meter per seconde kwadraat. */
-#define HARSH_BRAKE 2.5
-/* En hierboven als hard optrekken. */
-#define HARSH_ACCEL 1.6
+/*
+ * Drempels voor hard remmen en optrekken, in meter per seconde kwadraat.
+ *
+ * Een bus remt comfortabel op ongeveer 1 tot 1,5; stevig maar normaal rond 2,5.
+ * Pas daarboven vliegen staande passagiers naar voren, dus daar ligt de grens.
+ * Optrekken haalt een bus zelden boven de 2.
+ */
+#define HARSH_BRAKE 3.0
+#define HARSH_ACCEL 2.0
+
+/* Zakt het weer onder dit deel van de drempel, dan is de gebeurtenis voorbij. */
+#define RELEASE_RATIO 0.6
+
+/* Zo lang moet het aanhouden voordat het telt; korter is een oneffenheid. */
+#define MIN_EVENT_S 0.25
+
+/* Onder deze snelheid niet meten: stilstaand gerammel is geen rijgedrag. */
+#define MIN_SPEED_KMH 5.0
+
 /* Kortere sprongen dan dit zijn ruis of een gepauzeerd spel. */
 #define MIN_STEP_S 0.01
 #define MAX_STEP_S 0.5
+
+/* Gewicht van een nieuwe meting in het voortschrijdend gemiddelde. */
+#define SMOOTH 0.25
 
 static float g_sys[SYS_COUNT];
 static float g_var[VAR_COUNT];
@@ -97,11 +115,17 @@ static int g_ready;
 static double g_prevSpeed;      /* m/s */
 static LARGE_INTEGER g_prevTick;
 static LARGE_INTEGER g_freq;
+static double g_accel;          /* gladgestreken versnelling, m/s^2 */
 static double g_maxBrake;       /* sterkste vertraging, m/s^2 */
 static double g_maxAccel;
 static double g_topSpeed;       /* km/h */
 static int g_harshBrakes;
 static int g_harshAccels;
+/* Lopende gebeurtenis: hoe lang staan we al boven de drempel, en is hij geteld? */
+static double g_brakeHeld;
+static double g_accelHeld;
+static int g_brakeCounted;
+static int g_accelCounted;
 
 /* Kopieert een OMSI-string veilig. Een lege of onleesbare waarde wordt leeg. */
 static void copy_string(int slot, const wchar_t *source) {
@@ -138,22 +162,62 @@ static void track_driving(double speedKmh) {
   if (speedKmh > g_topSpeed) g_topSpeed = speedKmh;
   const double speed = speedKmh / 3.6;
 
-  if (g_prevTick.QuadPart != 0 && g_freq.QuadPart != 0) {
-    const double step = (double)(now.QuadPart - g_prevTick.QuadPart) / (double)g_freq.QuadPart;
-    if (step >= MIN_STEP_S && step <= MAX_STEP_S) {
-      const double a = (speed - g_prevSpeed) / step;
-      if (a < 0) {
-        const double brake = -a;
-        if (brake > g_maxBrake) g_maxBrake = brake;
-        if (brake > HARSH_BRAKE) g_harshBrakes++;
-      } else {
-        if (a > g_maxAccel) g_maxAccel = a;
-        if (a > HARSH_ACCEL) g_harshAccels++;
-      }
-    }
+  if (g_prevTick.QuadPart == 0 || g_freq.QuadPart == 0) {
+    g_prevTick = now;
+    g_prevSpeed = speed;
+    return;
   }
+
+  const double step = (double)(now.QuadPart - g_prevTick.QuadPart) / (double)g_freq.QuadPart;
   g_prevTick = now;
+  if (step < MIN_STEP_S || step > MAX_STEP_S) {
+    g_prevSpeed = speed;
+    return;
+  }
+
+  const double raw = (speed - g_prevSpeed) / step;
   g_prevSpeed = speed;
+
+  /* Gladstrijken: een enkel beeld met een sprong is meetruis, geen rijgedrag. */
+  g_accel = g_accel * (1.0 - SMOOTH) + raw * SMOOTH;
+
+  if (speedKmh < MIN_SPEED_KMH) {
+    g_brakeHeld = g_accelHeld = 0;
+    g_brakeCounted = g_accelCounted = 0;
+    return;
+  }
+
+  const double brake = g_accel < 0 ? -g_accel : 0;
+  const double accel = g_accel > 0 ? g_accel : 0;
+  if (brake > g_maxBrake) g_maxBrake = brake;
+  if (accel > g_maxAccel) g_maxAccel = accel;
+
+  /*
+   * Een gebeurtenis telt een keer, niet elk beeld. Bij zestig beelden per
+   * seconde zou een remactie van twee tellen anders als honderdtwintig keer
+   * hard remmen in het logboek belanden.
+   */
+  if (brake >= HARSH_BRAKE) {
+    g_brakeHeld += step;
+    if (!g_brakeCounted && g_brakeHeld >= MIN_EVENT_S) {
+      g_harshBrakes++;
+      g_brakeCounted = 1;
+    }
+  } else if (brake < HARSH_BRAKE * RELEASE_RATIO) {
+    g_brakeHeld = 0;
+    g_brakeCounted = 0;
+  }
+
+  if (accel >= HARSH_ACCEL) {
+    g_accelHeld += step;
+    if (!g_accelCounted && g_accelHeld >= MIN_EVENT_S) {
+      g_harshAccels++;
+      g_accelCounted = 1;
+    }
+  } else if (accel < HARSH_ACCEL * RELEASE_RATIO) {
+    g_accelHeld = 0;
+    g_accelCounted = 0;
+  }
 }
 
 /* Schrijft de verzamelde waarden weg, via een tijdelijk bestand zodat de lezer
@@ -235,8 +299,11 @@ __declspec(dllexport) void __stdcall PluginStart(void *owner) {
   g_lastWrite = 0;
   g_prevSpeed = 0;
   g_prevTick.QuadPart = 0;
+  g_accel = 0;
   g_maxBrake = g_maxAccel = g_topSpeed = 0;
   g_harshBrakes = g_harshAccels = 0;
+  g_brakeHeld = g_accelHeld = 0;
+  g_brakeCounted = g_accelCounted = 0;
   QueryPerformanceFrequency(&g_freq);
   g_ready = 1;
 }

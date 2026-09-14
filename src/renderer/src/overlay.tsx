@@ -78,24 +78,30 @@ function Overlay(): JSX.Element {
 
       <div className="row">
         <span className="label">Halte</span>
-        <span className="value">{status.nextStop || '—'}</span>
-        {status.stopIndex !== undefined && status.stopsTotal > 0 ? (
+        {status.reportsStops ? (
           <>
-            <span className="sub">
-              {Math.min(status.stopIndex, status.stopsTotal)} van {status.stopsTotal} gehad
-            </span>
-            <div className="progress">
-              <div
-                style={{
-                  width: `${Math.round(
-                    (Math.min(status.stopIndex, status.stopsTotal) / status.stopsTotal) * 100
-                  )}%`
-                }}
-              />
-            </div>
+            <span className="value">{status.nextStop}</span>
+            {status.stopIndex !== undefined && status.stopsTotal > 0 && (
+              <>
+                <span className="sub">
+                  {Math.min(status.stopIndex, status.stopsTotal)} van {status.stopsTotal} gehad
+                </span>
+                <div className="progress">
+                  <div
+                    style={{
+                      width: `${Math.round(
+                        (Math.min(status.stopIndex, status.stopsTotal) / status.stopsTotal) * 100
+                      )}%`
+                    }}
+                  />
+                </div>
+              </>
+            )}
           </>
         ) : (
-          !status.nextStop && <span className="sub">deze bus meldt geen halte</span>
+          <span className="sub">
+            deze bus meldt nog geen halte — staat de IBIS al op lijn en route?
+          </span>
         )}
       </div>
 
@@ -108,7 +114,7 @@ function Overlay(): JSX.Element {
           <b>{Math.round(status.speedKmh)}</b>
           <span>km/u</span>
         </div>
-        <div className={`mood mood-${Math.round(status.mood * 4)}`}>
+        <div className={status.hasPassengers ? `mood mood-${Math.round(status.mood * 4)}` : 'mood'}>
           <b>{status.moodLabel}</b>
           <span>stemming</span>
         </div>

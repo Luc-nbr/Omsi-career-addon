@@ -112,12 +112,20 @@ export interface LiveStatus {
   /** Hoeveelste halte van deze rit, als de bus dat doorgeeft. */
   stopIndex?: number
   stopsTotal: number
+  /**
+   * Geeft deze bus zijn halte door? De IBIS-variabelen vullen zich pas zodra de
+   * lijn en route zijn ingetoetst, en niet elk model biedt ze aan.
+   */
+  reportsStops: boolean
   delayMinutes: number
   delayFromIbis: boolean
-  /** Stemming van 0 tot 1, en waar hij op gebaseerd is. */
+  /**
+   * Stemming van 0 tot 1. Alleen zinnig met passagiers aan boord: een lege bus
+   * heeft niemand die ergens iets van vindt.
+   */
   mood: number
   moodLabel: string
-  moodMeasured: boolean
+  hasPassengers: boolean
   harshBrakes: number
   harshAccels: number
   advice: Advice[]
@@ -160,7 +168,8 @@ function buildAdvice(data: LiveData, baseline?: { harshBrakes: number; harshAcce
   }
 
   const brakes = data.harshBrakes - (baseline?.harshBrakes ?? 0)
-  if (brakes >= 3) {
+  // Alleen een punt als er iemand in de bus zit om het te voelen.
+  if (brakes >= 3 && data.passengers > 0) {
     advice.push({
       id: 'remmen',
       text: `${brakes} keer hard geremd; je passagiers merken dat.`,
@@ -224,6 +233,7 @@ export function describeLive(
   const punctuality = Math.max(0, 1 - Math.max(0, delayMinutes) / 8)
   const smoothness = Math.max(0, 1 - (harshBrakes * 0.08 + harshAccels * 0.05))
   const mood = Math.max(0, Math.min(1, punctuality * 0.6 + smoothness * 0.4))
+  const hasPassengers = data.passengers >= 1
 
   return {
     clockMinutes,
@@ -235,14 +245,30 @@ export function describeLive(
     legIndex,
     leg,
     nextStop: data.busstop.trim(),
-    stopIndex: has(data, BIT.busstopIndex) ? Math.max(0, Math.round(data.busstopIndex)) : undefined,
+    /*
+     * Alleen een voortgang tonen als de bus werkelijk iets meldt. Een index van
+     * nul zonder haltenaam betekent dat de IBIS nog niet is ingetoetst, en dan
+     * is "0 van 9 gehad" een bewering die nergens op slaat.
+     */
+    stopIndex:
+      has(data, BIT.busstopIndex) && data.busstop.trim() !== ''
+        ? Math.max(0, Math.round(data.busstopIndex))
+        : undefined,
     stopsTotal: leg?.stops.length ?? 0,
+    reportsStops: data.busstop.trim() !== '',
     delayMinutes,
     delayFromIbis: fromIbis !== undefined,
     mood,
-    moodLabel:
-      mood > 0.8 ? 'tevreden' : mood > 0.55 ? 'rustig' : mood > 0.3 ? 'ongeduldig' : 'geïrriteerd',
-    moodMeasured: true,
+    moodLabel: !hasPassengers
+      ? 'leeg'
+      : mood > 0.8
+        ? 'tevreden'
+        : mood > 0.55
+          ? 'rustig'
+          : mood > 0.3
+            ? 'ongeduldig'
+            : 'geïrriteerd',
+    hasPassengers,
     harshBrakes,
     harshAccels,
     advice: buildAdvice(data, baseline),

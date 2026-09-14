@@ -190,9 +190,16 @@ De DLL wordt elk beeld aangeroepen en kan daardoor dingen uitrekenen die de app
 van buitenaf niet ziet. Uit `Velocity` — km/h, want de busscripts delen hem door
 3.6 voor hun natuurkunde — komt de versnelling, met de prestatieteller als klok
 omdat `GetTickCount` met zijn stap van 15 ms te grof is voor een beeld van 16 ms.
-Vertragingen boven 2,5 m/s² tellen als hard remmen, optrekken boven 1,6 m/s² als
-hard optrekken. Die tellers lopen door over de sessie; de app trekt de stand bij
-het begin van de dienst ervan af.
+Een gebeurtenis telt één keer, niet per beeld — bij zestig beelden per seconde
+zou een remactie van twee tellen anders als honderdtwintig keer hard remmen in
+het logboek belanden. De meting wordt gladgestreken, telt alleen boven 5 km/u,
+moet een kwart seconde aanhouden en gaat pas weer open als het ruim onder de
+drempel zakt. Die drempels liggen op 3,0 m/s² voor remmen en 2,0 voor optrekken:
+een bus remt comfortabel op 1 à 1,5 en stevig rond 2,5, dus pas daarboven vliegen
+staande passagiers naar voren.
+
+De tellers lopen door over de sessie; de app trekt de stand bij het begin van de
+dienst ervan af.
 
 Daarmee is de stemming in de overlay afgeleid uit gemeten gedrag in plaats van
 uit snelheid als ruwe maat. Een gemeten cijfer blijft het niet: OMSI geeft geen
