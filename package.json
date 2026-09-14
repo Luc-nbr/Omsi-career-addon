@@ -9,7 +9,10 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",
-    "probe": "tsx scripts/probe.ts"
+    "probe": "tsx scripts/probe.ts",
+    "dist": "electron-vite build && electron-builder",
+    "dist:dir": "electron-vite build && electron-builder --dir",
+    "icon": "python scripts/make-icon.py"
   },
   "dependencies": {
     "iconv-lite": "^0.6.3"
@@ -20,6 +23,7 @@
     "@types/react-dom": "^19.0.2",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^33.2.1",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^2.3.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -30,6 +34,11 @@
   "allowScripts": {
     "electron@33.4.11": true,
     "esbuild@0.21.5": true,
-    "esbuild@0.28.2": true
+    "esbuild@0.28.2": true,
+    "electron-winstaller@5.4.0": true
+  },
+  "author": {
+    "name": "Luc Ruigrok",
+    "email": "lucruigrok@gmail.com"
   }
 }

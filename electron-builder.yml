@@ -1,0 +1,42 @@
+appId: nl.lucruigrok.omsicareer
+productName: OMSI Career
+copyright: Luc Ruigrok
+
+directories:
+  buildResources: build
+  output: release
+
+# node_modules wordt door electron-builder zelf meegenomen, maar alleen de
+# productie-afhankelijkheden. Voor deze app is dat iconv-lite, nodig om de
+# Windows-1252-bestanden van OMSI te lezen.
+files:
+  - out/**
+  - package.json
+  - '!**/*.map'
+
+asar: true
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  icon: build/icon.ico
+  artifactName: ${productName} ${version} Setup.${ext}
+
+portable:
+  artifactName: ${productName} ${version} draagbaar.${ext}
+
+nsis:
+  # Geen eenkliksinstallatie: de speler mag zien waar het heen gaat en kiezen.
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: OMSI Career
+  # Het logboek staat in AppData en hoort een herinstallatie te overleven.
+  deleteAppDataOnUninstall: false
+  # 1043 = Nederlands (Nederland)
+  language: '1043'
