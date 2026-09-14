@@ -15,6 +15,7 @@ const api: CareerApi = {
   ibis: (duty, vehicle, year) => ipcRenderer.invoke('duty:ibis', duty, vehicle, year),
   toggleOverlay: (duty) => ipcRenderer.invoke('overlay:toggle', duty),
   editOverlay: (on) => ipcRenderer.invoke('overlay:edit', on),
+  overlayHit: (on) => ipcRenderer.invoke('overlay:hit', on),
   overlayLayout: () => ipcRenderer.invoke('overlay:layout'),
   saveOverlayLayout: (layout) => ipcRenderer.invoke('overlay:layout:save', layout),
   resetOverlayLayout: () => ipcRenderer.invoke('overlay:layout:reset'),
@@ -48,5 +49,6 @@ contextBridge.exposeInMainWorld('receipt', {
 
 contextBridge.exposeInMainWorld('overlay', {
   onFrame: (handler: (frame: unknown) => void) =>
-    ipcRenderer.on('overlay:frame', (_event, frame) => handler(frame))
+    ipcRenderer.on('overlay:frame', (_event, frame) => handler(frame)),
+  onCycle: (handler: () => void) => ipcRenderer.on('overlay:cycle', () => handler())
 })

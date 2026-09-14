@@ -242,19 +242,36 @@ licht uit" — we weten het niet, en dan hoort er geen waarschuwing bij.
 
 ### De overlay indelen
 
-De overlay is geen vast paneel maar een reeks losse vensters: klok, rit, haltes,
-kaart, meters, rijstijl en adviezen. Elk venster kun je verslepen, groter maken,
-dichtklappen of uitzetten; de indeling staat in `overlay.json` naast de
-profielen en hoort bij het scherm, niet bij een chauffeur.
+De overlay bestaat uit twee elementen die los van elkaar staan: het dienstpaneel
+met de gegevens en de navigatie met de kaart. Allebei kun je ze verslepen en
+verschalen; de indeling staat in `overlay.json` naast de profielen en hoort bij
+het scherm, niet bij een chauffeur.
 
-Aanpassen kan alleen in de bewerkstand, via de knop in de app of met
-**Ctrl+Alt+O** tijdens het rijden. Dat onderscheid is nodig: een venster dat
-muisklikken aanneemt, pakt ook de aandacht af van OMSI, en dan reageert je stuur
-niet meer. Daarbuiten laat de overlay alles ongemoeid doorgaan naar het spel.
+Het dienstpaneel kent drie standen. **Beknopt** is een enkele regel met de klok,
+de lijn, de volgende halte en de bezetting. **Normaal** zet daar de bestemming,
+de aankomsttijd en de meters onder. **Uitgebreid** toont bovendien de haltes als
+lijndiagram en de tellers van je rijstijl. Uitklappen zet hem een stand verder
+en daarna weer terug naar beknopt; waarschuwingen blijven in elke stand staan,
+want die moet je niet kunnen wegklappen.
 
-In de bewerkstand zweeft de titelbalk bóven het venster in plaats van erin. Zo
-is een venster tijdens het schuiven precies even groot als daarna en springt de
-inhoud niet weg zodra je op Klaar drukt.
+Uitklappen kan met de knop rechtsboven in het paneel of met **Ctrl+Alt+V**.
+Beide bestaan omdat de overlay muisklikken normaal gesproken doorlaat naar het
+spel: een venster dat klikken opvangt, vangt ze overal op en pakt ook de
+aandacht af van OMSI, en dan reageert je stuur niet meer. Daarom laat het
+venster alleen de muisbewegingen doorgeven en vraagt het de muis pas op zodra
+die boven die ene knop hangt. Werkt dat in jouw opstelling niet, dan doet de
+sneltoets hetzelfde.
+
+Verslepen gaat via de bewerkstand, met de knop in de app of met **Ctrl+Alt+O**.
+Daarin zweeft de titelbalk bóven het element in plaats van erin: zo is het
+tijdens het schuiven precies even groot als daarna en springt de inhoud niet weg
+zodra je op Klaar drukt.
+
+De kaart rijdt mee. Zodra de IBIS doorgeeft bij welke halte je bent, zoomt hij
+in op het stuk weg tussen de vorige en de volgende halte — ingezoomd genoeg om
+de straat te volgen. Een eigen positie geeft OMSI niet door; de plugin-API kent
+er geen variabele voor, en ook Omni Navigation komt niet verder. Het weggedeelte
+tussen twee haltes is wel precies waar je op zit.
 
 ### Bouwen en plaatsen
 

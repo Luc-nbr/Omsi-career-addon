@@ -12,11 +12,6 @@
   overflow: hidden;
 }
 
-/*
- * Het venster beslaat het hele scherm en laat muisklikken door; alleen de
- * panelen zelf zijn er. In de bewerkstand komt er een waas overheen, zodat je
- * ziet waar je aan het schuiven bent.
- */
 .stage {
   position: fixed;
   inset: 0;
@@ -26,7 +21,9 @@
   background: rgba(6, 9, 14, 0.42);
 }
 
-.widget {
+/* ---------- de twee verplaatsbare elementen ---------- */
+
+.panel {
   position: absolute;
   display: flex;
   flex-direction: column;
@@ -35,87 +32,68 @@
   border-left: 3px solid #f0b429;
   border-radius: 10px;
   backdrop-filter: blur(6px);
-  overflow: hidden;
 }
 
-.widget-body {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 9px 13px 11px;
-}
-
-.widget-kaart .widget-body {
-  overflow: hidden;
-  padding: 0;
-}
-
-.editing .widget {
+.editing .panel {
   border-color: rgba(240, 180, 41, 0.45);
 }
 
+.panel-body {
+  flex: 1;
+  min-height: 0;
+  padding: 9px 13px 11px;
+}
+
+/* De kaart vult zijn element helemaal; opvulling zou er alleen ruimte afsnoepen. */
+.panel-navigatie .panel-body {
+  padding: 0;
+  overflow: hidden;
+}
+
 /*
- * De balk zweeft boven het venster in plaats van erin: zo is het venster in de
- * bewerkstand precies even groot als daarna, en springt de inhoud niet weg
- * zodra je op Klaar drukt. Alleen dichtgeklapt is de balk het venster zelf.
+ * De titelbalk zweeft boven het element in plaats van erin: zo is het tijdens
+ * het schuiven precies even groot als daarna, en springt de inhoud niet weg
+ * zodra je op Klaar drukt.
  */
-.editing .widget:not(.shut) .widget-bar {
+.panel-bar {
   position: absolute;
   left: -1px;
   right: -1px;
-  top: -22px;
-  border-radius: 8px 8px 0 0;
-  border: 1px solid rgba(240, 180, 41, 0.4);
-  border-bottom: none;
-  /* De balk hangt buiten het venster, dus hij heeft zelf een bodem nodig. */
-  background: rgba(12, 16, 22, 0.94);
-  color: #e6ecf5;
-}
-
-.widget:not(.shut) {
-  overflow: visible;
-}
-
-.widget-bar {
+  top: -23px;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 6px 3px 4px;
-  background: rgba(255, 255, 255, 0.06);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 3px 8px;
+  border-radius: 8px 8px 0 0;
+  border: 1px solid rgba(240, 180, 41, 0.4);
+  border-bottom: none;
+  background: rgba(12, 16, 22, 0.94);
+  color: #e6ecf5;
   font-size: 11.5px;
-  color: #b6c2d1;
-}
-
-.editing .widget-bar {
   cursor: grab;
 }
 
-.widget-title {
+.panel-title {
   flex: 1;
   letter-spacing: 0.03em;
 }
 
-.widget-bar button {
+.panel-bar button {
   border: none;
   background: none;
   color: #8d9bad;
   font: inherit;
   cursor: pointer;
-  padding: 0 4px;
+  padding: 0 2px;
   line-height: 1;
 }
 
-.widget-bar button:hover {
+.panel-bar button:hover {
   color: #ffffff;
 }
 
-.shut .widget-body {
-  display: none;
-}
-
-/* Het hoekje waar je aan trekt om het venster te verschalen. */
-.widget-grip {
+/* Het hoekje waar je aan trekt om het element te verschalen. */
+.panel-grip {
   position: absolute;
   right: 0;
   bottom: 0;
@@ -132,36 +110,17 @@
   );
 }
 
-.waiting {
-  color: #9aa7b8;
+/* ---------- bovenste regel en de standknop ---------- */
+
+.topline {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.clockrow {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
-
-.row.empty {
-  color: #78849a;
-  font-size: 12px;
-  margin: 0;
-}
-
-.dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 99px;
-  background: #f0b429;
-  display: inline-block;
+  gap: 9px;
 }
 
 .clock {
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
-  font-size: 22px;
+  font-size: 21px;
   font-weight: 700;
   letter-spacing: 0.01em;
 }
@@ -189,8 +148,105 @@
   color: #ff8f6b;
 }
 
+/*
+ * De knop die het paneel een stand verder klapt. De drie streepjes laten zien
+ * hoeveel er nu te zien is; ze groeien mee met de stand.
+ */
+.expand {
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 4px 2px 4px 6px;
+  line-height: 0;
+}
+
+.pips {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-end;
+}
+
+.pips i {
+  display: block;
+  height: 2px;
+  width: 11px;
+  border-radius: 2px;
+  background: #5c6879;
+}
+
+.pips-0 i:first-child,
+.pips-1 i:first-child,
+.pips-1 i:nth-child(2),
+.pips-2 i {
+  background: #f0b429;
+}
+
+.expand:hover .pips i {
+  background: #8d9bad;
+}
+
+.expand:hover .pips-0 i:first-child,
+.expand:hover .pips-1 i:first-child,
+.expand:hover .pips-1 i:nth-child(2),
+.expand:hover .pips-2 i {
+  background: #ffd469;
+}
+
+/* ---------- beknopte stand ---------- */
+
+.tight {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding-top: 3px;
+}
+
+.tight-stop {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tight-rest {
+  margin-left: auto;
+  color: #8d9bad;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.line-done {
+  padding-top: 4px;
+  font-weight: 600;
+}
+
+.waiting {
+  color: #9aa7b8;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.empty {
+  color: #78849a;
+  font-size: 12px;
+  padding: 12px 14px;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 99px;
+  background: #f0b429;
+  display: inline-block;
+}
+
+/* ---------- ruimere standen ---------- */
+
 .row {
-  margin-bottom: 0;
+  margin-top: 8px;
 }
 
 .row .label {
@@ -215,6 +271,7 @@
 .grid {
   display: flex;
   gap: 8px;
+  margin-top: 9px;
 }
 
 .grid > div {
@@ -222,7 +279,7 @@
   background: rgba(255, 255, 255, 0.05);
   border-radius: 7px;
   padding: 5px 9px;
-  min-width: 64px;
+  min-width: 62px;
 }
 
 .grid b {
@@ -257,23 +314,11 @@
   color: #ff8f6b;
 }
 
-.request {
-  margin-top: 0;
-  background: rgba(240, 180, 41, 0.16);
-  border-radius: 6px;
-  padding: 5px 9px;
-  color: #f0b429;
-  font-weight: 600;
-}
-
-/* ---------- voortgang, tellers en adviezen ---------- */
-
-
-
 .counters {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  margin-top: 9px;
   color: #8d9bad;
   font-size: 11.5px;
 }
@@ -284,8 +329,17 @@
   padding: 2px 7px;
 }
 
+.request {
+  margin-top: 9px;
+  background: rgba(240, 180, 41, 0.16);
+  border-radius: 6px;
+  padding: 5px 9px;
+  color: #f0b429;
+  font-weight: 600;
+}
+
 .advice {
-  margin-top: 6px;
+  margin-top: 7px;
   border-radius: 6px;
   padding: 5px 9px;
   font-size: 12.5px;
@@ -304,11 +358,10 @@
   color: #b6c2d1;
 }
 
-/* ---------- navigatie: welke haltes komen er nog ---------- */
+/* ---------- de haltes als lijndiagram ---------- */
 
 .nav {
-  height: 100%;
-  overflow: hidden;
+  margin-top: 8px;
 }
 
 .nav-head .label {

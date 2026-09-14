@@ -1,86 +1,85 @@
 /**
- * De indeling van de overlay: welke vensters er zijn, waar ze staan en hoe groot
- * ze zijn. Zowel het hoofdproces (dat het bewaart) als de overlay zelf gebruiken
- * deze beschrijving, zodat er maar een lijst bestaat.
+ * De indeling van de overlay.
+ *
+ * Er zijn twee elementen die los van elkaar staan: het dienstpaneel met de
+ * gegevens, en de navigatie met de kaart. Beide kun je verslepen. Het paneel
+ * kent drie standen, van beknopt tot uitgebreid; uitklappen zet hem een stand
+ * verder.
  */
 
-export type WidgetId =
-  | 'klok'
-  | 'rit'
-  | 'navigatie'
-  | 'kaart'
-  | 'meters'
-  | 'rijstijl'
-  | 'advies'
+export type PanelId = 'dienst' | 'navigatie'
 
-export interface WidgetState {
+/** 0 beknopt, 1 normaal, 2 uitgebreid. */
+export type DetailLevel = 0 | 1 | 2
+
+export const DETAIL_NAMES = ['Beknopt', 'Normaal', 'Uitgebreid'] as const
+
+export interface PanelState {
   x: number
   y: number
   w: number
+  /** Alleen de navigatie heeft een eigen hoogte; het paneel groeit met zijn inhoud. */
   h: number
   visible: boolean
-  /** Dichtgeklapt: alleen de titelbalk blijft staan. */
-  collapsed: boolean
 }
 
-export type OverlayLayout = Record<WidgetId, WidgetState>
+export interface OverlayLayout {
+  detail: DetailLevel
+  dienst: PanelState
+  navigatie: PanelState
+}
 
-export interface WidgetInfo {
-  id: WidgetId
+export interface PanelInfo {
+  id: PanelId
   title: string
-  /** Waar het over gaat, voor de knoppenbalk in de bewerkstand. */
-  hint: string
   minW: number
   minH: number
-  /** Vaste hoogte: de inhoud bepaalt hem, rekken heeft geen zin. */
-  fixedHeight?: boolean
+  /** De inhoud bepaalt de hoogte; rekken heeft geen zin. */
+  autoHeight?: boolean
 }
 
-export const WIDGETS: WidgetInfo[] = [
-  { id: 'klok', title: 'Klok en lijn', hint: 'tijd, lijnnummer, vertraging', minW: 200, minH: 52, fixedHeight: true },
-  { id: 'rit', title: 'Rit', hint: 'waar je heen rijdt en wanneer je er bent', minW: 200, minH: 60, fixedHeight: true },
-  { id: 'navigatie', title: 'Haltes', hint: 'de haltes die nog komen', minW: 210, minH: 120 },
-  { id: 'kaart', title: 'Kaart', hint: 'de route met je volgende halte', minW: 220, minH: 160 },
-  { id: 'meters', title: 'Meters', hint: 'passagiers, snelheid, stemming', minW: 220, minH: 62, fixedHeight: true },
-  { id: 'rijstijl', title: 'Rijstijl', hint: 'hard remmen en optrekken', minW: 180, minH: 40, fixedHeight: true },
-  { id: 'advies', title: 'Adviezen', hint: 'meldingen tijdens de rit', minW: 220, minH: 50 }
+export const PANELS: PanelInfo[] = [
+  { id: 'dienst', title: 'Dienst', minW: 230, minH: 60, autoHeight: true },
+  { id: 'navigatie', title: 'Navigatie', minW: 240, minH: 170 }
 ]
 
-/**
- * Een kolom links met de kaart eronder. De tussenruimte is ruim genoeg voor de
- * titelbalk die in de bewerkstand boven elk venster verschijnt.
- */
+/** Het paneel linksboven, de navigatie eronder. */
 export const DEFAULT_LAYOUT: OverlayLayout = {
-  klok: { x: 24, y: 30, w: 310, h: 56, visible: true, collapsed: false },
-  rit: { x: 24, y: 112, w: 310, h: 72, visible: true, collapsed: false },
-  navigatie: { x: 24, y: 210, w: 310, h: 196, visible: true, collapsed: false },
-  meters: { x: 24, y: 432, w: 310, h: 66, visible: true, collapsed: false },
-  rijstijl: { x: 24, y: 524, w: 310, h: 42, visible: true, collapsed: false },
-  advies: { x: 24, y: 592, w: 310, h: 92, visible: true, collapsed: false },
-  kaart: { x: 24, y: 710, w: 310, h: 250, visible: true, collapsed: false }
+  detail: 1,
+  dienst: { x: 24, y: 30, w: 320, h: 0, visible: true },
+  navigatie: { x: 24, y: 470, w: 360, h: 300, visible: true }
 }
 
 export function defaultLayout(): OverlayLayout {
   return structuredClone(DEFAULT_LAYOUT)
 }
 
+export function nextDetail(level: DetailLevel): DetailLevel {
+  return (((level + 1) % 3) as DetailLevel)
+}
+
 /**
- * Vult een bewaarde indeling aan met wat er ontbreekt. Zo blijft een oude
- * overlay.json bruikbaar als er later een venster bij komt.
+ * Vult een bewaarde indeling aan met wat er ontbreekt, zodat een oud of
+ * onvolledig bestand geen lege overlay oplevert.
  */
-export function mergeLayout(saved: Partial<OverlayLayout> | undefined): OverlayLayout {
+export function mergeLayout(saved: unknown): OverlayLayout {
   const layout = defaultLayout()
-  if (!saved) return layout
-  for (const widget of WIDGETS) {
-    const state = saved[widget.id]
-    if (!state) continue
-    layout[widget.id] = {
-      x: numberOr(state.x, layout[widget.id].x),
-      y: numberOr(state.y, layout[widget.id].y),
-      w: Math.max(widget.minW, numberOr(state.w, layout[widget.id].w)),
-      h: Math.max(widget.minH, numberOr(state.h, layout[widget.id].h)),
-      visible: state.visible !== false,
-      collapsed: state.collapsed === true
+  if (!saved || typeof saved !== 'object') return layout
+  const raw = saved as Partial<OverlayLayout>
+
+  if (typeof raw.detail === 'number' && raw.detail >= 0 && raw.detail <= 2) {
+    layout.detail = Math.round(raw.detail) as DetailLevel
+  }
+  for (const panel of PANELS) {
+    const state = raw[panel.id]
+    if (!state || typeof state !== 'object') continue
+    const fallback = layout[panel.id]
+    layout[panel.id] = {
+      x: numberOr(state.x, fallback.x),
+      y: numberOr(state.y, fallback.y),
+      w: Math.max(panel.minW, numberOr(state.w, fallback.w)),
+      h: Math.max(panel.minH, numberOr(state.h, fallback.h)),
+      visible: state.visible !== false
     }
   }
   return layout

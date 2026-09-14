@@ -40,10 +40,25 @@ interface Props {
   variant?: 'panel' | 'full'
   /** Halte die de gebruiker elders aanwees; die springt in beeld. */
   focusStopId?: string
+  /**
+   * Het stuk weg waar de bus nu op rijdt: van de vorige halte naar de volgende.
+   * Staat dit aan, dan houdt de kaart dat stuk in beeld in plaats van de hele
+   * dienst -- ingezoomd genoeg om de straat te kunnen volgen.
+   */
+  follow?: { fromId?: string; toId?: string }
 }
 
 const MIN_MPP = 0.2
 const MAX_MPP = 60
+
+/**
+ * Grenzen voor het meerijdende beeld. Onder de ondergrens kijk je naar losse
+ * stoeptegels, boven de bovengrens is de straat niet meer te volgen.
+ */
+const FOLLOW_MIN_MPP = 0.35
+const FOLLOW_MAX_MPP = 2.2
+/** Lucht om het stuk weg heen, zodat je ziet wat eraan komt. */
+const FOLLOW_PAD_M = 130
 
 /** Namen van andere haltes verschijnen pas als je dicht genoeg bent. */
 const OTHER_LABEL_MPP = 2.5
@@ -54,7 +69,8 @@ export function RouteMap({
   geometry,
   nextStopId,
   variant = 'panel',
-  focusStopId
+  focusStopId,
+  follow
 }: Props): JSX.Element {
   const boxRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
@@ -127,8 +143,12 @@ export function RouteMap({
     return () => observer.disconnect()
   }, [])
 
+  const following = Boolean(follow?.toId)
+
   const fitted = useRef<string>('')
   useEffect(() => {
+    // Rijdt de kaart mee, dan bepaalt het stuk weg het beeld en niet de dienst.
+    if (following) return
     const key = `${duty.tourNumber}|${bounds.minX}|${bounds.minY}|${size.w}x${size.h}`
     if (fitted.current === key) return
     fitted.current = key
@@ -144,7 +164,33 @@ export function RouteMap({
         MAX_MPP
       )
     })
-  }, [duty.tourNumber, bounds, size])
+  }, [duty.tourNumber, bounds, size, following])
+
+  /*
+   * Meerijden: het stuk van de vorige naar de volgende halte vult het beeld.
+   * Een eigen positie geeft OMSI niet door -- de plugin-API kent er geen
+   * variabele voor -- maar het weggedeelte tussen twee haltes is precies waar
+   * je op zit, en dat is wat je wilt zien.
+   */
+  useEffect(() => {
+    if (!follow?.toId) return
+    const to = byId.get(follow.toId)
+    if (!to) return
+    const from = follow.fromId ? byId.get(follow.fromId) : undefined
+    const xs = from ? [from.x, to.x] : [to.x]
+    const ys = from ? [from.y, to.y] : [to.y]
+    const spanX = Math.max(...xs) - Math.min(...xs) + FOLLOW_PAD_M * 2
+    const spanY = Math.max(...ys) - Math.min(...ys) + FOLLOW_PAD_M * 2
+    setView({
+      cx: (Math.max(...xs) + Math.min(...xs)) / 2,
+      cy: (Math.max(...ys) + Math.min(...ys)) / 2,
+      mpp: clamp(
+        Math.max(spanX / Math.max(1, size.w), spanY / Math.max(1, size.h)),
+        FOLLOW_MIN_MPP,
+        FOLLOW_MAX_MPP
+      )
+    })
+  }, [follow?.fromId, follow?.toId, byId, size])
 
   // Een halte die elders is aangewezen halen we in beeld.
   useEffect(() => {

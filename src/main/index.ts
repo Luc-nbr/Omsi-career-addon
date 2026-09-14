@@ -134,11 +134,22 @@ function pushFrame(): void {
 function setOverlayEdit(on: boolean): boolean {
   if (!overlayWindow || overlayWindow.isDestroyed()) return false
   overlayEditing = on
-  overlayWindow.setIgnoreMouseEvents(!on)
+  passMouseThrough(!on)
   overlayWindow.setFocusable(on)
   if (on) overlayWindow.focus()
   pushFrame()
   return on
+}
+
+/**
+ * Klikken doorlaten naar het spel, maar de muisbewegingen wel doorgeven aan de
+ * pagina. Daarmee kan de overlay zelf melden dat de muis boven een knop hangt
+ * en pakken we hem alleen daar even op. Het venster blijft niet-focusbaar, dus
+ * OMSI raakt de aandacht niet kwijt.
+ */
+function passMouseThrough(through: boolean): void {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return
+  overlayWindow.setIgnoreMouseEvents(through, through ? { forward: true } : undefined)
 }
 
 function closeOverlay(): void {
@@ -180,7 +191,7 @@ function openOverlay(duty: Duty): void {
 
   // Boven een spel in vensterstand, en muisklikken gaan er dwars doorheen.
   overlayWindow.setAlwaysOnTop(true, 'screen-saver')
-  overlayWindow.setIgnoreMouseEvents(true)
+  passMouseThrough(true)
   overlayWindow.on('closed', () => {
     overlayWindow = null
   })
@@ -480,6 +491,12 @@ function registerHandlers(): void {
     setOverlayEdit(on === undefined ? !overlayEditing : on)
   )
 
+  /** De pagina meldt of de muis boven een knop hangt. */
+  ipcMain.handle('overlay:hit', (_event, on: boolean) => {
+    if (overlayEditing) return
+    passMouseThrough(!on)
+  })
+
   ipcMain.handle('overlay:layout', () => readOverlayLayout(userData()))
 
   ipcMain.handle('overlay:layout:save', (_event, layout: OverlayLayout) => {
@@ -559,6 +576,11 @@ app.whenReady().then(() => {
   // Ctrl+Alt zelf nergens voor gebruikt.
   globalShortcut.register('Control+Alt+O', () => {
     if (overlayWindow && !overlayWindow.isDestroyed()) setOverlayEdit(!overlayEditing)
+  })
+
+  // Een stand verder in het dienstpaneel: beknopt, normaal, uitgebreid.
+  globalShortcut.register('Control+Alt+V', () => {
+    if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.webContents.send('overlay:cycle')
   })
 
   app.on('activate', () => {

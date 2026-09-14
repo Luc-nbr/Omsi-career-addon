@@ -95,6 +95,8 @@ export interface CareerApi {
   geometry(mapFolder: string): Promise<MapGeometry>
   /** Zet de overlay in of uit de bewerkstand; geeft terug of hij nu aan staat. */
   editOverlay(on?: boolean): Promise<boolean>
+  /** Meldt of de muis boven een knop van de overlay hangt. */
+  overlayHit(on: boolean): Promise<void>
   overlayLayout(): Promise<OverlayLayout>
   saveOverlayLayout(layout: OverlayLayout): Promise<OverlayLayout>
   resetOverlayLayout(): Promise<OverlayLayout>
