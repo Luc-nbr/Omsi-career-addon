@@ -770,3 +770,57 @@ input[type='range'] {
 .print-panel .btn {
   padding: 9px 16px;
 }
+
+/* ---------- kaartje met de spawnplek ---------- */
+
+.map-lead {
+  margin-bottom: 10px;
+}
+
+.duty-map {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+/* Haltes van de kaart: aanwezig maar op de achtergrond, ze tekenen het net. */
+.map-dot {
+  fill: var(--line);
+}
+
+.map-path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-opacity: 0.4;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.map-route {
+  fill: var(--text);
+}
+
+.map-start {
+  fill: var(--accent);
+}
+
+.map-start-ring {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.map-scale line {
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+
+.map-scale text {
+  fill: var(--muted);
+  font-size: 10px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}

@@ -1,5 +1,6 @@
 import type { CareerState, CareerSummary } from '../core/career'
 import type { ProfileSummary } from '../core/profiles'
+import type { MapGeometry } from '../core/geo'
 import type { IbisPlan } from '../core/ibis'
 import type { PluginStatus } from '../core/pluginInstall'
 import type { Duty } from '../core/types'
@@ -89,6 +90,8 @@ export interface CareerApi {
   status(): Promise<OmsiStatus>
   maps(): Promise<MapSummary[]>
   vehicles(): Promise<Vehicle[]>
+  /** Halteposities van een kaart, om te tonen waar je de bus neerzet. */
+  geometry(mapFolder: string): Promise<MapGeometry>
   /** Zet de overlay-plugin klaar in OMSI en meldt de stand. */
   pluginStatus(): Promise<PluginStatus>
   /** Een rooster om uit te kiezen. */

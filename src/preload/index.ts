@@ -9,6 +9,7 @@ const api: CareerApi = {
   status: () => ipcRenderer.invoke('omsi:status'),
   maps: () => ipcRenderer.invoke('omsi:maps'),
   vehicles: () => ipcRenderer.invoke('omsi:vehicles'),
+  geometry: (mapFolder) => ipcRenderer.invoke('map:geometry', mapFolder),
   pluginStatus: () => ipcRenderer.invoke('plugin:status'),
   listDuties: (request: DutyRequest) => ipcRenderer.invoke('duty:list', request),
   ibis: (duty, vehicle, year) => ipcRenderer.invoke('duty:ibis', duty, vehicle, year),

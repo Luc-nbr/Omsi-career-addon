@@ -82,7 +82,8 @@ function toDuty(map: OmsiMap, legs: TripRun[]): Duty {
     layoverBefore: index === 0 ? 0 : run.departure - legs[index - 1].arrival,
     stops: run.trip.stops.map(
       (stop) => stop.name ?? map.stops.get(stop.id)?.name ?? `halte ${stop.id}`
-    )
+    ),
+    stopIds: run.trip.stops.map((stop) => stop.id)
   }))
 
   return {

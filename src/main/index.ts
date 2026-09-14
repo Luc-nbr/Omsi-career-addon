@@ -12,6 +12,7 @@ import {
 } from '../core/profiles'
 import { buildNetwork, generateDuties, type Network } from '../core/duty'
 import { buildFleetIndex, pickVehicleForDuty, readMapFleet, type FleetIndex } from '../core/fleet'
+import { readMapGeometry, type MapGeometry } from '../core/geo'
 import { buildIbisPlan } from '../core/ibis'
 import { describeLive, readLive } from '../core/live'
 import { findOmsiInstall } from '../core/install'
@@ -29,6 +30,7 @@ const mapCache = new Map<string, OmsiMap>()
 const networkCache = new Map<string, Network>()
 const mapFleetCache = new Map<string, Set<string>>()
 const mapEraCache = new Map<string, { year: number; dayOfYear: number }>()
+const geometryCache = new Map<string, MapGeometry>()
 let fleetIndex: FleetIndex | undefined
 /**
  * Nulmeting bij het begin van een dienst, gelezen uit de live gegevens van de
@@ -285,6 +287,21 @@ function registerHandlers(): void {
   )
 
   ipcMain.handle('omsi:vehicles', () => listVehicles(omsi()))
+
+  /**
+   * Halteposities van een kaart. Het doorlezen van de tegels kost een fractie
+   * van een seconde tot ruim een seconde, dus eenmaal per kaart.
+   */
+  ipcMain.handle('map:geometry', (_event, folder: string): MapGeometry => {
+    const cached = geometryCache.get(folder)
+    if (cached) return cached
+    const loaded = map(folder)
+    const ids = new Set<string>()
+    for (const trip of loaded.trips.values()) for (const stop of trip.stops) ids.add(stop.id)
+    const geometry = readMapGeometry(loaded.path, ids)
+    geometryCache.set(folder, geometry)
+    return geometry
+  })
 
   ipcMain.handle('omsi:live', () => Boolean(readLive()?.alive))
 

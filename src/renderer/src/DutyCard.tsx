@@ -4,6 +4,7 @@ import type { Duty, DutyLeg } from '../../core/types'
 import type { Vehicle } from '../../core/vehicles'
 import type { Assignment, PrinterInfo } from '../../shared/api'
 import { describeDays, formatDuration, formatTime } from '../../shared/format'
+import { DutyMap } from './DutyMap'
 
 interface Props {
   assignment: Assignment
@@ -67,6 +68,8 @@ export function DutyCard({
       </header>
 
       <SelectPanel duty={duty} />
+
+      <DutyMap duty={duty} />
 
       <BusPanel
         assignment={assignment}

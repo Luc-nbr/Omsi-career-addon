@@ -80,6 +80,8 @@ export interface DutyLeg {
   /** Wachttijd op het eindpunt sinds de vorige rit. Nul bij de eerste. */
   layoverBefore: number
   stops: string[]
+  /** Dezelfde haltes als id, om ze op de kaart terug te vinden. */
+  stopIds: string[]
 }
 
 /** De dienst die de speler krijgt toegewezen. */
