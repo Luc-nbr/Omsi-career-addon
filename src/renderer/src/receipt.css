@@ -1,0 +1,136 @@
+/*
+ * Opmaak voor een 80mm-bonprinter.
+ *
+ * Het papier is 80 mm, bedrukbaar is doorgaans 72 mm; de rest is marge die de
+ * printer zelf niet haalt. Alles is zuiver zwart op wit: een thermische kop
+ * kent geen grijs, die brandt punten. Grijstinten worden vlekkerig en vage
+ * lijnen verdwijnen, dus randen zijn massief.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #fff;
+  color: #000;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.receipt {
+  width: 72mm;
+  margin: 0 auto;
+  padding: 3mm 0 6mm;
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+hr {
+  border: none;
+  border-top: 1px dashed #000;
+  margin: 2.5mm 0;
+}
+
+.head {
+  text-align: center;
+  margin-bottom: 1mm;
+}
+
+.brand {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+}
+
+.sub {
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+
+.line-badge {
+  font-size: 19px;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0.04em;
+}
+
+.times {
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.meta {
+  text-align: center;
+  font-size: 10px;
+}
+
+.section {
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  margin-bottom: 1mm;
+}
+
+/* Naam links, waarde rechts, met stippellijn ertussen zoals op een echte bon. */
+.kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 3mm;
+  align-items: baseline;
+}
+
+.kv span {
+  white-space: nowrap;
+}
+
+.kv b {
+  text-align: right;
+  font-weight: 700;
+}
+
+.leg {
+  margin-bottom: 1.6mm;
+}
+
+.leg-top {
+  display: grid;
+  grid-template-columns: 11mm 9mm 1fr;
+  gap: 1.5mm;
+  font-weight: 700;
+}
+
+.leg-top .r {
+  text-align: right;
+}
+
+.leg-top .d {
+  overflow-wrap: anywhere;
+}
+
+.leg-sub {
+  padding-left: 12mm;
+  font-size: 9.5px;
+}
+
+.foot {
+  margin-top: 3mm;
+  text-align: center;
+  font-size: 9.5px;
+}
+
+.wish {
+  margin-top: 1.5mm;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+@page {
+  margin: 0;
+}

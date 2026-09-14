@@ -17,6 +17,7 @@ import { describeLive, readLive } from '../core/live'
 import { findOmsiInstall } from '../core/install'
 import { isOmsiRunning, launchOmsi } from '../core/launch'
 import { ensurePlugin, pluginSourceDir, type PluginStatus } from '../core/pluginInstall'
+import { receiptHeightMicrons, RECEIPT_WIDTH_MICRONS } from '../core/receipt'
 import { findTemplate, readSituationTime } from '../core/situation'
 import { listMaps, loadMap } from '../core/timetable'
 import { listVehicles } from '../core/vehicles'
@@ -167,6 +168,88 @@ function openOverlay(duty: Duty): void {
   overlayTimer = setInterval(pushFrame, 200)
 }
 
+/**
+ * Rendert het dienstkaartje in een onzichtbaar venster en drukt het af.
+ *
+ * De pagina meldt zelf hoe hoog hij is geworden; daarmee wordt de pagina precies
+ * zo lang als het kaartje. Bij een voorbeeld blijft het venster gewoon staan.
+ */
+function printReceipt(
+  payload: unknown,
+  options: { deviceName?: string; preview: boolean }
+): Promise<{ ok: boolean; reason?: string }> {
+  return new Promise((resolve) => {
+    const window = new BrowserWindow({
+      show: options.preview,
+      width: 380,
+      height: 780,
+      title: 'Dienstkaartje',
+      backgroundColor: '#ffffff',
+      webPreferences: {
+        preload: join(__dirname, '../preload/index.js'),
+        sandbox: false,
+        contextIsolation: true
+      }
+    })
+
+    let settled = false
+    const finish = (ok: boolean, reason?: string) => {
+      if (settled) return
+      settled = true
+      resolve({ ok, reason })
+    }
+
+    // De pagina laat weten hoe hoog hij is; dan pas kunnen we afdrukken.
+    const onReady = (_event: Electron.IpcMainEvent, heightPx: number) => {
+      if (window.isDestroyed()) return
+      if (options.preview) {
+        finish(true)
+        return
+      }
+      window.webContents.print(
+        {
+          silent: true,
+          printBackground: false,
+          deviceName: options.deviceName,
+          margins: { marginType: 'none' },
+          pageSize: {
+            width: RECEIPT_WIDTH_MICRONS,
+            height: receiptHeightMicrons(heightPx)
+          }
+        },
+        (success, failureReason) => {
+          finish(success, success ? undefined : failureReason)
+          if (!window.isDestroyed()) window.destroy()
+        }
+      )
+    }
+
+    ipcMain.once('receipt:ready', onReady)
+
+    window.webContents.once('did-finish-load', () => {
+      window.webContents.send('receipt:data', payload)
+    })
+    window.on('closed', () => {
+      ipcMain.removeListener('receipt:ready', onReady)
+      finish(false, 'Het venster werd gesloten voordat er iets is afgedrukt.')
+    })
+
+    if (process.env.ELECTRON_RENDERER_URL) {
+      void window.loadURL(`${process.env.ELECTRON_RENDERER_URL}/receipt.html`)
+    } else {
+      void window.loadFile(join(__dirname, '../renderer/receipt.html'))
+    }
+
+    // Blijft het stil, dan is er iets mis met de pagina zelf.
+    setTimeout(() => {
+      if (!settled) {
+        finish(false, 'Het kaartje kon niet worden opgemaakt.')
+        if (!window.isDestroyed() && !options.preview) window.destroy()
+      }
+    }, 12_000)
+  })
+}
+
 function careerPayload() {
   return career
     ? { state: career, summary: summarise(career), profiles: listProfiles(userData()) }
@@ -204,6 +287,26 @@ function registerHandlers(): void {
   ipcMain.handle('omsi:vehicles', () => listVehicles(omsi()))
 
   ipcMain.handle('omsi:live', () => Boolean(readLive()?.alive))
+
+  /** Printers die Windows kent, met de standaardprinter vooraan. */
+  ipcMain.handle('print:printers', async (event) => {
+    const printers = await event.sender.getPrintersAsync()
+    return printers
+      .map((printer) => ({
+        name: printer.name,
+        displayName: printer.displayName || printer.name,
+        isDefault: printer.isDefault
+      }))
+      .sort((a, b) => Number(b.isDefault) - Number(a.isDefault))
+  })
+
+  ipcMain.handle('print:receipt', (_event, payload, deviceName?: string) =>
+    printReceipt({ ...payload, driver: career?.driver ?? 'onbekend', printedAt: new Date().toLocaleString('nl-NL') }, { deviceName, preview: false })
+  )
+
+  ipcMain.handle('print:preview', (_event, payload) =>
+    printReceipt({ ...payload, driver: career?.driver ?? 'onbekend', printedAt: new Date().toLocaleString('nl-NL') }, { preview: true })
+  )
 
   /**
    * De overlay werkt alleen als de plugin in OMSI staat. Het installatieprogramma

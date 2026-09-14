@@ -15,6 +15,9 @@ const api: CareerApi = {
   toggleOverlay: (duty) => ipcRenderer.invoke('overlay:toggle', duty),
   beginDuty: (duty) => ipcRenderer.invoke('duty:begin', duty),
   liveConnected: () => ipcRenderer.invoke('omsi:live'),
+  printers: () => ipcRenderer.invoke('print:printers'),
+  printReceipt: (payload, deviceName) => ipcRenderer.invoke('print:receipt', payload, deviceName),
+  previewReceipt: (payload) => ipcRenderer.invoke('print:preview', payload),
   career: () => ipcRenderer.invoke('career:load'),
   createProfile: (name) => ipcRenderer.invoke('career:create', name),
   selectProfile: (id) => ipcRenderer.invoke('career:select', id),
@@ -31,6 +34,13 @@ contextBridge.exposeInMainWorld('career', api)
  * Het overlayvenster krijgt zijn gegevens geduwd vanuit het hoofdproces; het
  * leest zelf niets van schijf.
  */
+/** Het dienstkaartje krijgt zijn gegevens geduwd en meldt terug hoe hoog het werd. */
+contextBridge.exposeInMainWorld('receipt', {
+  onData: (handler: (data: unknown) => void) =>
+    ipcRenderer.on('receipt:data', (_event, data) => handler(data)),
+  ready: (heightPx: number) => ipcRenderer.send('receipt:ready', heightPx)
+})
+
 contextBridge.exposeInMainWorld('overlay', {
   onFrame: (handler: (frame: unknown) => void) =>
     ipcRenderer.on('overlay:frame', (_event, frame) => handler(frame))

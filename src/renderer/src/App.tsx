@@ -8,7 +8,8 @@ import {
   type CareerApi,
   type CareerPayload,
   type DutyRequest,
-  type MapSummary
+  type MapSummary,
+  type PrinterInfo
 } from '../../shared/api'
 import { formatDuration } from '../../shared/format'
 import { DutyCard } from './DutyCard'
@@ -55,6 +56,8 @@ export function App(): JSX.Element {
   const [note, setNote] = useState<string>()
   const [plugin, setPlugin] = useState<PluginStatus>()
   const [starting, setStarting] = useState(false)
+  const [printers, setPrinters] = useState<PrinterInfo[]>([])
+  const [printer, setPrinter] = useState('')
   const finishRef = useRef<(() => Promise<void>) | undefined>(undefined)
   const [newName, setNewName] = useState('')
 
@@ -78,6 +81,10 @@ export function App(): JSX.Element {
         setReady(true)
         // Losstaand: de overlay-plugin klaarzetten mag de rest niet ophouden.
         void window.career.pluginStatus().then(setPlugin)
+        void window.career.printers().then((found) => {
+          setPrinters(found)
+          setPrinter(found[0]?.name ?? '')
+        })
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause))
       }
@@ -390,6 +397,9 @@ export function App(): JSX.Element {
                 onBegin={begin}
                 onToggleOverlay={toggleOverlay}
                 onFinish={finish}
+                printers={printers}
+                printer={printer}
+                onPrinterChange={setPrinter}
               />
             )
           : duties.length > 0 && <p className="empty">Kies hierboven een dienst.</p>}

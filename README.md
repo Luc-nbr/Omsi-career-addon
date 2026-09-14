@@ -145,6 +145,23 @@ eerste start "Windows heeft uw pc beschermd"; via *Meer informatie -> Toch
 uitvoeren* gaat hij gewoon door. Ondertekenen vraagt een code-signing-certificaat
 op naam, en dat kost geld per jaar.
 
+## Dienstkaartje printen
+
+Het kaartje gaat op een bonprinter van 80 mm. Er wordt via het Windows-
+stuurprogramma afgedrukt en niet met rauwe ESC/POS-opdrachten: dat laatste geeft
+meer grip — automatisch afsnijden, vetgedrukte regels — maar vereist dat je weet
+hoe de printer hangt, en vrijwel elke bonprinter installeert gewoon een
+stuurprogramma.
+
+De pagina is 80 mm breed met de inhoud op 72 mm, de gebruikelijke bedrukbare
+breedte. De hoogte volgt de inhoud: de pagina meldt zelf hoe hoog hij geworden
+is, zodat de printer geen halve meter wit papier doorschuift. Alles is zuiver
+zwart op wit, want een thermische kop kent geen grijs — die brandt punten, en
+grijstinten worden vlekkerig.
+
+De knop **Voorbeeld** opent hetzelfde kaartje in een venster, zodat je het kunt
+bekijken zonder papier te verbranden.
+
 ## Wat de app in OMSI verandert
 
 Niets. De app schrijft geen situatiebestanden, raakt `options.cfg` niet aan en

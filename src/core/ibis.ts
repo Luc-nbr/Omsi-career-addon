@@ -104,9 +104,18 @@ export function buildIbisPlan(
     }
   })
 
+  /*
+   * Het lijnnummer voor de IBIS is dat van de eerste rit die een route heeft.
+   * De eerste rit van een dienst is vaak een Betriebsfahrt zonder lijnnummer,
+   * en dan viel de dienst terug op de naam van het lijnbestand - "5 & 5N" typ
+   * je niet in op een IBIS.
+   */
+  const withRoute = legs.find((leg) => leg.route && leg.lineNumber)
+  const anyNumber = legs.find((leg) => /[0-9]/.test(leg.lineNumber))
+
   return {
     yard: match?.hof.name,
-    line: duty.lineNumbers[0] ?? '',
+    line: (withRoute ?? anyNumber)?.lineNumber ?? duty.lineNumbers[0] ?? '',
     tour: duty.tourNumber,
     legs,
     resolved: legs.filter((leg) => leg.route).length,

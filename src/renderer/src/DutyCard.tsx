@@ -1,8 +1,8 @@
-import { useState, type JSX } from 'react'
+import { useCallback, useState, type JSX } from 'react'
 import type { IbisPlan } from '../../core/ibis'
 import type { Duty, DutyLeg } from '../../core/types'
 import type { Vehicle } from '../../core/vehicles'
-import type { Assignment } from '../../shared/api'
+import type { Assignment, PrinterInfo } from '../../shared/api'
 import { describeDays, formatDuration, formatTime } from '../../shared/format'
 
 interface Props {
@@ -19,6 +19,9 @@ interface Props {
   onBegin(): void
   onToggleOverlay(): void
   onFinish(): void
+  printers: PrinterInfo[]
+  printer: string
+  onPrinterChange(name: string): void
 }
 
 /** De dienstkaart: wat de chauffeur moet rijden, rit voor rit. */
@@ -34,7 +37,10 @@ export function DutyCard({
   overlayOpen,
   onBegin,
   onToggleOverlay,
-  onFinish
+  onFinish,
+  printers,
+  printer,
+  onPrinterChange
 }: Props): JSX.Element {
   const [openLeg, setOpenLeg] = useState<number>()
   const { duty } = assignment
@@ -128,7 +134,95 @@ export function DutyCard({
         </span>
       </div>
 
+      <PrintPanel
+        duty={duty}
+        ibis={ibis}
+        vehicle={vehicle ? `${vehicle.manufacturer} ${vehicle.type}` : undefined}
+        printers={printers}
+        printer={printer}
+        onPrinterChange={onPrinterChange}
+      />
     </section>
+  )
+}
+
+/**
+ * Het dienstkaartje op papier.
+ *
+ * Een bonprinter van 80 mm is hier het doel; er wordt via het Windows-
+ * stuurprogramma afgedrukt, dus elke printer die Windows kent werkt. Het
+ * voorbeeld opent hetzelfde kaartje in een venster, zodat je het kunt bekijken
+ * zonder papier te verbranden.
+ */
+function PrintPanel({
+  duty,
+  ibis,
+  vehicle,
+  printers,
+  printer,
+  onPrinterChange
+}: {
+  duty: Duty
+  ibis?: IbisPlan
+  vehicle?: string
+  printers: PrinterInfo[]
+  printer: string
+  onPrinterChange(name: string): void
+}): JSX.Element {
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState<string>()
+
+  const run = useCallback(
+    async (preview: boolean) => {
+      setBusy(true)
+      setNote(undefined)
+      try {
+        const payload = { duty, ibis, vehicle }
+        const result = preview
+          ? await window.career.previewReceipt(payload)
+          : await window.career.printReceipt(payload, printer || undefined)
+        if (!result.ok) setNote(result.reason ?? 'Het afdrukken is niet gelukt.')
+        else if (!preview) setNote('Kaartje afgedrukt.')
+      } finally {
+        setBusy(false)
+      }
+    },
+    [duty, ibis, vehicle, printer]
+  )
+
+  return (
+    <div className="ibis print-panel">
+      <h3 className="section-title">Dienstkaartje printen</h3>
+      <div className="print-row">
+        <select
+          value={printer}
+          onChange={(event) => onPrinterChange(event.target.value)}
+          aria-label="Printer"
+        >
+          {printers.length === 0 && <option value="">Geen printer gevonden</option>}
+          {printers.map((item) => (
+            <option key={item.name} value={item.name}>
+              {item.displayName}
+              {item.isDefault ? ' (standaard)' : ''}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          className="btn"
+          disabled={busy || printers.length === 0}
+          onClick={() => void run(false)}
+        >
+          Afdrukken
+        </button>
+        <button type="button" className="btn secondary" disabled={busy} onClick={() => void run(true)}>
+          Voorbeeld
+        </button>
+      </div>
+      <p className="note">
+        {note ?? 'Opgemaakt voor bonpapier van 80 mm; de lengte volgt de inhoud.'}
+      </p>
+    </div>
   )
 }
 

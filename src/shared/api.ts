@@ -67,6 +67,23 @@ export interface CareerPayload {
   profiles: ProfileSummary[]
 }
 
+export interface PrinterInfo {
+  name: string
+  displayName: string
+  isDefault: boolean
+}
+
+export interface ReceiptPayload {
+  duty: Duty
+  ibis?: IbisPlan
+  vehicle?: string
+}
+
+export interface PrintResult {
+  ok: boolean
+  reason?: string
+}
+
 /** Wat de renderer via `window.career` kan aanroepen. */
 export interface CareerApi {
   status(): Promise<OmsiStatus>
@@ -83,6 +100,12 @@ export interface CareerApi {
   beginDuty(duty: Duty): Promise<{ connected: boolean; launched: boolean; running: boolean }>
   /** Geeft de plugin gegevens door? Zo ja, dan draait OMSI en is de kaart geladen. */
   liveConnected(): Promise<boolean>
+  /** Printers die Windows kent, standaardprinter vooraan. */
+  printers(): Promise<PrinterInfo[]>
+  /** Drukt het dienstkaartje af op een bonprinter van 80 mm. */
+  printReceipt(payload: ReceiptPayload, deviceName?: string): Promise<PrintResult>
+  /** Toont het kaartje in een venster zonder af te drukken. */
+  previewReceipt(payload: ReceiptPayload): Promise<PrintResult>
   career(): Promise<CareerPayload>
   /** Maakt een nieuw chauffeursprofiel aan en maakt het meteen actief. */
   createProfile(name: string): Promise<CareerPayload>
