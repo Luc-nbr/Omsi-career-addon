@@ -1,5 +1,8 @@
 import { tripMinutes } from './timetable'
+import { formatDuration, formatTime } from '../shared/format'
 import type { Duty, DutyLeg, OmsiMap, Tour } from './types'
+
+export { formatDuration, formatTime }
 
 /** Ritten met minder haltes zijn geen buslijn maar trein-, tram- of sleepverkeer. */
 const MIN_STOPS_FOR_BUS_LINE = 3
@@ -33,19 +36,6 @@ interface Candidate {
   to: number
   start: number
   end: number
-}
-
-/** `minuten na middernacht` → `uu:mm`, ook voorbij 24:00. */
-export function formatTime(minutes: number): string {
-  const total = Math.round(minutes)
-  const hours = Math.floor(total / 60) % 24
-  return `${String(hours).padStart(2, '0')}:${String(((total % 60) + 60) % 60).padStart(2, '0')}`
-}
-
-/** `minuten` → `4u 05m`, voor dienstlengtes. */
-export function formatDuration(minutes: number): string {
-  const total = Math.round(minutes)
-  return `${Math.floor(total / 60)}u ${String(total % 60).padStart(2, '0')}m`
 }
 
 /** Rijdt deze omloop een echte buslijn met haltes? */

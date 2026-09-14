@@ -1,0 +1,19 @@
+import { contextBridge, ipcRenderer } from 'electron'
+import type { CareerApi, DutyRequest, LaunchRequest } from '../shared/api'
+
+/**
+ * De renderer praat alleen via deze brug met het bestandssysteem; er staat geen
+ * Node-toegang open in de pagina zelf.
+ */
+const api: CareerApi = {
+  status: () => ipcRenderer.invoke('omsi:status'),
+  maps: () => ipcRenderer.invoke('omsi:maps'),
+  vehicles: () => ipcRenderer.invoke('omsi:vehicles'),
+  generateDuty: (request: DutyRequest) => ipcRenderer.invoke('duty:generate', request),
+  launch: (request: LaunchRequest) => ipcRenderer.invoke('duty:launch', request),
+  career: () => ipcRenderer.invoke('career:load'),
+  completeDuty: (duty, vehicle) => ipcRenderer.invoke('career:complete', duty, vehicle),
+  renameDriver: (name) => ipcRenderer.invoke('career:rename', name)
+}
+
+contextBridge.exposeInMainWorld('career', api)

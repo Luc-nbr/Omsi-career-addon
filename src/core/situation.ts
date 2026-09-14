@@ -124,6 +124,25 @@ export function findTemplate(omsiPath: string, mapFolder: string): string | unde
   return forThisMap.find(hasOwnVehicle) ?? forThisMap[0]
 }
 
+/**
+ * Het jaar en de dag die OMSI voor deze kaart gebruikte. Kaarten met een Chrono-
+ * map spelen in een bepaald tijdvak: Berlin-Spandau staat op 1986 en zou met een
+ * modern jaartal de verkeerde tijdlaag laden. Het sjabloon weet wat klopt.
+ */
+export function readSituationTime(file: string): { year: number; dayOfYear: number } | undefined {
+  try {
+    const lines = readOmsiLines(file)
+    const index = indexOfTag(lines, '[time]')
+    if (index < 0) return undefined
+    const year = Number.parseInt(str(lines[index + 1]), 10)
+    const dayOfYear = Number.parseInt(str(lines[index + 2]), 10)
+    if (!Number.isFinite(year) || !Number.isFinite(dayOfYear)) return undefined
+    return { year, dayOfYear }
+  } catch {
+    return undefined
+  }
+}
+
 /** Schrijft de situatie en levert het pad op. */
 export function writeSituation(omsiPath: string, request: SituationRequest): SituationResult {
   const template = findTemplate(omsiPath, request.mapFolder)
