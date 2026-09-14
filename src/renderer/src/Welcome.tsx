@@ -1,5 +1,6 @@
 import { useState, type JSX } from 'react'
 import { LANGUAGES, t, type Language } from '../../shared/i18n'
+import { Flag } from './Flag'
 
 interface Props {
   language: Language
@@ -51,7 +52,7 @@ export function Welcome({ language, onLanguage, onCreate }: Props): JSX.Element 
                 className={`lang ${option.code === language ? 'picked' : ''}`}
                 onClick={() => onLanguage(option.code)}
               >
-                <span className="lang-code">{option.code.toUpperCase()}</span>
+                <Flag code={option.code} />
                 <span className="lang-name">{option.native}</span>
               </button>
             ))}

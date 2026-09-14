@@ -2,6 +2,7 @@ import { useState, type JSX } from 'react'
 import type { CareerPayload } from '../../shared/api'
 import { formatDuration, formatMoney } from '../../shared/format'
 import { LANGUAGES, t, type Language } from '../../shared/i18n'
+import { Flag } from './Flag'
 
 interface Props {
   language: Language
@@ -113,19 +114,21 @@ export function Sidebar({
         </div>
       </div>
 
-      <div className="lang-row">
-        <label htmlFor="taal">{t(language, 'welcome.language')}</label>
-        <select
-          id="taal"
-          value={language}
-          onChange={(event) => onLanguage(event.target.value as Language)}
-        >
-          {LANGUAGES.map((option) => (
-            <option key={option.code} value={option.code}>
-              {option.native}
-            </option>
-          ))}
-        </select>
+      <div className="lang-row" role="radiogroup" aria-label={t(language, 'welcome.language')}>
+        {LANGUAGES.map((option) => (
+          <button
+            key={option.code}
+            type="button"
+            role="radio"
+            aria-checked={option.code === language}
+            aria-label={option.native}
+            title={option.native}
+            className={`lang-pick ${option.code === language ? 'picked' : ''}`}
+            onClick={() => onLanguage(option.code)}
+          >
+            <Flag code={option.code} />
+          </button>
+        ))}
       </div>
 
       <div>
