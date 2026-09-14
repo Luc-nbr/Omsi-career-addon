@@ -184,6 +184,34 @@ rit overlapt, met het beginpunt als zwaarste weging.
 Ritten zonder route — een Betriebsfahrt naar de remise bijvoorbeeld — staan als
 zodanig op de kaart: die zet je met de hand op de film.
 
+### Wat de plugin meet
+
+De DLL wordt elk beeld aangeroepen en kan daardoor dingen uitrekenen die de app
+van buitenaf niet ziet. Uit `Velocity` — km/h, want de busscripts delen hem door
+3.6 voor hun natuurkunde — komt de versnelling, met de prestatieteller als klok
+omdat `GetTickCount` met zijn stap van 15 ms te grof is voor een beeld van 16 ms.
+Vertragingen boven 2,5 m/s² tellen als hard remmen, optrekken boven 1,6 m/s² als
+hard optrekken. Die tellers lopen door over de sessie; de app trekt de stand bij
+het begin van de dienst ervan af.
+
+Daarmee is de stemming in de overlay afgeleid uit gemeten gedrag in plaats van
+uit snelheid als ruwe maat. Een gemeten cijfer blijft het niet: OMSI geeft geen
+passagiersstemming door. Wat het spel wél bijhoudt zijn chauffeursbeoordelingen
+(`DG_Driver_Rating_Driving`, `_Ticket`, `_Comfort`), en die belanden pas na
+afloop in `Drivers/*.odr`.
+
+Verder komen `Envir_Brightness`, `StreetCond`, `precipRate`, de deurstanden, de
+lichten en `IBIS_busstop_index` mee. Daarmee vinkt de overlay haltes af en
+waarschuwt hij over rijden zonder dimlicht in het donker, rijden met een deur
+open, en nat wegdek. De dienst rondt zichzelf af zodra de eindtijd voorbij is en
+de bus stilstaat.
+
+**Niet elke bus geeft alles door.** `lights_abbl` en `IBIS_busstop_index` komen
+uit de scripts van het busmodel en ontbreken op modellen die ze niet kennen. De
+plugin houdt daarom in een bitmasker (`seen`) bij welke variabelen OMSI werkelijk
+heeft aangeroepen. Een bus die zijn lichten niet aanbiedt rijdt niet "met het
+licht uit" — we weten het niet, en dan hoort er geen waarschuwing bij.
+
 ### Bouwen en plaatsen
 
 ```bash
