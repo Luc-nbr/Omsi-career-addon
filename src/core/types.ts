@@ -47,6 +47,13 @@ export interface Tour {
   lineFile: string
   number: string
   depot: string
+  /**
+   * Bitmasker van de dagen waarop deze omloop rijdt: bit 0 is maandag tot en
+   * met bit 4 vrijdag, bit 5 zaterdag, bit 6 zondag. De bits daarboven zijn
+   * feestdagcategorieen. Omlopen met de naam "Mo-Fr" hebben masker 287 of 799,
+   * die met "Sa" 288 of 800.
+   */
+  days: number
   trips: TourTrip[]
 }
 
@@ -68,6 +75,10 @@ export interface DutyLeg {
   departure: number
   arrival: number
   minutes: number
+  /** Omloop waar deze rit uit komt; een dienst kan er meerdere raken. */
+  tourNumber: string
+  /** Wachttijd op het eindpunt sinds de vorige rit. Nul bij de eerste. */
+  layoverBefore: number
   stops: string[]
 }
 
@@ -87,4 +98,6 @@ export interface Duty {
   /** Som van de haltes over alle ritten; ruwe maat voor de drukte van de dienst. */
   totalStops: number
   lineNumbers: string[]
+  /** Dagen waarop deze dienst rijdt; alle ritten delen minstens een dag. */
+  days: number
 }

@@ -18,6 +18,9 @@ const LINE_SCHEMA = { '[newtour]': 3, '[addtrip]': 3 }
  */
 const TRIP_SCHEMA = { '[trip]': 3, '[station_typ2]': 1, '[station]': 6, '[profile]': 2 }
 
+/** Masker waarin elke dag aanstaat; gebruikt als een omloop er geen opgeeft. */
+const ALL_DAYS = 0b1111111111
+
 /** Haltes van een kaart: id → naam. Meerdere haltes kunnen dezelfde naam hebben. */
 export function readBusStops(ttDataPath: string): Map<string, BusStop> {
   const stops = new Map<string, BusStop>()
@@ -75,6 +78,8 @@ export function readTours(path: string): Tour[] {
         lineFile,
         number: str(block.values[0]),
         depot: str(block.values[1]),
+        // Alle dagen als het veld ontbreekt; dan sluit niets onnodig af.
+        days: Math.round(num(block.values[2], ALL_DAYS)) || ALL_DAYS,
         trips: []
       }
       tours.push(current)

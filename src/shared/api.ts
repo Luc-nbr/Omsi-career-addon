@@ -27,6 +27,19 @@ export interface DutyRequest {
   window: 'heledag' | 'ochtend' | 'middag' | 'avond' | 'nacht'
 }
 
+/** Een toegewezen dienst met de bus die erbij gezocht is. */
+export interface Assignment {
+  duty: Duty
+  /** Null als geen enkele geinstalleerde bus bij deze dienst past. */
+  vehicle: Vehicle | null
+  yard?: string
+  /** Aandeel van de eindbestemmingen dat de bus kan tonen, 0 tot 1. */
+  fit?: number
+  /** Of de bus in het wagenpark van de kaart zelf staat. */
+  fromMapFleet?: boolean
+  alternatives?: number
+}
+
 export interface LaunchRequest {
   duty: Duty
   vehicle: Vehicle
@@ -50,7 +63,7 @@ export interface CareerApi {
   status(): Promise<OmsiStatus>
   maps(): Promise<MapSummary[]>
   vehicles(): Promise<Vehicle[]>
-  generateDuty(request: DutyRequest): Promise<Duty | null>
+  generateDuty(request: DutyRequest): Promise<Assignment | null>
   ibis(duty: Duty, vehicle: Vehicle, year: number): Promise<IbisPlan>
   launch(request: LaunchRequest): Promise<LaunchResult>
   career(): Promise<{ state: CareerState; summary: CareerSummary }>

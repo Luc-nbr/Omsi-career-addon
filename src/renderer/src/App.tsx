@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useMemo, useState, type JSX } from 'react'
 import type { CareerState, CareerSummary } from '../../core/career'
 import type { IbisPlan } from '../../core/ibis'
-import type { Duty } from '../../core/types'
 import type { Vehicle } from '../../core/vehicles'
-import { TIME_WINDOWS, type CareerApi, type DutyRequest, type LaunchResult, type MapSummary } from '../../shared/api'
+import {
+  TIME_WINDOWS,
+  type Assignment,
+  type CareerApi,
+  type DutyRequest,
+  type LaunchResult,
+  type MapSummary
+} from '../../shared/api'
 import { dayOfYear, formatDuration } from '../../shared/format'
 import { DutyCard } from './DutyCard'
 import { Sidebar } from './Sidebar'
@@ -16,8 +22,8 @@ declare global {
 
 type CareerPayload = { state: CareerState; summary: CareerSummary }
 
-/** Dienstlengtes die je kunt kiezen, in minuten. */
-const LENGTHS = [60, 90, 120, 150, 180, 240, 300, 360, 420, 480]
+/** Dienstlengtes die je kunt kiezen, in minuten. Korter dan een half uur niet. */
+const LENGTHS = [30, 45, 60, 90, 120, 150, 180, 240, 300, 360, 420, 480]
 
 export function App(): JSX.Element {
   const [ready, setReady] = useState(false)
@@ -27,12 +33,13 @@ export function App(): JSX.Element {
   const [career, setCareer] = useState<CareerPayload>()
 
   const [mapFolder, setMapFolder] = useState('')
-  const [lengthIndex, setLengthIndex] = useState(5)
+  const [lengthIndex, setLengthIndex] = useState(4)
   const [timeWindow, setTimeWindow] = useState<DutyRequest['window']>('heledag')
-  const [vehiclePath, setVehiclePath] = useState('')
   const [windowed, setWindowed] = useState(false)
 
-  const [duty, setDuty] = useState<Duty>()
+  const [assignment, setAssignment] = useState<Assignment>()
+  /** Leeg betekent: de bus gebruiken die de app erbij koos. */
+  const [vehicleOverride, setVehicleOverride] = useState('')
   const [ibis, setIbis] = useState<IbisPlan>()
   const [busy, setBusy] = useState(false)
   const [launched, setLaunched] = useState<LaunchResult>()
@@ -54,7 +61,6 @@ export function App(): JSX.Element {
         setVehicles(loadedVehicles)
         setCareer(loadedCareer)
         setMapFolder(loadedMaps[0]?.folder ?? '')
-        setVehiclePath(loadedVehicles[0]?.relativePath ?? '')
         setReady(true)
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause))
@@ -63,18 +69,20 @@ export function App(): JSX.Element {
   }, [])
 
   const selectedMap = useMemo(() => maps.find((m) => m.folder === mapFolder), [maps, mapFolder])
-  const selectedVehicle = useMemo(
-    () => vehicles.find((v) => v.relativePath === vehiclePath),
-    [vehicles, vehiclePath]
-  )
+  const duty = assignment?.duty
+
+  const vehicle = useMemo(() => {
+    if (vehicleOverride) return vehicles.find((v) => v.relativePath === vehicleOverride)
+    return assignment?.vehicle ?? undefined
+  }, [vehicleOverride, vehicles, assignment])
 
   /** Voertuigen gegroepeerd per map, anders is de lijst van 351 onleesbaar. */
   const vehicleGroups = useMemo(() => {
     const groups = new Map<string, Vehicle[]>()
-    for (const vehicle of vehicles) {
-      const list = groups.get(vehicle.folder) ?? []
-      list.push(vehicle)
-      groups.set(vehicle.folder, list)
+    for (const item of vehicles) {
+      const list = groups.get(item.folder) ?? []
+      list.push(item)
+      groups.set(item.folder, list)
     }
     return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]))
   }, [vehicles])
@@ -84,23 +92,24 @@ export function App(): JSX.Element {
    * dus ze worden opnieuw opgehaald zodra een van beide wijzigt.
    */
   useEffect(() => {
-    if (!duty || !selectedVehicle || !selectedMap) {
+    if (!duty || !vehicle || !selectedMap) {
       setIbis(undefined)
       return
     }
     let current = true
-    void window.career.ibis(duty, selectedVehicle, selectedMap.year).then((plan) => {
+    void window.career.ibis(duty, vehicle, selectedMap.year).then((plan) => {
       if (current) setIbis(plan)
     })
     return () => {
       current = false
     }
-  }, [duty, selectedVehicle, selectedMap])
+  }, [duty, vehicle, selectedMap])
 
   const assign = useCallback(async () => {
     setBusy(true)
     setError(undefined)
     setLaunched(undefined)
+    setVehicleOverride('')
     try {
       const result = await window.career.generateDuty({
         mapFolder,
@@ -112,9 +121,9 @@ export function App(): JSX.Element {
           `Geen dienst van ongeveer ${formatDuration(LENGTHS[lengthIndex])} in dit dagdeel op deze kaart. ` +
             'Kies een andere lengte of een ruimer dagdeel.'
         )
-        setDuty(undefined)
+        setAssignment(undefined)
       } else {
-        setDuty(result)
+        setAssignment(result)
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
@@ -124,14 +133,14 @@ export function App(): JSX.Element {
   }, [mapFolder, lengthIndex, timeWindow])
 
   const start = useCallback(async () => {
-    if (!duty || !selectedVehicle || !selectedMap) return
+    if (!duty || !vehicle || !selectedMap) return
     setBusy(true)
     setError(undefined)
     try {
       setLaunched(
         await window.career.launch({
           duty,
-          vehicle: selectedVehicle,
+          vehicle,
           year: selectedMap.year,
           dayOfYear: selectedMap.dayOfYear || dayOfYear(new Date()),
           windowed,
@@ -143,14 +152,14 @@ export function App(): JSX.Element {
     } finally {
       setBusy(false)
     }
-  }, [duty, selectedVehicle, selectedMap, windowed, ibis])
+  }, [duty, vehicle, selectedMap, windowed, ibis])
 
   const finish = useCallback(async () => {
-    if (!duty || !selectedVehicle) return
-    setCareer(await window.career.completeDuty(duty, `${selectedVehicle.manufacturer} ${selectedVehicle.type}`))
-    setDuty(undefined)
+    if (!duty || !vehicle) return
+    setCareer(await window.career.completeDuty(duty, `${vehicle.manufacturer} ${vehicle.type}`))
+    setAssignment(undefined)
     setLaunched(undefined)
-  }, [duty, selectedVehicle])
+  }, [duty, vehicle])
 
   if (error && !ready) {
     return (
@@ -180,7 +189,8 @@ export function App(): JSX.Element {
       <main className="main">
         <h1>Nieuwe dienst</h1>
         <p className="subtitle">
-          Kies waar en hoe lang je wilt rijden. De dienst komt uit de echte dienstregeling van de kaart.
+          Kies waar en hoe lang je wilt rijden. De ritten komen uit de dienstregeling van de kaart en
+          sluiten op elkaar aan; de bus zoeken we erbij.
         </p>
 
         <section className="card">
@@ -207,21 +217,6 @@ export function App(): JSX.Element {
                   )}
                 </p>
               )}
-            </div>
-
-            <div>
-              <label htmlFor="bus">Bus</label>
-              <select id="bus" value={vehiclePath} onChange={(event) => setVehiclePath(event.target.value)}>
-                {vehicleGroups.map(([folder, items]) => (
-                  <optgroup key={folder} label={folder}>
-                    {items.map((vehicle) => (
-                      <option key={vehicle.relativePath} value={vehicle.relativePath}>
-                        {vehicle.manufacturer} {vehicle.type}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
             </div>
 
             <div>
@@ -257,7 +252,7 @@ export function App(): JSX.Element {
 
           <div className="actions">
             <button type="button" className="btn" onClick={assign} disabled={busy}>
-              {duty ? 'Andere dienst' : 'Dienst toewijzen'}
+              {assignment ? 'Andere dienst' : 'Dienst toewijzen'}
             </button>
             <label className="note" style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
               <input
@@ -277,21 +272,23 @@ export function App(): JSX.Element {
           )}
         </section>
 
-        {duty && (
+        {assignment ? (
           <DutyCard
-            duty={duty}
+            assignment={assignment}
             ibis={ibis}
-            vehicle={selectedVehicle}
+            vehicle={vehicle}
+            vehicleGroups={vehicleGroups}
+            vehicleOverride={vehicleOverride}
+            onVehicleChange={setVehicleOverride}
             launched={launched}
             busy={busy}
             onStart={start}
             onFinish={finish}
           />
-        )}
-
-        {!duty && (
+        ) : (
           <p className="empty">
-            Nog geen dienst toegewezen. Kies hierboven een kaart en lengte en druk op “Dienst toewijzen”.
+            Nog geen dienst toegewezen. Kies hierboven een kaart en lengte en druk op “Dienst
+            toewijzen”.
           </p>
         )}
       </main>

@@ -1,20 +1,19 @@
-import { tripMinutes } from './timetable'
+import { buildNetwork, continuationsOf, WEEKDAY_MASK, type Network, type TripRun } from './network'
 import { formatDuration, formatTime } from '../shared/format'
-import type { Duty, DutyLeg, OmsiMap, Tour } from './types'
+import type { Duty, DutyLeg, OmsiMap } from './types'
 
 export { formatDuration, formatTime }
-
-/** Ritten met minder haltes zijn geen buslijn maar trein-, tram- of sleepverkeer. */
-const MIN_STOPS_FOR_BUS_LINE = 3
-
-/**
- * Staat een omloop langer dan dit stil, dan is dat in de praktijk het moment
- * waarop de chauffeur wordt afgelost. Een dienst loopt daar dus niet doorheen.
- */
-const MAX_LAYOVER_MINUTES = 45
+export { buildNetwork } from './network'
+export type { Network } from './network'
 
 /** Aanmelden bij de remise, voor vertrek. */
 export const SIGN_ON_MINUTES = 10
+
+/** Korter dan dit is geen dienst meer maar één rondje. */
+export const MIN_DUTY_MINUTES = 30
+
+/** Een dienst bestaat uit meerdere ritten; één rit heen is geen dienst. */
+export const MIN_LEGS = 2
 
 export interface DutyOptions {
   /** Gewenste dienstlengte in minuten. */
@@ -24,136 +23,153 @@ export interface DutyOptions {
   /** Vroegste en laatste vertrek, in minuten na middernacht. */
   earliestStart?: number
   latestStart?: number
-  /** Beperk tot één lijnbestand, bijvoorbeeld om lijn 5 te rijden. */
-  lineFile?: string
   random?: () => number
+  /** Hoe vaak een doodgelopen wandeling opnieuw geprobeerd wordt. */
+  attempts?: number
 }
 
-/** Eén mogelijke dienst: een aaneengesloten stuk uit één omloop. */
-interface Candidate {
-  tour: Tour
-  from: number
-  to: number
-  start: number
-  end: number
-}
-
-/** Rijdt deze omloop een echte buslijn met haltes? */
-function isBusTour(map: OmsiMap, tour: Tour): boolean {
-  return tour.trips.some((entry) => {
-    const trip = map.trips.get(entry.tripFile.toLowerCase())
-    return (trip?.stops.length ?? 0) >= MIN_STOPS_FOR_BUS_LINE
-  })
-}
-
-/** Ritten van een omloop op volgorde, met aankomsttijd erbij. */
-function timedTrips(map: OmsiMap, tour: Tour) {
-  return tour.trips
-    .map((entry) => {
-      const trip = map.trips.get(entry.tripFile.toLowerCase())
-      const minutes = tripMinutes(trip, entry.profileIndex)
-      return { entry, trip, minutes, arrival: entry.departure + minutes }
-    })
-    .filter((item) => item.trip !== undefined)
-    .sort((a, b) => a.entry.departure - b.entry.departure)
+function pick<T>(items: T[], random: () => number): T {
+  return items[Math.floor(random() * items.length)]
 }
 
 /**
- * Zoekt in alle omlopen de stukken die ongeveer de gevraagde lengte hebben.
- * Een stuk wordt nooit over een lange stilstand heen getrokken.
+ * Loopt vanaf een beginrit door het net tot de gevraagde lengte gehaald is. Op
+ * elk eindpunt wordt willekeurig gekozen uit wat daar vertrekt: terug waar je
+ * vandaan kwam, of een andere lijn die daar ook begint. Dezelfde vraag levert
+ * daardoor twee keer achter elkaar een andere dienst op.
  */
-function findCandidates(map: OmsiMap, options: DutyOptions): Candidate[] {
-  const tolerance = options.toleranceMinutes ?? 25
-  const candidates: Candidate[] = []
+function walk(
+  network: Network,
+  start: TripRun,
+  target: number,
+  tolerance: number,
+  random: () => number
+): TripRun[] {
+  const legs = [start]
+  let last = start
+  // Doorsnede van de dagen waarop alle gekozen ritten rijden.
+  let days = start.days
 
-  for (const tour of map.tours) {
-    if (options.lineFile && tour.lineFile !== options.lineFile) continue
-    if (!isBusTour(map, tour)) continue
+  for (;;) {
+    const enough = legs.length >= MIN_LEGS && last.arrival - start.departure >= target - tolerance
+    if (enough) break
 
-    const trips = timedTrips(map, tour)
-    if (trips.length === 0) continue
+    // Alleen vervolgen die de dienst niet over de bovengrens heen tillen.
+    const options = continuationsOf(network, last, days).filter(
+      (next) => next.arrival - start.departure <= target + tolerance
+    )
+    if (options.length === 0) break
 
-    // Knip de omloop op bij te lange stilstand: elk blok is apart berijdbaar.
-    const blocks: number[][] = []
-    let block: number[] = [0]
-    for (let i = 1; i < trips.length; i++) {
-      const gap = trips[i].entry.departure - trips[i - 1].arrival
-      if (gap > MAX_LAYOVER_MINUTES) {
-        blocks.push(block)
-        block = []
-      }
-      block.push(i)
-    }
-    blocks.push(block)
-
-    for (const indices of blocks) {
-      for (let a = 0; a < indices.length; a++) {
-        const start = trips[indices[a]].entry.departure
-        if (options.earliestStart !== undefined && start < options.earliestStart) continue
-        if (options.latestStart !== undefined && start > options.latestStart) continue
-
-        for (let b = a; b < indices.length; b++) {
-          const end = trips[indices[b]].arrival
-          const duration = end - start
-          if (duration > options.targetMinutes + tolerance) break
-          if (duration >= options.targetMinutes - tolerance) {
-            candidates.push({ tour, from: indices[a], to: indices[b], start, end })
-          }
-        }
-      }
-    }
+    last = pick(options, random)
+    days &= last.days
+    legs.push(last)
   }
-  return candidates
+  return legs
 }
 
-/** Bouwt de dienstkaart op uit een gekozen stuk omloop. */
-function toDuty(map: OmsiMap, candidate: Candidate): Duty {
-  const trips = timedTrips(map, candidate.tour)
-  const legs: DutyLeg[] = []
+function toDuty(map: OmsiMap, legs: TripRun[]): Duty {
+  const start = legs[0]
+  const end = legs[legs.length - 1]
 
-  for (let i = candidate.from; i <= candidate.to; i++) {
-    const { entry, trip, minutes, arrival } = trips[i]
-    legs.push({
-      tripFile: entry.tripFile,
-      lineNumber: trip!.lineNumber || trip!.ident || candidate.tour.lineFile,
-      terminus: trip!.terminus,
-      departure: entry.departure,
-      arrival,
-      minutes,
-      stops: trip!.stops.map((stop) => stop.name ?? map.stops.get(stop.id)?.name ?? `halte ${stop.id}`)
-    })
-  }
+  const dutyLegs: DutyLeg[] = legs.map((run, index) => ({
+    tripFile: run.tripFile,
+    lineNumber: run.trip.lineNumber || run.trip.ident || run.lineFile,
+    terminus: run.trip.terminus,
+    departure: run.departure,
+    arrival: run.arrival,
+    minutes: run.minutes,
+    tourNumber: run.tourNumber,
+    layoverBefore: index === 0 ? 0 : run.departure - legs[index - 1].arrival,
+    stops: run.trip.stops.map(
+      (stop) => stop.name ?? map.stops.get(stop.id)?.name ?? `halte ${stop.id}`
+    )
+  }))
 
-  const lineNumbers = [...new Set(legs.map((leg) => leg.lineNumber).filter(Boolean))]
   return {
     mapFolder: map.folder,
     mapName: map.name,
-    lineFile: candidate.tour.lineFile,
-    tourNumber: candidate.tour.number,
-    depot: candidate.tour.depot,
-    legs,
-    signOn: candidate.start - SIGN_ON_MINUTES,
-    start: candidate.start,
-    end: candidate.end,
-    durationMinutes: candidate.end - candidate.start,
-    totalStops: legs.reduce((sum, leg) => sum + leg.stops.length, 0),
-    lineNumbers
+    lineFile: start.lineFile,
+    tourNumber: start.tourNumber,
+    depot: start.depot,
+    legs: dutyLegs,
+    signOn: start.departure - SIGN_ON_MINUTES,
+    start: start.departure,
+    end: end.arrival,
+    durationMinutes: end.arrival - start.departure,
+    totalStops: dutyLegs.reduce((sum, leg) => sum + leg.stops.length, 0),
+    lineNumbers: [...new Set(dutyLegs.map((leg) => leg.lineNumber).filter(Boolean))],
+    days: legs.reduce((mask, run) => mask & run.days, legs[0].days)
   }
 }
 
 /**
- * Wijst een dienst toe van ongeveer de gevraagde lengte. Geeft `undefined` als
- * de kaart niets heeft wat in de buurt komt; de aanroeper kan dan de tolerantie
- * verruimen of een andere lengte voorstellen.
+ * Wijst een dienst toe van ongeveer de gevraagde lengte.
+ *
+ * De ritten sluiten op elkaar aan omdat ze uit het net van de kaart komen: waar
+ * de vorige rit eindigt, begint de volgende. De speler hoeft in OMSI dus nooit
+ * te verplaatsen.
  */
-export function generateDuty(map: OmsiMap, options: DutyOptions): Duty | undefined {
-  const candidates = findCandidates(map, options)
-  if (candidates.length === 0) return undefined
+export function generateDuty(
+  map: OmsiMap,
+  network: Network,
+  options: DutyOptions
+): Duty | undefined {
   const random = options.random ?? Math.random
-  return toDuty(map, candidates[Math.floor(random() * candidates.length)])
+  const target = Math.max(MIN_DUTY_MINUTES, options.targetMinutes)
+  // Bij korte diensten moet de speling ruimer: twee ritten passen zelden precies
+  // in een half uur, en dan zou er helemaal niets uitkomen.
+  const tolerance = options.toleranceMinutes ?? Math.max(12, Math.round(target * 0.2))
+
+  const starts: TripRun[] = []
+  for (const list of network.departingFrom.values()) {
+    for (const run of list) {
+      if (options.earliestStart !== undefined && run.departure < options.earliestStart) continue
+      if (options.latestStart !== undefined && run.departure > options.latestStart) continue
+      // Een omloop die alleen op feestdagen rijdt past op geen enkele gewone datum.
+      if ((run.days & WEEKDAY_MASK) === 0) continue
+      starts.push(run)
+    }
+  }
+  if (starts.length === 0) return undefined
+
+  const attempts = options.attempts ?? 60
+  const floor = Math.max(MIN_DUTY_MINUTES, target - tolerance)
+  let best: TripRun[] | undefined
+
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const legs = walk(network, pick(starts, random), target, tolerance, random)
+    const duration = legs[legs.length - 1].arrival - legs[0].departure
+    if (legs.length >= MIN_LEGS && duration >= floor) return toDuty(map, legs)
+    // Anders de langste poging bewaren, zodat er iets bruikbaars overblijft.
+    if (legs.length < MIN_LEGS) continue
+    if (!best || duration > best[best.length - 1].arrival - best[0].departure) best = legs
+  }
+
+  if (
+    best &&
+    best.length >= MIN_LEGS &&
+    best[best.length - 1].arrival - best[0].departure >= MIN_DUTY_MINUTES
+  ) {
+    return toDuty(map, best)
+  }
+  return undefined
 }
 
-/** Hoeveel diensten van deze lengte de kaart te bieden heeft. */
-export function countDuties(map: OmsiMap, options: DutyOptions): number {
-  return findCandidates(map, options).length
+/** Gemiddeld aantal vervolgritten op een eindpunt: maat voor de keuzevrijheid. */
+export function branchingFactor(map: OmsiMap, network?: Network): number {
+  const net = network ?? buildNetwork(map)
+  const seen = new Set<string>()
+  let total = 0
+  let counted = 0
+  for (const list of net.departingFrom.values()) {
+    for (const run of list) {
+      if (seen.has(run.tripFile)) continue
+      seen.add(run.tripFile)
+      const place = net.endPlace.get(run.tripFile)
+      const options = place ? net.departingFrom.get(place) ?? [] : []
+      total += new Set(options.map((option) => option.tripFile)).size
+      counted++
+    }
+  }
+  return counted === 0 ? 0 : total / counted
 }

@@ -1,14 +1,17 @@
 import { useState, type JSX } from 'react'
 import type { IbisPlan } from '../../core/ibis'
-import type { Duty } from '../../core/types'
+import type { DutyLeg } from '../../core/types'
 import type { Vehicle } from '../../core/vehicles'
-import type { LaunchResult } from '../../shared/api'
-import { formatDuration, formatTime } from '../../shared/format'
+import type { Assignment, LaunchResult } from '../../shared/api'
+import { describeDays, formatDuration, formatTime } from '../../shared/format'
 
 interface Props {
-  duty: Duty
+  assignment: Assignment
   ibis?: IbisPlan
   vehicle?: Vehicle
+  vehicleGroups: Array<[string, Vehicle[]]>
+  vehicleOverride: string
+  onVehicleChange(path: string): void
   launched?: LaunchResult
   busy: boolean
   onStart(): void
@@ -16,20 +19,30 @@ interface Props {
 }
 
 /** De dienstkaart: wat de chauffeur moet rijden, rit voor rit. */
-export function DutyCard({ duty, ibis, vehicle, launched, busy, onStart, onFinish }: Props): JSX.Element {
+export function DutyCard({
+  assignment,
+  ibis,
+  vehicle,
+  vehicleGroups,
+  vehicleOverride,
+  onVehicleChange,
+  launched,
+  busy,
+  onStart,
+  onFinish
+}: Props): JSX.Element {
   const [openLeg, setOpenLeg] = useState<number>()
+  const { duty } = assignment
 
   return (
     <section className="card">
       <header className="duty-head">
         <span className="badge">{duty.lineNumbers.join(' / ')}</span>
         <div>
-          <div className="duty-title">
-            {duty.mapName} · omloop {duty.tourNumber}
-          </div>
+          <div className="duty-title">{duty.mapName}</div>
           <div className="duty-sub">
-            {duty.depot ? `Remise ${duty.depot}` : 'Remise onbekend'} · {duty.legs.length} ritten ·{' '}
-            {duty.totalStops} haltes
+            {describeDays(duty.days)} · {duty.legs.length} ritten · {duty.totalStops} haltes ·{' '}
+            {duty.depot ? `remise ${duty.depot}` : 'remise onbekend'}
           </div>
         </div>
         <div className="duty-times">
@@ -41,6 +54,14 @@ export function DutyCard({ duty, ibis, vehicle, launched, busy, onStart, onFinis
           </div>
         </div>
       </header>
+
+      <BusPanel
+        assignment={assignment}
+        vehicle={vehicle}
+        vehicleGroups={vehicleGroups}
+        vehicleOverride={vehicleOverride}
+        onVehicleChange={onVehicleChange}
+      />
 
       <IbisPanel ibis={ibis} />
 
@@ -74,14 +95,7 @@ export function DutyCard({ duty, ibis, vehicle, launched, busy, onStart, onFinis
             </span>
           </button>
           {openLeg === index && (
-            <div className="stop-list">
-              {leg.stops.map((stop, stopIndex) => (
-                <span key={`${stop}-${stopIndex}`}>
-                  {stopIndex > 0 && ' · '}
-                  <i>{stop}</i>
-                </span>
-              ))}
-            </div>
+            <LegDetail leg={leg} index={index} ibis={ibis} />
           )}
         </div>
       ))}
@@ -95,15 +109,124 @@ export function DutyCard({ duty, ibis, vehicle, launched, busy, onStart, onFinis
             Dienst afronden
           </button>
         )}
-        {vehicle && (
-          <span className="note">
-            {vehicle.manufacturer} {vehicle.type}
-          </span>
-        )}
       </div>
 
       {launched && <LaunchNote launched={launched} />}
     </section>
+  )
+}
+
+/** Instructies voor één rit: wat instellen, waar rijden, wat daarna. */
+function LegDetail({
+  leg,
+  index,
+  ibis
+}: {
+  leg: DutyLeg
+  index: number
+  ibis?: IbisPlan
+}): JSX.Element {
+  const code = ibis?.legs[index]?.code
+  const film = ibis?.legs[index]?.display
+
+  return (
+    <div className="leg-detail">
+      <ol className="instructions">
+        {leg.layoverBefore > 0 && (
+          <li>
+            Je staat {leg.layoverBefore} minuten stil op {leg.stops[0] ?? 'het eindpunt'}. Vertrek om{' '}
+            <b>{formatTime(leg.departure)}</b>.
+          </li>
+        )}
+        <li>
+          Zet de IBIS op lijn <b>{leg.lineNumber}</b>
+          {code ? (
+            <>
+              {' '}
+              en bestemming <b>{code}</b>
+              {film ? ` — op de film verschijnt “${film}”` : ''}.
+            </>
+          ) : (
+            <> — deze bus heeft geen code voor {leg.terminus}, zet de film met de hand.</>
+          )}
+        </li>
+        <li>
+          Rijd naar <b>{leg.terminus}</b>: {leg.stops.length} haltes in {Math.round(leg.minutes)}{' '}
+          minuten, aankomst <b>{formatTime(leg.arrival)}</b>.
+        </li>
+      </ol>
+      <div className="stop-list">
+        {leg.stops.map((stop, stopIndex) => (
+          <span key={`${stop}-${stopIndex}`}>
+            {stopIndex > 0 && ' · '}
+            <i>{stop}</i>
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** De bus die bij de dienst gezocht is, met de mogelijkheid hem te wisselen. */
+function BusPanel({
+  assignment,
+  vehicle,
+  vehicleGroups,
+  vehicleOverride,
+  onVehicleChange
+}: {
+  assignment: Assignment
+  vehicle?: Vehicle
+  vehicleGroups: Array<[string, Vehicle[]]>
+  vehicleOverride: string
+  onVehicleChange(path: string): void
+}): JSX.Element {
+  const auto = assignment.vehicle
+
+  return (
+    <div className="bus-panel">
+      <div>
+        <h3 className="section-title">Toegewezen bus</h3>
+        <div className="bus-name">
+          {vehicle ? `${vehicle.manufacturer} ${vehicle.type}` : 'Geen passende bus gevonden'}
+        </div>
+        <p className="note">
+          {!auto ? (
+            <span className="warn">
+              Geen enkele geïnstalleerde bus kent de eindbestemmingen van deze dienst. Kies er zelf
+              een; de bestemmingsfilms blijven dan mogelijk leeg.
+            </span>
+          ) : vehicleOverride ? (
+            <>
+              Zelf gekozen. De app stelde {auto.manufacturer} {auto.type} voor.
+            </>
+          ) : (
+            <>
+              Gekozen uit {assignment.alternatives ?? 1} passende bussen
+              {assignment.fromMapFleet
+                ? ' uit het wagenpark van de kaart'
+                : ' — geen ervan staat in het wagenpark van de kaart'}
+              {assignment.yard ? `, wagenpark ${assignment.yard}` : ''}.
+            </>
+          )}
+        </p>
+      </div>
+      <div className="bus-picker">
+        <label htmlFor="bus">Andere bus</label>
+        <select id="bus" value={vehicleOverride} onChange={(event) => onVehicleChange(event.target.value)}>
+          <option value="">Automatisch{auto ? ` (${auto.manufacturer} ${auto.type})` : ''}</option>
+          {vehicleGroups.map(([folder, items]) => (
+            <optgroup key={folder} label={folder}>
+              {items.map((item) => (
+                <option key={item.relativePath} value={item.relativePath}>
+                  {item.manufacturer} {item.type}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </div>
+    </div>
   )
 }
 
@@ -124,7 +247,7 @@ function IbisPanel({ ibis }: { ibis?: IbisPlan }): JSX.Element {
 
   const first = ibis.legs.find((leg) => leg.code)
   // Bij elk keerpunt voert de chauffeur de code van de volgende rit in, dus de
-  // twee terugkerende codes zijn nuttiger dan een lijst van alle ritten.
+  // terugkerende codes zijn nuttiger dan een lijst van alle ritten.
   const unique = [...new Map(ibis.legs.filter((l) => l.code).map((l) => [l.code, l])).values()]
 
   return (

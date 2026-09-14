@@ -51,12 +51,16 @@ app.whenReady().then(async () => {
   await wait(4000)
   await shoot(window, '02-dienstkaart')
 
-  // Eén rit openklappen om de haltelijst te tonen.
+  // Eén rit openklappen en de instructies in beeld scrollen.
   await window.webContents.executeJavaScript(
-    `document.querySelector('.leg')?.click()`
+    `document.querySelectorAll('.leg')[1]?.click()`
   )
-  await wait(700)
-  await shoot(window, '03-haltes')
+  await wait(500)
+  await window.webContents.executeJavaScript(
+    `document.querySelector('.leg-detail')?.scrollIntoView({ block: 'center' })`
+  )
+  await wait(600)
+  await shoot(window, '03-instructies')
 
   app.quit()
 })

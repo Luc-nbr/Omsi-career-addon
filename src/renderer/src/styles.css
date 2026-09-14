@@ -474,3 +474,82 @@ input[type='range'] {
 .stop-list {
   padding-left: 224px;
 }
+
+/* ---------- toegewezen bus ---------- */
+
+.bus-panel {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin: 16px 0 0;
+}
+
+.bus-panel > div:first-child {
+  flex: 1 1 320px;
+}
+
+.bus-name {
+  font-size: 17px;
+  font-weight: 650;
+  margin-bottom: 4px;
+}
+
+.bus-panel .note {
+  margin: 0;
+}
+
+.bus-picker {
+  flex: 0 1 260px;
+}
+
+.bus-picker label {
+  margin-bottom: 6px;
+}
+
+/* ---------- ritinstructies ---------- */
+
+.leg-detail {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+}
+
+.instructions {
+  margin: 6px 0 10px;
+  padding-left: 152px;
+  list-style: none;
+  counter-reset: step;
+}
+
+.instructions li {
+  position: relative;
+  padding: 3px 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.instructions li::before {
+  counter-increment: step;
+  content: counter(step);
+  position: absolute;
+  left: -26px;
+  top: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 99px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 18px;
+}
+
+.leg-detail .stop-list {
+  border-bottom: none;
+  padding-bottom: 4px;
+}

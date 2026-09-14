@@ -15,9 +15,51 @@ OMSI-kaarten bevatten hun eigen dienstregeling in `maps/<kaart>/TTData`:
 | `Busstops.cfg` | Halte-id's met hun naam |
 
 Een omloop is nog geen chauffeursdienst — die duurt vaak twintig uur. De app
-snijdt er een aaneengesloten stuk uit van de lengte die jij kiest, en trekt dat
-stuk nooit over een stilstand van meer dan 45 minuten heen: daar wisselt in de
-praktijk de chauffeur.
+bouwt er een dienst uit op van de lengte die jij kiest, met minimaal twee ritten
+en minimaal een half uur.
+
+### Hoe de ritten aansluiten
+
+De ritten sluiten op elkaar aan, zodat je in OMSI nooit hoeft te verplaatsen.
+Waar die aansluitingen liggen wordt niet geraden maar afgeleid: wat één voertuig
+in een omloop achter elkaar rijdt, is per definitie berijdbaar. Haltenamen of
+-id's vergelijken zou niet werken — op Thüringer Wald klopt de halte-id maar in
+19% van de gevallen en zelfs de naam maar in 78%.
+
+Die relatie wordt wel uitgebreid zonder iets te verzinnen. Volgt rit B ergens op
+rit A, en volgt B ook op rit C, dan eindigen A en C op dezelfde plek; alles wat
+op A mag volgen mag dan ook op C volgen. Union-find over eind- en beginpunten
+maakt dat expliciet en verdubbelt tot verviervoudigt het aantal keuzes op een
+eindpunt: van 1,5 naar 2,3 op Berlin-Spandau, van 1,9 naar 6,2 op HafenCity.
+
+Op elk eindpunt kiest de app willekeurig uit wat daar vertrekt — terug waar je
+vandaan kwam, of een andere lijn die daar ook begint. Dezelfde vraag levert twee
+keer achter elkaar een andere dienst op.
+
+Een dienst loopt nooit over een stilstand van meer dan 45 minuten heen: daar
+wisselt in de praktijk de chauffeur.
+
+### Dagtypes
+
+Het derde veld van `[newtour]` is een bitmasker van de dagen waarop de omloop
+rijdt: bit 0 is maandag tot en met bit 4 vrijdag, bit 5 zaterdag, bit 6 zondag.
+Omlopen die "Mo-Fr" heten hebben masker 287 of 799, die met "Sa" 288 of 800.
+
+Alle ritten van een dienst moeten op dezelfde weekdag rijden. De bits boven 6
+zijn feestdagcategorieën en tellen daarbij niet mee: daar overlappen een
+zaterdag- en een zondagomloop elkaar, en zonder die afkapping belanden ze in
+dezelfde dienst. De datum die de app in OMSI zet is dan ook een dag waarop de
+dienst echt rijdt.
+
+### De bus
+
+De bus wordt erbij gezocht zodra de dienst er is. Twee eisen, in volgorde: hij
+moet in `ailists.cfg` van de kaart staan — dat is het wagenpark van de kaart en
+regelt meteen stad en tijdvak — en hij moet een wagenparkbestand hebben dat de
+eindbestemmingen van deze dienst kent, anders rijdt hij met lege
+bestemmingsfilms. Onder de overblijvers wordt willekeurig gekozen. Op
+Berlin-Spandau levert dat de MAN SD200 en SD202 op, en niet een Hamburgse gelede
+bus uit 2017. Je kunt de keuze altijd overrulen.
 
 ## Starten
 

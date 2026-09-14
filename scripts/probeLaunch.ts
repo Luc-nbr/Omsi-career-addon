@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { formatDuration, formatTime, generateDuty, SIGN_ON_MINUTES } from '../src/core/duty'
+import { buildNetwork, formatDuration, formatTime, generateDuty, SIGN_ON_MINUTES } from '../src/core/duty'
 import { findOmsiInstall } from '../src/core/install'
 import { readOmsiLines } from '../src/core/omsiFile'
 import { findTemplate, writeSituation } from '../src/core/situation'
@@ -14,7 +14,7 @@ for (const folder of listMaps(omsi)) {
 }
 
 const map = loadMap(join(omsi, 'maps'), 'Berlin-Spandau')!
-const duty = generateDuty(map, { targetMinutes: 240, random: () => 0.42 })!
+const duty = generateDuty(map, buildNetwork(map), { targetMinutes: 240, random: () => 0.42 })!
 const bus = listVehicles(omsi).find((v) => v.relativePath.includes('MAN_SD200'))!
 
 console.log(`\nDienst: lijn ${duty.lineNumbers.join(',')} ${formatTime(duty.start)}-${formatTime(duty.end)} (${formatDuration(duty.durationMinutes)})`)
