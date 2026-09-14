@@ -372,6 +372,37 @@ export function RouteMap({
   const sizeRef = useRef(size)
   sizeRef.current = size
   const [liveBus, setLiveBus] = useState<{ x: number; y: number; heading: number }>()
+
+  /**
+   * Hoeveel meter de bus over de route van deze rit is.
+   *
+   * Uit de kilometerteller volgt dat rechtstreeks. Leest de app de plek uit het
+   * geheugen van OMSI, dan is er alleen een punt in de wereld; dat wordt op de
+   * route gelegd, en pas vanaf de vorige halte gezocht -- een rit komt vaak twee
+   * keer door dezelfde straat, en zonder die ondergrens springt de streep terug.
+   */
+  const progressAlong = useMemo(() => {
+    if (activeLeg === undefined) return undefined
+    const track = legTracks[activeLeg]
+    if (!track) return undefined
+
+    if (liveBus) {
+      const leg = duty.legs[activeLeg]
+      const next = bus ? Math.min(Math.max(bus.nextStop, 0), (leg?.stopIds.length ?? 1) - 1) : 0
+      const from = next > 0 ? (track.stops[next - 1] ?? 0) : 0
+      return nearestAlong(track, liveBus.x, liveBus.y, from)
+    }
+
+    if (!bus || bus.legIndex !== activeLeg) return undefined
+    const leg = duty.legs[activeLeg]
+    if (!leg || leg.stopIds.length === 0) return undefined
+    const next = Math.min(Math.max(bus.nextStop, 0), leg.stopIds.length - 1)
+    const previous = next > 0 ? track.stops[next - 1] : undefined
+    const upcoming = track.stops[next]
+    if (previous === undefined) return upcoming ?? 0
+    const along = previous + Math.max(0, bus.metresSinceStop ?? 0)
+    return upcoming !== undefined && upcoming >= previous ? Math.min(along, upcoming) : along
+  }, [activeLeg, legTracks, liveBus, bus, duty])
   const hasVehicle = Boolean(vehicle)
   useEffect(() => {
     if (!hasVehicle) {
@@ -591,17 +622,45 @@ export function RouteMap({
     [legs, routes, toScreen, routeMode, activeLeg]
   )
 
+  /**
+   * De route van de huidige rit gesneden op de plek van de bus: wat gereden is
+   * en wat nog komt. Zo verdwijnt de lijn achter de bus, net als in een
+   * navigatiesysteem.
+   */
+  const trail = useMemo(() => {
+    if (activeLeg === undefined || progressAlong === undefined) return undefined
+    const track = legTracks[activeLeg]
+    if (!track || track.cumulative.length < 2) return undefined
+    const { points, cumulative } = track
+    const at = clamp(progressAlong, 0, cumulative[cumulative.length - 1])
+
+    let k = 1
+    while (k < cumulative.length - 1 && cumulative[k] < at) k++
+    const cut = pointAlong(track, at)
+
+    const done: Array<[number, number]> = []
+    for (let i = 0; i < k; i++) done.push(toScreen(points[i * 2], points[i * 2 + 1]))
+    done.push(toScreen(cut.x, cut.y))
+
+    const ahead: Array<[number, number]> = [toScreen(cut.x, cut.y)]
+    for (let i = k; i < cumulative.length; i++) ahead.push(toScreen(points[i * 2], points[i * 2 + 1]))
+
+    return { done, ahead, at }
+  }, [activeLeg, progressAlong, legTracks, toScreen])
+
   /** Pijltjes langs de lijn die laten zien welke kant je op rijdt, alleen op de huidige rit. */
   const arrows = useMemo(() => {
     const found: Array<{ key: string; x: number; y: number; angle: number }> = []
     legLines.forEach((line, legIndex) => {
       if (activeLeg !== undefined && legIndex !== activeLeg) return
-      // Om de zoveel beeldpunten langs de lijn, waar hij ook buigt.
+      // Om de zoveel beeldpunten langs de lijn, waar hij ook buigt. Achter de bus
+      // hoeven ze niet: dat stuk heb je gehad.
+      const source = trail && legIndex === activeLeg ? trail.ahead : line
       let next = ARROW_GAP_PX / 2
       let walked = 0
-      for (let i = 1; i < line.length && found.length < 200; i++) {
-        const [ax, ay] = line[i - 1]
-        const [bx, by] = line[i]
+      for (let i = 1; i < source.length && found.length < 200; i++) {
+        const [ax, ay] = source[i - 1]
+        const [bx, by] = source[i]
         const span = Math.hypot(bx - ax, by - ay)
         while (span > 0 && next <= walked + span) {
           const t = (next - walked) / span
@@ -616,7 +675,7 @@ export function RouteMap({
       }
     })
     return found
-  }, [legLines, activeLeg, size])
+  }, [legLines, activeLeg, size, trail])
 
   const hoveredStop = hovered ? byId.get(hovered) : undefined
   const scaleBar = niceScale(view.mpp, big ? 140 : 90)
@@ -645,9 +704,22 @@ export function RouteMap({
           .filter(({ index }) => legLines[index].length >= 2)
           .sort((a, b) => rank(a.index, activeLeg) - rank(b.index, activeLeg))
           .map(({ leg, index }) => {
-            const points = legLines[index].map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')
             const other = activeLeg !== undefined && index !== activeLeg
             const done = passedBefore >= 0 && leg[leg.length - 1].order < passedBefore
+            // De rit waar je op zit: het gereden stuk grijs, de rest in kleur.
+            if (!other && trail && index === activeLeg) {
+              return (
+                <g key={index}>
+                  <g className="route-done">
+                    <polyline className="route-casing" points={asPoints(trail.done)} />
+                    <polyline className="route-line" points={asPoints(trail.done)} />
+                  </g>
+                  <polyline className="route-casing" points={asPoints(trail.ahead)} />
+                  <polyline className="route-line" points={asPoints(trail.ahead)} />
+                </g>
+              )
+            }
+            const points = asPoints(legLines[index])
             return (
               <g key={index} className={other ? 'route-other' : done ? 'route-done' : undefined}>
                 <polyline className="route-casing" points={points} />
@@ -692,6 +764,7 @@ export function RouteMap({
               y={y}
               r={stop.isStart ? Math.max(signR, 6) + 2 : signR}
               dim={dim}
+              ahead={passedBefore >= 0 && !dim}
               next={next}
               letter={showLetter}
               onEnter={() => setHovered(stop.id)}
@@ -834,6 +907,38 @@ function trackAlong(points: number[], stops: Array<StopPoint | undefined>): Trac
   return { points, cumulative, stops: found }
 }
 
+/**
+ * Waar een punt in de wereld op de route valt, gezocht vanaf `from`. Die
+ * ondergrens is er omdat een rit dezelfde straat vaak twee keer aandoet.
+ */
+function nearestAlong(track: Track, x: number, y: number, from: number): number {
+  const { points, cumulative } = track
+  let best = Infinity
+  let bestAlong = from
+  for (let k = 1; k < cumulative.length; k++) {
+    if (cumulative[k] < from) continue
+    const ax = points[(k - 1) * 2]
+    const ay = points[(k - 1) * 2 + 1]
+    const vx = points[k * 2] - ax
+    const vy = points[k * 2 + 1] - ay
+    const len2 = vx * vx + vy * vy
+    const t = len2 > 0 ? clamp(((x - ax) * vx + (y - ay) * vy) / len2, 0, 1) : 0
+    const along = cumulative[k - 1] + Math.sqrt(len2) * t
+    if (along < from) continue
+    const distance = Math.hypot(x - (ax + vx * t), y - (ay + vy * t))
+    if (distance < best) {
+      best = distance
+      bestAlong = along
+    }
+  }
+  return bestAlong
+}
+
+/** Schermpunten als `points`-tekenreeks voor een polyline. */
+function asPoints(line: Array<[number, number]>): string {
+  return line.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')
+}
+
 /** Het punt op een afstand langs de route, met de rijrichting daar. */
 function pointAlong(track: Track, along: number): { x: number; y: number; dx: number; dy: number } {
   const { points, cumulative } = track
@@ -864,6 +969,7 @@ function StopSign({
   y,
   r,
   dim,
+  ahead,
   next,
   letter,
   onEnter,
@@ -872,7 +978,10 @@ function StopSign({
   x: number
   y: number
   r: number
+  /** Al voorbij: grijs. */
   dim: boolean
+  /** Komt nog: groen, zodat je in een oogopslag ziet wat er nog ligt. */
+  ahead: boolean
   next: boolean
   letter: boolean
   onEnter(): void
@@ -880,7 +989,7 @@ function StopSign({
 }): JSX.Element {
   return (
     <g
-      className={`stop-sign ${dim ? 'stop-done' : ''} ${next ? 'stop-next' : ''}`}
+      className={`stop-sign ${dim ? 'stop-done' : ''} ${ahead ? 'stop-ahead' : ''} ${next ? 'stop-next' : ''}`}
       onPointerEnter={onEnter}
       onPointerLeave={onLeave}
     >

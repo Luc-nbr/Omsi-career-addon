@@ -235,3 +235,35 @@
   stroke: #33506f;
   stroke-width: 2.5;
 }
+
+/*
+ * Haltes die nog komen lichten groen op, haltes die je gehad hebt vergrijzen.
+ * Zo zie je zonder lezen waar je bent: grijs achter je, groen voor je. Het
+ * bord blijft het Duitse H-bord, alleen de kleur verandert.
+ */
+.stop-ahead .sign-face {
+  fill: #2f9e5c;
+}
+
+.stop-ahead .sign-ring {
+  stroke: #d9f2e3;
+}
+
+.stop-ahead .sign-h {
+  fill: #ffffff;
+}
+
+/* De eerstvolgende halte is de fellere van het stel. */
+.stop-ahead.stop-next .sign-face {
+  fill: #3fd07a;
+}
+
+.stop-ahead.stop-next .sign-ring,
+.stop-ahead.stop-next .sign-h {
+  stroke: #0b2a19;
+  fill: #0b2a19;
+}
+
+.stop-ahead.stop-next .sign-ring {
+  fill: none;
+}

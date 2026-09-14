@@ -102,9 +102,15 @@ app.whenReady().then(async () => {
   const routeLines = () => js(overlay, `document.querySelectorAll('.route-line').length`)
   const note = () => js(overlay, `document.querySelector('.map-note')?.textContent ?? ''`)
   const shoot = async (name) => {
+    // Een venster dat niet vooraan staat, levert op Windows een lege opname.
+    overlay.showInactive()
+    overlay.moveTop()
+    await wait(250)
     const image = await overlay.capturePage()
     const file = join(outputDir, `${mapFolder}-nav-${name}.png`)
-    writeFileSync(file, image.toPNG())
+    const png = image.toPNG()
+    if (png.length === 0) console.log(`  (lege opname, venster ${image.getSize().width}x${image.getSize().height})`)
+    writeFileSync(file, png)
     return file
   }
 
