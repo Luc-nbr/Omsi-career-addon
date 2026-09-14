@@ -95,6 +95,26 @@ npx electron-builder -c.directories.output=%TEMP%/omsi-release
 De exe's uit die map zijn daarna gewoon naar `release/` te kopieren. Structureel
 is een Defender-uitsluiting voor de projectmap de oplossing.
 
+### Smart App Control blokkeert de gebouwde exe
+
+Staat Smart App Control aan (`VerifiedAndReputablePolicyState = 1` onder
+`HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy`), dan worden zowel de
+installer, de draagbare versie als de geinstalleerde app geblokkeerd. Anders dan
+bij Defender kun je daar geen uitzondering voor maken: het is een globale
+schakelaar, en uitzetten kan niet ongedaan worden gemaakt zonder Windows opnieuw
+te installeren.
+
+De uitweg is de app via de Electron-runtime starten in plaats van als eigen exe.
+Die `electron.exe` is net zo min ondertekend, maar heeft wel reputatie en wordt
+doorgelaten:
+
+```
+Start OMSI Career.cmd
+```
+
+Wat er geblokkeerd is, staat in het logboek
+`Microsoft-Windows-CodeIntegrity/Operational`, gebeurtenis 3077.
+
 **De installer is niet ondertekend.** Windows SmartScreen toont daarom bij de
 eerste start "Windows heeft uw pc beschermd"; via *Meer informatie -> Toch
 uitvoeren* gaat hij gewoon door. Ondertekenen vraagt een code-signing-certificaat
