@@ -12,6 +12,10 @@ export interface LiveData {
   alive: boolean
   /** Bitmasker van de variabelen die OMSI werkelijk heeft doorgegeven. */
   seen: number
+  /** Idem voor de stringvariabelen. */
+  seenStr: number
+  /** Hoe de tekst binnenkwam: 0 niets, 1 als bytes, 2 als twee bytes per teken. */
+  strKind: number
   time: number
   day: number
   month: number
@@ -117,6 +121,8 @@ export interface LiveStatus {
    * lijn en route zijn ingetoetst, en niet elk model biedt ze aan.
    */
   reportsStops: boolean
+  /** Biedt deze bus halte-informatie uberhaupt aan? */
+  offersStops: boolean
   delayMinutes: number
   delayFromIbis: boolean
   /**
@@ -256,6 +262,7 @@ export function describeLive(
         : undefined,
     stopsTotal: leg?.stops.length ?? 0,
     reportsStops: data.busstop.trim() !== '',
+    offersStops: ((data.seenStr >>> 0) & 1) === 1,
     delayMinutes,
     delayFromIbis: fromIbis !== undefined,
     mood,

@@ -104,7 +104,10 @@ enum {
 static float g_sys[SYS_COUNT];
 static float g_var[VAR_COUNT];
 static unsigned int g_seen; /* bit per varindex die OMSI werkelijk aanriep */
-static wchar_t g_str[STR_COUNT][STR_MAX];
+static unsigned int g_seenStr; /* idem voor de stringvariabelen */
+static char g_str[STR_COUNT][STR_MAX * 3]; /* al als UTF-8 */
+/* 0 = niets gezien, 1 = bytes (ANSI), 2 = twee bytes per teken (UTF-16). */
+static int g_strKind;
 
 static wchar_t g_path[MAX_PATH];
 static wchar_t g_temp[MAX_PATH];
@@ -127,22 +130,58 @@ static double g_accelHeld;
 static int g_brakeCounted;
 static int g_accelCounted;
 
-/* Kopieert een OMSI-string veilig. Een lege of onleesbare waarde wordt leeg. */
-static void copy_string(int slot, const wchar_t *source) {
+/*
+ * Kopieert een OMSI-string.
+ *
+ * Of Delphi hier een PAnsiChar of een PWideChar doorgeeft, staat nergens vast en
+ * verschilt per bouwversie. Voor tekst uit het Latijnse alfabet is het verschil
+ * aan de tweede byte te zien: bij UTF-16 is die nul, bij ANSI is dat gewoon het
+ * volgende teken. Daarop wordt hier herkend, zodat beide vormen werken.
+ */
+static void copy_string(int slot, const void *source) {
   if (slot < 0 || slot >= STR_COUNT) return;
-  if (!source) {
-    g_str[slot][0] = 0;
-    return;
-  }
+  g_str[slot][0] = 0;
+  if (!source) return;
+
   __try {
-    size_t i = 0;
-    while (i < STR_MAX - 1 && source[i]) {
-      wchar_t c = source[i];
-      /* Aanhalingstekens en stuurtekens zouden de JSON breken. */
-      g_str[slot][i] = (c == L'"' || c == L'\\' || c < 32) ? L' ' : c;
-      i++;
+    const unsigned char *bytes = (const unsigned char *)source;
+    if (bytes[0] == 0) return; /* lege string */
+
+    const int wide = bytes[1] == 0;
+    if (wide) {
+      if (g_strKind != 2) g_strKind = 2;
+      const wchar_t *w = (const wchar_t *)source;
+      wchar_t clean[STR_MAX];
+      size_t i = 0;
+      while (i < STR_MAX - 1 && w[i]) {
+        const wchar_t c = w[i];
+        clean[i] = (c == L'"' || c == L'\\' || c < 32) ? L' ' : c;
+        i++;
+      }
+      clean[i] = 0;
+      if (!WideCharToMultiByte(CP_UTF8, 0, clean, -1, g_str[slot], (int)sizeof(g_str[slot]), NULL,
+                               NULL)) {
+        g_str[slot][0] = 0;
+      }
+    } else {
+      if (g_strKind != 1) g_strKind = 1;
+      const char *a = (const char *)source;
+      char clean[STR_MAX];
+      size_t i = 0;
+      while (i < STR_MAX - 1 && a[i]) {
+        const unsigned char c = (unsigned char)a[i];
+        clean[i] = (c == '"' || c == '\\' || c < 32) ? ' ' : (char)c;
+        i++;
+      }
+      clean[i] = 0;
+      /* OMSI schrijft zijn tekstbestanden in Windows-1252; dat geldt hier ook. */
+      wchar_t wide16[STR_MAX];
+      if (MultiByteToWideChar(1252, 0, clean, -1, wide16, STR_MAX) == 0 ||
+          WideCharToMultiByte(CP_UTF8, 0, wide16, -1, g_str[slot], (int)sizeof(g_str[slot]), NULL,
+                              NULL) == 0) {
+        g_str[slot][0] = 0;
+      }
     }
-    g_str[slot][i] = 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     g_str[slot][0] = 0;
   }
@@ -222,20 +261,12 @@ static void track_driving(double speedKmh) {
 
 /* Schrijft de verzamelde waarden weg, via een tijdelijk bestand zodat de lezer
  * nooit een half bestand ziet. */
-static void flush_state(void) {
+static void flush_state(int alive) {
   char body[3072];
-  char text[STR_COUNT][STR_MAX * 3];
-  int i;
-
-  for (i = 0; i < STR_COUNT; i++) {
-    if (!WideCharToMultiByte(CP_UTF8, 0, g_str[i], -1, text[i], sizeof(text[i]), NULL, NULL)) {
-      text[i][0] = 0;
-    }
-  }
 
   int length = _snprintf_s(
       body, sizeof(body), _TRUNCATE,
-      "{\"alive\":true,\"seen\":%u,"
+      "{\"alive\":%s,\"seen\":%u,\"seenStr\":%u,\"strKind\":%d,"
       "\"time\":%.3f,\"day\":%.0f,\"month\":%.0f,\"year\":%.0f,"
       "\"velocity\":%.2f,\"passengers\":%.0f,\"scheduleActive\":%.0f,"
       "\"targetIndex\":%.0f,\"tankPercent\":%.3f,\"km\":%.0f,\"metres\":%.1f,"
@@ -248,7 +279,7 @@ static void flush_state(void) {
       "\"harshBrakes\":%d,\"harshAccels\":%d,"
       "\"busstop\":\"%s\",\"delayMin\":\"%s\",\"delaySec\":\"%s\","
       "\"line\":\"%s\",\"terminus\":\"%s\",\"matrix\":\"%s\"}",
-      g_seen,
+      alive ? "true" : "false", g_seen, g_seenStr, g_strKind,
       g_sys[SYS_TIME], g_sys[SYS_DAY], g_sys[SYS_MONTH], g_sys[SYS_YEAR],
       g_var[VAR_VELOCITY], g_var[VAR_HUMANS], g_var[VAR_SCHEDULE_ACTIVE],
       g_var[VAR_TARGET_INDEX], g_var[VAR_TANK], g_var[VAR_KM], g_var[VAR_M],
@@ -259,8 +290,8 @@ static void flush_state(void) {
       g_var[VAR_BLINKER_R], g_var[VAR_BRAKELIGHT], g_var[VAR_ENGINE_ON],
       g_var[VAR_BUSSTOP_INDEX],
       g_maxBrake, g_maxAccel, g_topSpeed, g_harshBrakes, g_harshAccels,
-      text[STR_BUSSTOP], text[STR_DELAY_MIN], text[STR_DELAY_SEC],
-      text[STR_LINE], text[STR_TERMINUS], text[STR_MATRIX]);
+      g_str[STR_BUSSTOP], g_str[STR_DELAY_MIN], g_str[STR_DELAY_SEC],
+      g_str[STR_LINE], g_str[STR_TERMINUS], g_str[STR_MATRIX]);
   if (length <= 0) return;
 
   HANDLE file = CreateFileW(g_temp, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
@@ -277,7 +308,7 @@ static void maybe_flush(void) {
   ULONGLONG now = GetTickCount64();
   if (!g_ready || now - g_lastWrite < WRITE_INTERVAL_MS) return;
   g_lastWrite = now;
-  flush_state();
+  flush_state(1);
 }
 
 __declspec(dllexport) void __stdcall PluginStart(void *owner) {
@@ -296,6 +327,8 @@ __declspec(dllexport) void __stdcall PluginStart(void *owner) {
   memset(g_var, 0, sizeof(g_var));
   memset(g_str, 0, sizeof(g_str));
   g_seen = 0;
+  g_seenStr = 0;
+  g_strKind = 0;
   g_lastWrite = 0;
   g_prevSpeed = 0;
   g_prevTick.QuadPart = 0;
@@ -310,8 +343,13 @@ __declspec(dllexport) void __stdcall PluginStart(void *owner) {
 
 __declspec(dllexport) void __stdcall PluginFinalize(void) {
   if (!g_ready) return;
+  /*
+   * Laatste stand bewaren met alive=false in plaats van het bestand weggooien.
+   * Wie het spel afsluit voor hij de dienst afrondt, zou anders zijn gemeten
+   * kilometers kwijt zijn.
+   */
+  flush_state(0);
   g_ready = 0;
-  DeleteFileW(g_path);
 }
 
 __declspec(dllexport) void __stdcall AccessSystemVariable(unsigned short index,
@@ -341,10 +379,10 @@ __declspec(dllexport) void __stdcall AccessVariable(unsigned short index,
 }
 
 __declspec(dllexport) void __stdcall AccessStringVariable(unsigned short index,
-                                                          wchar_t **value,
-                                                          bool *write) {
+                                                          void **value, bool *write) {
   (void)write;
   if (!value || index >= STR_COUNT) return;
+  g_seenStr |= (1u << index);
   copy_string(index, *value);
 }
 

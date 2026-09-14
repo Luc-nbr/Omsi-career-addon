@@ -100,7 +100,9 @@ function Overlay(): JSX.Element {
           </>
         ) : (
           <span className="sub">
-            deze bus meldt nog geen halte — staat de IBIS al op lijn en route?
+            {status.offersStops
+              ? 'de bus meldt nog geen halte — staat de IBIS al op lijn en route?'
+              : 'deze bus geeft geen halte-informatie door'}
           </span>
         )}
       </div>

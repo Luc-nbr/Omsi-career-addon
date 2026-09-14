@@ -292,8 +292,13 @@ function registerHandlers(): void {
 
   /** Wat er sinds het begin van de dienst gereden is, volgens de plugin. */
   ipcMain.handle('duty:session', () => {
+    /*
+     * De plugin laat bij het afsluiten een laatste stand achter met alive=false.
+     * Die telt gewoon mee: wie het spel sluit voordat hij afrondt, hoort zijn
+     * kilometers niet kwijt te zijn.
+     */
     const live = readLive()
-    if (!live?.alive) return { drivenKm: 0, elapsedMinutes: 0, dutyComplete: false, finished: false }
+    if (!live) return { drivenKm: 0, elapsedMinutes: 0, dutyComplete: false, finished: false }
     if (!pending) return { drivenKm: 0, elapsedMinutes: 0, dutyComplete: false, finished: true }
 
     const elapsed = live.time / 60 - pending.clockMinutes
