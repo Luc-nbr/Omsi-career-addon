@@ -238,32 +238,17 @@
 
 /*
  * Haltes die nog komen lichten groen op, haltes die je gehad hebt vergrijzen.
- * Zo zie je zonder lezen waar je bent: grijs achter je, groen voor je. Het
- * bord blijft het Duitse H-bord, alleen de kleur verandert.
+ * Zo zie je zonder lezen waar je bent: grijs achter je, groen voor je.
+ *
+ * Het bord zelf blijft het Duitse haltebord -- geel met een groene rand en een
+ * groene H. Dat is waar je in het spel naar zoekt; het groen zit in de gloed
+ * eromheen en niet in het bord.
  */
-.stop-ahead .sign-face {
-  fill: #2f9e5c;
-}
-
-.stop-ahead .sign-ring {
-  stroke: #d9f2e3;
-}
-
-.stop-ahead .sign-h {
-  fill: #ffffff;
-}
-
-/* De eerstvolgende halte is de fellere van het stel. */
-.stop-ahead.stop-next .sign-face {
-  fill: #3fd07a;
-}
-
-.stop-ahead.stop-next .sign-ring,
-.stop-ahead.stop-next .sign-h {
-  stroke: #0b2a19;
-  fill: #0b2a19;
-}
-
-.stop-ahead.stop-next .sign-ring {
+.sign-glow {
   fill: none;
+  stroke: rgba(63, 208, 122, 0.4);
+}
+
+.stop-next .sign-glow {
+  stroke: rgba(63, 208, 122, 0.7);
 }

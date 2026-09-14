@@ -993,6 +993,8 @@ function StopSign({
       onPointerEnter={onEnter}
       onPointerLeave={onLeave}
     >
+      {/* De gloed hoort achter het bord; groen voor wat nog komt. */}
+      {ahead && <circle className="sign-glow" cx={x} cy={y} r={r + 3.5} strokeWidth={r * 0.55} />}
       {next && <circle className="sign-next-ring" cx={x} cy={y} r={r + 5} />}
       <circle className="sign-face" cx={x} cy={y} r={r} />
       <circle className="sign-ring" cx={x} cy={y} r={r - 1.2} />
