@@ -7,6 +7,7 @@ import { buildIbisPlan } from '../core/ibis'
 import { findOmsiInstall } from '../core/install'
 import { launchOmsi } from '../core/launch'
 import { findTemplate, readSituationTime, writeSituation } from '../core/situation'
+import { compareSession, readMapSession, type SessionState } from '../core/session'
 import { listMaps, loadMap } from '../core/timetable'
 import { listVehicles } from '../core/vehicles'
 import type { OmsiMap } from '../core/types'
@@ -25,6 +26,12 @@ const networkCache = new Map<string, Network>()
 const mapFleetCache = new Map<string, Set<string>>()
 const mapEraCache = new Map<string, { year: number; dayOfYear: number }>()
 let fleetIndex: FleetIndex | undefined
+/**
+ * Nulmeting bij het starten van een dienst. OMSI schrijft laststn.osn pas bij
+ * het afsluiten, dus door voor en na te lezen weten we wat er werkelijk gereden
+ * is - zonder plugin en zonder dat de speler cijfers moet invoeren.
+ */
+let pending: { mapFolder: string; situationName: string; before: SessionState } | undefined
 let omsiPath: string | undefined
 let career: CareerState
 
@@ -78,6 +85,11 @@ function era(folder: string): { year: number; dayOfYear: number } {
 function fleet(): FleetIndex {
   if (!fleetIndex) fleetIndex = buildFleetIndex(omsi())
   return fleetIndex
+}
+
+/** De naam die de situatie krijgt; ook de sleutel om hem later te herkennen. */
+function situationName(duty: { tourNumber: string; lineNumbers: string[] }): string {
+  return `Dienst ${duty.tourNumber} — lijn ${duty.lineNumbers.join('/')}`
 }
 
 function careerPayload() {
@@ -149,6 +161,14 @@ function registerHandlers(): void {
 
   ipcMain.handle('duty:launch', (_event, request: LaunchRequest) => {
     const { duty, vehicle } = request
+    const { year } = era(duty.mapFolder)
+    /**
+     * Het wagenpark moet altijd meegeschreven worden. Blijft het leeg, dan
+     * houdt de bus het wagenpark van het sjabloon - en dat is zomaar Grundorf
+     * op een Berlijnse dienst, waarna de getoonde codes nergens op slaan.
+     */
+    const yard =
+      request.yard ?? buildIbisPlan(omsi(), vehicle.relativePath, duty, year).yard
     /**
      * De dienst rijdt alleen op bepaalde dagen, dus de datum in het spel moet
      * een dag zijn waarop dat klopt. Anders staat de dienstregeling er wel,
@@ -158,7 +178,7 @@ function registerHandlers(): void {
 
     const result = writeSituation(omsi(), {
       mapFolder: duty.mapFolder,
-      name: `Dienst ${duty.tourNumber} — lijn ${duty.lineNumbers.join('/')}`,
+      name: situationName(duty),
       description:
         `${duty.legs.length} ritten vanaf ${duty.depot || 'de remise'}, ` +
         `aanmelden om ${String(Math.floor(duty.signOn / 60) % 24).padStart(2, '0')}:` +
@@ -170,17 +190,38 @@ function registerHandlers(): void {
         relativePath: vehicle.relativePath,
         lineNumber: duty.lineNumbers[0] ?? '',
         terminus: duty.legs[0]?.terminus ?? '',
-        yard: request.yard
+        yard
       }
     })
+
+    // Nulmeting: de situatie zoals wij hem net hebben weggeschreven.
+    const before = readMapSession(omsi(), duty.mapFolder)
+    pending = before
+      ? { mapFolder: duty.mapFolder, situationName: situationName(duty), before }
+      : undefined
+
     launchOmsi({ omsiPath: omsi(), mapFolder: duty.mapFolder, windowed: request.windowed })
     return result
   })
 
+  /**
+   * Vergelijkt de huidige situatie met de nulmeting. Zolang OMSI het bestand
+   * niet heeft overschreven, is de sessie nog niet afgesloten en zegt het niets.
+   */
+  ipcMain.handle('duty:session', () => {
+    if (!pending) return null
+    return compareSession(
+      pending.before,
+      readMapSession(omsi(), pending.mapFolder),
+      pending.situationName
+    )
+  })
+
   ipcMain.handle('career:load', () => careerPayload())
 
-  ipcMain.handle('career:complete', (_event, duty, vehicle: string) => {
-    career = completeDuty(career, duty, vehicle)
+  ipcMain.handle('career:complete', (_event, duty, vehicle: string, measured) => {
+    career = completeDuty(career, duty, vehicle, measured)
+    pending = undefined
     saveCareer(careerFile(), career)
     return careerPayload()
   })

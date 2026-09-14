@@ -17,6 +17,10 @@ export interface CareerEntry {
   stopCount: number
   vehicle: string
   pay: number
+  /** Werkelijk gereden kilometers, gelezen uit de situatie na afloop. */
+  drivenKm?: number
+  /** Vertraging volgens de IBIS aan het eind van de dienst, in minuten. */
+  delayMinutes?: number
 }
 
 export interface CareerState {
@@ -60,7 +64,12 @@ export function dutyPay(duty: Duty): number {
 }
 
 /** Schrijft een gereden dienst in het logboek. */
-export function completeDuty(state: CareerState, duty: Duty, vehicle: string): CareerState {
+export function completeDuty(
+  state: CareerState,
+  duty: Duty,
+  vehicle: string,
+  measured?: { drivenKm?: number; delayMinutes?: number }
+): CareerState {
   const entry: CareerEntry = {
     id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
     completedAt: new Date().toISOString(),
@@ -73,7 +82,9 @@ export function completeDuty(state: CareerState, duty: Duty, vehicle: string): C
     legCount: duty.legs.length,
     stopCount: duty.totalStops,
     vehicle,
-    pay: dutyPay(duty)
+    pay: dutyPay(duty),
+    drivenKm: measured?.drivenKm,
+    delayMinutes: measured?.delayMinutes
   }
   return { ...state, entries: [entry, ...state.entries] }
 }
@@ -82,6 +93,8 @@ export interface CareerSummary {
   duties: number
   minutes: number
   stops: number
+  /** Gereden kilometers, voor zover gemeten. */
+  km: number
   earnings: number
   rank: string
   /** Voortgang naar de volgende rang, 0 tot 1. */
@@ -112,6 +125,7 @@ export function summarise(state: CareerState): CareerSummary {
     duties: state.entries.length,
     minutes,
     stops: state.entries.reduce((sum, entry) => sum + entry.stopCount, 0),
+    km: Math.round(state.entries.reduce((sum, entry) => sum + (entry.drivenKm ?? 0), 0) * 10) / 10,
     earnings: Math.round(state.entries.reduce((sum, entry) => sum + entry.pay, 0) * 100) / 100,
     rank: RANKS[index].name,
     nextRank: next?.name,

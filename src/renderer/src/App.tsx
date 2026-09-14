@@ -43,6 +43,7 @@ export function App(): JSX.Element {
   const [ibis, setIbis] = useState<IbisPlan>()
   const [busy, setBusy] = useState(false)
   const [launched, setLaunched] = useState<LaunchResult>()
+  const [sessionNote, setSessionNote] = useState<string>()
 
   useEffect(() => {
     void (async () => {
@@ -109,6 +110,7 @@ export function App(): JSX.Element {
     setBusy(true)
     setError(undefined)
     setLaunched(undefined)
+    setSessionNote(undefined)
     setVehicleOverride('')
     try {
       const result = await window.career.generateDuty({
@@ -154,11 +156,36 @@ export function App(): JSX.Element {
     }
   }, [duty, vehicle, selectedMap, windowed, ibis])
 
+  /**
+   * Afronden leest eerst uit OMSI's eigen situatiebestand wat er gebeurd is.
+   * Dat bestand wordt pas bij het afsluiten weggeschreven, dus zolang het spel
+   * nog draait valt er niets te meten.
+   */
   const finish = useCallback(async () => {
     if (!duty || !vehicle) return
-    setCareer(await window.career.completeDuty(duty, `${vehicle.manufacturer} ${vehicle.type}`))
-    setAssignment(undefined)
-    setLaunched(undefined)
+    setBusy(true)
+    try {
+      const result = await window.career.checkSession()
+      if (result && !result.finished) {
+        setSessionNote(
+          'OMSI heeft de sessie nog niet weggeschreven. Sluit het spel af — pas dan kan de app ' +
+            'aflezen hoeveel je gereden hebt.'
+        )
+        return
+      }
+      setCareer(
+        await window.career.completeDuty(
+          duty,
+          `${vehicle.manufacturer} ${vehicle.type}`,
+          result ? { drivenKm: result.drivenKm, delayMinutes: result.delayMinutes } : undefined
+        )
+      )
+      setAssignment(undefined)
+      setLaunched(undefined)
+      setSessionNote(undefined)
+    } finally {
+      setBusy(false)
+    }
   }, [duty, vehicle])
 
   if (error && !ready) {
@@ -281,6 +308,7 @@ export function App(): JSX.Element {
             vehicleOverride={vehicleOverride}
             onVehicleChange={setVehicleOverride}
             launched={launched}
+            sessionNote={sessionNote}
             busy={busy}
             onStart={start}
             onFinish={finish}

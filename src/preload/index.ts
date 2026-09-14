@@ -13,7 +13,9 @@ const api: CareerApi = {
   ibis: (duty, vehicle, year) => ipcRenderer.invoke('duty:ibis', duty, vehicle, year),
   launch: (request: LaunchRequest) => ipcRenderer.invoke('duty:launch', request),
   career: () => ipcRenderer.invoke('career:load'),
-  completeDuty: (duty, vehicle) => ipcRenderer.invoke('career:complete', duty, vehicle),
+  checkSession: () => ipcRenderer.invoke('duty:session'),
+  completeDuty: (duty, vehicle, measured) =>
+    ipcRenderer.invoke('career:complete', duty, vehicle, measured),
   renameDriver: (name) => ipcRenderer.invoke('career:rename', name)
 }
 

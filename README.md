@@ -152,6 +152,24 @@ src/renderer/  React-interface
 scripts/       probe.ts (kern zonder UI), screenshot.cjs (app fotografeert zichzelf)
 ```
 
+## Wat de app na afloop uitleest
+
+OMSI schrijft bij het afsluiten de hele wereldtoestand naar
+`maps/<kaart>/laststn.osn`, inclusief de variabelen van je eigen bus. Daar staat
+`kmcounter_km` in (de kilometerteller) en `IBIS_Delay_min` (de vertraging op het
+display). De app leest die waarden bij het starten en nogmaals bij het afronden,
+en het verschil is wat je werkelijk gereden hebt.
+
+Zolang het bestand nog de dienst bevat die de app erin heeft gezet, is OMSI nog
+niet afgesloten en valt er niets te meten; het logboek zegt dat dan ook.
+
+Dit is bewust zonder plugin gedaan. Een echte OMSI-begeleidingstool zoals
+OmniNavigation doet het anders: die laadt een eigen DLL in `plugins/` die
+`PluginStart`, `PluginFinalize` en `AccessStringVariable` exporteert, legt via
+een GUID in `omninavigation.cfg` contact met een losse applicatie, en leest zo
+live mee. Dat geeft gegevens tijdens de rit in plaats van erna, maar vraagt een
+C-compiler en een draaiend achtergrondproces.
+
 ## Nog te doen
 
 - Punctualiteit en passagiers live meten. Dat vraagt een plugin-DLL in `plugins/`

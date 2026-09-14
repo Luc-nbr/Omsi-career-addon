@@ -13,6 +13,7 @@ interface Props {
   vehicleOverride: string
   onVehicleChange(path: string): void
   launched?: LaunchResult
+  sessionNote?: string
   busy: boolean
   onStart(): void
   onFinish(): void
@@ -27,6 +28,7 @@ export function DutyCard({
   vehicleOverride,
   onVehicleChange,
   launched,
+  sessionNote,
   busy,
   onStart,
   onFinish
@@ -111,6 +113,11 @@ export function DutyCard({
         )}
       </div>
 
+      {sessionNote && (
+        <p className="note warn" style={{ marginTop: 10 }}>
+          {sessionNote}
+        </p>
+      )}
       {launched && <LaunchNote launched={launched} />}
     </section>
   )

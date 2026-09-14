@@ -1,5 +1,6 @@
 import type { CareerState, CareerSummary } from '../core/career'
 import type { IbisPlan } from '../core/ibis'
+import type { SessionResult } from '../core/session'
 import type { Duty } from '../core/types'
 import type { Vehicle } from '../core/vehicles'
 
@@ -67,7 +68,13 @@ export interface CareerApi {
   ibis(duty: Duty, vehicle: Vehicle, year: number): Promise<IbisPlan>
   launch(request: LaunchRequest): Promise<LaunchResult>
   career(): Promise<{ state: CareerState; summary: CareerSummary }>
-  completeDuty(duty: Duty, vehicle: string): Promise<{ state: CareerState; summary: CareerSummary }>
+  /** Leest uit OMSI's eigen situatiebestand wat er van de dienst terechtkwam. */
+  checkSession(): Promise<SessionResult | null>
+  completeDuty(
+    duty: Duty,
+    vehicle: string,
+    measured?: { drivenKm?: number; delayMinutes?: number }
+  ): Promise<{ state: CareerState; summary: CareerSummary }>
   renameDriver(name: string): Promise<{ state: CareerState; summary: CareerSummary }>
 }
 

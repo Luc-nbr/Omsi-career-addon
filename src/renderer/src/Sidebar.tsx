@@ -50,8 +50,8 @@ export function Sidebar({ career, onRename }: Props): JSX.Element {
           <span>gereden</span>
         </div>
         <div className="stat">
-          <b>{summary.stops}</b>
-          <span>haltes</span>
+          <b>{summary.km > 0 ? `${summary.km} km` : summary.stops}</b>
+          <span>{summary.km > 0 ? 'gereden' : 'haltes'}</span>
         </div>
         <div className="stat">
           <b>{formatMoney(summary.earnings)}</b>
@@ -70,7 +70,12 @@ export function Sidebar({ career, onRename }: Props): JSX.Element {
                 Lijn {entry.lineNumbers.join('/')} · {formatDuration(entry.durationMinutes)}
               </b>
               <span>
-                {entry.mapName} · {entry.stopCount} haltes · {formatMoney(entry.pay)}
+                {entry.mapName} ·{' '}
+                {entry.drivenKm !== undefined && entry.drivenKm > 0
+                  ? `${entry.drivenKm.toFixed(1)} km`
+                  : `${entry.stopCount} haltes`}
+                {entry.delayMinutes !== undefined ? ` · ${entry.delayMinutes} min vertraging` : ''} ·{' '}
+                {formatMoney(entry.pay)}
               </span>
             </div>
           ))
