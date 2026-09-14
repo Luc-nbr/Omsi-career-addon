@@ -3,7 +3,7 @@
  * echte live.json aan te raken: een dienst laten toewijzen, de overlay openen en
  * er frames in duwen alsof de plugin ze stuurt.
  *
- *   npx electron scripts/screenshotIbis.cjs <kaartmap> [uitvoermap]
+ *   npx electron scripts/screenshotIbis.cjs <kaartmap> [uitvoermap] [vergroting]
  *
  * Het overlayvenster is doorzichtig; een opname daarvan is leeg. Vandaar een
  * achtergrondkleur voor de duur van de opname.
@@ -18,6 +18,7 @@ const args = process.argv.slice(
 )
 const mapFolder = args[0] || 'Grundorf'
 const outputDir = args[1] || __dirname
+const scale = Number(args[2]) || 1
 
 app.setPath('userData', mkdtempSync(join(tmpdir(), 'omsi-career-ibis-')))
 setTimeout(() => {
@@ -80,6 +81,13 @@ app.whenReady().then(async () => {
     resolved: duty.legs.length,
     total: duty.legs.length,
     hasRoutes: true
+  }
+  if (scale !== 1) {
+    // De overlay leest zijn indeling bij het openen, dus eerst zetten.
+    const layout = await js(main, `window.career.overlayLayout()`)
+    layout.dienst.scale = scale
+    layout.navigatie.scale = scale
+    await js(main, `window.career.saveOverlayLayout(${'${JSON.stringify(layout)}'})`.replace('${JSON.stringify(layout)}', JSON.stringify(layout)))
   }
   await js(main, `window.career.setOverlay(${JSON.stringify(duty)}, true, ${JSON.stringify(ibis)})`)
   await wait(2500)
@@ -155,6 +163,17 @@ app.whenReady().then(async () => {
     console.log(`${name}: layoutknoppen ${buttons} | ${panel}`)
     console.log(`   -> ${file}`)
   }
+
+  // Tot slot de bewerkstand, waar de knoppen voor vergroten staan.
+  await js(main, `window.career.editOverlay(true)`)
+  await wait(1500)
+  const editFile = join(outputDir, `${mapFolder}-ibis-3-bewerken.png`)
+  overlay.showInactive()
+  overlay.moveTop()
+  await wait(250)
+  writeFileSync(editFile, (await overlay.capturePage()).toPNG())
+  console.log(`3-bewerken: vergroting ${await js(overlay, `document.querySelector('.panel-percent')?.textContent`)}`)
+  console.log(`   -> ${editFile}`)
 
   app.quit()
 })

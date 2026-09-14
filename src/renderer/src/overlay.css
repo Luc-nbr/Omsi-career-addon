@@ -589,3 +589,26 @@
 .ibis-entry .row {
   margin-top: 9px;
 }
+
+/* ---------- vergroten en verkleinen ---------- */
+
+.panel-scale {
+  border: none;
+  background: none;
+  color: #8d9bad;
+  font: inherit;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.panel-scale:hover {
+  color: #ffffff;
+}
+
+.panel-percent {
+  color: #8d9bad;
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+  text-align: center;
+}

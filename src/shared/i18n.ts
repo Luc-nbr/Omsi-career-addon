@@ -856,6 +856,8 @@ const TEXT = {
     fr: 'Ajuster la disposition',
     nl: 'Pas layout aan'
   },
+  'ovl.smaller': { en: 'Smaller', de: 'Kleiner', fr: 'Plus petit', nl: 'Kleiner' },
+  'ovl.bigger': { en: 'Bigger', de: 'Größer', fr: 'Plus grand', nl: 'Groter' },
   'ovl.centre': {
     en: 'Centre on the bus',
     de: 'Auf den Bus zentrieren',

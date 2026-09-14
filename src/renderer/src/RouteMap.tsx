@@ -86,6 +86,11 @@ interface Props {
   vehicle?: LiveVehicle
   /** Teksten van de overlay, die zijn eigen taalkeuze heeft. */
   texts?: { waiting?: string; busNote?: string; centre?: string }
+  /**
+   * Vergroting van het venster waar de kaart in hangt. Het wegennet staat op een
+   * canvas; zonder deze factor wordt dat bij vergroten uitgerekt en dus wazig.
+   */
+  pixelScale?: number
 }
 
 const MIN_MPP = 0.2
@@ -139,7 +144,8 @@ export function RouteMap({
   routeMode = 'all',
   bus,
   vehicle,
-  texts
+  texts,
+  pixelScale = 1
 }: Props): JSX.Element {
   const tr = useT()
   const boxRef = useRef<HTMLDivElement>(null)
@@ -524,7 +530,8 @@ export function RouteMap({
     const canvas = canvasRef.current
     const ctx = canvas?.getContext('2d')
     if (!canvas || !ctx) return
-    const dpr = window.devicePixelRatio || 1
+    // Het venster kan vergroot staan; dan moet het canvas evenveel fijner.
+    const dpr = (window.devicePixelRatio || 1) * pixelScale
     const width = Math.round(size.w * dpr)
     const height = Math.round(size.h * dpr)
     if (canvas.width !== width || canvas.height !== height) {
@@ -547,7 +554,7 @@ export function RouteMap({
       cancelAnimationFrame(frame)
       window.clearTimeout(settle)
     }
-  }, [roads, view, size])
+  }, [roads, view, size, pixelScale])
 
   /** Hoever de dienst gevorderd is, als volgnummer van de eerstvolgende halte. */
   const passedBefore = useMemo(() => {

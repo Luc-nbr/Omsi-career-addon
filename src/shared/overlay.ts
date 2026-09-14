@@ -18,6 +18,11 @@ export interface PanelState {
   x: number
   y: number
   w: number
+  /**
+   * Vergroting van het hele element, inhoud en al. Breder maken geeft meer
+   * ruimte; hiermee wordt alles groter, voor wie verder van het scherm zit.
+   */
+  scale: number
   /** Alleen de navigatie heeft een eigen hoogte; het paneel groeit met zijn inhoud. */
   h: number
   visible: boolean
@@ -38,6 +43,11 @@ export interface PanelInfo {
   autoHeight?: boolean
 }
 
+/** Grenzen aan de vergroting: kleiner is onleesbaar, groter dekt het spel af. */
+export const SCALE_MIN = 0.6
+export const SCALE_MAX = 2.2
+export const SCALE_STEP = 0.1
+
 export const PANELS: PanelInfo[] = [
   { id: 'dienst', title: 'Dienst', minW: 230, minH: 60, autoHeight: true },
   { id: 'navigatie', title: 'Navigatie', minW: 240, minH: 170 }
@@ -46,8 +56,8 @@ export const PANELS: PanelInfo[] = [
 /** Het paneel linksboven, de navigatie eronder. */
 export const DEFAULT_LAYOUT: OverlayLayout = {
   detail: 1,
-  dienst: { x: 24, y: 30, w: 320, h: 0, visible: true },
-  navigatie: { x: 24, y: 470, w: 360, h: 300, visible: true }
+  dienst: { x: 24, y: 30, w: 320, h: 0, scale: 1, visible: true },
+  navigatie: { x: 24, y: 470, w: 360, h: 300, scale: 1, visible: true }
 }
 
 export function defaultLayout(): OverlayLayout {
@@ -79,6 +89,7 @@ export function mergeLayout(saved: unknown): OverlayLayout {
       y: numberOr(state.y, fallback.y),
       w: Math.max(panel.minW, numberOr(state.w, fallback.w)),
       h: Math.max(panel.minH, numberOr(state.h, fallback.h)),
+      scale: Math.min(SCALE_MAX, Math.max(SCALE_MIN, numberOr(state.scale, 1))),
       visible: state.visible !== false
     }
   }

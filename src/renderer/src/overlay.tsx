@@ -9,6 +9,9 @@ import { formatTime } from '../../shared/format'
 import { DEFAULT_LANGUAGE, loose, t, type Language } from '../../shared/i18n'
 import {
   PANELS,
+  SCALE_MAX,
+  SCALE_MIN,
+  SCALE_STEP,
   nextDetail,
   type DetailLevel,
   type OverlayLayout,
@@ -185,6 +188,7 @@ function Overlay(): JSX.Element | null {
               geometry={geometry}
               nextStopId={leg && passed !== undefined ? leg.stopIds[Math.min(passed, leg.stopIds.length - 1)] : undefined}
               activeLeg={status?.legIndex}
+              pixelScale={layout.navigatie.scale}
               routeMode={ibisLoaded ? 'active' : 'none'}
               bus={bus}
               vehicle={frame.vehicle && status ? { ...frame.vehicle, speedKmh: status.speedKmh } : undefined}
@@ -247,18 +251,26 @@ function Panel({
     size.current = { x: event.clientX, y: event.clientY, w: state.w, h: state.h }
   }
 
+  /** Een stap groter of kleiner, inhoud en al. */
+  const rescale = (step: number): void =>
+    onChange({
+      scale: Math.round(Math.min(SCALE_MAX, Math.max(SCALE_MIN, state.scale + step)) * 100) / 100
+    })
+
   const onMove = (event: PointerEvent<HTMLElement>): void => {
     if (drag.current) {
       const { x, y, ox, oy } = drag.current
+      // Op zijn plek houden gaat over wat je ziet, dus over de vergrote maat.
       onChange({
         x: clamp(ox + event.clientX - x, 0, window.innerWidth - 80),
         y: clamp(oy + event.clientY - y, 0, window.innerHeight - 40)
       })
     } else if (size.current) {
       const { x, y, w, h } = size.current
+      // Het element is vergroot, dus een muisstap van tien punten is er minder.
       onChange({
-        w: Math.max(info.minW, w + event.clientX - x),
-        h: info.autoHeight ? state.h : Math.max(info.minH, h + event.clientY - y)
+        w: Math.max(info.minW, w + (event.clientX - x) / state.scale),
+        h: info.autoHeight ? state.h : Math.max(info.minH, h + (event.clientY - y) / state.scale)
       })
     }
   }
@@ -271,7 +283,16 @@ function Panel({
   return (
     <section
       className={`panel panel-${info.id}`}
-      style={{ left: state.x, top: state.y, width: state.w, height: info.autoHeight ? undefined : state.h }}
+      style={{
+        left: state.x,
+        top: state.y,
+        width: state.w,
+        height: info.autoHeight ? undefined : state.h,
+        // Schalen bij de linkerbovenhoek: dan blijft het element staan waar je
+        // het hebt neergezet en groeit het naar rechtsonder weg.
+        transform: state.scale === 1 ? undefined : `scale(${state.scale})`,
+        transformOrigin: 'top left'
+      }}
       onPointerMove={onMove}
       onPointerUp={stop}
       onPointerCancel={stop}
@@ -279,6 +300,25 @@ function Panel({
       {editing && (
         <header className="panel-bar" data-hit onPointerDown={startDrag}>
           <span className="panel-title">{title}</span>
+          <button
+            type="button"
+            className="panel-scale"
+            title={t(language, 'ovl.smaller')}
+            aria-label={t(language, 'ovl.smaller')}
+            onClick={() => rescale(-SCALE_STEP)}
+          >
+            −
+          </button>
+          <span className="panel-percent">{Math.round(state.scale * 100)}%</span>
+          <button
+            type="button"
+            className="panel-scale"
+            title={t(language, 'ovl.bigger')}
+            aria-label={t(language, 'ovl.bigger')}
+            onClick={() => rescale(SCALE_STEP)}
+          >
+            +
+          </button>
           <button
             type="button"
             className="panel-hide"
