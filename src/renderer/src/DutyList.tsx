@@ -27,14 +27,14 @@ export function DutyList({ duties, selected, onSelect, clockMinutes }: Props): J
             aria-pressed={selected === index}
             onClick={() => onSelect(index)}
           >
-            <span className="duty-item-line">{duty.lineNumbers.join('/')}</span>
+            <span className="duty-item-line">{duty.lineFile}</span>
             <span className="duty-item-time">
               {formatTime(duty.start)} – {formatTime(duty.end)}
               {soon && <em>nu</em>}
             </span>
             <span className="duty-item-meta">
-              {formatDuration(duty.durationMinutes)} · {duty.legs.length} ritten ·{' '}
-              {describeDays(duty.days)}
+              omloop {duty.tourNumber} · {formatDuration(duty.durationMinutes)} ·{' '}
+              {duty.legs.length} ritten · {describeDays(duty.days)}
             </span>
             <span className="duty-item-bus">
               {assignment.vehicle

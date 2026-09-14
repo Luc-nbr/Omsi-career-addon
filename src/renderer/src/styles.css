@@ -637,3 +637,15 @@ input[type='range'] {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.select-panel {
+  border-left: 3px solid var(--accent);
+}
+
+.duty-item-line {
+  font-size: 13px;
+  max-width: 92px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

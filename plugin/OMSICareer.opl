@@ -1,17 +1,24 @@
 	OMSI Career - live gegevens voor de overlay
-	De volgorde van elke lijst bepaalt de index die OMSI aan de plugin doorgeeft
-	en moet gelijk lopen met de enums in omsicareer.c.
+
+	Elke lijst begint met het AANTAL namen en daarna de namen zelf. OMSI leest
+	dat aantal in de velden NoVar, NoStr en NoSys; zonder die regel meldt het
+	spel "there was an error in line N".
+
+	De volgorde bepaalt de index die OMSI aan de plugin doorgeeft en moet
+	gelijk lopen met de enums in omsicareer.c.
 
 [dll]
 OMSICareerPlugin.dll
 
 [systemvarlist]
+4
 Time
 Day
 Month
 Year
 
 [varlist]
+10
 Velocity
 humans_count
 schedule_active
@@ -24,6 +31,7 @@ PAX_Exit_Req
 GivenTicket
 
 [stringvarlist]
+6
 IBIS_busstop_name
 IBIS_Delay_min
 IBIS_Delay_sec

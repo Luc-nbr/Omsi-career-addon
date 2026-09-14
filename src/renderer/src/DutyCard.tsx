@@ -1,6 +1,6 @@
 import { useState, type JSX } from 'react'
 import type { IbisPlan } from '../../core/ibis'
-import type { DutyLeg } from '../../core/types'
+import type { Duty, DutyLeg } from '../../core/types'
 import type { Vehicle } from '../../core/vehicles'
 import type { Assignment } from '../../shared/api'
 import { describeDays, formatDuration, formatTime } from '../../shared/format'
@@ -42,7 +42,7 @@ export function DutyCard({
   return (
     <section className="card">
       <header className="duty-head">
-        <span className="badge">{duty.lineNumbers.join(' / ')}</span>
+        <span className="badge">{duty.lineFile}</span>
         <div>
           <div className="duty-title">{duty.mapName}</div>
           <div className="duty-sub">
@@ -59,6 +59,8 @@ export function DutyCard({
           </div>
         </div>
       </header>
+
+      <SelectPanel duty={duty} />
 
       <BusPanel
         assignment={assignment}
@@ -128,6 +130,43 @@ export function DutyCard({
       </div>
 
     </section>
+  )
+}
+
+/**
+ * Hoe je deze dienst in OMSI instelt.
+ *
+ * Het menu heet Set Time Table en werkt in die volgorde: eerst een Line, dan
+ * een Tour daarbinnen, dan de Trip waarmee je begint. "Line" is het lijnbestand
+ * van de kaart — op Berlin-Spandau heet dat gewoon 54, op Thueringer Wald
+ * KI-OVF. Het lijnnummer uit de rit (8343) staat niet in dat lijstje, dus daar
+ * zoek je je blind op.
+ */
+function SelectPanel({ duty }: { duty: Duty }): JSX.Element {
+  const first = duty.legs[0]
+  return (
+    <div className="ibis select-panel">
+      <h3 className="section-title">Zo kies je hem in OMSI</h3>
+      <div className="ibis-grid">
+        <div className="ibis-field">
+          <span>Line</span>
+          <b>{duty.lineFile}</b>
+        </div>
+        <div className="ibis-field">
+          <span>Tour</span>
+          <b>{duty.tourNumber}</b>
+        </div>
+        <div className="ibis-field">
+          <span>Trip</span>
+          <b>{formatTime(first.departure)}</b>
+        </div>
+      </div>
+      <p className="note">
+        Menu <b>Set Time Table</b>: kies Line <b>{duty.lineFile}</b>, Tour{' '}
+        <b>{duty.tourNumber}</b> en de rit die om <b>{formatTime(first.departure)}</b> vertrekt naar{' '}
+        <b>{first.terminus}</b>.
+      </p>
+    </div>
   )
 }
 

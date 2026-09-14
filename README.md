@@ -18,7 +18,20 @@ Een omloop is nog geen chauffeursdienst — die duurt vaak twintig uur. De app
 bouwt er een dienst uit op van de lengte die jij kiest, met minimaal twee ritten
 en minimaal een half uur.
 
-### Hoe de ritten aansluiten
+### Welke diensten je krijgt
+
+Een dienst blijft binnen één omloop. In OMSI stel je een dienst in via **Set
+Time Table**, en dat menu werkt in de volgorde Line → Tour → Trip: je kiest één
+lijnbestand en daarbinnen één omloop. Een dienst die halverwege naar een andere
+omloop springt kun je daar niet selecteren.
+
+"Line" in dat menu is het lijnbestand van de kaart, niet het lijnnummer uit de
+rit. Op Berlin-Spandau is dat hetzelfde (`54`), maar op Thüringer Wald heet het
+bestand `KI-OVF` terwijl de rit lijnnummer `8343` draagt — op dat nummer zoek je
+je blind in het menu. De app toont daarom het lijnbestand, met een paneel dat
+precies zegt wat je waar kiest.
+
+## Hoe de ritten aansluiten
 
 De ritten sluiten op elkaar aan, zodat je in OMSI nooit hoeft te verplaatsen.
 Waar die aansluitingen liggen wordt niet geraden maar afgeleid: wat één voertuig
@@ -198,9 +211,11 @@ TAccessStringVariable(varindex, str, write)
 ```
 
 Een `.opl` in `plugins/` kent vier lijsten: `[varlist]`, `[stringvarlist]`,
-`[systemvarlist]` en `[triggers]`. De index die OMSI meegeeft is de positie in
-die lijst, dus de volgorde in `OMSICareer.opl` moet gelijk lopen met de enums in
-`omsicareer.c`.
+`[systemvarlist]` en `[triggers]`. **Elke lijst begint met het aantal namen**,
+daarna pas de namen; OMSI leest dat aantal in zijn velden `NoVar`, `NoStr` en
+`NoSys`. Zonder die regel meldt het spel `there was an error in line N` en wordt
+de plugin niet geladen. De index die OMSI meegeeft is de positie in die lijst,
+dus de volgorde moet gelijk lopen met de enums in `omsicareer.c`.
 
 Welke namen bruikbaar zijn, is uit OMSI zelf af te leiden. `TScriptVarIndizes`
 in de binary bevat de variabelen die OMSI in **elk** voertuig bijhoudt —
