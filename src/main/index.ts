@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'node:path'
 import { completeDuty, loadCareer, saveCareer, summarise, type CareerState } from '../core/career'
 import { generateDuty, SIGN_ON_MINUTES } from '../core/duty'
+import { buildIbisPlan } from '../core/ibis'
 import { findOmsiInstall } from '../core/install'
 import { launchOmsi } from '../core/launch'
 import { findTemplate, readSituationTime, writeSituation } from '../core/situation'
@@ -79,6 +80,10 @@ function registerHandlers(): void {
     return null
   })
 
+  ipcMain.handle('duty:ibis', (_event, duty, vehicle, year: number) =>
+    buildIbisPlan(omsi(), vehicle.relativePath, duty, year)
+  )
+
   ipcMain.handle('duty:launch', (_event, request: LaunchRequest) => {
     const { duty, vehicle } = request
     const result = writeSituation(omsi(), {
@@ -94,7 +99,8 @@ function registerHandlers(): void {
       vehicle: {
         relativePath: vehicle.relativePath,
         lineNumber: duty.lineNumbers[0] ?? '',
-        terminus: duty.legs[0]?.terminus ?? ''
+        terminus: duty.legs[0]?.terminus ?? '',
+        yard: request.yard
       }
     })
     launchOmsi({ omsiPath: omsi(), mapFolder: duty.mapFolder, windowed: request.windowed })

@@ -19,16 +19,24 @@ export interface SituationRequest {
     relativePath: string
     lineNumber: string
     terminus: string
+    /** Het wagenpark (.hof) waarvan de bestemmingscodes gelden. */
+    yard?: string
   }
 }
 
 export interface SituationResult {
-  file: string
+  /** Alle weggeschreven situatiebestanden. */
+  files: string[]
   /**
    * Of de bus daadwerkelijk klaargezet kon worden. Dat lukt alleen als er voor
    * deze kaart een situatie bestaat om de positie uit over te nemen.
    */
   vehiclePlaced: boolean
+  /**
+   * Of het OMSI-startscherm de dienst met zijn bovenste keuze laadt. Dat is zo
+   * zodra de dienst ook in `maps/<kaart>/laststn.osn` staat.
+   */
+  startsFromMenu: boolean
   template?: string
 }
 
@@ -176,20 +184,51 @@ export function writeSituation(omsiPath: string, request: SituationRequest): Sit
     setStringVar(lines, 'SetLineTo', ` ${request.vehicle.lineNumber} `)
     setStringVar(lines, 'Matrix_Nr', ` ${request.vehicle.lineNumber} `)
     setStringVar(lines, 'IBIS_cabindisplay', request.vehicle.terminus)
+    // Het wagenpark bepaalt welke bestemmingscodes gelden; zonder dit zou de
+    // dienstkaart codes tonen uit een ander wagenpark dan de bus in het spel laadt.
+    if (request.vehicle.yard) setStringVar(lines, 'yard', request.vehicle.yard)
   }
 
-  const file = join(omsiPath, 'Situations', 'OMSI Career.osn')
-  writeFileSync(file, Buffer.concat([BOM, Buffer.from(lines.join('\r\n'), 'utf16le')]))
-
-  // Het weerbestand hoort bij de situatie; zonder valt OMSI terug op standaard.
+  const content = Buffer.concat([BOM, Buffer.from(lines.join('\r\n'), 'utf16le')])
   const templateWeather = `${template}.owt`
-  if (existsSync(templateWeather)) {
-    try {
-      copyFileSync(templateWeather, `${file}.owt`)
-    } catch {
-      // Weer is bijzaak; de dienst werkt ook zonder.
+
+  const write = (target: string): void => {
+    writeFileSync(target, content)
+    // Het weerbestand hoort bij de situatie; zonder valt OMSI terug op standaard.
+    if (existsSync(templateWeather)) {
+      try {
+        copyFileSync(templateWeather, `${target}.owt`)
+      } catch {
+        // Weer is bijzaak; de dienst werkt ook zonder.
+      }
     }
   }
 
-  return { file, vehiclePlaced: placeVehicle, template: basename(template) }
+  const files: string[] = []
+
+  // Onder een eigen naam, zodat de dienst ook via "Load situation:" te kiezen is.
+  const named = join(omsiPath, 'Situations', 'OMSI Career.osn')
+  write(named)
+  files.push(named)
+
+  /**
+   * En als laatste situatie van de kaart. Het startscherm van OMSI biedt drie
+   * keuzes, waarvan "Load last situation on map" de bovenste is; die opent
+   * precies dit bestand. Daarmee laadt Start de dienst zonder dat de speler
+   * nog iets hoeft aan te wijzen.
+   */
+  let startsFromMenu = false
+  const lastSituation = join(omsiPath, 'maps', request.mapFolder, 'laststn.osn')
+  try {
+    // De echte laatste situatie van de speler eenmalig bewaren.
+    const backup = `${lastSituation}.omsicareer-backup`
+    if (existsSync(lastSituation) && !existsSync(backup)) copyFileSync(lastSituation, backup)
+    write(lastSituation)
+    files.push(lastSituation)
+    startsFromMenu = true
+  } catch {
+    // Lukt dit niet, dan blijft de dienst bereikbaar via "Load situation:".
+  }
+
+  return { files, vehiclePlaced: placeVehicle, startsFromMenu, template: basename(template) }
 }

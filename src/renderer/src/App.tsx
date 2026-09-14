@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type JSX } from 'react'
 import type { CareerState, CareerSummary } from '../../core/career'
+import type { IbisPlan } from '../../core/ibis'
 import type { Duty } from '../../core/types'
 import type { Vehicle } from '../../core/vehicles'
 import { TIME_WINDOWS, type CareerApi, type DutyRequest, type LaunchResult, type MapSummary } from '../../shared/api'
@@ -32,6 +33,7 @@ export function App(): JSX.Element {
   const [windowed, setWindowed] = useState(false)
 
   const [duty, setDuty] = useState<Duty>()
+  const [ibis, setIbis] = useState<IbisPlan>()
   const [busy, setBusy] = useState(false)
   const [launched, setLaunched] = useState<LaunchResult>()
 
@@ -77,6 +79,24 @@ export function App(): JSX.Element {
     return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]))
   }, [vehicles])
 
+  /**
+   * De bestemmingscodes hangen aan de gekozen bus én aan het jaar van de kaart,
+   * dus ze worden opnieuw opgehaald zodra een van beide wijzigt.
+   */
+  useEffect(() => {
+    if (!duty || !selectedVehicle || !selectedMap) {
+      setIbis(undefined)
+      return
+    }
+    let current = true
+    void window.career.ibis(duty, selectedVehicle, selectedMap.year).then((plan) => {
+      if (current) setIbis(plan)
+    })
+    return () => {
+      current = false
+    }
+  }, [duty, selectedVehicle, selectedMap])
+
   const assign = useCallback(async () => {
     setBusy(true)
     setError(undefined)
@@ -114,7 +134,8 @@ export function App(): JSX.Element {
           vehicle: selectedVehicle,
           year: selectedMap.year,
           dayOfYear: selectedMap.dayOfYear || dayOfYear(new Date()),
-          windowed
+          windowed,
+          yard: ibis?.yard
         })
       )
     } catch (cause) {
@@ -122,7 +143,7 @@ export function App(): JSX.Element {
     } finally {
       setBusy(false)
     }
-  }, [duty, selectedVehicle, selectedMap, windowed])
+  }, [duty, selectedVehicle, selectedMap, windowed, ibis])
 
   const finish = useCallback(async () => {
     if (!duty || !selectedVehicle) return
@@ -259,6 +280,7 @@ export function App(): JSX.Element {
         {duty && (
           <DutyCard
             duty={duty}
+            ibis={ibis}
             vehicle={selectedVehicle}
             launched={launched}
             busy={busy}

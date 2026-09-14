@@ -30,11 +30,11 @@ const result = writeSituation(omsi, {
   vehicle: { relativePath: bus.relativePath, lineNumber: duty.lineNumbers[0], terminus: duty.legs[0].terminus }
 })
 
-console.log(`\nGeschreven: ${result.file}`)
-console.log(`Sjabloon:   ${result.template}   bus klaargezet: ${result.vehiclePlaced ? 'ja' : 'nee'}`)
+console.log(`\nGeschreven:\n${result.files.map((f) => `  ${f}`).join('\n')}`)
+console.log(`Sjabloon:   ${result.template}   bus klaargezet: ${result.vehiclePlaced ? 'ja' : 'nee'}   start-menu laadt hem: ${result.startsFromMenu ? 'ja' : 'nee'}`)
 
 // teruglezen en de gezette velden controleren
-const lines = readOmsiLines(result.file)
+const lines = readOmsiLines(result.files[0])
 const show = (tag: string, count: number) => {
   const i = lines.findIndex((l) => l.trim() === tag)
   console.log(`  ${tag.padEnd(20)} ${i < 0 ? 'ONTBREEKT' : JSON.stringify(lines.slice(i + 1, i + 1 + count))}`)

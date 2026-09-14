@@ -10,6 +10,7 @@ const api: CareerApi = {
   maps: () => ipcRenderer.invoke('omsi:maps'),
   vehicles: () => ipcRenderer.invoke('omsi:vehicles'),
   generateDuty: (request: DutyRequest) => ipcRenderer.invoke('duty:generate', request),
+  ibis: (duty, vehicle, year) => ipcRenderer.invoke('duty:ibis', duty, vehicle, year),
   launch: (request: LaunchRequest) => ipcRenderer.invoke('duty:launch', request),
   career: () => ipcRenderer.invoke('career:load'),
   completeDuty: (duty, vehicle) => ipcRenderer.invoke('career:complete', duty, vehicle),

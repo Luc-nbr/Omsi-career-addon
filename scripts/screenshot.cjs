@@ -48,7 +48,7 @@ app.whenReady().then(async () => {
      })()`
   )
   console.log(`knop gevonden: ${clicked}`)
-  await wait(2500)
+  await wait(4000)
   await shoot(window, '02-dienstkaart')
 
   // Eén rit openklappen om de haltelijst te tonen.

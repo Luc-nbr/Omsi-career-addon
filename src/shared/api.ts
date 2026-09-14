@@ -1,4 +1,5 @@
 import type { CareerState, CareerSummary } from '../core/career'
+import type { IbisPlan } from '../core/ibis'
 import type { Duty } from '../core/types'
 import type { Vehicle } from '../core/vehicles'
 
@@ -32,11 +33,15 @@ export interface LaunchRequest {
   year: number
   dayOfYear: number
   windowed: boolean
+  /** Wagenpark waarvan de bestemmingscodes gelden. */
+  yard?: string
 }
 
 export interface LaunchResult {
-  situationFile: string
+  files: string[]
   vehiclePlaced: boolean
+  /** Of het OMSI-startscherm de dienst met zijn bovenste keuze laadt. */
+  startsFromMenu: boolean
   template?: string
 }
 
@@ -46,6 +51,7 @@ export interface CareerApi {
   maps(): Promise<MapSummary[]>
   vehicles(): Promise<Vehicle[]>
   generateDuty(request: DutyRequest): Promise<Duty | null>
+  ibis(duty: Duty, vehicle: Vehicle, year: number): Promise<IbisPlan>
   launch(request: LaunchRequest): Promise<LaunchResult>
   career(): Promise<{ state: CareerState; summary: CareerSummary }>
   completeDuty(duty: Duty, vehicle: string): Promise<{ state: CareerState; summary: CareerSummary }>

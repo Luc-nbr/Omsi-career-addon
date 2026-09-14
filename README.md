@@ -53,11 +53,32 @@ OMSI heeft geen startparameter om een situatie te openen; de enige switches zijn
 `-editor`, `-windowed`, `-debug`, `-nolog`, `-logall` en `-savelogs`. De dienst
 wordt daarom via bestanden klaargezet:
 
-- `Situations/OMSI Career.osn` — kaart, datum, tijd, bus, lijn en bestemming
+- `maps/<kaart>/laststn.osn` — de laatste situatie van die kaart. Het startscherm
+  van OMSI biedt drie keuzes (`Load last situation on map`, `Load map without
+  busses`, `Load situation:`) en de bovenste opent precies dit bestand. Daarmee
+  laadt **Start** de dienst zonder dat je nog iets hoeft aan te wijzen. De
+  originele situatie wordt eenmalig bewaard als `laststn.osn.omsicareer-backup`.
+- `Situations/OMSI Career.osn` — dezelfde dienst onder een eigen naam, voor wie
+  liever `Load situation:` gebruikt.
 - `options.cfg` — alleen het blok `[last_map]`, met een back-up ernaast
-  (`options.cfg.omsicareer-backup`)
+  (`options.cfg.omsicareer-backup`).
 
-In het spel kies je de situatie **OMSI Career** dan nog één keer in het menu.
+Welk keuzerondje voorgeselecteerd staat, bewaart OMSI nergens: `options.cfg` kent
+alleen `[last_map]` en `[last_driver]`. Het valt dus terug op de bovenste keuze,
+en dat is de keuze die wij vullen.
+
+## IBIS
+
+De dienstkaart toont wat er bij het instappen in de IBIS moet: **Linie**,
+**Umlauf** en de **bestemmingscode**, plus de code van elke rit in de ritregel.
+
+Die codes komen uit het wagenpark-bestand (`.hof`) dat naast het busmodel ligt.
+Eén bus heeft er vaak een stuk of tien, één per stad en per tijdvak, en ze
+verschillen echt: Johannesstift is in 1988 code `221` en in 1994 code `161`. De
+app kiest daarom het wagenpark dat de eindbestemmingen van de dienst kent én op
+de speeldatum al gold, en schrijft diezelfde keuze als `yard` in de situatie —
+anders zou de bus in het spel een ander wagenpark laden dan waar de getoonde
+codes uit komen.
 
 ### De beperking die daarbij hoort
 
