@@ -10,6 +10,7 @@ import {
 } from 'react'
 import type { MapGeometry, StopPoint } from '../../core/geo'
 import type { Duty } from '../../core/types'
+import './routemap.css'
 
 /** Een halte zoals hij op de route voorkomt, met zijn plek in de volgorde. */
 export interface RouteStop extends StopPoint {

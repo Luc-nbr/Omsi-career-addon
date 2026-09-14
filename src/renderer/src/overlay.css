@@ -12,21 +12,143 @@
   overflow: hidden;
 }
 
-.panel {
+/*
+ * Het venster beslaat het hele scherm en laat muisklikken door; alleen de
+ * panelen zelf zijn er. In de bewerkstand komt er een waas overheen, zodat je
+ * ziet waar je aan het schuiven bent.
+ */
+.stage {
+  position: fixed;
+  inset: 0;
+}
+
+.stage.editing {
+  background: rgba(6, 9, 14, 0.42);
+}
+
+.widget {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
   background: rgba(12, 16, 22, 0.82);
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-left: 3px solid #f0b429;
   border-radius: 10px;
-  padding: 10px 14px 12px;
-  margin: 8px;
   backdrop-filter: blur(6px);
+  overflow: hidden;
 }
 
-.panel.waiting {
+.widget-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 9px 13px 11px;
+}
+
+.widget-kaart .widget-body {
+  overflow: hidden;
+  padding: 0;
+}
+
+.editing .widget {
+  border-color: rgba(240, 180, 41, 0.45);
+}
+
+/*
+ * De balk zweeft boven het venster in plaats van erin: zo is het venster in de
+ * bewerkstand precies even groot als daarna, en springt de inhoud niet weg
+ * zodra je op Klaar drukt. Alleen dichtgeklapt is de balk het venster zelf.
+ */
+.editing .widget:not(.shut) .widget-bar {
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  top: -22px;
+  border-radius: 8px 8px 0 0;
+  border: 1px solid rgba(240, 180, 41, 0.4);
+  border-bottom: none;
+  /* De balk hangt buiten het venster, dus hij heeft zelf een bodem nodig. */
+  background: rgba(12, 16, 22, 0.94);
+  color: #e6ecf5;
+}
+
+.widget:not(.shut) {
+  overflow: visible;
+}
+
+.widget-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px 3px 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  font-size: 11.5px;
+  color: #b6c2d1;
+}
+
+.editing .widget-bar {
+  cursor: grab;
+}
+
+.widget-title {
+  flex: 1;
+  letter-spacing: 0.03em;
+}
+
+.widget-bar button {
+  border: none;
+  background: none;
+  color: #8d9bad;
+  font: inherit;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.widget-bar button:hover {
+  color: #ffffff;
+}
+
+.shut .widget-body {
+  display: none;
+}
+
+/* Het hoekje waar je aan trekt om het venster te verschalen. */
+.widget-grip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  background: linear-gradient(
+    135deg,
+    transparent 0 46%,
+    rgba(240, 180, 41, 0.75) 46% 54%,
+    transparent 54% 76%,
+    rgba(240, 180, 41, 0.75) 76% 84%,
+    transparent 84%
+  );
+}
+
+.waiting {
   color: #9aa7b8;
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.clockrow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.row.empty {
+  color: #78849a;
+  font-size: 12px;
+  margin: 0;
 }
 
 .dot {
@@ -35,15 +157,6 @@
   border-radius: 99px;
   background: #f0b429;
   display: inline-block;
-}
-
-header {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  padding-bottom: 8px;
-  margin-bottom: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .clock {
@@ -77,7 +190,7 @@ header {
 }
 
 .row {
-  margin-bottom: 7px;
+  margin-bottom: 0;
 }
 
 .row .label {
@@ -102,7 +215,6 @@ header {
 .grid {
   display: flex;
   gap: 8px;
-  margin-top: 10px;
 }
 
 .grid > div {
@@ -146,7 +258,7 @@ header {
 }
 
 .request {
-  margin-top: 9px;
+  margin-top: 0;
   background: rgba(240, 180, 41, 0.16);
   border-radius: 6px;
   padding: 5px 9px;
@@ -162,7 +274,6 @@ header {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-  margin-top: 8px;
   color: #8d9bad;
   font-size: 11.5px;
 }
@@ -174,7 +285,7 @@ header {
 }
 
 .advice {
-  margin-top: 7px;
+  margin-top: 6px;
   border-radius: 6px;
   padding: 5px 9px;
   font-size: 12.5px;
@@ -193,20 +304,23 @@ header {
   color: #b6c2d1;
 }
 
-.panel.done {
-  border-left-color: #57d6a8;
-}
-
 /* ---------- navigatie: welke haltes komen er nog ---------- */
 
 .nav {
-  padding: 2px 0 4px;
+  height: 100%;
+  overflow: hidden;
 }
 
-.nav-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
+.nav-head .label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: #8d9bad;
+}
+
+.nav-head .sub {
+  color: #8d9bad;
+  font-size: 11.5px;
 }
 
 .strip {
@@ -303,4 +417,66 @@ header {
   color: #788393;
   font-size: 12px;
   padding: 5px 0 0 17px;
+}
+
+/* ---------- de balk in de bewerkstand ---------- */
+
+.editbar {
+  position: fixed;
+  left: 50%;
+  top: 14px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  max-width: calc(100vw - 40px);
+  padding: 9px 16px;
+  border-radius: 12px;
+  background: rgba(12, 16, 22, 0.94);
+  border: 1px solid rgba(240, 180, 41, 0.4);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.editbar-hint {
+  color: #8d9bad;
+  font-size: 12px;
+}
+
+.editbar-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  color: #8d9bad;
+  font-size: 12px;
+}
+
+.editbar button {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: #dbe3ee;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.editbar button:hover {
+  border-color: #f0b429;
+  color: #ffffff;
+}
+
+.editbar-buttons {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.editbar button.done {
+  background: #f0b429;
+  border-color: #f0b429;
+  color: #1d1607;
+  font-weight: 700;
 }

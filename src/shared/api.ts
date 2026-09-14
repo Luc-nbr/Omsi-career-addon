@@ -5,6 +5,7 @@ import type { IbisPlan } from '../core/ibis'
 import type { PluginStatus } from '../core/pluginInstall'
 import type { Duty } from '../core/types'
 import type { Vehicle } from '../core/vehicles'
+import type { OverlayLayout } from './overlay'
 
 /** Kaart zoals de UI hem toont. */
 export interface MapSummary {
@@ -92,6 +93,11 @@ export interface CareerApi {
   vehicles(): Promise<Vehicle[]>
   /** Halteposities van een kaart, om te tonen waar je de bus neerzet. */
   geometry(mapFolder: string): Promise<MapGeometry>
+  /** Zet de overlay in of uit de bewerkstand; geeft terug of hij nu aan staat. */
+  editOverlay(on?: boolean): Promise<boolean>
+  overlayLayout(): Promise<OverlayLayout>
+  saveOverlayLayout(layout: OverlayLayout): Promise<OverlayLayout>
+  resetOverlayLayout(): Promise<OverlayLayout>
   /** Zet de overlay-plugin klaar in OMSI en meldt de stand. */
   pluginStatus(): Promise<PluginStatus>
   /** Een rooster om uit te kiezen. */

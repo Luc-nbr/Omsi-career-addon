@@ -68,7 +68,9 @@ export function DutyMap({ duty, ibis }: Props): JSX.Element {
       <p className="note map-lead">
         Bij <b>{startName}</b> — het bord met de ring. Zet de camera daar neer en kies dan je bus.
       </p>
-      <RouteMap duty={duty} geometry={geometry} />
+      <div className="map-box">
+        <RouteMap duty={duty} geometry={geometry} />
+      </div>
       {open && (
         <RouteWindow duty={duty} ibis={ibis} geometry={geometry} onClose={() => setOpen(false)} />
       )}

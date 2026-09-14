@@ -1,0 +1,193 @@
+/*
+ * De kaart wordt op drie plekken getoond: in de dienstkaart, in het
+ * routevenster en in de overlay boven het spel. Daarom staan deze stijlen bij
+ * het onderdeel zelf en niet in de stylesheet van de app.
+ */
+
+.route-map {
+  position: relative;
+  height: 100%;
+  border: 1px solid var(--line, #2a3441);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg, #10141b);
+}
+
+.route-map-full {
+  border: none;
+  border-radius: 0;
+}
+
+.route-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.route-canvas:active {
+  cursor: grabbing;
+}
+
+/* het wegennet uit de tegels */
+
+.map-road-casing {
+  fill: none;
+  stroke: #202834;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.map-road {
+  fill: none;
+  stroke: #3b4554;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.map-rail {
+  fill: none;
+  stroke: #2d3540;
+  stroke-linecap: butt;
+  stroke-dasharray: 7 6;
+}
+
+/* de route van de dienst */
+
+.route-casing {
+  fill: none;
+  stroke: #17386b;
+  stroke-width: 9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.route-line {
+  fill: none;
+  stroke: #4c9aff;
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.route-done .route-casing {
+  stroke: #1c222b;
+}
+
+.route-done .route-line {
+  stroke: #46505f;
+}
+
+.route-arrow {
+  fill: rgba(233, 240, 250, 0.85);
+}
+
+/* haltes */
+
+.map-other {
+  fill: #5a6676;
+  cursor: pointer;
+}
+
+.stop-sign {
+  cursor: pointer;
+}
+
+.sign-face {
+  fill: #f2c200;
+}
+
+.sign-ring {
+  fill: none;
+  stroke: #0a6b3d;
+  stroke-width: 1.6;
+}
+
+.sign-h {
+  fill: #0a6b3d;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-weight: 800;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
+
+.stop-done .sign-face {
+  fill: #5d5b4c;
+}
+
+.stop-done .sign-ring {
+  stroke: #414a44;
+}
+
+.stop-done .sign-h {
+  fill: #414a44;
+}
+
+.sign-next-ring {
+  fill: none;
+  stroke: var(--good, #4ec9a5);
+  stroke-width: 2.5;
+}
+
+.map-start-halo {
+  fill: none;
+  stroke: var(--accent, #f0b429);
+  stroke-width: 2.5;
+  pointer-events: none;
+}
+
+/* namen en schaal */
+
+.map-label {
+  fill: var(--muted, #8d9bad);
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 11px;
+  paint-order: stroke;
+  stroke: rgba(10, 14, 20, 0.92);
+  stroke-width: 3;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.map-label-strong {
+  fill: var(--text, #e8edf4);
+  font-weight: 600;
+}
+
+.map-scale line {
+  stroke: var(--muted, #8d9bad);
+  stroke-width: 1.5;
+}
+
+.map-scale text {
+  fill: var(--muted, #8d9bad);
+  font-size: 10px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+
+.map-tools {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.map-tools button {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid var(--line, #2a3441);
+  background: rgba(23, 29, 39, 0.9);
+  color: var(--text, #e8edf4);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.map-tools button:hover {
+  border-color: var(--muted, #8d9bad);
+}

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, globalShortcut, ipcMain, screen } from 'electron'
 import { join } from 'node:path'
 import { completeDuty, summarise, type CareerState } from '../core/career'
 import {
@@ -18,12 +18,14 @@ import { describeLive, readLive } from '../core/live'
 import { findOmsiInstall } from '../core/install'
 import { isOmsiRunning, launchOmsi } from '../core/launch'
 import { ensurePlugin, pluginSourceDir, type PluginStatus } from '../core/pluginInstall'
+import { readOverlayLayout, writeOverlayLayout } from '../core/overlayLayout'
 import { receiptHeightMicrons, RECEIPT_WIDTH_MICRONS } from '../core/receipt'
 import { findTemplate, readSituationTime } from '../core/situation'
 import { listMaps, loadMap } from '../core/timetable'
 import { listVehicles } from '../core/vehicles'
 import type { Duty, OmsiMap } from '../core/types'
 import { TIME_WINDOWS, type Assignment, type DutyRequest, type MapSummary } from '../shared/api'
+import { defaultLayout, type OverlayLayout } from '../shared/overlay'
 
 /** Kaarten inlezen kost merkbaar tijd, dus we doen het één keer per sessie. */
 const mapCache = new Map<string, OmsiMap>()
@@ -110,6 +112,13 @@ function fleet(): FleetIndex {
 let overlayWindow: BrowserWindow | null = null
 let overlayTimer: NodeJS.Timeout | undefined
 let overlayDuty: Duty | undefined
+/**
+ * In de bewerkstand kun je de vensters verslepen. Dat kan niet altijd aanstaan:
+ * een venster dat muisklikken aanneemt, pakt ook de aandacht af van OMSI, en
+ * dan staat je stuur stil. Dus normaal laat de overlay alles door en alleen als
+ * je hem aanpast niet.
+ */
+let overlayEditing = false
 
 function pushFrame(): void {
   if (!overlayWindow || overlayWindow.isDestroyed()) return
@@ -117,13 +126,25 @@ function pushFrame(): void {
   overlayWindow.webContents.send('overlay:frame', {
     connected: Boolean(live?.alive),
     status: live ? describeLive(live, overlayDuty, pending) : undefined,
-    duty: overlayDuty
+    duty: overlayDuty,
+    editing: overlayEditing
   })
+}
+
+function setOverlayEdit(on: boolean): boolean {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return false
+  overlayEditing = on
+  overlayWindow.setIgnoreMouseEvents(!on)
+  overlayWindow.setFocusable(on)
+  if (on) overlayWindow.focus()
+  pushFrame()
+  return on
 }
 
 function closeOverlay(): void {
   if (overlayTimer) clearInterval(overlayTimer)
   overlayTimer = undefined
+  overlayEditing = false
   if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.destroy()
   overlayWindow = null
 }
@@ -132,17 +153,20 @@ function openOverlay(duty: Duty): void {
   overlayDuty = duty
   if (overlayWindow && !overlayWindow.isDestroyed()) return
 
+  // Het venster beslaat het hele scherm, zodat je een paneel overal neer kunt
+  // zetten. Wat niet beschilderd is, is doorzichtig en laat klikken door.
+  const area = screen.getPrimaryDisplay().workArea
+
   overlayWindow = new BrowserWindow({
-    width: 330,
-    // Ruim genoeg voor de adviezen eronder; de panelen groeien mee met wat er
-    // te melden valt en de rest van het venster is doorzichtig.
-    height: 470,
-    x: 24,
-    y: 24,
+    width: area.width,
+    height: area.height,
+    x: area.x,
+    y: area.y,
     frame: false,
     transparent: true,
     resizable: false,
     movable: false,
+    fullscreenable: false,
     skipTaskbar: true,
     focusable: false,
     hasShadow: false,
@@ -452,6 +476,23 @@ function registerHandlers(): void {
     return true
   })
 
+  ipcMain.handle('overlay:edit', (_event, on?: boolean) =>
+    setOverlayEdit(on === undefined ? !overlayEditing : on)
+  )
+
+  ipcMain.handle('overlay:layout', () => readOverlayLayout(userData()))
+
+  ipcMain.handle('overlay:layout:save', (_event, layout: OverlayLayout) => {
+    writeOverlayLayout(userData(), layout)
+    return layout
+  })
+
+  ipcMain.handle('overlay:layout:reset', () => {
+    const layout = defaultLayout()
+    writeOverlayLayout(userData(), layout)
+    return layout
+  })
+
   ipcMain.handle('career:load', () => careerPayload())
 
   ipcMain.handle('career:create', (_event, name: string) => persist(createProfile(userData(), name)))
@@ -513,12 +554,23 @@ app.whenReady().then(() => {
   registerHandlers()
   createWindow()
 
+  // Onder het rijden zit je niet met de muis in de app. Deze toets zet de
+  // overlay in de bewerkstand en er weer uit; hij botst niet met OMSI, dat
+  // Ctrl+Alt zelf nergens voor gebruikt.
+  globalShortcut.register('Control+Alt+O', () => {
+    if (overlayWindow && !overlayWindow.isDestroyed()) setOverlayEdit(!overlayEditing)
+  })
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
 app.on('before-quit', closeOverlay)
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

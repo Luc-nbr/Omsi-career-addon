@@ -130,10 +130,21 @@ export function DutyCard({
         <button type="button" className="btn secondary" onClick={onToggleOverlay}>
           {overlayOpen ? 'Overlay sluiten' : 'Overlay tonen'}
         </button>
+        {overlayOpen && (
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={() => void window.career.editOverlay(true)}
+          >
+            Overlay aanpassen
+          </button>
+        )}
         <span className="note">
           {started
             ? 'De kilometerstand is vastgelegd; bij afronden leest de app af wat je gereden hebt.'
-            : 'Laad deze bus in OMSI en druk hier op starten.'}
+            : overlayOpen
+              ? 'Verslepen kan ook tijdens het rijden: Ctrl+Alt+O.'
+              : 'Laad deze bus in OMSI en druk hier op starten.'}
         </span>
       </div>
 

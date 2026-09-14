@@ -240,6 +240,22 @@ plugin houdt daarom in een bitmasker (`seen`) bij welke variabelen OMSI werkelij
 heeft aangeroepen. Een bus die zijn lichten niet aanbiedt rijdt niet "met het
 licht uit" — we weten het niet, en dan hoort er geen waarschuwing bij.
 
+### De overlay indelen
+
+De overlay is geen vast paneel maar een reeks losse vensters: klok, rit, haltes,
+kaart, meters, rijstijl en adviezen. Elk venster kun je verslepen, groter maken,
+dichtklappen of uitzetten; de indeling staat in `overlay.json` naast de
+profielen en hoort bij het scherm, niet bij een chauffeur.
+
+Aanpassen kan alleen in de bewerkstand, via de knop in de app of met
+**Ctrl+Alt+O** tijdens het rijden. Dat onderscheid is nodig: een venster dat
+muisklikken aanneemt, pakt ook de aandacht af van OMSI, en dan reageert je stuur
+niet meer. Daarbuiten laat de overlay alles ongemoeid doorgaan naar het spel.
+
+In de bewerkstand zweeft de titelbalk bóven het venster in plaats van erin. Zo
+is een venster tijdens het schuiven precies even groot als daarna en springt de
+inhoud niet weg zodra je op Klaar drukt.
+
 ### Bouwen en plaatsen
 
 ```bash
