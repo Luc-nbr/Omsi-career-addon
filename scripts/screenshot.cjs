@@ -36,6 +36,26 @@ app.whenReady().then(async () => {
     await wait(500)
   }
   await wait(500)
+
+  // Nog geen profiel? Dan eerst een chauffeur aanmaken.
+  if (await window.webContents.executeJavaScript(`Boolean(document.querySelector('#naam'))`)) {
+    await shoot(window, '00-profiel')
+    await window.webContents.executeJavaScript(
+      `(() => {
+         const input = document.querySelector('#naam')
+         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+         setter.call(input, 'Testchauffeur')
+         input.dispatchEvent(new Event('input', { bubbles: true }))
+       })()`
+    )
+    await wait(400)
+    await window.webContents.executeJavaScript(
+      `[...document.querySelectorAll('button')].find((b) => b.textContent.includes('Profiel aanmaken'))?.click()`
+    )
+    await wait(1500)
+    console.log('profiel aangemaakt')
+  }
+
   await shoot(window, '01-toewijzen')
 
   const clicked = await window.webContents.executeJavaScript(

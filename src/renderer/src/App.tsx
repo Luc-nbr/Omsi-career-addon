@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState, type JSX } from 'react'
-import type { CareerState, CareerSummary } from '../../core/career'
 import type { IbisPlan } from '../../core/ibis'
 import type { PluginStatus } from '../../core/pluginInstall'
 import type { Vehicle } from '../../core/vehicles'
@@ -7,6 +6,7 @@ import {
   TIME_WINDOWS,
   type Assignment,
   type CareerApi,
+  type CareerPayload,
   type DutyRequest,
   type MapSummary
 } from '../../shared/api'
@@ -20,8 +20,6 @@ declare global {
     career: CareerApi
   }
 }
-
-type CareerPayload = { state: CareerState; summary: CareerSummary }
 
 /** Dienstlengtes die je kunt kiezen, in minuten. Korter dan een half uur niet. */
 const LENGTHS = [30, 45, 60, 90, 120, 150, 180, 240, 300, 360, 420, 480]
@@ -55,6 +53,7 @@ export function App(): JSX.Element {
   const [overlayOpen, setOverlayOpen] = useState(false)
   const [note, setNote] = useState<string>()
   const [plugin, setPlugin] = useState<PluginStatus>()
+  const [newName, setNewName] = useState('')
 
   useEffect(() => {
     void (async () => {
@@ -146,16 +145,27 @@ export function App(): JSX.Element {
 
   const begin = useCallback(async () => {
     if (!duty) return
-    const { connected } = await window.career.beginDuty(duty)
+    const { connected, launched, running } = await window.career.beginDuty(duty)
     setStarted(true)
     setOverlayOpen(true)
     setNote(
       connected
-        ? undefined
-        : 'De overlay staat klaar, maar OMSI draait nog niet — of de plugin is niet geladen. ' +
-            'Zodra het spel loopt vult hij zich vanzelf.'
+        ? launched
+          ? 'OMSI wordt gestart.'
+          : undefined
+        : launched
+          ? 'OMSI wordt gestart. Laad je kaart en bus; de overlay vult zich zodra het spel loopt.'
+          : running
+            ? 'OMSI draait al. De overlay vult zich zodra de plugin gegevens doorgeeft.'
+            : 'OMSI kon niet gestart worden. Start het spel zelf; de overlay staat klaar.'
     )
   }, [duty])
+
+  const createProfile = useCallback(async () => {
+    if (!newName.trim()) return
+    setCareer(await window.career.createProfile(newName))
+    setNewName('')
+  }, [newName])
 
   const toggleOverlay = useCallback(async () => {
     if (!duty) return
@@ -205,11 +215,49 @@ export function App(): JSX.Element {
     )
   }
 
+  // Zonder profiel valt er niets te loggen; eerst een chauffeur aanmaken.
+  if (career && !career.state) {
+    return (
+      <div className="main">
+        <h1>Nieuwe chauffeur</h1>
+        <p className="subtitle">
+          Je diensten, kilometers en verdiensten worden per chauffeur bijgehouden en lokaal
+          opgeslagen. Hoe heet je?
+        </p>
+        <section className="card" style={{ maxWidth: 420 }}>
+          <label htmlFor="naam">Naam</label>
+          <input
+            id="naam"
+            value={newName}
+            autoFocus
+            placeholder="Bijvoorbeeld Luc"
+            onChange={(event) => setNewName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && newName.trim()) void createProfile()
+            }}
+          />
+          <div className="actions">
+            <button
+              type="button"
+              className="btn"
+              disabled={!newName.trim()}
+              onClick={() => void createProfile()}
+            >
+              Profiel aanmaken
+            </button>
+          </div>
+        </section>
+      </div>
+    )
+  }
+
   return (
     <div className="app">
       <Sidebar
         career={career}
         onRename={async (name) => setCareer(await window.career.renameDriver(name))}
+        onSelectProfile={async (id) => setCareer(await window.career.selectProfile(id))}
+        onNewProfile={async (name) => setCareer(await window.career.createProfile(name))}
       />
 
       <main className="main">

@@ -18,12 +18,23 @@ Een omloop is nog geen chauffeursdienst — die duurt vaak twintig uur. De app
 bouwt er een dienst uit op van de lengte die jij kiest, met minimaal twee ritten
 en minimaal een half uur.
 
-### Welke diensten je krijgt
+### Profielen
+
+Elke chauffeur is een eigen profiel met een eigen logboek, opgeslagen in
+`%APPDATA%\omsi-career\profiles\`. Bij de eerste start vraagt de app om een naam;
+daarna wissel je links van chauffeur of maak je er een bij. Een oud `career.json`
+uit de tijd dat de app maar een chauffeur kende wordt bij de eerste start
+overgenomen als profiel en bewaard als `career.json.overgenomen`.
+
+## Welke diensten je krijgt
 
 Een dienst blijft binnen één omloop. In OMSI stel je een dienst in via **Set
 Time Table**, en dat menu werkt in de volgorde Line → Tour → Trip: je kiest één
 lijnbestand en daarbinnen één omloop. Een dienst die halverwege naar een andere
 omloop springt kun je daar niet selecteren.
+
+Het menu vraagt vier dingen en de app noemt ze alle vier: **Line**, **Tour**,
+**Trip** en **First stop** — die laatste is de halte waar OMSI je neerzet.
 
 "Line" in dat menu is het lijnbestand van de kaart, niet het lijnnummer uit de
 rit. Op Berlin-Spandau is dat hetzelfde (`54`), maar op Thüringer Wald heet het

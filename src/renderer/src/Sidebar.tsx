@@ -1,18 +1,22 @@
 import { useState, type JSX } from 'react'
-import type { CareerState, CareerSummary } from '../../core/career'
+import type { CareerPayload } from '../../shared/api'
 import { formatDuration, formatMoney } from '../../shared/format'
 
 interface Props {
-  career?: { state: CareerState; summary: CareerSummary }
+  career?: CareerPayload
   onRename(name: string): void
+  onSelectProfile(id: string): void
+  onNewProfile(name: string): void
 }
 
 /** Chauffeursprofiel, cijfers en logboek. */
-export function Sidebar({ career, onRename }: Props): JSX.Element {
+export function Sidebar({ career, onRename, onSelectProfile, onNewProfile }: Props): JSX.Element {
   const [name, setName] = useState<string>()
+  const [adding, setAdding] = useState(false)
+  const [newName, setNewName] = useState('')
 
-  if (!career) return <aside className="sidebar" />
-  const { state, summary } = career
+  if (!career?.state || !career.summary) return <aside className="sidebar" />
+  const { state, summary, profiles } = career
 
   return (
     <aside className="sidebar">
@@ -40,6 +44,46 @@ export function Sidebar({ career, onRename }: Props): JSX.Element {
         )}
       </div>
 
+      {/* Wisselen van chauffeur; elk profiel houdt zijn eigen logboek bij. */}
+      <div>
+        {profiles.length > 1 && (
+          <select
+            className="profile-picker"
+            value={state.id ?? ''}
+            onChange={(event) => onSelectProfile(event.target.value)}
+            aria-label="Ander profiel"
+          >
+            {profiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.driver} — {profile.duties} diensten
+              </option>
+            ))}
+          </select>
+        )}
+        {adding ? (
+          <input
+            value={newName}
+            autoFocus
+            placeholder="Naam van de chauffeur"
+            onChange={(event) => setNewName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && newName.trim()) {
+                onNewProfile(newName)
+                setNewName('')
+                setAdding(false)
+              } else if (event.key === 'Escape') {
+                setAdding(false)
+              }
+            }}
+            onBlur={() => setAdding(false)}
+          />
+        ) : (
+          <button type="button" className="link-button" onClick={() => setAdding(true)}>
+            + Nieuw profiel
+          </button>
+        )}
+      </div>
+
       <div className="stats">
         <div className="stat">
           <b>{summary.duties}</b>
@@ -51,7 +95,7 @@ export function Sidebar({ career, onRename }: Props): JSX.Element {
         </div>
         <div className="stat">
           <b>{summary.km > 0 ? `${summary.km} km` : summary.stops}</b>
-          <span>{summary.km > 0 ? 'gereden' : 'haltes'}</span>
+          <span>{summary.km > 0 ? 'kilometers' : 'haltes'}</span>
         </div>
         <div className="stat">
           <b>{formatMoney(summary.earnings)}</b>

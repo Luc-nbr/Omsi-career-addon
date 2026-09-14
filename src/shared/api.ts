@@ -1,4 +1,5 @@
 import type { CareerState, CareerSummary } from '../core/career'
+import type { ProfileSummary } from '../core/profiles'
 import type { IbisPlan } from '../core/ibis'
 import type { PluginStatus } from '../core/pluginInstall'
 import type { Duty } from '../core/types'
@@ -50,6 +51,16 @@ export interface SessionResult {
   finished: boolean
 }
 
+/**
+ * De carrière zoals de interface hem krijgt. `state` is null zolang er nog geen
+ * profiel bestaat; dan vraagt de app eerst om een naam.
+ */
+export interface CareerPayload {
+  state: CareerState | null
+  summary: CareerSummary | null
+  profiles: ProfileSummary[]
+}
+
 /** Wat de renderer via `window.career` kan aanroepen. */
 export interface CareerApi {
   status(): Promise<OmsiStatus>
@@ -63,16 +74,20 @@ export interface CareerApi {
   /** Opent of sluit de overlay boven het spel. Geeft terug of hij nu open is. */
   toggleOverlay(duty: Duty): Promise<boolean>
   /** Start de dienst: overlay openen en de kilometerstand vastleggen. */
-  beginDuty(duty: Duty): Promise<{ connected: boolean }>
-  career(): Promise<{ state: CareerState; summary: CareerSummary }>
+  beginDuty(duty: Duty): Promise<{ connected: boolean; launched: boolean; running: boolean }>
+  career(): Promise<CareerPayload>
+  /** Maakt een nieuw chauffeursprofiel aan en maakt het meteen actief. */
+  createProfile(name: string): Promise<CareerPayload>
+  selectProfile(id: string): Promise<CareerPayload>
+  deleteProfile(id: string): Promise<CareerPayload>
   /** Leest uit OMSI's eigen situatiebestand wat er van de dienst terechtkwam. */
   checkSession(): Promise<SessionResult>
   completeDuty(
     duty: Duty,
     vehicle: string,
     measured?: { drivenKm?: number; delayMinutes?: number }
-  ): Promise<{ state: CareerState; summary: CareerSummary }>
-  renameDriver(name: string): Promise<{ state: CareerState; summary: CareerSummary }>
+  ): Promise<CareerPayload>
+  renameDriver(name: string): Promise<CareerPayload>
 }
 
 /** Vertaalt het gekozen dagdeel naar vroegste en laatste vertrektijd in minuten. */

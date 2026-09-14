@@ -15,6 +15,9 @@ const api: CareerApi = {
   toggleOverlay: (duty) => ipcRenderer.invoke('overlay:toggle', duty),
   beginDuty: (duty) => ipcRenderer.invoke('duty:begin', duty),
   career: () => ipcRenderer.invoke('career:load'),
+  createProfile: (name) => ipcRenderer.invoke('career:create', name),
+  selectProfile: (id) => ipcRenderer.invoke('career:select', id),
+  deleteProfile: (id) => ipcRenderer.invoke('career:delete', id),
   checkSession: () => ipcRenderer.invoke('duty:session'),
   completeDuty: (duty, vehicle, measured) =>
     ipcRenderer.invoke('career:complete', duty, vehicle, measured),

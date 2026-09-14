@@ -1,11 +1,21 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'node:path'
-import { completeDuty, loadCareer, saveCareer, summarise, type CareerState } from '../core/career'
+import { completeDuty, summarise, type CareerState } from '../core/career'
+import {
+  createProfile,
+  deleteProfile,
+  listProfiles,
+  readProfile,
+  resolveActive,
+  setActive,
+  writeProfile
+} from '../core/profiles'
 import { buildNetwork, generateDuties, type Network } from '../core/duty'
 import { buildFleetIndex, pickVehicleForDuty, readMapFleet, type FleetIndex } from '../core/fleet'
 import { buildIbisPlan } from '../core/ibis'
 import { describeLive, readLive } from '../core/live'
 import { findOmsiInstall } from '../core/install'
+import { isOmsiRunning, launchOmsi } from '../core/launch'
 import { ensurePlugin, pluginSourceDir, type PluginStatus } from '../core/pluginInstall'
 import { findTemplate, readSituationTime } from '../core/situation'
 import { listMaps, loadMap } from '../core/timetable'
@@ -25,10 +35,10 @@ let fleetIndex: FleetIndex | undefined
  */
 let pending: { odometerKm: number; clockMinutes: number } | undefined
 let omsiPath: string | undefined
-let career: CareerState
+let career: CareerState | undefined
 let pluginStatus: PluginStatus | undefined
 
-const careerFile = () => join(app.getPath('userData'), 'career.json')
+const userData = () => app.getPath('userData')
 
 function omsi(): string {
   if (!omsiPath) omsiPath = findOmsiInstall()
@@ -154,7 +164,15 @@ function openOverlay(duty: Duty): void {
 }
 
 function careerPayload() {
-  return { state: career, summary: summarise(career) }
+  return career
+    ? { state: career, summary: summarise(career), profiles: listProfiles(userData()) }
+    : { state: null, summary: null, profiles: listProfiles(userData()) }
+}
+
+function persist(next: CareerState) {
+  career = next
+  writeProfile(userData(), next)
+  return careerPayload()
 }
 
 function registerHandlers(): void {
@@ -242,13 +260,25 @@ function registerHandlers(): void {
    * schrijft niets in de spelmap — de speler heeft zijn bus en kaart zelf al
    * geladen, wij geven alleen de instructies.
    */
-  ipcMain.handle('duty:begin', (_event, duty: Duty) => {
+  ipcMain.handle('duty:begin', async (_event, duty: Duty) => {
     const live = readLive()
     pending = live
       ? { odometerKm: live.km + live.metres / 1000, clockMinutes: live.time / 60 }
       : undefined
     openOverlay(duty)
-    return { connected: Boolean(live?.alive) }
+
+    // Het spel erbij starten, tenzij het al draait.
+    let launched = false
+    const running = await isOmsiRunning()
+    if (!running) {
+      try {
+        launchOmsi(omsi())
+        launched = true
+      } catch {
+        // Lukt starten niet, dan doet de speler het zelf; de overlay staat klaar.
+      }
+    }
+    return { connected: Boolean(live?.alive), launched, running }
   })
 
   /** Wat er sinds het begin van de dienst gereden is, volgens de plugin. */
@@ -277,17 +307,31 @@ function registerHandlers(): void {
 
   ipcMain.handle('career:load', () => careerPayload())
 
-  ipcMain.handle('career:complete', (_event, duty, vehicle: string, measured) => {
-    career = completeDuty(career, duty, vehicle, measured)
-    pending = undefined
-    saveCareer(careerFile(), career)
+  ipcMain.handle('career:create', (_event, name: string) => persist(createProfile(userData(), name)))
+
+  ipcMain.handle('career:select', (_event, id: string) => {
+    const chosen = readProfile(userData(), id)
+    if (!chosen) return careerPayload()
+    setActive(userData(), id)
+    career = chosen
     return careerPayload()
   })
 
-  ipcMain.handle('career:rename', (_event, name: string) => {
-    career = { ...career, driver: name.trim() || career.driver }
-    saveCareer(careerFile(), career)
+  ipcMain.handle('career:delete', (_event, id: string) => {
+    deleteProfile(userData(), id)
+    career = resolveActive(userData())
     return careerPayload()
+  })
+
+  ipcMain.handle('career:complete', (_event, duty, vehicle: string, measured) => {
+    if (!career) return careerPayload()
+    pending = undefined
+    return persist(completeDuty(career, duty, vehicle, measured))
+  })
+
+  ipcMain.handle('career:rename', (_event, name: string) => {
+    if (!career) return careerPayload()
+    return persist({ ...career, driver: name.trim() || career.driver })
   })
 }
 
@@ -318,7 +362,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
-  career = loadCareer(careerFile())
+  career = resolveActive(userData())
   registerHandlers()
   createWindow()
 

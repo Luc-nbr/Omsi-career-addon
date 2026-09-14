@@ -160,11 +160,16 @@ function SelectPanel({ duty }: { duty: Duty }): JSX.Element {
           <span>Trip</span>
           <b>{formatTime(first.departure)}</b>
         </div>
+        <div className="ibis-field wide">
+          <span>First stop</span>
+          <b>{first.stops[0] ?? 'onbekend'}</b>
+        </div>
       </div>
       <p className="note">
         Menu <b>Set Time Table</b>: kies Line <b>{duty.lineFile}</b>, Tour{' '}
-        <b>{duty.tourNumber}</b> en de rit die om <b>{formatTime(first.departure)}</b> vertrekt naar{' '}
-        <b>{first.terminus}</b>.
+        <b>{duty.tourNumber}</b>, de rit die om <b>{formatTime(first.departure)}</b> vertrekt naar{' '}
+        <b>{first.terminus}</b>, en als First stop <b>{first.stops[0] ?? 'de eerste halte'}</b> —
+        daar zet OMSI je neer.
       </p>
     </div>
   )

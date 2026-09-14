@@ -24,6 +24,8 @@ export interface CareerEntry {
 }
 
 export interface CareerState {
+  /** Id van het profiel; komt overeen met de bestandsnaam. */
+  id?: string
   driver: string
   startedAt: string
   entries: CareerEntry[]
@@ -43,6 +45,7 @@ export function loadCareer(file: string): CareerState {
   try {
     const parsed = JSON.parse(readFileSync(file, 'utf8')) as Partial<CareerState>
     return {
+      id: parsed.id,
       driver: parsed.driver ?? 'Nieuwe chauffeur',
       startedAt: parsed.startedAt ?? new Date().toISOString(),
       entries: Array.isArray(parsed.entries) ? parsed.entries : []

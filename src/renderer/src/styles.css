@@ -649,3 +649,31 @@ input[type='range'] {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---------- profielen ---------- */
+
+.profile-picker {
+  font-size: 13px;
+  padding: 6px 9px;
+  margin-bottom: 8px;
+}
+
+.link-button {
+  color: var(--muted);
+  font-size: 12.5px;
+  padding: 2px 0;
+}
+
+.link-button:hover {
+  color: var(--accent);
+}
+
+/* Halte-namen zijn langer dan tijden; die krijgen meer ruimte. */
+.ibis-field.wide {
+  flex: 1 1 200px;
+}
+
+.ibis-field.wide b {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 17px;
+}
