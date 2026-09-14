@@ -113,8 +113,13 @@ export interface CareerApi {
   /** Een rooster om uit te kiezen. */
   listDuties(request: DutyRequest): Promise<Assignment[]>
   ibis(duty: Duty, vehicle: Vehicle, year: number): Promise<IbisPlan>
-  /** Opent of sluit de overlay boven het spel. Geeft terug of hij nu open is. */
-  toggleOverlay(duty: Duty): Promise<boolean>
+  /** Zet de overlay boven het spel open of dicht. Geeft terug of hij nu open is. */
+  setOverlay(duty: Duty | undefined, open: boolean): Promise<boolean>
+  overlayIsOpen(): Promise<boolean>
+  /** Meldt elke keer dat de overlay open of dicht gaat, van waar ook. Geeft een afmelder terug. */
+  onOverlayState(handler: (open: boolean) => void): () => void
+  /** Voor de overlay zelf: sluit hem. */
+  closeOverlay(): Promise<void>
   /** Start de dienst: overlay openen en de kilometerstand vastleggen. */
   beginDuty(duty: Duty): Promise<{ connected: boolean; launched: boolean; running: boolean }>
   /** Geeft de plugin gegevens door? Zo ja, dan draait OMSI en is de kaart geladen. */

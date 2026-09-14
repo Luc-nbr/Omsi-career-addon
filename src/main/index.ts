@@ -189,17 +189,34 @@ function passMouseThrough(through: boolean): void {
   overlayWindow.setIgnoreMouseEvents(through, through ? { forward: true } : undefined)
 }
 
+/**
+ * Het hoofdvenster, om het te kunnen laten weten wanneer de overlay open of
+ * dicht gaat. Alleen het hoofdproces weet dat zeker: de overlay gaat ook dicht
+ * vanuit zichzelf of bij het afronden van een dienst, en een knop in de app die
+ * zelf bijhoudt of hij open staat, raakt dan uit de pas.
+ */
+let mainWindow: BrowserWindow | null = null
+
+function overlayIsOpen(): boolean {
+  return Boolean(overlayWindow && !overlayWindow.isDestroyed())
+}
+
+function announceOverlay(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('overlay:state', overlayIsOpen())
+}
+
 function closeOverlay(): void {
   if (overlayTimer) clearInterval(overlayTimer)
   overlayTimer = undefined
   overlayEditing = false
   if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.destroy()
   overlayWindow = null
+  announceOverlay()
 }
 
 function openOverlay(duty: Duty): void {
   overlayDuty = duty
-  if (overlayWindow && !overlayWindow.isDestroyed()) return
+  if (overlayIsOpen()) return
 
   // Het venster beslaat het hele scherm, zodat je een paneel overal neer kunt
   // zetten. Wat niet beschilderd is, is doorzichtig en laat klikken door.
@@ -230,7 +247,10 @@ function openOverlay(duty: Duty): void {
   overlayWindow.setAlwaysOnTop(true, 'screen-saver')
   passMouseThrough(true)
   overlayWindow.on('closed', () => {
+    if (overlayTimer) clearInterval(overlayTimer)
+    overlayTimer = undefined
     overlayWindow = null
+    announceOverlay()
   })
 
   if (process.env.ELECTRON_RENDERER_URL) {
@@ -240,6 +260,7 @@ function openOverlay(duty: Duty): void {
   }
 
   overlayTimer = setInterval(pushFrame, 200)
+  announceOverlay()
 }
 
 /**
@@ -540,14 +561,20 @@ function registerHandlers(): void {
     }
   })
 
-  ipcMain.handle('overlay:toggle', (_event, duty: Duty) => {
-    if (overlayWindow && !overlayWindow.isDestroyed()) {
-      closeOverlay()
-      return false
-    }
-    openOverlay(duty)
-    return true
+  /**
+   * Open of dicht, zoals gevraagd, en niet omgekeerd: een knop die "wisselt"
+   * sluit een overlay die de app voor dicht aanzag. Levert de werkelijke stand.
+   */
+  ipcMain.handle('overlay:set', (_event, duty: Duty | undefined, open: boolean) => {
+    if (open && duty) openOverlay(duty)
+    else if (!open) closeOverlay()
+    return overlayIsOpen()
   })
+
+  ipcMain.handle('overlay:isOpen', () => overlayIsOpen())
+
+  /** De overlay sluit zichzelf, met de knop in de bewerkstand. */
+  ipcMain.handle('overlay:close', () => closeOverlay())
 
   ipcMain.handle('overlay:edit', (_event, on?: boolean) =>
     setOverlayEdit(on === undefined ? !overlayEditing : on)
@@ -597,6 +624,8 @@ function registerHandlers(): void {
   })
 
   ipcMain.handle('career:complete', (_event, duty, vehicle: string, measured) => {
+    // Een afgeronde dienst heeft geen overlay meer nodig.
+    closeOverlay()
     if (!career) return careerPayload()
     pending = undefined
     return persist(completeDuty(career, duty, vehicle, measured))
@@ -626,6 +655,17 @@ function createWindow(): void {
   })
 
   window.on('ready-to-show', () => window.show())
+  mainWindow = window
+
+  /*
+   * Het hoofdvenster dicht is de app dicht. Zonder dit bleef de app draaien: het
+   * overlayvenster telt ook als venster, dus 'window-all-closed' kwam nooit, en
+   * de overlay bleef boven het spel hangen zonder knop of taakbalkicoon.
+   */
+  window.on('closed', () => {
+    mainWindow = null
+    app.quit()
+  })
 
   if (process.env.ELECTRON_RENDERER_URL) {
     window.loadURL(process.env.ELECTRON_RENDERER_URL)

@@ -444,6 +444,10 @@ function EditBar({
         <button type="button" onClick={onReset}>
           {t(language, 'ovl.reset')}
         </button>
+        {/* Zonder deze knop kreeg je de overlay alleen via de app dicht. */}
+        <button type="button" onClick={() => void window.career.closeOverlay()}>
+          {t(language, 'ovl.close')}
+        </button>
         <button type="button" className="done" onClick={() => void window.career.editOverlay(false)}>
           {t(language, 'ovl.ready')}
         </button>

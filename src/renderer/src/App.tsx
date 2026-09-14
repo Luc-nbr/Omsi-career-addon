@@ -204,10 +204,17 @@ export function App(): JSX.Element {
     return () => clearInterval(timer)
   }, [started])
 
+  // De stand van de overlay komt uit het hoofdproces; hij gaat ook dicht vanuit
+  // de overlay zelf of bij het afronden, en dan moet de knop dat weten.
+  useEffect(() => {
+    void window.career.overlayIsOpen().then(setOverlayOpen)
+    return window.career.onOverlayState(setOverlayOpen)
+  }, [])
+
   const toggleOverlay = useCallback(async () => {
-    if (!duty) return
-    setOverlayOpen(await window.career.toggleOverlay(duty))
-  }, [duty])
+    if (!duty && !overlayOpen) return
+    setOverlayOpen(await window.career.setOverlay(duty, !overlayOpen))
+  }, [duty, overlayOpen])
 
   const finish = useCallback(async () => {
     if (!duty || !vehicle) return

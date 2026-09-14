@@ -739,6 +739,12 @@ const TEXT = {
     nl: 'Standaard herstellen'
   },
   'ovl.ready': { en: 'Done', de: 'Fertig', fr: 'Terminé', nl: 'Klaar' },
+  'ovl.close': {
+    en: 'Close overlay',
+    de: 'Overlay schließen',
+    fr: 'Fermer la surcouche',
+    nl: 'Overlay sluiten'
+  },
   'ovl.hide': { en: 'Turn off', de: 'Ausschalten', fr: 'Désactiver', nl: 'Uitzetten' },
   'ovl.resizeW': {
     en: 'Wider or narrower',

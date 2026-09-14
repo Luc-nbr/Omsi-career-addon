@@ -16,7 +16,14 @@ const api: CareerApi = {
   saveSettings: (settings) => ipcRenderer.invoke('settings:write', settings),
   listDuties: (request: DutyRequest) => ipcRenderer.invoke('duty:list', request),
   ibis: (duty, vehicle, year) => ipcRenderer.invoke('duty:ibis', duty, vehicle, year),
-  toggleOverlay: (duty) => ipcRenderer.invoke('overlay:toggle', duty),
+  setOverlay: (duty, open) => ipcRenderer.invoke('overlay:set', duty, open),
+  overlayIsOpen: () => ipcRenderer.invoke('overlay:isOpen'),
+  onOverlayState: (handler) => {
+    const listener = (_event: unknown, open: boolean): void => handler(open)
+    ipcRenderer.on('overlay:state', listener)
+    return () => ipcRenderer.removeListener('overlay:state', listener)
+  },
+  closeOverlay: () => ipcRenderer.invoke('overlay:close'),
   editOverlay: (on) => ipcRenderer.invoke('overlay:edit', on),
   overlayHit: (on) => ipcRenderer.invoke('overlay:hit', on),
   overlayLayout: () => ipcRenderer.invoke('overlay:layout'),
