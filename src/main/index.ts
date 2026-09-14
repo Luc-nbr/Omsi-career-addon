@@ -758,34 +758,60 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
-  career = resolveActive(userData())
-  registerHandlers()
-  createWindow()
+/** Een tweede start haalt het venster dat er al is naar voren. */
+function bringMainWindowForward(): void {
+  // Geen hoofdvenster na het opstarten betekent dat de app al aan het afsluiten
+  // is; dan hoort er ook geen nieuw venster meer bij te komen.
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+}
 
-  // Onder het rijden zit je niet met de muis in de app. Deze toets zet de
-  // overlay in de bewerkstand en er weer uit; hij botst niet met OMSI, dat
-  // Ctrl+Alt zelf nergens voor gebruikt.
-  globalShortcut.register('Control+Alt+O', () => {
-    if (overlayWindow && !overlayWindow.isDestroyed()) setOverlayEdit(!overlayEditing)
+/*
+ * Eén exemplaar tegelijk. Twee exemplaren delen dezelfde map in AppData: elk
+ * houdt zijn eigen loopbaan in het geheugen en schrijft die bij elke wijziging
+ * weg, dus de laatste schrijver wist wat de ander net vastlegde. En elk hangt
+ * zijn eigen overlay boven OMSI. Dat gebeurde toen een oude draagbare versie
+ * nog naast de geïnstalleerde draaide.
+ *
+ * Electron legt het slot op de map met gebruikersgegevens, precies de plek die
+ * we willen beschermen. Wie het slot niet krijgt, opent niets en stopt.
+ */
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', bringMainWindowForward)
+
+  app.whenReady().then(() => {
+    career = resolveActive(userData())
+    registerHandlers()
+    createWindow()
+
+    // Onder het rijden zit je niet met de muis in de app. Deze toets zet de
+    // overlay in de bewerkstand en er weer uit; hij botst niet met OMSI, dat
+    // Ctrl+Alt zelf nergens voor gebruikt.
+    globalShortcut.register('Control+Alt+O', () => {
+      if (overlayWindow && !overlayWindow.isDestroyed()) setOverlayEdit(!overlayEditing)
+    })
+
+    // Een stand verder in het dienstpaneel: beknopt, normaal, uitgebreid.
+    globalShortcut.register('Control+Alt+V', () => {
+      if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.webContents.send('overlay:cycle')
+    })
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
   })
 
-  // Een stand verder in het dienstpaneel: beknopt, normaal, uitgebreid.
-  globalShortcut.register('Control+Alt+V', () => {
-    if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.webContents.send('overlay:cycle')
+  app.on('before-quit', closeOverlay)
+
+  app.on('will-quit', () => {
+    globalShortcut.unregisterAll()
   })
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit()
   })
-})
-
-app.on('before-quit', closeOverlay)
-
-app.on('will-quit', () => {
-  globalShortcut.unregisterAll()
-})
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
-})
+}

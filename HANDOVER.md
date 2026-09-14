@@ -245,8 +245,10 @@ Nog niet gebouwd:
 - De drie standen van het overlay-paneel zijn nog niet naast elkaar bekeken: er
   staat een oude `live.json` op de machine van de gebruiker waarin de dienst als
   uitgereden staat, en dan valt het paneel in alle standen terug op één regel.
-- De draagbare exe in `release/` is ouder dan de rest omdat hij draaide tijdens
-  het bouwen. `Setup.exe` is wel bij (20:39, alles tot en met de vlaggen).
+- Builds van vóór de single-instance lock (Setup en draagbaar tot en met 15
+  september 00:18) houden zich niet aan dat slot. Draait zo'n oude versie nog,
+  dan kan een nieuwe er gewoon naast starten. Eenmalig de oude afsluiten en de
+  nieuwe Setup installeren lost het op.
 
 ---
 
