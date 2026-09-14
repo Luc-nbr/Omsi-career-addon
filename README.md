@@ -26,7 +26,9 @@ npm install
 npm run dev
 ```
 
-Bouwen: `npm run build`.
+Bouwen: `npm run build`. De losse kern is te draaien zonder de app op te
+starten met `npm run probe`, wat alle kaarten inleest en een voorbeelddienst
+afdrukt.
 
 ### Installer maken
 
@@ -42,10 +44,8 @@ Het icoon wordt gegenereerd met `npm run icon` en staat als `build/icon.ico`.
 
 **De installer is niet ondertekend.** Windows SmartScreen toont daarom bij de
 eerste start "Windows heeft uw pc beschermd"; via *Meer informatie -> Toch
-uitvoeren* gaat hij gewoon door. Ondertekenen vraagt een code-signing­certificaat
-op naam, en dat kost geld per jaar. De losse kern is te draaien zonder de app op te
-starten met `npm run probe`, wat alle kaarten inleest en een voorbeelddienst
-afdrukt.
+uitvoeren* gaat hij gewoon door. Ondertekenen vraagt een code-signing-certificaat
+op naam, en dat kost geld per jaar.
 
 ## Wat de app in OMSI verandert
 
