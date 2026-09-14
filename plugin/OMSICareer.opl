@@ -11,11 +11,13 @@
 OMSICareerPlugin.dll
 
 [systemvarlist]
-4
+6
 Time
 Day
 Month
 Year
+PrecipRate
+PrecipType
 
 	De eerste zeventien hieronder houdt OMSI in elk voertuig bij; de rest komt
 	uit de scripts van het busmodel en kan ontbreken.
@@ -29,16 +31,16 @@ target_index_int
 tank_percent
 kmcounter_km
 kmcounter_m
-PAX_Entry_Req
-PAX_Exit_Req
+PAX_Entry0_Req
+PAX_Exit0_Req
 GivenTicket
-PAX_Entry_Open
-PAX_Exit_Open
+PAX_Entry0_Open
+PAX_Exit0_Open
 AI_Scheduled_AtStation
 Envir_Brightness
 StreetCond
-precipRate
-precipType
+Velocity_Ground
+schedule_active
 lights_abbl
 lights_blinker_l
 lights_blinker_r

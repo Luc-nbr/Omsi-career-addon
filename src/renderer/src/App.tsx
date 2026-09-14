@@ -14,6 +14,7 @@ import { formatDuration } from '../../shared/format'
 import { DutyCard } from './DutyCard'
 import { DutyList } from './DutyList'
 import { Sidebar } from './Sidebar'
+import { StartingDialog } from './StartingDialog'
 
 declare global {
   interface Window {
@@ -53,6 +54,7 @@ export function App(): JSX.Element {
   const [overlayOpen, setOverlayOpen] = useState(false)
   const [note, setNote] = useState<string>()
   const [plugin, setPlugin] = useState<PluginStatus>()
+  const [starting, setStarting] = useState(false)
   const finishRef = useRef<(() => Promise<void>) | undefined>(undefined)
   const [newName, setNewName] = useState('')
 
@@ -149,16 +151,14 @@ export function App(): JSX.Element {
     const { connected, launched, running } = await window.career.beginDuty(duty)
     setStarted(true)
     setOverlayOpen(true)
+    // Alleen wachten als we het spel zelf hebben aangezwengeld.
+    setStarting(launched)
     setNote(
-      connected
-        ? launched
-          ? 'OMSI wordt gestart.'
-          : undefined
-        : launched
-          ? 'OMSI wordt gestart. Laad je kaart en bus; de overlay vult zich zodra het spel loopt.'
-          : running
-            ? 'OMSI draait al. De overlay vult zich zodra de plugin gegevens doorgeeft.'
-            : 'OMSI kon niet gestart worden. Start het spel zelf; de overlay staat klaar.'
+      connected || launched
+        ? undefined
+        : running
+          ? 'OMSI draait al. De overlay vult zich zodra de plugin gegevens doorgeeft.'
+          : 'OMSI kon niet gestart worden. Start het spel zelf; de overlay staat klaar.'
     )
   }, [duty])
 
@@ -282,6 +282,16 @@ export function App(): JSX.Element {
         onSelectProfile={async (id) => setCareer(await window.career.selectProfile(id))}
         onNewProfile={async (name) => setCareer(await window.career.createProfile(name))}
       />
+
+      {starting && (
+        <StartingDialog
+          onDone={() => {
+            setStarting(false)
+            setNote('OMSI staat klaar. Laad je kaart en bus, en stel de dienst in.')
+          }}
+          onDismiss={() => setStarting(false)}
+        />
+      )}
 
       <main className="main">
         <h1>Dienst kiezen</h1>

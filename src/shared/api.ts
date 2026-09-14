@@ -81,6 +81,8 @@ export interface CareerApi {
   toggleOverlay(duty: Duty): Promise<boolean>
   /** Start de dienst: overlay openen en de kilometerstand vastleggen. */
   beginDuty(duty: Duty): Promise<{ connected: boolean; launched: boolean; running: boolean }>
+  /** Geeft de plugin gegevens door? Zo ja, dan draait OMSI en is de kaart geladen. */
+  liveConnected(): Promise<boolean>
   career(): Promise<CareerPayload>
   /** Maakt een nieuw chauffeursprofiel aan en maakt het meteen actief. */
   createProfile(name: string): Promise<CareerPayload>

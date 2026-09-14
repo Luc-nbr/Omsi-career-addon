@@ -203,6 +203,8 @@ function registerHandlers(): void {
 
   ipcMain.handle('omsi:vehicles', () => listVehicles(omsi()))
 
+  ipcMain.handle('omsi:live', () => Boolean(readLive()?.alive))
+
   /**
    * De overlay werkt alleen als de plugin in OMSI staat. Het installatieprogramma
    * zet hem er neer als het Steam via het register vindt; staat OMSI elders, dan

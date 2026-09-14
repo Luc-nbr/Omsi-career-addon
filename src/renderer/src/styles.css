@@ -677,3 +677,78 @@ input[type='range'] {
   font-family: "Segoe UI", system-ui, sans-serif;
   font-size: 17px;
 }
+
+/* ---------- venster tijdens het opstarten ---------- */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 11, 16, 0.72);
+  backdrop-filter: blur(3px);
+  display: grid;
+  place-items: center;
+  z-index: 50;
+}
+
+.dialog {
+  position: relative;
+  overflow: hidden;
+  width: min(440px, calc(100vw - 48px));
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 26px 26px 20px;
+}
+
+.dialog h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+  font-weight: 650;
+}
+
+.dialog p {
+  margin: 0 0 20px;
+  color: var(--text);
+  line-height: 1.55;
+}
+
+/*
+ * Een streepje dat langs de bovenrand loopt. Geen percentage: hoe lang OMSI
+ * erover doet weten we niet, en een balk die op 90% blijft hangen is erger dan
+ * geen balk.
+ */
+.glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 3px;
+  width: 34%;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: sweep 2.1s ease-in-out infinite;
+}
+
+@keyframes sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(394%);
+  }
+}
+
+/* Wie beweging heeft uitgezet krijgt een rustig streepje in plaats van niets. */
+@media (prefers-reduced-motion: reduce) {
+  .glow {
+    animation: none;
+    width: 100%;
+    opacity: 0.5;
+  }
+}
+
+.dialog-foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}

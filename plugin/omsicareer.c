@@ -24,7 +24,20 @@
 #include <string.h>
 
 /* Volgorde gelijk aan [systemvarlist] in de .opl. */
-enum { SYS_TIME = 0, SYS_DAY, SYS_MONTH, SYS_YEAR, SYS_COUNT };
+enum {
+  SYS_TIME = 0,
+  SYS_DAY,
+  SYS_MONTH,
+  SYS_YEAR,
+  /*
+   * Neerslag is een systeemvariabele, geen voertuigvariabele. In de busscripts
+   * staat hij als (L.S.PrecipRate); als voertuigvariabele opgevraagd riep OMSI
+   * hem nooit aan.
+   */
+  SYS_PRECIP_RATE,
+  SYS_PRECIP_TYPE,
+  SYS_COUNT
+};
 
 /*
  * Volgorde gelijk aan [varlist]. De eerste groep houdt OMSI in elk voertuig bij
@@ -49,8 +62,8 @@ enum {
   VAR_AT_STATION,
   VAR_BRIGHTNESS,
   VAR_STREETCOND,
-  VAR_PRECIP_RATE,
-  VAR_PRECIP_TYPE,
+  VAR_GROUND_SPEED,
+  VAR_SCHEDULE_ACTIVE2,
   /* vanaf hier: per busmodel, kan ontbreken */
   VAR_LIGHTS_LOW,
   VAR_BLINKER_L,
@@ -217,6 +230,13 @@ static void track_driving(double speedKmh) {
   const double raw = (speed - g_prevSpeed) / step;
   g_prevSpeed = speed;
 
+  /*
+   * Een bus haalt geen 12 m/s^2. Zulke sprongen komen van het laden van een
+   * kaart of het verzetten van het voertuig, niet van rijgedrag; een sessie
+   * leverde zo een "sterkste vertraging" van 15 m/s^2 op.
+   */
+  if (raw > 12.0 || raw < -12.0) return;
+
   /* Gladstrijken: een enkel beeld met een sprong is meetruis, geen rijgedrag. */
   g_accel = g_accel * (1.0 - SMOOTH) + raw * SMOOTH;
 
@@ -285,8 +305,8 @@ static void flush_state(int alive) {
       g_var[VAR_TARGET_INDEX], g_var[VAR_TANK], g_var[VAR_KM], g_var[VAR_M],
       g_var[VAR_ENTRY_REQ], g_var[VAR_EXIT_REQ], g_var[VAR_TICKET],
       g_var[VAR_ENTRY_OPEN], g_var[VAR_EXIT_OPEN], g_var[VAR_AT_STATION],
-      g_var[VAR_BRIGHTNESS], g_var[VAR_STREETCOND], g_var[VAR_PRECIP_RATE],
-      g_var[VAR_PRECIP_TYPE], g_var[VAR_LIGHTS_LOW], g_var[VAR_BLINKER_L],
+      g_var[VAR_BRIGHTNESS], g_var[VAR_STREETCOND], g_sys[SYS_PRECIP_RATE],
+      g_sys[SYS_PRECIP_TYPE], g_var[VAR_LIGHTS_LOW], g_var[VAR_BLINKER_L],
       g_var[VAR_BLINKER_R], g_var[VAR_BRAKELIGHT], g_var[VAR_ENGINE_ON],
       g_var[VAR_BUSSTOP_INDEX],
       g_maxBrake, g_maxAccel, g_topSpeed, g_harshBrakes, g_harshAccels,
@@ -375,7 +395,7 @@ __declspec(dllexport) void __stdcall AccessVariable(unsigned short index,
    * De per-busvariabelen daarachter ontbreken op veel modellen; die als sein
    * gebruiken zou betekenen dat er op zo'n bus nooit iets wordt geschreven.
    */
-  if (index == VAR_PRECIP_TYPE) maybe_flush();
+  if (index == VAR_SCHEDULE_ACTIVE2) maybe_flush();
 }
 
 __declspec(dllexport) void __stdcall AccessStringVariable(unsigned short index,

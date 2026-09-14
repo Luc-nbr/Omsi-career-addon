@@ -14,6 +14,7 @@ const api: CareerApi = {
   ibis: (duty, vehicle, year) => ipcRenderer.invoke('duty:ibis', duty, vehicle, year),
   toggleOverlay: (duty) => ipcRenderer.invoke('overlay:toggle', duty),
   beginDuty: (duty) => ipcRenderer.invoke('duty:begin', duty),
+  liveConnected: () => ipcRenderer.invoke('omsi:live'),
   career: () => ipcRenderer.invoke('career:load'),
   createProfile: (name) => ipcRenderer.invoke('career:create', name),
   selectProfile: (id) => ipcRenderer.invoke('career:select', id),
