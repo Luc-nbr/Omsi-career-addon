@@ -238,19 +238,29 @@ daarom een afgeleide van vertraging en rijstijl, en staat als zodanig gemarkeerd
 ### Bouwen en plaatsen
 
 ```bash
-pluginuild.cmd
+plugin\build.cmd
 ```
 
 OMSI is 32-bits Delphi, dus de DLL moet 32-bits zijn en de namen onversierd
-geëxporteerd (via `omsicareer.def`). Kopieer daarna `out\OMSICareerPlugin.dll`
-en `OMSICareer.opl` naar `OMSI 2\plugins\`. Weghalen is die twee bestanden
-verwijderen.
+geëxporteerd (via `omsicareer.def`).
+
+Plaatsen gaat vanzelf, langs twee wegen. Het installatieprogramma zoekt Steam
+in het register (`HKLM\SOFTWARE\WOW6432Node\Valve\Steam\InstallPath`)
+en kopieert de twee bestanden naar `OMSI 2\plugins\`; het onthoudt dat pad
+zodat het verwijderprogramma ze weer opruimt.
+
+Staat OMSI in een andere Steam-bibliotheek, dan vindt NSIS hem niet —
+libraryfolders.vdf uitlezen is daar geen doen. Daarom controleert de app het
+bij elke start ook zelf en zet hem alsnog neer als hij ontbreekt of afwijkt,
+vergeleken op sha1. De stand staat onder de zoekknop.
+
+Met de hand weghalen is die twee bestanden uit `plugins\` verwijderen.
 
 Bewust géén hook in de grafische laag: dat sloopt oude DX9-spellen. Het is een
 gewoon venster erbovenop, wat werkt omdat OMSI in vensterstand draait.
 
 ## Nog te doen
 
-- Punctualiteit en passagiers live meten. Dat vraagt een plugin-DLL in `plugins/`
-  die voertuigvariabelen uitleest, en dus een C++-compiler.
+- Bevestigen dat de plugin in OMSI laadt: start het spel en kijk of er geen
+  `error in line` bij `OMSICareer.opl` in `logfile.txt` staat.
 - Diensten vrijspelen op rang, en repaints per wagenpark kiezen.
