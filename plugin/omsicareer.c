@@ -122,6 +122,59 @@ static char g_str[STR_COUNT][STR_MAX * 3]; /* al als UTF-8 */
 /* 0 = niets gezien, 1 = bytes (ANSI), 2 = twee bytes per teken (UTF-16). */
 static int g_strKind;
 
+/*
+ * Positie en dienstregeling uit het geheugen van OMSI.
+ *
+ * De plugin-API geeft geen positie door en weet niet welke dienstregeling de
+ * speler in het menu koos. OMSI zelf weet het wel, en deze DLL draait in zijn
+ * proces, dus hij kan het gewoon lezen. De adressen komen uit OmsiHook
+ * (github.com/space928/Omsi-Extensions) en gelden voor OMSI 2.3.004; bij een
+ * andere versie staat alles ergens anders, en dan leest de plugin niets.
+ *
+ * Elke pointer wordt eerst getoetst en elke lezing staat in __try: een verkeerd
+ * adres mag nooit OMSI laten vastlopen, hooguit geeft het geen gegevens.
+ */
+#define MEM_IMAGE_BASE 0x00400000u
+#define MEM_ROAD_VEHICLES 0x00861508u  /* TMyOMSIList met TRoadVehicleInst */
+#define MEM_PLAYER_INDEX 0x00861740u   /* index van het voertuig van de speler */
+#define MEM_TIMETABLE_MAN 0x008614e8u  /* TTimeTableMan */
+
+/* In TMapObjInst, de basis van elk voertuig. */
+#define OFS_POSITION 0x4   /* D3DVector binnen de tegel */
+#define OFS_ROTATION 0x50  /* D3DXQuaternion x, y, z, w */
+#define OFS_KACHEL 0x74    /* index in de tegellijst van de kaart */
+/* In TVehicleInst: wat OMSI's dienstregelingsmenu op de bus zet. */
+#define OFS_SCHED_LINE 0x660
+#define OFS_SCHED_TOUR 0x664
+#define OFS_SCHED_TOURENTRY 0x668
+#define OFS_SCHED_TRIP 0x66c
+#define OFS_SCHED_NEXT_DIST 0x688
+#define OFS_SCHED_NEXT_INDEX 0x6a8
+#define OFS_SCHED_NEXT_NAME 0x6ac
+#define OFS_SCHED_DELAY 0x6bc
+#define OFS_SCHED_ACTIVE 0x6cc
+/* In TTimeTableMan: dynamische arrays van records. */
+#define OFS_TT_TRIPS 0xc
+#define OFS_TT_LINES 0x18
+#define SIZE_TT_TRIP 0x28 /* naam op 0x0 */
+#define SIZE_TT_LINE 0x10 /* naam op 0x0, omlopen op 0x8 */
+#define SIZE_TT_TOUR 0x30 /* naam op 0x0 */
+
+typedef struct {
+  int ok;             /* 1 als het voertuig van de speler gevonden is */
+  int kachel;
+  float pos[3];
+  float rot[4];
+  int schedLine, schedTour, schedTourEntry, schedTrip, schedNextIndex, schedDelay;
+  float schedActive, schedNextDist;
+  char lineName[STR_MAX * 3], tourName[STR_MAX * 3], tripName[STR_MAX * 3], nextStop[STR_MAX * 3];
+} MemState;
+
+static MemState g_mem;
+/* 0 onbekend, 1 OMSI 2.3.004 (lezen mag), 2 een andere versie (niet lezen). */
+static int g_memVersion;
+static char g_exeVersion[16];
+
 static wchar_t g_path[MAX_PATH];
 static wchar_t g_temp[MAX_PATH];
 static ULONGLONG g_lastWrite;
@@ -143,6 +196,123 @@ static double g_accelHeld;
 static int g_brakeCounted;
 static int g_accelCounted;
 
+static void copy_string(int slot, const void *source);
+static void copy_text(char *target, size_t size, const void *source);
+
+/* Een adres uit OmsiHook, verschoven als Windows het programma elders laadde. */
+static DWORD mem_addr(DWORD address) {
+  DWORD base = (DWORD)(ULONG_PTR)GetModuleHandleW(NULL);
+  return address - MEM_IMAGE_BASE + base;
+}
+
+/* Lijkt dit op een heap-adres in een 32-bits proces? Nul en de eerste 64 kB niet. */
+static int plausible_ptr(DWORD value) { return value >= 0x10000u && value < 0xFFFF0000u; }
+
+/*
+ * Welke OMSI draait er? De versie-informatie van het bestand zegt 2.2.032, ook
+ * bij 2.3.004; die is nooit bijgewerkt. In het programma zelf staat de versie wel
+ * goed, als UTF-16-tekst, tientallen keren. Die telt de plugin, eenmalig.
+ */
+static void detect_version(void) {
+  g_memVersion = 2;
+  strcpy_s(g_exeVersion, sizeof(g_exeVersion), "?");
+  __try {
+    HMODULE module = GetModuleHandleW(NULL);
+    const IMAGE_DOS_HEADER *dos = (const IMAGE_DOS_HEADER *)module;
+    const IMAGE_NT_HEADERS32 *nt = (const IMAGE_NT_HEADERS32 *)((const BYTE *)module + dos->e_lfanew);
+    const IMAGE_SECTION_HEADER *section = IMAGE_FIRST_SECTION(nt);
+    static const wchar_t *wanted = L"2.3.004";
+    static const wchar_t *other = L"2.2.032";
+    int hits = 0, others = 0;
+    for (WORD s = 0; s < nt->FileHeader.NumberOfSections; s++, section++) {
+      const BYTE *start = (const BYTE *)module + section->VirtualAddress;
+      DWORD size = section->Misc.VirtualSize;
+      /* Alleen leesbare secties met gegevens; de rest kan niet aangeraakt worden. */
+      if (!(section->Characteristics & IMAGE_SCN_MEM_READ) || size < 16) continue;
+      for (DWORD i = 0; i + 14 <= size; i += 2) {
+        if (start[i] != '2' || start[i + 1] != 0) continue;
+        if (memcmp(start + i, wanted, 14) == 0) hits++;
+        else if (memcmp(start + i, other, 14) == 0) others++;
+      }
+    }
+    if (hits > others && hits > 0) {
+      g_memVersion = 1;
+      strcpy_s(g_exeVersion, sizeof(g_exeVersion), "2.3.004");
+    } else if (others > 0) {
+      strcpy_s(g_exeVersion, sizeof(g_exeVersion), "2.2.032");
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    g_memVersion = 2;
+  }
+}
+
+/* Element `index` van een Delphi dynamische array van records, of 0 buiten bereik. */
+static DWORD dyn_item(DWORD array, int index, DWORD recordSize) {
+  if (!plausible_ptr(array) || index < 0) return 0;
+  const int length = *(int *)(ULONG_PTR)(array - 4);
+  if (length <= 0 || index >= length || length > 100000) return 0;
+  return array + (DWORD)index * recordSize;
+}
+
+/*
+ * Leest het voertuig van de speler en zijn dienstregeling. Alles of niets: bij
+ * elke twijfel blijft `ok` nul en schrijft de app alleen wat de plugin-API gaf.
+ */
+static void read_memory(void) {
+  MemState next;
+  memset(&next, 0, sizeof(next));
+  if (g_memVersion != 1) {
+    g_mem = next;
+    return;
+  }
+  __try {
+    const DWORD list = *(DWORD *)(ULONG_PTR)mem_addr(MEM_ROAD_VEHICLES);
+    const int playerIndex = *(int *)(ULONG_PTR)mem_addr(MEM_PLAYER_INDEX);
+    if (plausible_ptr(list) && playerIndex >= 0 && playerIndex < 10000) {
+      const DWORD inner = *(DWORD *)(ULONG_PTR)(list + 0x28);
+      const DWORD items = plausible_ptr(inner) ? *(DWORD *)(ULONG_PTR)(inner + 0x4) : 0;
+      const DWORD vehicle = plausible_ptr(items) ? *(DWORD *)(ULONG_PTR)(items + (DWORD)playerIndex * 4) : 0;
+      if (plausible_ptr(vehicle)) {
+        memcpy(next.pos, (void *)(ULONG_PTR)(vehicle + OFS_POSITION), sizeof(next.pos));
+        memcpy(next.rot, (void *)(ULONG_PTR)(vehicle + OFS_ROTATION), sizeof(next.rot));
+        next.kachel = *(int *)(ULONG_PTR)(vehicle + OFS_KACHEL);
+        /* Een positie binnen een tegel ligt ruim binnen een kilometer; anders is het geen positie. */
+        const int sane = next.kachel >= 0 && next.kachel < 100000 && isfinite(next.pos[0]) &&
+                         isfinite(next.pos[2]) && fabs(next.pos[0]) < 2000 && fabs(next.pos[1]) < 2000 &&
+                         fabs(next.pos[2]) < 2000;
+        if (sane) {
+          next.ok = 1;
+          next.schedLine = *(int *)(ULONG_PTR)(vehicle + OFS_SCHED_LINE);
+          next.schedTour = *(int *)(ULONG_PTR)(vehicle + OFS_SCHED_TOUR);
+          next.schedTourEntry = *(int *)(ULONG_PTR)(vehicle + OFS_SCHED_TOURENTRY);
+          next.schedTrip = *(int *)(ULONG_PTR)(vehicle + OFS_SCHED_TRIP);
+          next.schedNextIndex = *(int *)(ULONG_PTR)(vehicle + OFS_SCHED_NEXT_INDEX);
+          next.schedDelay = *(int *)(ULONG_PTR)(vehicle + OFS_SCHED_DELAY);
+          next.schedActive = *(float *)(ULONG_PTR)(vehicle + OFS_SCHED_ACTIVE);
+          next.schedNextDist = *(float *)(ULONG_PTR)(vehicle + OFS_SCHED_NEXT_DIST);
+          copy_text(next.nextStop, sizeof(next.nextStop), *(void **)(ULONG_PTR)(vehicle + OFS_SCHED_NEXT_NAME));
+
+          /* Namen van lijn, omloop en rit uit de dienstregeling van de kaart. */
+          const DWORD tt = *(DWORD *)(ULONG_PTR)mem_addr(MEM_TIMETABLE_MAN);
+          if (plausible_ptr(tt)) {
+            const DWORD line = dyn_item(*(DWORD *)(ULONG_PTR)(tt + OFS_TT_LINES), next.schedLine, SIZE_TT_LINE);
+            if (line) {
+              copy_text(next.lineName, sizeof(next.lineName), *(void **)(ULONG_PTR)line);
+              const DWORD tour = dyn_item(*(DWORD *)(ULONG_PTR)(line + 0x8), next.schedTour, SIZE_TT_TOUR);
+              if (tour) copy_text(next.tourName, sizeof(next.tourName), *(void **)(ULONG_PTR)tour);
+            }
+            const DWORD trip = dyn_item(*(DWORD *)(ULONG_PTR)(tt + OFS_TT_TRIPS), next.schedTrip, SIZE_TT_TRIP);
+            if (trip) copy_text(next.tripName, sizeof(next.tripName), *(void **)(ULONG_PTR)trip);
+          }
+        }
+      }
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    memset(&next, 0, sizeof(next));
+  }
+  g_mem = next;
+}
+
 /*
  * Kopieert een OMSI-string.
  *
@@ -153,8 +323,13 @@ static int g_accelCounted;
  */
 static void copy_string(int slot, const void *source) {
   if (slot < 0 || slot >= STR_COUNT) return;
-  g_str[slot][0] = 0;
-  if (!source) return;
+  copy_text(g_str[slot], sizeof(g_str[slot]), source);
+}
+
+/* Zoals copy_string, naar een willekeurige buffer; ook voor tekst uit het geheugen. */
+static void copy_text(char *target, size_t size, const void *source) {
+  target[0] = 0;
+  if (!source || !plausible_ptr((DWORD)(ULONG_PTR)source)) return;
 
   __try {
     const unsigned char *bytes = (const unsigned char *)source;
@@ -172,9 +347,8 @@ static void copy_string(int slot, const void *source) {
         i++;
       }
       clean[i] = 0;
-      if (!WideCharToMultiByte(CP_UTF8, 0, clean, -1, g_str[slot], (int)sizeof(g_str[slot]), NULL,
-                               NULL)) {
-        g_str[slot][0] = 0;
+      if (!WideCharToMultiByte(CP_UTF8, 0, clean, -1, target, (int)size, NULL, NULL)) {
+        target[0] = 0;
       }
     } else {
       if (g_strKind != 1) g_strKind = 1;
@@ -190,13 +364,12 @@ static void copy_string(int slot, const void *source) {
       /* OMSI schrijft zijn tekstbestanden in Windows-1252; dat geldt hier ook. */
       wchar_t wide16[STR_MAX];
       if (MultiByteToWideChar(1252, 0, clean, -1, wide16, STR_MAX) == 0 ||
-          WideCharToMultiByte(CP_UTF8, 0, wide16, -1, g_str[slot], (int)sizeof(g_str[slot]), NULL,
-                              NULL) == 0) {
-        g_str[slot][0] = 0;
+          WideCharToMultiByte(CP_UTF8, 0, wide16, -1, target, (int)size, NULL, NULL) == 0) {
+        target[0] = 0;
       }
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {
-    g_str[slot][0] = 0;
+    target[0] = 0;
   }
 }
 
@@ -282,7 +455,20 @@ static void track_driving(double speedKmh) {
 /* Schrijft de verzamelde waarden weg, via een tijdelijk bestand zodat de lezer
  * nooit een half bestand ziet. */
 static void flush_state(int alive) {
-  char body[3072];
+  char body[6144];
+  char mem[2048];
+  _snprintf_s(
+      mem, sizeof(mem), _TRUNCATE,
+      ",\"exeVersion\":\"%s\",\"mem\":{\"ok\":%d,\"tile\":%d,\"x\":%.3f,\"y\":%.3f,\"z\":%.3f,"
+      "\"qx\":%.5f,\"qy\":%.5f,\"qz\":%.5f,\"qw\":%.5f,"
+      "\"schedActive\":%.2f,\"line\":%d,\"tour\":%d,\"tourEntry\":%d,\"trip\":%d,"
+      "\"nextIndex\":%d,\"nextDist\":%.1f,\"delay\":%d,"
+      "\"lineName\":\"%s\",\"tourName\":\"%s\",\"tripName\":\"%s\",\"nextStop\":\"%s\"}}",
+      g_exeVersion, g_mem.ok, g_mem.kachel, g_mem.pos[0], g_mem.pos[1], g_mem.pos[2],
+      g_mem.rot[0], g_mem.rot[1], g_mem.rot[2], g_mem.rot[3],
+      g_mem.schedActive, g_mem.schedLine, g_mem.schedTour, g_mem.schedTourEntry, g_mem.schedTrip,
+      g_mem.schedNextIndex, g_mem.schedNextDist, g_mem.schedDelay,
+      g_mem.lineName, g_mem.tourName, g_mem.tripName, g_mem.nextStop);
 
   int length = _snprintf_s(
       body, sizeof(body), _TRUNCATE,
@@ -298,7 +484,7 @@ static void flush_state(int alive) {
       "\"maxBrake\":%.2f,\"maxAccel\":%.2f,\"topSpeed\":%.1f,"
       "\"harshBrakes\":%d,\"harshAccels\":%d,"
       "\"busstop\":\"%s\",\"delayMin\":\"%s\",\"delaySec\":\"%s\","
-      "\"line\":\"%s\",\"terminus\":\"%s\",\"matrix\":\"%s\"}",
+      "\"line\":\"%s\",\"terminus\":\"%s\",\"matrix\":\"%s\"%s",
       alive ? "true" : "false", g_seen, g_seenStr, g_strKind,
       g_sys[SYS_TIME], g_sys[SYS_DAY], g_sys[SYS_MONTH], g_sys[SYS_YEAR],
       g_var[VAR_VELOCITY], g_var[VAR_HUMANS], g_var[VAR_SCHEDULE_ACTIVE],
@@ -311,7 +497,7 @@ static void flush_state(int alive) {
       g_var[VAR_BUSSTOP_INDEX],
       g_maxBrake, g_maxAccel, g_topSpeed, g_harshBrakes, g_harshAccels,
       g_str[STR_BUSSTOP], g_str[STR_DELAY_MIN], g_str[STR_DELAY_SEC],
-      g_str[STR_LINE], g_str[STR_TERMINUS], g_str[STR_MATRIX]);
+      g_str[STR_LINE], g_str[STR_TERMINUS], g_str[STR_MATRIX], mem);
   if (length <= 0) return;
 
   HANDLE file = CreateFileW(g_temp, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
@@ -328,6 +514,7 @@ static void maybe_flush(void) {
   ULONGLONG now = GetTickCount64();
   if (!g_ready || now - g_lastWrite < WRITE_INTERVAL_MS) return;
   g_lastWrite = now;
+  read_memory();
   flush_state(1);
 }
 
@@ -358,6 +545,8 @@ __declspec(dllexport) void __stdcall PluginStart(void *owner) {
   g_brakeHeld = g_accelHeld = 0;
   g_brakeCounted = g_accelCounted = 0;
   QueryPerformanceFrequency(&g_freq);
+  memset(&g_mem, 0, sizeof(g_mem));
+  detect_version();
   g_ready = 1;
 }
 

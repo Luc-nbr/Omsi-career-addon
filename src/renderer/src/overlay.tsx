@@ -20,6 +20,8 @@ import './overlay.css'
 interface Frame {
   status?: LiveStatus
   duty?: Duty
+  /** De bus op de kaart van de dienst, uit het geheugen van OMSI. */
+  vehicle?: { x: number; y: number; heading: number; headingFromMotion: boolean }
   /** Draait OMSI met onze plugin? */
   connected: boolean
   /** In de bewerkstand neemt de overlay muisklikken aan. */
@@ -121,11 +123,17 @@ function Overlay(): JSX.Element | null {
 
   const leg = status?.leg
   const passed = passedNow
-  // De IBIS is ingetoetst zodra de bus een haltenaam doorgeeft.
-  const ibisLoaded = Boolean(status?.reportsStops) && passed !== undefined
-  // Alleen meerijden als de bus werkelijk vertelt waar hij is.
+  /*
+   * Kan de app in OMSI kijken, dan telt wat daar in het dienstregelingsmenu is
+   * gekozen: pas dan is duidelijk welke rit gereden wordt. Anders valt hij terug
+   * op de IBIS, die zich vult zodra lijn en route zijn ingetoetst.
+   */
+  const readable = Boolean(status?.omsiReadable)
+  const scheduled = Boolean(status?.schedule?.matchesDuty)
+  const ibisLoaded = readable ? scheduled : Boolean(status?.reportsStops) && passed !== undefined
+  // Alleen schatten waar de bus is als OMSI zijn plek niet laat lezen.
   const bus =
-    status && ibisLoaded && passed !== undefined && stopOdometer.current?.key === stopKey
+    !frame.vehicle && status && ibisLoaded && passed !== undefined && stopOdometer.current?.key === stopKey
       ? {
           legIndex: status.legIndex,
           nextStop: passed,
@@ -144,7 +152,11 @@ function Overlay(): JSX.Element | null {
           language={language}
           onChange={(patch) => move('dienst', patch)}
         >
-          <DutyPanel frame={frame} detail={layout.detail} language={language} onCycle={cycle} />
+          {readable && !scheduled && duty ? (
+            <SelectPanel duty={duty} status={status} language={language} />
+          ) : (
+            <DutyPanel frame={frame} detail={layout.detail} language={language} onCycle={cycle} />
+          )}
         </Panel>
       )}
 
@@ -165,10 +177,11 @@ function Overlay(): JSX.Element | null {
               activeLeg={status?.legIndex}
               routeMode={ibisLoaded ? 'active' : 'none'}
               bus={bus}
-              // Nog niets ingetoetst: de eerste halte van de rit in beeld, daar begint het.
-              focusStopId={ibisLoaded ? undefined : leg?.stopIds[0]}
+              vehicle={frame.vehicle && status ? { ...frame.vehicle, speedKmh: status.speedKmh } : undefined}
+              // Nog niets gekozen en geen bus te zien: de eerste halte van de rit in beeld.
+              focusStopId={ibisLoaded || frame.vehicle ? undefined : leg?.stopIds[0]}
               texts={{
-                waiting: t(language, 'ovl.mapWaiting'),
+                waiting: t(language, readable ? 'ovl.mapSelect' : 'ovl.mapWaiting'),
                 busNote: t(language, 'ovl.busHere'),
                 centre: t(language, 'ovl.centre')
               }}
@@ -433,6 +446,46 @@ function DutyPanel({
           </div>
         ))}
     </>
+  )
+}
+
+/**
+ * Voordat de dienst in OMSI zelf gekozen is. Tijd, haltes en vertraging hebben
+ * dan nog geen betekenis; wat de chauffeur wel nodig heeft, is wat hij in het
+ * dienstregelingsmenu moet aanklikken.
+ */
+function SelectPanel({
+  duty,
+  status,
+  language
+}: {
+  duty: Duty
+  status?: LiveStatus
+  language: Language
+}): JSX.Element {
+  const first = duty.legs[0]
+  const chosen = status?.schedule
+  return (
+    <div className="select-duty">
+      <div className="topline">
+        <span className="line">{duty.lineNumbers.join(' / ')}</span>
+        <b>{t(language, 'ovl.selectTitle')}</b>
+      </div>
+      <div className="row">
+        <span className="value">
+          {t(language, 'ovl.selectHow', {
+            line: duty.lineFile,
+            tour: duty.tourNumber,
+            time: first ? formatTime(first.departure) : '—'
+          })}
+        </span>
+      </div>
+      {chosen && !chosen.matchesDuty && (
+        <div className="advice warn">
+          {t(language, 'ovl.selectWrong', { line: chosen.lineName || '—', tour: chosen.tourName || '—' })}
+        </div>
+      )}
+    </div>
   )
 }
 

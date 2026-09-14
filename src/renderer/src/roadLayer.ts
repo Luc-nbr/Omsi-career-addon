@@ -48,6 +48,26 @@ export interface RoadView {
   h: number
   /** Beeldpunten per CSS-pixel. */
   dpr: number
+  /** Koers die boven in beeld staat, in graden; nul is noord boven. */
+  rotation?: number
+}
+
+/**
+ * Van kaartmeters naar beeldpunten, met de draaiing erin:
+ * scherm = midden + R(-koers) · (punt - middelpunt) / mpp, y omlaag.
+ */
+function worldMatrix(view: RoadView): [number, number, number, number, number, number] {
+  const k = view.dpr / view.mpp
+  const r = ((view.rotation ?? 0) * Math.PI) / 180
+  const cos = Math.cos(r)
+  const sin = Math.sin(r)
+  const a = k * cos
+  const b = -k * sin
+  const c = -k * sin
+  const d = -k * cos
+  const e = (view.dpr * view.w) / 2 - k * (view.cx * cos - view.cy * sin)
+  const f = (view.dpr * view.h) / 2 + k * (view.cx * sin + view.cy * cos)
+  return [a, b, c, d, e, f]
 }
 
 export class RoadLayer {
@@ -120,10 +140,12 @@ export class RoadLayer {
     }
 
     // Te groot voor een buffer: dan is er genoeg ingezoomd om per vak te tekenen.
-    const p = pxPerM
-    ctx.setTransform(p, 0, 0, -p, (view.w / 2 - view.cx / view.mpp) * view.dpr, (view.h / 2 + view.cy / view.mpp) * view.dpr)
-    const marginX = (view.w / 2) * view.mpp + 30
-    const marginY = (view.h / 2) * view.mpp + 30
+    ctx.setTransform(...worldMatrix(view))
+    // Gedraaid valt een hoek van het beeld verder weg; dan de halve diagonaal als rand.
+    const rotated = (view.rotation ?? 0) % 360 !== 0
+    const radius = (Math.hypot(view.w, view.h) / 2) * view.mpp + 30
+    const marginX = rotated ? radius : (view.w / 2) * view.mpp + 30
+    const marginY = rotated ? radius : (view.h / 2) * view.mpp + 30
     const visible = this.chunks.filter(
       (chunk) =>
         chunk.maxX > view.cx - marginX &&
@@ -153,15 +175,12 @@ export class RoadLayer {
     if (!cache) return
     const left = this.bounds.minX - CACHE_PAD_M
     const top = this.bounds.maxY + CACHE_PAD_M
-    const scale = view.dpr / view.mpp / cache.pxPerM
     ctx.imageSmoothingEnabled = true
-    ctx.drawImage(
-      cache.canvas,
-      (view.w / 2 + (left - view.cx) / view.mpp) * view.dpr,
-      (view.h / 2 - (top - view.cy) / view.mpp) * view.dpr,
-      cache.canvas.width * scale,
-      cache.canvas.height * scale
-    )
+    // Een beeldpunt (u, v) van de buffer is kaartpunt (left + u/p, top - v/p).
+    const [a, b, c, d, e, f] = worldMatrix(view)
+    const p = cache.pxPerM
+    ctx.setTransform(a / p, b / p, -c / p, -d / p, a * left + c * top + e, b * left + d * top + f)
+    ctx.drawImage(cache.canvas, 0, 0)
   }
 }
 

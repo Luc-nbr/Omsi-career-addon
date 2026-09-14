@@ -58,6 +58,38 @@ export interface LiveData {
   matrix: string
   /** Hoe oud het bestand is, in milliseconden. Zet de app zelf, niet de plugin. */
   ageMs?: number
+  /** Welke OMSI draait, zoals de plugin die in het programma zelf las. */
+  exeVersion?: string
+  /** Rechtstreeks uit het geheugen van OMSI; alleen op 2.3.004, zie omsicareer.c. */
+  mem?: MemoryData
+}
+
+export interface MemoryData {
+  /** 1 als het voertuig van de speler gevonden en de positie aannemelijk is. */
+  ok: number
+  /** Index in de tegellijst van global.cfg. */
+  tile: number
+  /** Positie binnen de tegel, zoals Direct3D hem kent. */
+  x: number
+  y: number
+  z: number
+  qx: number
+  qy: number
+  qz: number
+  qw: number
+  /** Wat het dienstregelingsmenu van OMSI op de bus zette. */
+  schedActive: number
+  line: number
+  tour: number
+  tourEntry: number
+  trip: number
+  nextIndex: number
+  nextDist: number
+  delay: number
+  lineName: string
+  tourName: string
+  tripName: string
+  nextStop: string
 }
 
 /**
@@ -155,6 +187,63 @@ export interface LiveStatus {
   advice: Advice[]
   /** De dienst is uitgereden: eindtijd voorbij en de bus staat stil. */
   dutyComplete: boolean
+  /**
+   * Kan de app in OMSI kijken? Dan weet hij waar de bus staat en welke
+   * dienstregeling in het menu gekozen is. Zo niet (een andere OMSI-versie),
+   * dan valt hij terug op wat de IBIS meldt.
+   */
+  omsiReadable: boolean
+  /** Wat de speler in OMSI's dienstregelingsmenu koos, als dat bekend is. */
+  schedule?: OmsiSchedule
+}
+
+export interface OmsiSchedule {
+  lineName: string
+  tourName: string
+  tripName: string
+  /** Hoort de gekozen rit bij de dienst die in de app is bevestigd? */
+  matchesDuty: boolean
+  /** Welke rit van de dienst dat is. */
+  legIndex?: number
+}
+
+/** "TTData\\92 Fd-Sg.ttp" en "92 fd-sg" zijn dezelfde rit. */
+function tripKey(name: string): string {
+  const base = name.trim().split(/[\\/]/).pop() ?? ''
+  return base.replace(/\.ttp$/i, '').trim().toLowerCase()
+}
+
+/**
+ * Welke dienstregeling staat er op de bus, en past die bij de dienst? Een rit
+ * komt in een dienst soms twee keer voor (heen en terug heten anders, maar een
+ * omloop kan dezelfde rit later nog eens rijden): dan de rit die op de klok het
+ * dichtst bij ligt.
+ */
+function readSchedule(data: LiveData, duty: Duty | undefined, clockMinutes: number): OmsiSchedule | undefined {
+  const mem = data.mem
+  if (!mem || mem.ok !== 1 || !mem.tripName.trim()) return undefined
+  if (!(mem.schedActive > 0.5) && mem.trip < 0) return undefined
+  const key = tripKey(mem.tripName)
+  let legIndex: number | undefined
+  if (duty) {
+    let best = Infinity
+    duty.legs.forEach((leg, index) => {
+      if (tripKey(leg.tripFile) !== key) return
+      const distance = Math.abs(leg.departure - clockMinutes)
+      if (distance < best) {
+        best = distance
+        legIndex = index
+      }
+    })
+  }
+  const tourMatches = !duty || !mem.tourName.trim() || mem.tourName.trim() === duty.tourNumber.trim()
+  return {
+    lineName: mem.lineName.trim(),
+    tourName: mem.tourName.trim(),
+    tripName: mem.tripName.trim(),
+    matchesDuty: legIndex !== undefined && tourMatches,
+    legIndex
+  }
 }
 
 /** Vertaalt de vertragingstekst van de IBIS naar minuten. */
@@ -229,9 +318,21 @@ export function describeLive(
     }
   }
 
+  // Wat in OMSI zelf gekozen is, gaat voor de klok: dat is de rit die gereden wordt.
+  const omsiReadable = data.mem?.ok === 1
+  const schedule = omsiReadable ? readSchedule(data, duty, clockMinutes) : undefined
+  const fromMenu = Boolean(schedule?.matchesDuty && schedule.legIndex !== undefined && duty)
+  if (fromMenu && duty && schedule?.legIndex !== undefined) {
+    legIndex = schedule.legIndex
+    leg = duty.legs[legIndex]
+  }
+
   const fromIbis = ibisDelay(data)
   let delayMinutes = 0
-  if (fromIbis !== undefined) {
+  if (fromMenu && data.mem) {
+    // OMSI houdt de vertraging van een rijdende dienstregeling in seconden bij.
+    delayMinutes = data.mem.delay / 60
+  } else if (fromIbis !== undefined) {
     delayMinutes = fromIbis
   } else if (leg) {
     delayMinutes = clockMinutes > leg.arrival ? clockMinutes - leg.arrival : 0
@@ -260,22 +361,25 @@ export function describeLive(
     doorsOpen: data.entryOpen > 0.5 || data.exitOpen > 0.5,
     legIndex,
     leg,
-    nextStop: data.busstop.trim(),
+    nextStop: fromMenu && data.mem ? data.mem.nextStop.trim() : data.busstop.trim(),
     odometerKm: data.km + data.metres / 1000,
     /*
      * Alleen een voortgang tonen als de bus werkelijk iets meldt. Een index van
      * nul zonder haltenaam betekent dat de IBIS nog niet is ingetoetst, en dan
-     * is "0 van 9 gehad" een bewering die nergens op slaat.
+     * is "0 van 9 gehad" een bewering die nergens op slaat. Met een dienstregeling
+     * uit het menu weet OMSI zelf welke halte de volgende is.
      */
     stopIndex:
-      has(data, BIT.busstopIndex) && data.busstop.trim() !== ''
-        ? Math.max(0, Math.round(data.busstopIndex))
-        : undefined,
+      fromMenu && data.mem && data.mem.nextIndex >= 0
+        ? data.mem.nextIndex
+        : has(data, BIT.busstopIndex) && data.busstop.trim() !== ''
+          ? Math.max(0, Math.round(data.busstopIndex))
+          : undefined,
     stopsTotal: leg?.stops.length ?? 0,
-    reportsStops: data.busstop.trim() !== '',
-    offersStops: ((data.seenStr >>> 0) & 1) === 1,
+    reportsStops: fromMenu || data.busstop.trim() !== '',
+    offersStops: fromMenu || ((data.seenStr >>> 0) & 1) === 1,
     delayMinutes,
-    delayFromIbis: fromIbis !== undefined,
+    delayFromIbis: fromMenu || fromIbis !== undefined,
     mood,
     moodLabel: !hasPassengers
       ? 'empty'
@@ -290,7 +394,9 @@ export function describeLive(
     harshBrakes,
     harshAccels,
     advice: buildAdvice(data, baseline),
-    dutyComplete: duty ? isDutyComplete(data, duty, baseline) : false
+    dutyComplete: duty ? isDutyComplete(data, duty, baseline) : false,
+    omsiReadable,
+    schedule
   }
 }
 

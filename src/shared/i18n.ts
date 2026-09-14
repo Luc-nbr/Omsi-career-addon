@@ -759,6 +759,30 @@ const TEXT = {
     nl: 'Standaard herstellen'
   },
   'ovl.ready': { en: 'Done', de: 'Fertig', fr: 'Terminé', nl: 'Klaar' },
+  'ovl.selectTitle': {
+    en: 'Select your duty in OMSI',
+    de: 'Wähle deinen Dienst in OMSI',
+    fr: 'Choisissez votre service dans OMSI',
+    nl: 'Kies je dienst in OMSI'
+  },
+  'ovl.selectHow': {
+    en: 'Timetable menu: line {line} · tour {tour} · departs {time}',
+    de: 'Fahrplanmenü: Linie {line} · Umlauf {tour} · ab {time}',
+    fr: 'Menu des horaires : ligne {line} · tournée {tour} · départ {time}',
+    nl: 'Dienstregelingsmenu: lijn {line} · omloop {tour} · vertrek {time}'
+  },
+  'ovl.selectWrong': {
+    en: 'Selected in OMSI: line {line}, tour {tour}. That is not your accepted duty.',
+    de: 'In OMSI gewählt: Linie {line}, Umlauf {tour}. Das ist nicht dein angenommener Dienst.',
+    fr: 'Choisi dans OMSI : ligne {line}, tournée {tour}. Ce n’est pas votre service accepté.',
+    nl: 'In OMSI gekozen: lijn {line}, omloop {tour}. Dat is niet je bevestigde dienst.'
+  },
+  'ovl.mapSelect': {
+    en: 'The route appears once you select the duty in OMSI’s timetable menu.',
+    de: 'Die Route erscheint, sobald du den Dienst im Fahrplanmenü von OMSI wählst.',
+    fr: 'L’itinéraire apparaît dès que vous choisissez le service dans le menu des horaires d’OMSI.',
+    nl: 'De route verschijnt zodra je de dienst kiest in het dienstregelingsmenu van OMSI.'
+  },
   'ovl.close': {
     en: 'Close overlay',
     de: 'Overlay schließen',

@@ -210,6 +210,23 @@ export class LaneNetwork {
     return points
   }
 
+  /** Afstand tot de dichtstbijzijnde rijstrook binnen 40 m, anders Infinity. */
+  distanceToLane(x: number, y: number): number {
+    let best = Infinity
+    const gx = Math.floor(x / GRID_M)
+    const gy = Math.floor(y / GRID_M)
+    for (let ox = -1; ox <= 1; ox++) {
+      for (let oy = -1; oy <= 1; oy++) {
+        const cell = this.segments.get(`${gx + ox},${gy + oy}`)
+        if (!cell) continue
+        for (let k = 0; k < cell.length; k += 2) {
+          best = Math.min(best, this.project(cell[k], cell[k + 1], x, y).distance)
+        }
+      }
+    }
+    return best
+  }
+
   /** De kortste weg van de ene halte naar de volgende, of niets. */
   route(from: StopPoint, to: StopPoint): number[] | undefined {
     const sources = this.anchors(from)

@@ -205,6 +205,26 @@ Gebouwd:
 - Nagekeken met `scripts/screenshotNav.cjs` (nepframes, eigen overlayvenster,
   raakt `live.json` niet aan) op Rheinhausen en Berlin-Spandau.
 
+**Busplek en dienstregeling uit het geheugen van OMSI** (sinds 15-09-2026). De
+plugin leest in het proces van `Omsi.exe` het voertuig van de speler: tegel
+(`+0x74`), positie binnen de tegel (`+0x04`), draaiing (`+0x50`) en wat het
+dienstregelingsmenu erop zette (lijn/omloop/rit `+0x660..+0x66c`, volgende halte,
+vertraging), plus de namen uit `TTimeTableMan`. Adressen uit OmsiHook
+(space928/Omsi-Extensions), alleen geldig voor **2.3.004**. Let op: de
+versie-informatie van `Omsi.exe` zegt 2.2.032, ook bij 2.3.004; de plugin telt
+daarom de versietekst in het programma zelf. Andere versie → niets lezen, de app
+valt terug op de IBIS. `src/core/vehicle.ts` rekent om naar kaartmeters en stelt
+zelf vast welke Direct3D-as het noorden is (de lezing die op een rijstrook valt).
+**Nog niet in het spel nagekeken**: de as, het teken van de draaiing, de eenheid
+van de vertraging en of `tripName` een pad of een naam is. Kijk in `live.json`
+onder `mem` zodra een bus staat. Proeven: `scripts/probe-vehicle.ts` (kern) en
+`scripts/screenshotLive.cjs` (overlay met rijdende nepbus).
+
+In de overlay: het dienstpaneel toont "kies je dienst in OMSI" (lijn, omloop,
+vertrektijd) tot die in het menu gekozen is; de kaart toont de bus altijd en de
+route pas daarna, en rijdt mee als een navigatiesysteem (rijrichting boven,
+glijdend tussen metingen, uitzoomen met de snelheid).
+
 Nog niet gebouwd:
 
 1. **Knop in de overlay zelf om de indeling aan te passen** — "een knopje met pas

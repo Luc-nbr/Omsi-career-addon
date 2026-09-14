@@ -14,6 +14,7 @@ import { buildNetwork, generateDuties, type Network } from '../core/duty'
 import { buildFleetIndex, pickVehicleForDuty, readMapFleet, type FleetIndex } from '../core/fleet'
 import { readMapData, type Lane, type MapGeometry } from '../core/geo'
 import { LaneNetwork, routeForTrip } from '../core/routing'
+import { VehicleTracker, type VehiclePosition } from '../core/vehicle'
 import { buildIbisPlan } from '../core/ibis'
 import { describeLive, readLive } from '../core/live'
 import { findOmsiInstall } from '../core/install'
@@ -198,14 +199,35 @@ function captureBaseline(): void {
   })
 }
 
+/** Per kaart een tracker: hij onthoudt welke as het noorden is en hoe de bus rijdt. */
+const vehicleTrackers = new Map<string, VehicleTracker>()
+
+/** Waar de bus van de speler op de kaart van de dienst staat, als OMSI dat laat lezen. */
+function vehicleOnMap(live: ReturnType<typeof readLive>, duty: Duty | undefined): VehiclePosition | undefined {
+  if (!live?.alive || live.mem?.ok !== 1 || !duty) return undefined
+  try {
+    let tracker = vehicleTrackers.get(duty.mapFolder)
+    if (!tracker) {
+      tracker = new VehicleTracker(map(duty.mapFolder).path)
+      vehicleTrackers.set(duty.mapFolder, tracker)
+    }
+    const network = laneNetwork(duty.mapFolder)
+    return tracker.update(live.mem, (x, y) => network.distanceToLane(x, y))
+  } catch {
+    return undefined
+  }
+}
+
 function pushFrame(): void {
   if (!overlayWindow || overlayWindow.isDestroyed()) return
   captureBaseline()
   const live = readLive()
+  const duty = currentDuty()
   overlayWindow.webContents.send('overlay:frame', {
     connected: Boolean(live?.alive),
-    status: live ? describeLive(live, currentDuty(), baseline()) : undefined,
-    duty: currentDuty(),
+    status: live ? describeLive(live, duty, baseline()) : undefined,
+    vehicle: vehicleOnMap(live, duty),
+    duty,
     editing: overlayEditing
   })
 }
@@ -301,7 +323,8 @@ function openOverlay(duty: Duty): void {
     overlayWindow.loadFile(join(__dirname, '../renderer/overlay.html'))
   }
 
-  overlayTimer = setInterval(pushFrame, 200)
+  // Even vaak als de plugin schrijft: de kaart rijdt mee, en haperen valt op.
+  overlayTimer = setInterval(pushFrame, 100)
   announceOverlay()
 }
 

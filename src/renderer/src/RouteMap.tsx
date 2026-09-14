@@ -31,6 +31,16 @@ interface View {
   cy: number
   /** Meters per beeldpunt: groter is verder weg. */
   mpp: number
+  /** Koers die boven in beeld staat, in graden. Nul is noord boven; meerijdend de rijrichting. */
+  rot: number
+}
+
+/** De bus zoals OMSI hem plaatst, uit het geheugen van het spel. */
+export interface LiveVehicle {
+  x: number
+  y: number
+  heading: number
+  speedKmh: number
 }
 
 interface Props {
@@ -68,6 +78,12 @@ interface Props {
    * volgende. De kaart rijdt dan met hem mee.
    */
   bus?: { legIndex: number; nextStop: number; metresSinceStop?: number }
+  /**
+   * De echte plek van de bus. Is die er, dan rijdt de kaart mee zoals een
+   * navigatiesysteem: rijrichting boven, soepel, en verder uitgezoomd naarmate de
+   * bus harder gaat. Hij gaat voor op de schatting in `bus`.
+   */
+  vehicle?: LiveVehicle
   /** Teksten van de overlay, die zijn eigen taalkeuze heeft. */
   texts?: { waiting?: string; busNote?: string; centre?: string }
 }
@@ -97,6 +113,21 @@ const MANUAL_MS = 6000
 /** Zoomstand als de kaart met de bus meerijdt: straten en zijstraten zijn nog te lezen. */
 const BUS_MPP = 0.9
 
+/**
+ * Meerijden als een navigatiesysteem. Stilstaand ingezoomd, bij 50 km/u zo ver
+ * uit dat je de volgende kruising ruim ziet aankomen. De bus staat onder het
+ * midden, want wat voor je ligt is belangrijker dan wat achter je ligt.
+ */
+const LIVE_MIN_MPP = 0.55
+const LIVE_MAX_MPP = 2
+const LIVE_MPP_PER_KMH = 0.02
+const LIVE_AHEAD = 0.22
+/** Hoe snel de getoonde bus de gemeten plek volgt, in seconden; kleiner is strakker. */
+const LIVE_SMOOTH_S = 0.18
+/** Zo ver rekent de kaart vooruit op de snelheid, tussen twee metingen in. */
+const LIVE_PREDICT_S = 0.3
+const LIVE_FRAME_MS = 33
+
 export function RouteMap({
   duty,
   geometry,
@@ -107,6 +138,7 @@ export function RouteMap({
   activeLeg,
   routeMode = 'all',
   bus,
+  vehicle,
   texts
 }: Props): JSX.Element {
   const tr = useT()
@@ -114,7 +146,7 @@ export function RouteMap({
   const svgRef = useRef<SVGSVGElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [size, setSize] = useState({ w: 640, h: 320 })
-  const [view, setView] = useState<View>({ cx: 0, cy: 0, mpp: 8 })
+  const [view, setView] = useState<View>({ cx: 0, cy: 0, mpp: 8, rot: 0 })
   const [hovered, setHovered] = useState<string>()
   const dragRef = useRef<{ x: number; y: number; cx: number; cy: number } | undefined>(undefined)
 
@@ -204,7 +236,7 @@ export function RouteMap({
     return () => observer.disconnect()
   }, [])
 
-  const following = Boolean(follow?.toId) || Boolean(bus)
+  const following = Boolean(follow?.toId) || Boolean(bus) || Boolean(vehicle)
 
   const fitted = useRef<string>('')
   useEffect(() => {
@@ -224,7 +256,8 @@ export function RouteMap({
         Math.max(spanX / Math.max(1, size.w - pad), spanY / Math.max(1, size.h - pad)),
         MIN_MPP,
         MAX_MPP
-      )
+      ),
+      rot: 0
     })
   }, [duty.tourNumber, bounds, size, following, focusStopId, byId])
 
@@ -250,7 +283,8 @@ export function RouteMap({
         Math.max(spanX / Math.max(1, size.w), spanY / Math.max(1, size.h)),
         FOLLOW_MIN_MPP,
         FOLLOW_MAX_MPP
-      )
+      ),
+      rot: 0
     })
   }, [follow?.fromId, follow?.toId, byId, size])
 
@@ -258,7 +292,7 @@ export function RouteMap({
   useEffect(() => {
     if (!focusStopId) return
     const stop = byId.get(focusStopId)
-    if (stop) setView((old) => ({ cx: stop.x, cy: stop.y, mpp: Math.min(old.mpp, 1.6) }))
+    if (stop) setView((old) => ({ ...old, cx: stop.x, cy: stop.y, mpp: Math.min(old.mpp, 1.6) }))
   }, [focusStopId, byId])
 
   /** Per rit de lijn over de weg, met de afstand langs die lijn bij elke halte. */
@@ -304,14 +338,14 @@ export function RouteMap({
   const busRef = useRef(busPoint)
   busRef.current = busPoint
   const centreOnBus = useCallback((force: boolean) => {
+    if (force) manualUntil.current = 0
     const point = busRef.current
     if (!point) return
     if (!force && Date.now() < manualUntil.current) return
-    if (force) manualUntil.current = 0
     setView((old) => {
       const mpp = old.mpp <= FOLLOW_MAX_MPP * 2 ? old.mpp : BUS_MPP
       if (Math.abs(old.cx - point.x) < 0.05 && Math.abs(old.cy - point.y) < 0.05 && mpp === old.mpp) return old
-      return { cx: point.x, cy: point.y, mpp }
+      return { cx: point.x, cy: point.y, mpp, rot: 0 }
     })
   }, [])
   useEffect(() => centreOnBus(false), [busPoint, centreOnBus])
@@ -322,8 +356,68 @@ export function RouteMap({
     return () => window.clearInterval(timer)
   }, [hasBus, centreOnBus])
   const markManual = (): void => {
-    if (bus) manualUntil.current = Date.now() + MANUAL_MS
+    if (bus || vehicle) manualUntil.current = Date.now() + MANUAL_MS
   }
+
+  /*
+   * Meerijden met de echte bus. De plugin meet tien keer per seconde; daartussen
+   * glijdt de getoonde bus naar de laatste meting en rekent hij een fractie van een
+   * seconde vooruit op de snelheid, zodat de kaart niet schokt maar schuift. De
+   * kaart draait met de rijrichting mee en zoomt uit naarmate de bus harder gaat.
+   */
+  const vehicleRef = useRef<{ data: LiveVehicle; at: number } | undefined>(undefined)
+  useEffect(() => {
+    vehicleRef.current = vehicle ? { data: vehicle, at: performance.now() } : undefined
+  }, [vehicle?.x, vehicle?.y, vehicle?.heading, vehicle?.speedKmh])
+  const sizeRef = useRef(size)
+  sizeRef.current = size
+  const [liveBus, setLiveBus] = useState<{ x: number; y: number; heading: number }>()
+  const hasVehicle = Boolean(vehicle)
+  useEffect(() => {
+    if (!hasVehicle) {
+      setLiveBus(undefined)
+      return
+    }
+    let frame = 0
+    let last = performance.now()
+    let shown: { x: number; y: number; heading: number; mpp: number } | undefined
+    const tick = (now: number): void => {
+      frame = requestAnimationFrame(tick)
+      if (now - last < LIVE_FRAME_MS) return
+      const dt = Math.min(0.25, (now - last) / 1000)
+      last = now
+      const target = vehicleRef.current
+      if (!target) return
+      const age = Math.min(LIVE_PREDICT_S, (now - target.at) / 1000)
+      const radians = (target.data.heading * Math.PI) / 180
+      const metres = (target.data.speedKmh / 3.6) * age
+      const tx = target.data.x + Math.sin(radians) * metres
+      const ty = target.data.y + Math.cos(radians) * metres
+      if (!shown || Math.hypot(tx - shown.x, ty - shown.y) > 80) {
+        // Eerste meting, of de bus is verzet: meteen erheen, niet eroverheen glijden.
+        shown = { x: tx, y: ty, heading: target.data.heading, mpp: shown?.mpp ?? BUS_MPP }
+      } else {
+        const step = 1 - Math.exp(-dt / LIVE_SMOOTH_S)
+        shown.x += (tx - shown.x) * step
+        shown.y += (ty - shown.y) * step
+        shown.heading = (shown.heading + turn(shown.heading, target.data.heading) * step + 360) % 360
+      }
+      const wanted = clamp(LIVE_MIN_MPP + target.data.speedKmh * LIVE_MPP_PER_KMH, LIVE_MIN_MPP, LIVE_MAX_MPP)
+      shown.mpp += (wanted - shown.mpp) * (1 - Math.exp(-dt / 1.2))
+      setLiveBus({ x: shown.x, y: shown.y, heading: shown.heading })
+      if (Date.now() < manualUntil.current) return
+      const ahead = sizeRef.current.h * LIVE_AHEAD * shown.mpp
+      const facing = (shown.heading * Math.PI) / 180
+      setView({
+        cx: shown.x + Math.sin(facing) * ahead,
+        cy: shown.y + Math.cos(facing) * ahead,
+        mpp: shown.mpp,
+        rot: shown.heading
+      })
+    }
+    frame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frame)
+  }, [hasVehicle])
 
   // React luistert standaard passief naar het wieltje, dus zelf aanhaken —
   // anders scrollt de pagina mee terwijl je inzoomt.
@@ -332,31 +426,33 @@ export function RouteMap({
     if (!svg) return
     const onWheel = (event: WheelEvent): void => {
       event.preventDefault()
-      if (bus) manualUntil.current = Date.now() + MANUAL_MS
+      if (bus || vehicle) manualUntil.current = Date.now() + MANUAL_MS
       const rect = svg.getBoundingClientRect()
-      const px = event.clientX - rect.left
-      const py = event.clientY - rect.top
+      const px = event.clientX - rect.left - size.w / 2
+      const py = size.h / 2 - (event.clientY - rect.top)
       setView((old) => {
         const next = clamp(old.mpp * Math.exp(event.deltaY * 0.0012), MIN_MPP, MAX_MPP)
-        // Het punt onder de muis blijft staan waar het staat.
-        const wx = old.cx + (px - size.w / 2) * old.mpp
-        const wy = old.cy - (py - size.h / 2) * old.mpp
-        return {
-          mpp: next,
-          cx: wx - (px - size.w / 2) * next,
-          cy: wy + (py - size.h / 2) * next
-        }
+        // Het punt onder de muis blijft staan waar het staat, ook met een gedraaide kaart.
+        const [ox, oy] = unrotate(px * old.mpp, py * old.mpp, old.rot)
+        const [nx, ny] = unrotate(px * next, py * next, old.rot)
+        return { ...old, mpp: next, cx: old.cx + ox - nx, cy: old.cy + oy - ny }
       })
     }
     svg.addEventListener('wheel', onWheel, { passive: false })
     return () => svg.removeEventListener('wheel', onWheel)
-  }, [size, bus])
+  }, [size, bus, vehicle])
 
+  /** Van kaartmeters naar schermpunten; de rijrichting staat boven als de kaart meedraait. */
   const toScreen = useCallback(
-    (x: number, y: number): [number, number] => [
-      size.w / 2 + (x - view.cx) / view.mpp,
-      size.h / 2 - (y - view.cy) / view.mpp
-    ],
+    (x: number, y: number): [number, number] => {
+      const r = (view.rot * Math.PI) / 180
+      const dx = x - view.cx
+      const dy = y - view.cy
+      return [
+        size.w / 2 + (dx * Math.cos(r) - dy * Math.sin(r)) / view.mpp,
+        size.h / 2 - (dx * Math.sin(r) + dy * Math.cos(r)) / view.mpp
+      ]
+    },
     [size, view]
   )
 
@@ -370,11 +466,10 @@ export function RouteMap({
     const drag = dragRef.current
     if (!drag) return
     markManual()
-    setView((old) => ({
-      ...old,
-      cx: drag.cx - (event.clientX - drag.x) * old.mpp,
-      cy: drag.cy + (event.clientY - drag.y) * old.mpp
-    }))
+    setView((old) => {
+      const [dx, dy] = unrotate((event.clientX - drag.x) * old.mpp, -(event.clientY - drag.y) * old.mpp, old.rot)
+      return { ...old, cx: drag.cx - dx, cy: drag.cy - dy }
+    })
   }
 
   const endDrag = (): void => {
@@ -405,7 +500,7 @@ export function RouteMap({
       canvas.width = width
       canvas.height = height
     }
-    const roadView = { ...view, w: size.w, h: size.h, dpr }
+    const roadView = { ...view, rotation: view.rot, w: size.w, h: size.h, dpr }
     // Tijdens het zoomen de oude tekening schalen, en pas als het wieltje stil
     // is scherp opnieuw tekenen: uitgezoomd kost dat een tiende seconde.
     const zooming = drawnMpp.current !== 0 && drawnMpp.current !== view.mpp
@@ -445,8 +540,9 @@ export function RouteMap({
   const otherStops = useMemo(() => {
     if (view.mpp > 8) return []
     const onRoute = new Set(routeStops.map((stop) => stop.id))
-    const marginX = (size.w / 2) * view.mpp + 100
-    const marginY = (size.h / 2) * view.mpp + 100
+    const radius = view.rot !== 0 ? (Math.hypot(size.w, size.h) / 2) * view.mpp + 100 : 0
+    const marginX = radius || (size.w / 2) * view.mpp + 100
+    const marginY = radius || (size.h / 2) * view.mpp + 100
     const found: StopPoint[] = []
     for (const stop of geometry.stops) {
       if (onRoute.has(stop.id)) continue
@@ -606,16 +702,20 @@ export function RouteMap({
 
         {start &&
           !busPoint &&
+          !liveBus &&
           (() => {
             const [x, y] = toScreen(start.x, start.y)
             return <circle className="map-start-halo" cx={x} cy={y} r={Math.max(signR, 6) + 11} />
           })()}
 
-        {busPoint &&
+        {(liveBus ?? busPoint) &&
           (() => {
-            const [x, y] = toScreen(busPoint.x, busPoint.y)
-            // Noord is boven, dus de koers is meteen de draaiing op het scherm.
-            const angle = (Math.atan2(busPoint.dx, busPoint.dy) * 180) / Math.PI
+            const point = liveBus
+              ? { x: liveBus.x, y: liveBus.y, heading: liveBus.heading }
+              : { x: busPoint!.x, y: busPoint!.y, heading: (Math.atan2(busPoint!.dx, busPoint!.dy) * 180) / Math.PI }
+            const [x, y] = toScreen(point.x, point.y)
+            // Op het scherm telt de koers min de draaiing van de kaart.
+            const angle = point.heading - view.rot
             return (
               <g className="map-bus" transform={`translate(${x.toFixed(1)} ${y.toFixed(1)})`}>
                 <circle className="bus-halo" r={15} />
@@ -663,7 +763,7 @@ export function RouteMap({
         <button type="button" onClick={() => zoomBy(1.6)} aria-label={tr('map.zoomOut')}>
           −
         </button>
-        {bus ? (
+        {bus || vehicle ? (
           <button
             type="button"
             onClick={() => centreOnBus(true)}
@@ -680,7 +780,7 @@ export function RouteMap({
       </div>
 
       {routeMode === 'none' && texts?.waiting && <div className="map-note">{texts.waiting}</div>}
-      {busPoint && texts?.busNote && <div className="map-note map-note-quiet">{texts.busNote}</div>}
+      {busPoint && !liveBus && texts?.busNote && <div className="map-note map-note-quiet">{texts.busNote}</div>}
     </div>
   )
 }
@@ -799,6 +899,17 @@ function StopSign({
 /** De rit die aan de beurt is komt als laatste, dus bovenop. */
 function rank(index: number, active?: number): number {
   return active !== undefined && index === active ? 1 : 0
+}
+
+/** Een verschuiving op het (gedraaide) scherm terug naar kaartrichtingen; x rechts, y omhoog. */
+function unrotate(sx: number, sy: number, rotation: number): [number, number] {
+  const r = (rotation * Math.PI) / 180
+  return [sx * Math.cos(r) + sy * Math.sin(r), -sx * Math.sin(r) + sy * Math.cos(r)]
+}
+
+/** Kortste draai van koers `from` naar `to`, in graden tussen -180 en 180. */
+function turn(from: number, to: number): number {
+  return ((to - from + 540) % 360) - 180
 }
 
 function clamp(value: number, low: number, high: number): number {
