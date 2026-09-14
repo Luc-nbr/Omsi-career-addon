@@ -11,6 +11,7 @@ const api: CareerApi = {
   vehicles: () => ipcRenderer.invoke('omsi:vehicles'),
   generateDuty: (request: DutyRequest) => ipcRenderer.invoke('duty:generate', request),
   ibis: (duty, vehicle, year) => ipcRenderer.invoke('duty:ibis', duty, vehicle, year),
+  toggleOverlay: (duty) => ipcRenderer.invoke('overlay:toggle', duty),
   launch: (request: LaunchRequest) => ipcRenderer.invoke('duty:launch', request),
   career: () => ipcRenderer.invoke('career:load'),
   checkSession: () => ipcRenderer.invoke('duty:session'),
@@ -20,3 +21,12 @@ const api: CareerApi = {
 }
 
 contextBridge.exposeInMainWorld('career', api)
+
+/**
+ * Het overlayvenster krijgt zijn gegevens geduwd vanuit het hoofdproces; het
+ * leest zelf niets van schijf.
+ */
+contextBridge.exposeInMainWorld('overlay', {
+  onFrame: (handler: (frame: unknown) => void) =>
+    ipcRenderer.on('overlay:frame', (_event, frame) => handler(frame))
+})

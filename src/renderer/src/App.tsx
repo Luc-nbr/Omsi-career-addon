@@ -44,6 +44,7 @@ export function App(): JSX.Element {
   const [busy, setBusy] = useState(false)
   const [launched, setLaunched] = useState<LaunchResult>()
   const [sessionNote, setSessionNote] = useState<string>()
+  const [overlayOpen, setOverlayOpen] = useState(false)
 
   useEffect(() => {
     void (async () => {
@@ -188,6 +189,11 @@ export function App(): JSX.Element {
     }
   }, [duty, vehicle])
 
+  const toggleOverlay = useCallback(async () => {
+    if (!duty) return
+    setOverlayOpen(await window.career.toggleOverlay(duty))
+  }, [duty])
+
   if (error && !ready) {
     return (
       <div className="main">
@@ -312,6 +318,8 @@ export function App(): JSX.Element {
             busy={busy}
             onStart={start}
             onFinish={finish}
+            onToggleOverlay={toggleOverlay}
+            overlayOpen={overlayOpen}
           />
         ) : (
           <p className="empty">

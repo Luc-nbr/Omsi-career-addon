@@ -1,0 +1,32 @@
+	OMSI Career - live gegevens voor de overlay
+	De volgorde van elke lijst bepaalt de index die OMSI aan de plugin doorgeeft
+	en moet gelijk lopen met de enums in omsicareer.c.
+
+[dll]
+OMSICareerPlugin.dll
+
+[systemvarlist]
+Time
+Day
+Month
+Year
+
+[varlist]
+Velocity
+humans_count
+schedule_active
+target_index_int
+tank_percent
+kmcounter_km
+kmcounter_m
+PAX_Entry_Req
+PAX_Exit_Req
+GivenTicket
+
+[stringvarlist]
+IBIS_busstop_name
+IBIS_Delay_min
+IBIS_Delay_sec
+SetLineTo
+IBIS_cabindisplay
+Matrix_Nr

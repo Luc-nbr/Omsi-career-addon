@@ -4,13 +4,14 @@ import { completeDuty, loadCareer, saveCareer, summarise, type CareerState } fro
 import { buildNetwork, generateDuty, SIGN_ON_MINUTES, type Network } from '../core/duty'
 import { buildFleetIndex, pickVehicleForDuty, readMapFleet, type FleetIndex } from '../core/fleet'
 import { buildIbisPlan } from '../core/ibis'
+import { describeLive, readLive } from '../core/live'
 import { findOmsiInstall } from '../core/install'
 import { launchOmsi } from '../core/launch'
 import { findTemplate, readSituationTime, writeSituation } from '../core/situation'
 import { compareSession, readMapSession, type SessionState } from '../core/session'
 import { listMaps, loadMap } from '../core/timetable'
 import { listVehicles } from '../core/vehicles'
-import type { OmsiMap } from '../core/types'
+import type { Duty, OmsiMap } from '../core/types'
 import {
   TIME_WINDOWS,
   type Assignment,
@@ -90,6 +91,72 @@ function fleet(): FleetIndex {
 /** De naam die de situatie krijgt; ook de sleutel om hem later te herkennen. */
 function situationName(duty: { tourNumber: string; lineNumbers: string[] }): string {
   return `Dienst ${duty.tourNumber} — lijn ${duty.lineNumbers.join('/')}`
+}
+
+/**
+ * De overlay hangt als doorzichtig, klikdoorlatend venster boven OMSI. Het is
+ * bewust geen hook in de grafische laag: dat sloopt oude DX9-spellen. Het spel
+ * draait in vensterstand, dus een venster erbovenop volstaat.
+ */
+let overlayWindow: BrowserWindow | null = null
+let overlayTimer: NodeJS.Timeout | undefined
+let overlayDuty: Duty | undefined
+
+function pushFrame(): void {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return
+  const live = readLive()
+  overlayWindow.webContents.send('overlay:frame', {
+    connected: Boolean(live?.alive),
+    status: live ? describeLive(live, overlayDuty) : undefined,
+    duty: overlayDuty
+  })
+}
+
+function closeOverlay(): void {
+  if (overlayTimer) clearInterval(overlayTimer)
+  overlayTimer = undefined
+  if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.destroy()
+  overlayWindow = null
+}
+
+function openOverlay(duty: Duty): void {
+  overlayDuty = duty
+  if (overlayWindow && !overlayWindow.isDestroyed()) return
+
+  overlayWindow = new BrowserWindow({
+    width: 330,
+    height: 320,
+    x: 24,
+    y: 24,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: false,
+    skipTaskbar: true,
+    focusable: false,
+    hasShadow: false,
+    alwaysOnTop: true,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false,
+      contextIsolation: true
+    }
+  })
+
+  // Boven een spel in vensterstand, en muisklikken gaan er dwars doorheen.
+  overlayWindow.setAlwaysOnTop(true, 'screen-saver')
+  overlayWindow.setIgnoreMouseEvents(true)
+  overlayWindow.on('closed', () => {
+    overlayWindow = null
+  })
+
+  if (process.env.ELECTRON_RENDERER_URL) {
+    overlayWindow.loadURL(`${process.env.ELECTRON_RENDERER_URL}/overlay.html`)
+  } else {
+    overlayWindow.loadFile(join(__dirname, '../renderer/overlay.html'))
+  }
+
+  overlayTimer = setInterval(pushFrame, 200)
 }
 
 function careerPayload() {
@@ -217,6 +284,15 @@ function registerHandlers(): void {
     )
   })
 
+  ipcMain.handle('overlay:toggle', (_event, duty: Duty) => {
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      closeOverlay()
+      return false
+    }
+    openOverlay(duty)
+    return true
+  })
+
   ipcMain.handle('career:load', () => careerPayload())
 
   ipcMain.handle('career:complete', (_event, duty, vehicle: string, measured) => {
@@ -268,6 +344,8 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
+
+app.on('before-quit', closeOverlay)
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

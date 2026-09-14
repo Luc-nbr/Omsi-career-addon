@@ -1,0 +1,155 @@
+/*
+ * De overlay hangt als doorzichtig venster boven OMSI. Geen achtergrond op body:
+ * alles wat hier ondoorzichtig is, dekt het spel af.
+ */
+
+.overlay-body {
+  margin: 0;
+  background: transparent;
+  font: 13px/1.45 "Segoe UI", system-ui, sans-serif;
+  color: #f2f5f9;
+  user-select: none;
+  overflow: hidden;
+}
+
+.panel {
+  background: rgba(12, 16, 22, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-left: 3px solid #f0b429;
+  border-radius: 10px;
+  padding: 10px 14px 12px;
+  margin: 8px;
+  backdrop-filter: blur(6px);
+}
+
+.panel.waiting {
+  color: #9aa7b8;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 99px;
+  background: #f0b429;
+  display: inline-block;
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.clock {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.line {
+  background: #f0b429;
+  color: #1d1607;
+  font-weight: 700;
+  font-family: ui-monospace, Consolas, monospace;
+  border-radius: 5px;
+  padding: 1px 8px;
+}
+
+.delay {
+  margin-left: auto;
+  font-weight: 650;
+  font-size: 14px;
+}
+
+.delay.ontime {
+  color: #57d6a8;
+}
+
+.delay.late {
+  color: #ff8f6b;
+}
+
+.row {
+  margin-bottom: 7px;
+}
+
+.row .label {
+  display: block;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: #8d9bad;
+}
+
+.row .value {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.row .sub {
+  display: block;
+  color: #8d9bad;
+  font-size: 11.5px;
+}
+
+.grid {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.grid > div {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 7px;
+  padding: 5px 9px;
+  min-width: 64px;
+}
+
+.grid b {
+  display: block;
+  font-size: 16px;
+  font-family: ui-monospace, Consolas, monospace;
+}
+
+.grid span {
+  color: #8d9bad;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.mood b {
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.mood-4 b,
+.mood-3 b {
+  color: #57d6a8;
+}
+
+.mood-2 b {
+  color: #f0b429;
+}
+
+.mood-1 b,
+.mood-0 b {
+  color: #ff8f6b;
+}
+
+.request {
+  margin-top: 9px;
+  background: rgba(240, 180, 41, 0.16);
+  border-radius: 6px;
+  padding: 5px 9px;
+  color: #f0b429;
+  font-weight: 600;
+}

@@ -17,6 +17,8 @@ interface Props {
   busy: boolean
   onStart(): void
   onFinish(): void
+  onToggleOverlay(): void
+  overlayOpen: boolean
 }
 
 /** De dienstkaart: wat de chauffeur moet rijden, rit voor rit. */
@@ -31,7 +33,9 @@ export function DutyCard({
   sessionNote,
   busy,
   onStart,
-  onFinish
+  onFinish,
+  onToggleOverlay,
+  overlayOpen
 }: Props): JSX.Element {
   const [openLeg, setOpenLeg] = useState<number>()
   const { duty } = assignment
@@ -105,6 +109,9 @@ export function DutyCard({
       <div className="actions">
         <button type="button" className="btn" onClick={onStart} disabled={busy || !vehicle}>
           Rijden in OMSI
+        </button>
+        <button type="button" className="btn secondary" onClick={onToggleOverlay}>
+          {overlayOpen ? 'Overlay sluiten' : 'Overlay tonen'}
         </button>
         {launched && (
           <button type="button" className="btn secondary" onClick={onFinish}>

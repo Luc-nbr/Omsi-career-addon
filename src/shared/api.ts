@@ -66,6 +66,8 @@ export interface CareerApi {
   vehicles(): Promise<Vehicle[]>
   generateDuty(request: DutyRequest): Promise<Assignment | null>
   ibis(duty: Duty, vehicle: Vehicle, year: number): Promise<IbisPlan>
+  /** Opent of sluit de overlay boven het spel. Geeft terug of hij nu open is. */
+  toggleOverlay(duty: Duty): Promise<boolean>
   launch(request: LaunchRequest): Promise<LaunchResult>
   career(): Promise<{ state: CareerState; summary: CareerSummary }>
   /** Leest uit OMSI's eigen situatiebestand wat er van de dienst terechtkwam. */

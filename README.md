@@ -170,6 +170,58 @@ een GUID in `omninavigation.cfg` contact met een losse applicatie, en leest zo
 live mee. Dat geeft gegevens tijdens de rit in plaats van erna, maar vraagt een
 C-compiler en een draaiend achtergrondproces.
 
+## Overlay met live gegevens
+
+Boven het spel hangt een doorzichtig, klikdoorlatend venster met de klok, je
+vertraging, de rit waar je mee bezig bent, de eerstvolgende halte, het aantal
+passagiers en of er iemand wil in- of uitstappen.
+
+De gegevens komen uit een eigen plugin in `plugin/`. OMSI's plugin-contract
+staat in zijn eigen RTTI:
+
+```
+TAccessVariable(varindex, value, write)        TStart(AOwner)
+TAccessSystemVariable(varindex, value, write)  TFinalize()
+TAccessStringVariable(varindex, str, write)
+```
+
+Een `.opl` in `plugins/` kent vier lijsten: `[varlist]`, `[stringvarlist]`,
+`[systemvarlist]` en `[triggers]`. De index die OMSI meegeeft is de positie in
+die lijst, dus de volgorde in `OMSICareer.opl` moet gelijk lopen met de enums in
+`omsicareer.c`.
+
+Welke namen bruikbaar zijn, is uit OMSI zelf af te leiden. `TScriptVarIndizes`
+in de binary bevat de variabelen die OMSI in **elk** voertuig bijhoudt —
+`Velocity`, `humans_count`, `kmcounter_km`, `tank_percent`, `schedule_active`,
+`PAX_Entry_Req` — en die werken dus op iedere bus. De systeemvariabelen zijn te
+vinden via `(L.S.naam)` in de busscripts: `Time`, `Day`, `Month`, `Year`,
+`Weather_*`, `PrecipRate`. `Time` is seconden na middernacht; de scripts delen
+hem door 3600 voor uren.
+
+Variabelen als `IBIS_busstop_name` en `IBIS_Delay_min` bestaan alleen op bussen
+mét IBIS — ongeveer elf van de busmappen. De overlay gebruikt ze als ze er zijn
+en rekent de vertraging anders zelf uit tegen de dienstregeling. Een ster achter
+een waarde betekent dat hij afgeleid is en niet rechtstreeks uit OMSI komt.
+
+**Passagiersstemming bestaat niet als variabele.** OMSI houdt wel
+chauffeursbeoordelingen bij (`DG_Driver_Rating_Driving`, `_Ticket`, `_Comfort`),
+maar die belanden pas na afloop in `Drivers/*.odr`. De stemming in de overlay is
+daarom een afgeleide van vertraging en rijstijl, en staat als zodanig gemarkeerd.
+
+### Bouwen en plaatsen
+
+```bash
+pluginuild.cmd
+```
+
+OMSI is 32-bits Delphi, dus de DLL moet 32-bits zijn en de namen onversierd
+geëxporteerd (via `omsicareer.def`). Kopieer daarna `out\OMSICareerPlugin.dll`
+en `OMSICareer.opl` naar `OMSI 2\plugins\`. Weghalen is die twee bestanden
+verwijderen.
+
+Bewust géén hook in de grafische laag: dat sloopt oude DX9-spellen. Het is een
+gewoon venster erbovenop, wat werkt omdat OMSI in vensterstand draait.
+
 ## Nog te doen
 
 - Punctualiteit en passagiers live meten. Dat vraagt een plugin-DLL in `plugins/`
