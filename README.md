@@ -84,6 +84,17 @@ ongeveer 77 MB; daar zit Electron zelf in.
 
 Het icoon wordt gegenereerd met `npm run icon` en staat als `build/icon.ico`.
 
+Faalt de build met `EBUSY: resource busy or locked, unlink ... app.asar`, dan
+houdt Windows Defender het bestand vast dat electron-builder net uit de
+Electron-distributie heeft gepakt. Bouwen naar een map buiten het project helpt:
+
+```bash
+npx electron-builder -c.directories.output=%TEMP%/omsi-release
+```
+
+De exe's uit die map zijn daarna gewoon naar `release/` te kopieren. Structureel
+is een Defender-uitsluiting voor de projectmap de oplossing.
+
 **De installer is niet ondertekend.** Windows SmartScreen toont daarom bij de
 eerste start "Windows heeft uw pc beschermd"; via *Meer informatie -> Toch
 uitvoeren* gaat hij gewoon door. Ondertekenen vraagt een code-signing-certificaat
