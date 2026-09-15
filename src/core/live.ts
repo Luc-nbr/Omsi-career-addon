@@ -361,7 +361,13 @@ function buildAdvice(data: LiveData, baseline?: { harshBrakes: number; harshAcce
     advice.push({ id: 'deuren', severity: 'warn' })
   }
 
-  if (data.precipRate > 0.05) {
+  /*
+   * Het wegdek, niet de lucht. `precipRate` staat ook bij droog weer op een
+   * waarde -- in een sessie zonder een druppel regen stond hij op 0,125 terwijl
+   * `streetCond` netjes nul aangaf. Dat laatste is bovendien waar het om gaat:
+   * een natte weg remt slechter, of het nu regent of net opgehouden is.
+   */
+  if (data.streetCond > 0.1) {
     advice.push({ id: 'nat', severity: 'info' })
   }
 

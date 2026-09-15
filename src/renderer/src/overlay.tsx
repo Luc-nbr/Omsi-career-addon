@@ -57,6 +57,13 @@ declare global {
 function Overlay(): JSX.Element | null {
   const [frame, setFrame] = useState<Frame>({ connected: false, editing: false })
   const [layout, setLayout] = useState<OverlayLayout>()
+  /*
+   * Welke rit de chauffeur zelf heeft afgemeld met "IBIS ingevoerd". Per rit,
+   * want elke rit heeft zijn eigen route: bij de volgende hoort de vraag opnieuw
+   * gesteld te worden. Deze haak staat hier en niet verderop: onder de vroege
+   * return zou React hem bij het eerste beeld overslaan en daarna verwachten.
+   */
+  const [ibisReady, setIbisReady] = useState<string>()
   const [geometry, setGeometry] = useState<MapGeometry>()
   const [language, setLanguage] = useState<Language>(DEFAULT_LANGUAGE)
 
@@ -167,6 +174,13 @@ function Overlay(): JSX.Element | null {
     return at >= 0 ? at : Math.max(0, (duty?.legs.length ?? 1) - 1)
   })()
   const upcoming = duty?.legs[upcomingIndex]
+  /*
+   * Elke rit zijn eigen afmelding. De sleutel bevat het ritbestand, zodat een
+   * dienst die dezelfde rit later nog eens rijdt opnieuw om de IBIS vraagt.
+   */
+  const tripKey = upcoming ? `${upcomingIndex}|${upcoming.tripFile}` : ''
+  /** De rit loopt pas als de chauffeur de IBIS heeft afgemeld. */
+  const started = ibisLoaded && (!ibisCapable || ibisReady === tripKey)
   // Alleen schatten waar de bus is als OMSI zijn plek niet laat lezen.
   const bus =
     !frame.vehicle && status && ibisLoaded && passed !== undefined && stopOdometer.current?.key === stopKey
@@ -208,6 +222,14 @@ function Overlay(): JSX.Element | null {
                 language={language}
               />
             )
+          ) : duty && ibisCapable && ibisReady !== tripKey ? (
+            <IbisStep
+              leg={upcoming}
+              ibis={frame.ibis}
+              legIndex={upcomingIndex}
+              language={language}
+              onDone={() => setIbisReady(tripKey)}
+            />
           ) : (
             <DutyPanel frame={frame} detail={layout.detail} language={language} onCycle={cycle} />
           )}
@@ -230,13 +252,21 @@ function Overlay(): JSX.Element | null {
               nextStopId={leg && passed !== undefined ? leg.stopIds[Math.min(passed, leg.stopIds.length - 1)] : undefined}
               activeLeg={status?.legIndex}
               pixelScale={layout.navigatie.scale}
-              routeMode={ibisLoaded ? 'active' : 'none'}
+              routeMode={ibisLoaded && started ? 'active' : 'none'}
               bus={bus}
               vehicle={frame.vehicle && status ? { ...frame.vehicle, speedKmh: status.speedKmh } : undefined}
               // Nog niets gekozen en geen bus te zien: de eerste halte van de rit in beeld.
-              focusStopId={ibisLoaded || frame.vehicle ? undefined : leg?.stopIds[0]}
+              focusStopId={started || frame.vehicle ? undefined : upcoming?.stopIds[0]}
               texts={{
-                waiting: t(language, readable ? 'ovl.mapSelect' : 'ovl.mapWaiting'),
+                /*
+                  Waar de kaart op wacht verschilt per stap: eerst de dienst in
+                  OMSI, daarna de IBIS. "Kies je dienst" blijven zeggen terwijl
+                  die al gekozen is, stuurt de chauffeur het verkeerde menu in.
+                */
+                waiting: t(
+                  language,
+                  ibisLoaded ? 'ovl.mapIbis' : readable ? 'ovl.mapSelect' : 'ovl.mapWaiting'
+                ),
                 busNote: t(language, 'ovl.busHere'),
                 centre: t(language, 'ovl.centre')
               }}
@@ -764,6 +794,65 @@ function SelectPanel({
           {t(language, 'ovl.selectWrong', { line: chosen.lineName || '—', tour: chosen.tourName || '—' })}
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * De stap tussen kiezen en rijden: de IBIS.
+ *
+ * OMSI weet dan al welke dienst je rijdt, maar de bus nog niet: lijn en route
+ * moeten met de hand op het toetsenblok. De route zegt ook de richting -- heen
+ * is een andere dan terug -- en dat is precies waar het misgaat als je gokt.
+ *
+ * Er zit een knop onder in plaats van dat we het zelf afleiden. De plugin kan
+ * niet zien of de chauffeur klaar is met tikken, en een infoscherm dat halverwege
+ * het intoetsen aanspringt leidt alleen maar af.
+ */
+function IbisStep({
+  leg,
+  ibis,
+  legIndex,
+  language,
+  onDone
+}: {
+  leg?: DutyLeg
+  ibis?: IbisPlan
+  legIndex: number
+  language: Language
+  onDone(): void
+}): JSX.Element {
+  const route = ibis?.legs[legIndex]?.route
+  const line = ibis?.line || leg?.lineNumber || '—'
+  return (
+    <div className="select-duty">
+      <div className="topline">
+        <span className="line">{leg?.lineNumber ?? '—'}</span>
+        <b>{t(language, 'ovl.ibisStepTitle')}</b>
+        <LayoutButton language={language} />
+      </div>
+      <div className="grid">
+        <div>
+          <b>{line}</b>
+          <span>{t(language, 'ibis.line')}</span>
+        </div>
+        <div>
+          <b>{route ?? '—'}</b>
+          <span>{t(language, 'ibis.routeAtStart')}</span>
+        </div>
+        <div>
+          <b>{leg?.terminus ?? '—'}</b>
+          <span>{t(language, 'ovl.to')}</span>
+        </div>
+      </div>
+      <div className="row">
+        <span className="sub">
+          {t(language, 'ovl.ibisStepHow', { line, route: route ?? '—' })}
+        </span>
+      </div>
+      <button type="button" className="ovl-btn" data-hit onClick={onDone}>
+        {t(language, 'ovl.ibisDone')}
+      </button>
     </div>
   )
 }

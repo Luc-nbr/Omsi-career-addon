@@ -1420,11 +1420,35 @@ const TEXT = {
     fr: 'Trajet terminé. Ensuite : le trajet de {time} dans OMSI.',
     nl: 'Rit klaar. Verder: de rit die om {time} vertrekt in OMSI.'
   },
+  'ovl.ibisStepTitle': {
+    en: 'Key in the IBIS',
+    de: 'IBIS eingeben',
+    fr: 'Saisir sur l’IBIS',
+    nl: 'Toets de IBIS in'
+  },
+  'ovl.ibisStepHow': {
+    en: 'The duty is selected in OMSI. Now key line {line} and route {route} into the IBIS — the route says which direction, so it differs on the way back.',
+    de: 'Der Dienst ist in OMSI gewählt. Jetzt Linie {line} und Route {route} ins IBIS tippen -- die Route sagt die Richtung, zurück ist sie anders.',
+    fr: 'Le service est sélectionné dans OMSI. Saisissez la ligne {line} et la route {route} sur l’IBIS — la route indique le sens, elle diffère au retour.',
+    nl: 'De dienst staat gekozen in OMSI. Toets nu lijn {line} en route {route} in op de IBIS — de route zegt de richting, dus terug is hij anders.'
+  },
+  'ovl.ibisDone': {
+    en: 'IBIS is in — start the trip',
+    de: 'IBIS steht — Fahrt beginnen',
+    fr: 'IBIS saisi — commencer le trajet',
+    nl: 'IBIS ingevoerd — start de rit'
+  },
   'ovl.selectWrong': {
     en: 'Selected in OMSI: line {line}, tour {tour}. That is not your accepted duty.',
     de: 'In OMSI gewählt: Linie {line}, Umlauf {tour}. Das ist nicht dein angenommener Dienst.',
     fr: 'Choisi dans OMSI : ligne {line}, tournée {tour}. Ce n’est pas votre service accepté.',
     nl: 'In OMSI gekozen: lijn {line}, omloop {tour}. Dat is niet je bevestigde dienst.'
+  },
+  'ovl.mapIbis': {
+    en: 'The route appears once you have keyed the line and route into the IBIS.',
+    de: 'Die Strecke erscheint, sobald Linie und Route im IBIS stehen.',
+    fr: 'L’itinéraire apparaît dès que la ligne et la route sont saisies sur l’IBIS.',
+    nl: 'De route verschijnt zodra je lijn en route op de IBIS hebt ingetoetst.'
   },
   'ovl.mapSelect': {
     en: 'The route appears once you select the duty in OMSI’s timetable menu.',
@@ -1480,10 +1504,10 @@ const TEXT = {
     nl: 'Je rijdt met een deur open.'
   },
   'advice.nat': {
-    en: 'It is raining — expect longer braking distances.',
-    de: 'Es regnet — rechne mit längeren Bremswegen.',
-    fr: 'Il pleut — prévoyez des distances de freinage plus longues.',
-    nl: 'Het regent — reken op langere remwegen.'
+    en: 'Wet road — expect longer braking distances.',
+    de: 'Nasse Fahrbahn — rechne mit längeren Bremswegen.',
+    fr: 'Chaussée mouillée — prévoyez des distances de freinage plus longues.',
+    nl: 'Nat wegdek — reken op langere remwegen.'
   },
   'advice.remmen': {
     en: 'Braked hard {count} times; your passengers notice.',

@@ -141,14 +141,19 @@ app.whenReady().then(async () => {
       `(() => {
          const panel = document.querySelector('.select-duty')
          if (panel) {
+           const title = panel.querySelector('.topline b')?.textContent.trim()
            const cells = [...panel.querySelectorAll('.grid div')].map((d) => d.querySelector('b').textContent.trim() + '=' + d.querySelector('span').textContent.trim())
-           return 'instructies: ' + cells.join(', ')
+           const button = panel.querySelector('.ovl-btn')?.textContent.trim()
+           return title + ': ' + cells.join(', ') + (button ? ' [knop: ' + button + ']' : '')
          }
          const next = document.querySelector('.next-trip')
          const delta = document.querySelector('.delay')?.textContent.trim()
          return 'dienst ingevuld, verschil ' + (delta ?? '?') + (next ? ' | ' + next.textContent.trim() : '')
        })()`
     )
+  const routeLines = () => js(overlay, `document.querySelectorAll('.route-line').length`)
+  const pressIbis = () =>
+    js(overlay, `(() => { const b = document.querySelector('.ovl-btn'); if (b) b.click(); return Boolean(b) })()`)
   const shoot = async (name) => {
     if (!outputDir) return
     overlay.showInactive()
@@ -173,13 +178,20 @@ app.whenReady().then(async () => {
 
   send({ legIndex: 0, running: true, clock: first.departure + 5, delta: -180 })
   await wait(1200)
-  console.log(`dienst rijdt:       ${await read()}`)
-  await shoot('3-rijdt')
+  console.log(`in OMSI gekozen:    ${await read()}`)
+  console.log(`   route op de kaart: ${await routeLines()} lijnen`)
+  await shoot('3-ibis-stap')
+
+  await pressIbis()
+  await wait(1200)
+  console.log(`IBIS afgemeld:      ${await read()}`)
+  console.log(`   route op de kaart: ${await routeLines()} lijnen`)
+  await shoot('4-rijdt')
 
   send({ legIndex: 0, running: true, clock: first.arrival + 2, delta: 60 })
   await wait(1200)
   console.log(`rit klaar:          ${await read()}`)
-  await shoot('4-rit-klaar')
+  await shoot('5-rit-klaar')
 
   app.exit(0)
 })
