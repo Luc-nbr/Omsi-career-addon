@@ -132,6 +132,34 @@ const objectPathCache = new Map<string, ObjectPath[]>()
  * Alle banen komen mee, in volgorde, want een `.ttr` telt ze allemaal; wie
  * tekent kiest er zelf de rijbanen en sporen uit.
  */
+/**
+ * Draagt dit object een halte?
+ *
+ * Een haltepaal heeft een blok `[busstop]` in zijn `.sco`; struiken, bomen en
+ * bushokjes hebben dat niet. Daarmee is een echte halte te onderscheiden van een
+ * willekeurig object dat toevallig hetzelfde id draagt -- en dat komt voor: op
+ * Thüringer Wald delen negen haltes hun id met een plukje struikgewas ergens
+ * anders op de kaart.
+ */
+const busStopCache = new Map<string, boolean>()
+
+export function isBusStopObject(omsiPath: string, relative: string): boolean {
+  const key = relative.toLowerCase()
+  const known = busStopCache.get(key)
+  if (known !== undefined) return known
+
+  let found = false
+  if (key.endsWith('.sco')) {
+    try {
+      found = readOmsiLines(join(omsiPath, relative)).some((line) => blockTag(line) === '[busstop]')
+    } catch {
+      // Een object dat niet geïnstalleerd is, staat ook niet op de kaart.
+    }
+  }
+  busStopCache.set(key, found)
+  return found
+}
+
 export function objectPaths(omsiPath: string, relative: string): ObjectPath[] {
   const key = relative.toLowerCase()
   const known = objectPathCache.get(key)

@@ -2,6 +2,7 @@ import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { blockTag, num, readOmsiLines, str } from './omsiFile'
 import {
+  isBusStopObject,
   objectPaths,
   PATH_RAIL,
   PATH_ROAD,
@@ -29,6 +30,11 @@ export interface StopPoint {
   /** Meters vanaf de zuidrand. */
   y: number
   name: string
+}
+
+/** Zoals hij tijdens het inlezen bekend is: met of het echt een haltepaal is. */
+interface FoundStop extends StopPoint {
+  real: boolean
 }
 
 /** Een stuk weg of spoor, als aaneengesloten punten in meters. */
@@ -177,7 +183,7 @@ export function readMapData(
   const grid = readTileGrid(mapPath)
   if (wantedIds.size === 0 || !grid) return { geometry: EMPTY, lanes: [] }
 
-  const stops: StopPoint[] = []
+  const stops: FoundStop[] = []
   const roads: RoadLine[] = []
   const lanes: Lane[] = []
   let widthM = 0
@@ -211,9 +217,9 @@ export function readMapData(
       if (tag === '[object]') {
         // velden: vlag, bestandspad, id, x, y, hoogte, rotatie, ...
         const id = str(lines[i + 3])
+        const source = str(lines[i + 2])
         if (!wantedIds.has(id)) {
           // Geen halte, maar misschien wel een kruising of een stuk straat.
-          const source = str(lines[i + 2])
           const paths = objectPaths(omsiPath, source)
           if (paths.length === 0) continue
           const ox = num(lines[i + 4])
@@ -239,7 +245,19 @@ export function readMapData(
             break
           }
         }
-        stops.push({ id, x: dx + num(lines[i + 4]), y: dy + num(lines[i + 5]), name })
+        /*
+         * Meerdere objecten kunnen hetzelfde id dragen -- kaarten zijn met de
+         * hand gebouwd. De haltepaal telt; een struik met datzelfde nummer niet,
+         * want die staat acht kilometer verderop en trekt de route dwars over de
+         * kaart. Kent de kaart voor dit id geen paal, dan houden we wat er is.
+         */
+        stops.push({
+          id,
+          x: dx + num(lines[i + 4]),
+          y: dy + num(lines[i + 5]),
+          name,
+          real: isBusStopObject(omsiPath, source)
+        })
         continue
       }
 
@@ -284,11 +302,24 @@ export function readMapData(
 
   if (stops.length === 0) return { geometry: EMPTY, lanes: [] }
 
+  /*
+   * Eén plek per id, en bij voorkeur die van de haltepaal. Kaarten worden met de
+   * hand gebouwd en hetzelfde nummer komt daarbij soms twee keer voor: op
+   * Thüringer Wald delen negen haltes hun id met een plukje struikgewas ergens
+   * anders op de kaart. Namen ze de verkeerde, dan liep de route kaarsrecht
+   * dwars over de kaart naar een struik.
+   */
+  const best = new Map<string, FoundStop>()
+  for (const stop of stops) {
+    const known = best.get(stop.id)
+    if (!known || (stop.real && !known.real)) best.set(stop.id, stop)
+  }
+
   return {
     geometry: {
       widthM,
       heightM,
-      stops,
+      stops: [...best.values()].map(({ real: _real, ...stop }) => stop),
       roads
     },
     lanes

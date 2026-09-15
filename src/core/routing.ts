@@ -78,6 +78,18 @@ const GRID_M = 40
 /** Verder dan dit van een halte ligt zijn rijstrook niet. */
 const STOP_REACH_M = 30
 
+/**
+ * Levert dat bereik niets op, dan mag de halte nog een keer verder kijken.
+ *
+ * Niet elke haltepaal staat aan de stoeprand: op Thüringer Wald staat "Hof
+ * Geschwenda" veertig meter van de weg, in de berm van een landweg. Zonder deze
+ * tweede poging blijft die halte los van het net, en dan trekt de route een
+ * kaarsrechte lijn van kilometers dwars over de kaart -- veel erger dan een
+ * aanknopingspunt dat er veertig meter naast ligt. Alleen als de eerste ronde
+ * niets vond, dus waar wel een weg vlakbij ligt verandert er niets.
+ */
+const STOP_FAR_REACH_M = 60
+
 /** Strafmeters voor een halte aan de verkeerde kant van de rijstrook. */
 const WRONG_SIDE_M = 20
 
@@ -556,18 +568,20 @@ export class LaneNetwork {
   }
 
   /** Rijstroken bij een halte, beste eerst. */
-  private anchors(stop: StopPoint): Anchor[] {
+  private anchors(stop: StopPoint, reach = STOP_REACH_M): Anchor[] {
     const found = new Map<string, Anchor>()
     const gx = Math.floor(stop.x / GRID_M)
     const gy = Math.floor(stop.y / GRID_M)
-    for (let ox = -1; ox <= 1; ox++) {
-      for (let oy = -1; oy <= 1; oy++) {
+    // Zoveel vakken van veertig meter als het bereik vraagt.
+    const span = Math.max(1, Math.ceil(reach / GRID_M))
+    for (let ox = -span; ox <= span; ox++) {
+      for (let oy = -span; oy <= span; oy++) {
         const cell = this.segments.get(`${gx + ox},${gy + oy}`)
         if (!cell) continue
         for (let k = 0; k < cell.length; k += 2) {
           const lane = cell[k]
           const hit = this.project(lane, cell[k + 1], stop.x, stop.y)
-          if (hit.distance > STOP_REACH_M) continue
+          if (hit.distance > reach) continue
           const direction = this.lanes[lane].direction
           for (const forward of [true, false]) {
             if ((forward && direction === 1) || (!forward && direction === 0)) continue
@@ -580,6 +594,7 @@ export class LaneNetwork {
         }
       }
     }
+    if (found.size === 0 && reach < STOP_FAR_REACH_M) return this.anchors(stop, STOP_FAR_REACH_M)
     return [...found.values()].sort((a, b) => a.penalty - b.penalty).slice(0, ANCHORS)
   }
 
