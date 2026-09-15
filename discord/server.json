@@ -1,93 +1,97 @@
 {
   "naam": "OMSI Enhancer",
   "server-id": "1549504050955948142",
-  "beschrijving": "De inrichting van de Discord-server, als gegevens. Het script leest dit bestand; wie iets wil veranderen, verandert het hier en niet in de code.",
+  "beschrijving": "De inrichting van de Discord-server, als gegevens. Het script leest dit bestand; wie iets wil veranderen, verandert het hier en niet in de code. De server is Duits en Engels: kanaalnamen in het Engels omdat beide groepen die lezen, onderwerpen tweetalig, en praten doe je in je eigen taal in #deutsch of #english.",
 
   "rollen": [
     {
-      "naam": "Ontwikkelaar",
+      "naam": "Developer",
       "kleur": "ffd23f",
       "apart": true,
       "aanspreekbaar": true,
       "waarvoor": "Jij. Dezelfde kleur als het lijnnummer in de app."
     },
     {
-      "naam": "Testrijder",
+      "naam": "Beta",
       "kleur": "4da3ff",
       "apart": true,
       "aanspreekbaar": true,
-      "waarvoor": "Wie een versie vooraf draait en bugs terugkoppelt. Geeft toegang tot #testrijden."
+      "waarvoor": "Wie een versie vooraf draait en terugkoppelt. Geeft toegang tot #beta."
     },
     {
-      "naam": "Chauffeur",
+      "naam": "Driver",
       "kleur": "37d67a",
       "apart": false,
       "aanspreekbaar": false,
-      "waarvoor": "Iedereen die de app gebruikt. Geen rechten, wel een gezicht in de ledenlijst."
+      "waarvoor": "Iedereen die de app gebruikt."
     }
   ],
 
   "categorieen": [
     {
-      "naam": "Begin hier",
+      "naam": "Start here",
       "kanalen": [
         {
-          "naam": "welkom-en-regels",
-          "onderwerp": "Wat OMSI Enhancer is, en hoe we hier met elkaar omgaan. Lees dit eerst.",
+          "naam": "welcome-rules",
+          "onderwerp": "Was OMSI Enhancer ist und wie wir hier miteinander umgehen · What OMSI Enhancer is and how we treat each other here",
           "alleen-lezen": true
         },
         {
-          "naam": "aankondigingen",
-          "onderwerp": "Nieuwe versies en wat erin zit. Zet hem op volgen als je niets wilt missen.",
+          "naam": "announcements",
+          "onderwerp": "Neue Versionen und was drin ist · New releases and what is in them",
           "alleen-lezen": true
         }
       ]
     },
     {
-      "naam": "Rijden",
+      "naam": "Driving",
       "kanalen": [
         {
-          "naam": "algemeen",
-          "onderwerp": "Praten over OMSI, de app, en alles wat erbij hoort."
+          "naam": "deutsch",
+          "onderwerp": "Hier wird deutsch geredet: OMSI, die App, alles drumherum."
         },
         {
-          "naam": "je-dienst",
-          "onderwerp": "Laat zien wat je rijdt: schermafbeeldingen van je dienst, je route, je bus."
+          "naam": "english",
+          "onderwerp": "English channel: OMSI, the app, and everything around it."
         },
         {
-          "naam": "kaarten-en-bussen",
-          "onderwerp": "Welke add-ons werken goed met de app, en welke niet. Waar je ze vandaan haalt."
+          "naam": "your-duty",
+          "onderwerp": "Zeig deinen Dienst: Screenshots von Umlauf, Strecke, Bus · Show your duty: screenshots of your run, route and bus"
+        },
+        {
+          "naam": "maps-and-buses",
+          "onderwerp": "Welche Add-ons gut mit der App laufen, und welche nicht · Which add-ons work well with the app, and which do not"
         }
       ]
     },
     {
-      "naam": "Hulp",
+      "naam": "Help",
       "kanalen": [
         {
-          "naam": "installeren",
-          "onderwerp": "De app werkt niet, OMSI wordt niet gevonden, de plugin doet niets. Hier vragen."
+          "naam": "install-help",
+          "onderwerp": "App startet nicht, OMSI wird nicht gefunden, Plugin tut nichts · App will not start, OMSI not found, plugin does nothing"
         },
         {
-          "naam": "bugs-melden",
-          "onderwerp": "Iets werkt niet zoals het hoort? Gebruik het sjabloon dat vastgepind staat."
+          "naam": "bug-reports",
+          "onderwerp": "Bitte die angepinnte Vorlage benutzen · Please use the pinned template"
         },
         {
-          "naam": "ideeen",
-          "onderwerp": "Wat zou de app moeten kunnen? Eén idee per bericht, dan kunnen anderen erop reageren."
+          "naam": "ideas",
+          "onderwerp": "Ein Vorschlag pro Beitrag, dann kann man darauf antworten · One idea per message, so others can reply to it"
         }
       ]
     },
     {
-      "naam": "Achter de schermen",
+      "naam": "Behind the scenes",
       "kanalen": [
         {
-          "naam": "testrijden",
-          "onderwerp": "Versies die nog niet uit zijn, en wat eraan mankeert.",
-          "alleen-voor": "Testrijder"
+          "naam": "beta",
+          "onderwerp": "Versionen, die noch nicht draußen sind · Versions that are not out yet",
+          "alleen-voor": "Beta"
         },
         {
-          "naam": "ontwikkeling",
-          "onderwerp": "Waar ik mee bezig ben, en waarom iets is zoals het is.",
+          "naam": "development",
+          "onderwerp": "Woran ich arbeite und warum etwas so ist, wie es ist · What I am working on and why things are the way they are",
           "alleen-lezen": true
         }
       ]
