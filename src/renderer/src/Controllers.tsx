@@ -205,7 +205,28 @@ export function ControllersTab({ language }: { language: Language }): JSX.Elemen
       {controller && (
         <>
           <section className="card">
-            <h2 className="section-title">{t(language, 'ctrl.axes')}</h2>
+            <h2 className="section-title">{clean(controller.name)}</h2>
+            {/*
+              Of OMSI dit apparaat meeneemt. Een stuur dat aan staat maar niet is
+              aangesloten, is precies waarom het spel soms niet reageert.
+            */}
+            <div className="setting-head" style={{ marginBottom: 10 }}>
+              <span className="setting-name">{t(language, 'ctrl.use')}</span>
+              <button
+                type="button"
+                className="switch"
+                role="switch"
+                aria-checked={controller.selected}
+                onClick={() => change((item) => ({ ...item, selected: !item.selected }))}
+              >
+                <span className="switch-knob" />
+                <span className="switch-label">
+                  {t(language, controller.selected ? 'cfg.on' : 'cfg.off')}
+                </span>
+              </button>
+            </div>
+
+            <h3 className="section-title">{t(language, 'ctrl.axes')}</h3>
             <p className="note">{t(language, 'ctrl.axesIntro')}</p>
             <div className="axes">
               {Array.from({ length: AXIS_SLOTS }, (_, slot) => {

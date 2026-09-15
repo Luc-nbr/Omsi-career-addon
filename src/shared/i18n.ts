@@ -588,6 +588,12 @@ const TEXT = {
     fr: 'L’ajout inscrit le périphérique dans le fichier OMSI sous le nom donné par Windows. Si OMSI l’orthographie autrement, sélectionnez-le une fois dans le jeu et il apparaîtra ici.',
     nl: 'Toevoegen zet het apparaat in het bestand van OMSI onder de naam die Windows eraan geeft. Schrijft OMSI hem anders, kies het apparaat dan één keer in het spel; daarna staat het hier.'
   },
+  'ctrl.use': {
+    en: 'OMSI uses this device',
+    de: 'OMSI nutzt dieses Gerät',
+    fr: 'OMSI utilise ce périphérique',
+    nl: 'OMSI gebruikt dit apparaat'
+  },
   'ctrl.axes': { en: 'Axes', de: 'Achsen', fr: 'Axes', nl: 'Assen' },
   'ctrl.axesIntro': {
     en: 'Move a pedal or the wheel: the bar that jumps is that axis. Then say what it should do.',
