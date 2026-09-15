@@ -294,6 +294,20 @@ Nog open:
   stadsbaan zonder `.ttr`; de planner kent alleen wegrijstroken en neemt de straat
   naast het spoor. Oplossing: ook een spoornet bouwen en per rit kiezen welk net
   de haltes het best bedient.
+- **Een stuk dat op de richting vastloopt, gaat over hetzelfde net zonder
+  richtingen** (sinds 15-09-2026). Op Rheinhausen liggen Markuskirche en
+  Herrenholz op 3,3 en 0,9 m van een rijstrook -- de straat is er dus -- en toch
+  kwam er geen route uit: wij lezen de richting van een strook ergens verkeerd.
+  `LaneNetwork.bothWays()` bouwt daarom eenmalig hetzelfde net met elke strook
+  beide kanten op, en `routeStops` valt daarop terug. Een route die ergens tegen
+  de richting in loopt is beter dan een kaarsrechte lijn door de huizen. Kosten:
+  60-95 ms per kaart, alleen als het nodig is. Rheinhausen 17 -> 12 rechte lijnen,
+  HamburgLi20 62 -> 30, Hamburg109_2 52 -> 42; `scripts/probe-gaps.ts` telt het.
+- **Wat overblijft zijn haltes die los van de weg staan** (12 van 333 op
+  Rheinhausen). Die staan echt ver van elke rijstrook: "Hauptbahnhof" 4457581
+  staat op tile_5_-4, een tegel met alleen tramrails, 204 m van de dichtstbijzijnde
+  rijstrook. Verder reiken bij het aanhaken zou helpen, maar haakt ook aan
+  straten die niets met de halte te maken hebben; nog niet gedaan.
 - **Onvolledig geïnstalleerde kaarten** zoals `Vienna_2005_Line_24A` hebben geen
   enkele tegel; de kaart blijft leeg. Dat is juist, maar er staat nog geen
   uitleg bij in de interface.

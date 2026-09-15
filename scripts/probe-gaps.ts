@@ -13,6 +13,11 @@
  *   wegennet;
  * - **te ver** -- de zoektocht stopt bij een maximale omweg.
  *
+ * Sinds de terugval op een net waarin elke strook beide kanten op mag, blijft
+ * alleen de eerste soort over: een halte die nergens aan de weg ligt. Wat de
+ * terugval redt staat er apart bij, met de omweg die hij oplevert -- een route
+ * die drie keer zo lang is als de rechte lijn zou verdacht zijn.
+ *
  *   npx tsx scripts/probe-gaps.ts [kaart ...]
  */
 import { readdirSync } from 'node:fs'
@@ -44,6 +49,8 @@ for (const folder of readdirSync(maps)) {
 
   let hops = 0
   let missing = 0
+  let rescued = 0
+  let worstDetour = 0
   const reasons = { loose: 0, direction: 0, split: 0, far: 0 }
   const examples: string[] = []
   const seen = new Set<string>()
@@ -63,6 +70,23 @@ for (const folder of readdirSync(maps)) {
       seen.add(key)
       hops++
       if (network.route(a, b)) continue
+
+      /*
+       * De app geeft het hier niet op: hij probeert het nog eens op een net
+       * waarin elke strook beide kanten op mag. Wat dat oplevert ligt op de weg,
+       * en dat is oneindig veel beter dan een rechte lijn door het landschap.
+       */
+      const rescue = bothWays.route(a, b)
+      if (rescue) {
+        rescued++
+        let length = 0
+        for (let k = 2; k < rescue.length; k += 2) {
+          length += Math.hypot(rescue[k] - rescue[k - 2], rescue[k + 1] - rescue[k - 1])
+        }
+        const detour = length / Math.max(1, Math.hypot(a.x - b.x, a.y - b.y))
+        worstDetour = Math.max(worstDetour, detour)
+        continue
+      }
       missing++
 
       const straight = Math.hypot(a.x - b.x, a.y - b.y)
@@ -70,7 +94,6 @@ for (const folder of readdirSync(maps)) {
       const db = network.distanceToLane(b.x, b.y)
       let why: keyof typeof reasons
       if (da > 30 || db > 30) why = 'loose'
-      else if (bothWays.route(a, b)) why = 'direction'
       else if (straight > 2500) why = 'far'
       else why = 'split'
       reasons[why]++
@@ -86,8 +109,10 @@ for (const folder of readdirSync(maps)) {
   }
 
   console.log(
-    `\n== ${folder}: ${hops - missing}/${hops} stukken gevonden, ${missing} niet\n` +
-      `   halte los van de weg ${reasons.loose}, richting ${reasons.direction}, ` +
+    `\n== ${folder}: ${hops - missing}/${hops} stukken op de weg, ${missing} als rechte lijn\n` +
+      `   waarvan ${rescued} pas lukte zonder op de richting te letten` +
+      (rescued > 0 ? ` (grootste omweg ${worstDetour.toFixed(1)}x de rechte lijn)` : '') +
+      `\n   wat overblijft: halte los van de weg ${reasons.loose}, ` +
       `net valt uiteen ${reasons.split}, te ver ${reasons.far}`
   )
   for (const line of examples) console.log(`   ${line}`)

@@ -142,6 +142,10 @@ interface Cut {
 
 export class LaneNetwork {
   private readonly lanes: Lane[]
+  /** Mag in dit net elke strook beide kanten op? Dan is er geen ruimer net. */
+  private readonly everyWay: boolean
+  /** Datzelfde net, maar dan ruimer; pas gebouwd als het nodig blijkt. */
+  private relaxed?: LaneNetwork
   /** Per rijstrook de afstand langs de lijn bij elk punt. */
   private readonly cumulative: Float64Array[]
   /** Per rijstrook de knopen erop, van begin naar eind. */
@@ -154,6 +158,7 @@ export class LaneNetwork {
 
   constructor(lanes: Lane[]) {
     this.lanes = lanes
+    this.everyWay = lanes.every((lane) => lane.direction === 2)
     this.cumulative = lanes.map((lane) => {
       const p = lane.points
       const cum = new Float64Array(p.length / 2)
@@ -217,6 +222,28 @@ export class LaneNetwork {
   }
 
   /**
+   * Hetzelfde net, maar elke rijstrook mag beide kanten op.
+   *
+   * De richting van een strook staat in de `.sli` en `.sco`, en die lezen we
+   * niet overal goed: op Rheinhausen liggen Markuskirche en Herrenholz op drie
+   * en op één meter van een rijstrook -- de straat is er dus gewoon -- en toch
+   * kwam er geen route uit. Dat is bij vijf van de zeventien gaten op die kaart
+   * zo, en het leverde precies de kaarsrechte lijn dwars door de huizen op
+   * waar geen chauffeur iets aan heeft.
+   *
+   * Wordt alleen gebruikt als het net met de richtingen niets vindt. Een route
+   * die ergens de verkeerde kant op loopt is niet mooi, maar hij ligt op de weg,
+   * en dat is wat de kaart moet laten zien.
+   */
+  private bothWays(): LaneNetwork {
+    if (this.everyWay) return this
+    if (!this.relaxed) {
+      this.relaxed = new LaneNetwork(this.lanes.map((lane) => ({ ...lane, direction: 2 })))
+    }
+    return this.relaxed
+  }
+
+  /**
    * De route langs een reeks haltes, als één lijn. Waar geen weg te vinden is,
    * loopt de lijn recht naar de volgende halte; dan is er op zijn minst iets.
    */
@@ -226,7 +253,9 @@ export class LaneNetwork {
       const a = stops[i - 1]
       const b = stops[i]
       if (Math.hypot(a.x - b.x, a.y - b.y) < 1) continue
-      const found = this.route(a, b)
+      // Eerst netjes met de rijrichtingen; lukt dat niet, dan over dezelfde
+      // wegen zonder op de richting te letten. Zie `bothWays`.
+      const found = this.route(a, b) ?? this.bothWays().route(a, b)
       const before = Math.max(0, points.length / 2 - 1)
       append(points, found ?? [a.x, a.y, b.x, b.y])
       if (guessed) {
