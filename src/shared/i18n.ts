@@ -717,30 +717,6 @@ const TEXT = {
     fr: 'Moment de la journée',
     nl: 'Dagdeel'
   },
-  'app.search': {
-    en: 'Find duties',
-    de: 'Dienste suchen',
-    fr: 'Chercher des services',
-    nl: 'Diensten zoeken'
-  },
-  'app.searchAgain': {
-    en: 'Another roster',
-    de: 'Anderer Dienstplan',
-    fr: 'Autre tableau de service',
-    nl: 'Ander rooster'
-  },
-  'app.roster': {
-    en: 'Roster — {count} duties',
-    de: 'Dienstplan — {count} Dienste',
-    fr: 'Tableau de service — {count} services',
-    nl: 'Rooster — {count} diensten'
-  },
-  'app.pickDuty': {
-    en: 'Choose a duty above.',
-    de: 'Wähle oben einen Dienst.',
-    fr: 'Choisissez un service ci-dessus.',
-    nl: 'Kies hierboven een dienst.'
-  },
   'app.omsiReady': {
     en: 'OMSI is ready. Load your map and bus, and set the duty.',
     de: 'OMSI ist bereit. Lade Karte und Bus und stelle den Dienst ein.',
@@ -862,6 +838,25 @@ const TEXT = {
     fr: '{minutes} min de retard',
     nl: '{minutes} min vertraging'
   },
+
+  // ---------- de voorgestelde dienst ----------
+  'app.generate': { en: 'Generate a duty', de: 'Dienst erzeugen', fr: 'Générer un service', nl: 'Genereer dienst' },
+  'app.regenerate': { en: 'Generate another', de: 'Neu erzeugen', fr: 'En générer un autre', nl: 'Opnieuw genereren' },
+  'prop.title': { en: 'Your duty', de: 'Dein Dienst', fr: 'Votre service', nl: 'Je dienst' },
+  'prop.intro': {
+    en: 'This is what the depot has for you. Everything you need is on the card. Not to your liking? Generate another.',
+    de: 'Das hat der Betriebshof für dich. Alles, was du brauchst, steht auf der Karte. Gefällt er nicht? Erzeuge einen anderen.',
+    fr: 'Voilà ce que le dépôt vous propose. Tout est sur la fiche. Pas à votre goût ? Générez-en un autre.',
+    nl: 'Dit heeft de remise voor je. Alles wat je nodig hebt staat op de kaart. Bevalt hij niet? Genereer een andere.'
+  },
+  'prop.accepted': { en: 'Duty accepted', de: 'Dienst angenommen', fr: 'Service accepté', nl: 'Dienst aangenomen' },
+  'prop.acceptedNote': {
+    en: 'The duty is yours. Start it here: the app sets it up in OMSI and opens the game.',
+    de: 'Der Dienst gehört dir. Starte ihn hier: die App richtet ihn in OMSI ein und öffnet das Spiel.',
+    fr: 'Le service est à vous. Lancez-le ici : l’application le prépare dans OMSI et ouvre le jeu.',
+    nl: 'De dienst is van jou. Start hem hier: de app zet hem klaar in OMSI en opent het spel.'
+  },
+  'prop.close': { en: 'Close', de: 'Schließen', fr: 'Fermer', nl: 'Sluiten' },
 
   // ---------- rooster ----------
   'list.tour': { en: 'tour {tour}', de: 'Umlauf {tour}', fr: 'roulement {tour}', nl: 'omloop {tour}' },

@@ -1621,3 +1621,55 @@ input[type='range'] {
   margin: 10px 0 8px;
   font-size: 22px;
 }
+
+/* ---------- de voorgestelde dienst ---------- */
+
+/*
+ * Breder dan het opstartvenstertje: hier past een hele dienstkaart in, met de
+ * routekaart en de ritten. Hij scrollt van binnen, zodat de knoppen bovenaan
+ * blijven staan.
+ */
+.dialog.proposal {
+  width: min(980px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  padding: 20px 20px 16px;
+  overflow: hidden;
+}
+
+.proposal-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.proposal-head h2 {
+  flex: 1;
+  margin: 0;
+}
+
+.proposal-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.proposal-intro {
+  margin: 8px 0 12px;
+}
+
+.proposal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 -20px -16px;
+  padding: 0 20px 16px;
+}
+
+/* In het venster is de kaart de inhoud; een rand eromheen is er te veel. */
+.proposal-body > .card {
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+}

@@ -24,6 +24,8 @@ interface Props {
   overlayOpen: boolean
   onConfirm(): void
   onCancel(): void
+  /** Alleen in het voorstelvenster: een andere dienst laten uitzoeken. */
+  onRegenerate?(): void
   onBegin(): void
   onToggleOverlay(): void
   onFinish(): void
@@ -47,6 +49,7 @@ export function DutyCard({
   exam,
   onConfirm,
   onCancel,
+  onRegenerate,
   onBegin,
   onToggleOverlay,
   onFinish,
@@ -145,9 +148,16 @@ export function DutyCard({
       <div className="actions">
         {/* Kiezen, bevestigen, starten, afronden: pas bevestigd ligt de dienst vast. */}
         {!confirmed ? (
-          <button type="button" className="btn" onClick={onConfirm} disabled={busy || !vehicle}>
-            {tr('act.confirm')}
-          </button>
+          <>
+            <button type="button" className="btn" onClick={onConfirm} disabled={busy || !vehicle}>
+              {tr('act.confirm')}
+            </button>
+            {onRegenerate && (
+              <button type="button" className="btn secondary" disabled={busy} onClick={onRegenerate}>
+                {tr('app.regenerate')}
+              </button>
+            )}
+          </>
         ) : !started ? (
           <button type="button" className="btn" onClick={onBegin} disabled={busy || !vehicle}>
             {tr('act.start')}

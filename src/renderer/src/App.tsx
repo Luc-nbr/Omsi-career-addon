@@ -16,7 +16,7 @@ import {
 import { formatDuration } from '../../shared/format'
 import { CareerPanel } from './CareerPanel'
 import { DutyCard } from './DutyCard'
-import { DutyList } from './DutyList'
+import { DutyProposal } from './DutyProposal'
 import { FreePlay } from './FreePlay'
 import { GameSetup } from './GameSetup'
 import { LinePicker } from './LinePicker'
@@ -75,6 +75,8 @@ export function App(): JSX.Element {
   const [vehicleOverride, setVehicleOverride] = useState('')
   const [ibis, setIbis] = useState<IbisPlan>()
   const [busy, setBusy] = useState(false)
+  /** Staat het voorstelvenster open? Daar kies je de dienst aan of opnieuw. */
+  const [proposal, setProposal] = useState(false)
   const [started, setStarted] = useState(false)
   const [overlayOpen, setOverlayOpen] = useState(false)
   const [note, setNote] = useState<string>()
@@ -210,11 +212,14 @@ export function App(): JSX.Element {
   }, [duty, vehicle, selectedMap])
 
   /**
-   * Zoekt diensten. In de carrièremodus alleen op lijnen met een vergunning, en
-   * dan wijst de remise er meteen een aan: daar is het die modus voor.
+   * Genereert een dienst en legt hem voor.
+   *
+   * De remise wijst er één toe in plaats van een rooster van acht waaruit je
+   * maar wat kiest. Bevalt hij niet, dan genereer je een andere; er komt elke
+   * keer een andere uit, want de dienst wordt uit de dienstregeling gelopen.
    */
-  const search = useCallback(
-    async (onlyLine?: string, assign?: boolean) => {
+  const generate = useCallback(
+    async (onlyLine?: string) => {
       if (confirmed) return
       setBusy(true)
       setError(undefined)
@@ -231,13 +236,19 @@ export function App(): JSX.Element {
           // want dan zoekt de planner naar een lijn die zo heet.
           lineFile: (onlyLine ?? lineFile) || undefined
         })
-        setDuties(found)
-        if (assign && found.length > 0) setSelected(0)
         if (found.length === 0) {
+          setDuties([])
+          setProposal(false)
           setError(
             t(language, 'app.noDuty', { length: formatDuration(LENGTHS[lengthIndex], language) })
           )
+          return
         }
+        // Er komen er meerdere terug; we leggen er één voor.
+        const pick = found[Math.floor(Math.random() * found.length)]
+        setDuties([pick])
+        setSelected(0)
+        setProposal(true)
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause))
       } finally {
@@ -285,9 +296,16 @@ export function App(): JSX.Element {
         yard: ibis?.yard
       })
       setStarted(true)
-      setOverlayOpen(true)
-      // Alleen wachten als we het spel zelf hebben aangezwengeld.
-      setStarting(result.launched)
+      setProposal(false)
+      /*
+       * De overlay hoort pas in beeld te komen als het spel er is. Draait OMSI
+       * al met de plugin, dan is dat nu; anders blijft het venstertje staan tot
+       * de plugin gegevens doorgeeft en gaat de overlay op dat moment open.
+       */
+      if (result.connected) {
+        setOverlayOpen(await window.career.setOverlay(duty, true, ibis))
+      }
+      setStarting(!result.connected)
 
       const lines: string[] = []
       if (result.prepareError) {
@@ -471,6 +489,8 @@ export function App(): JSX.Element {
           onDone={() => {
             setStarting(false)
             setNote(t(language, 'app.omsiReady'))
+            // Nu pas: het spel draait, dus de overlay heeft iets om boven te hangen.
+            if (duty) void window.career.setOverlay(duty, true, ibis).then(setOverlayOpen)
           }}
           onDismiss={() => setStarting(false)}
         />
@@ -517,7 +537,7 @@ export function App(): JSX.Element {
                 mapFolder={mapFolder}
                 onMapChange={setMapFolder}
                 busy={busy || confirmed}
-                onAssign={(licensedLine) => void search(licensedLine, true)}
+                onAssign={(licensedLine) => void generate(licensedLine)}
                 onExam={async (line, basic) => {
                   setBusy(true)
                   setError(undefined)
@@ -618,11 +638,16 @@ export function App(): JSX.Element {
                   <button
                     type="button"
                     className="btn"
-                    onClick={() => void search()}
+                    onClick={() => void generate()}
                     disabled={busy || confirmed}
                   >
-                    {t(language, duties.length > 0 ? 'app.searchAgain' : 'app.search')}
+                    {t(language, 'app.generate')}
                   </button>
+                  {duties.length > 0 && !proposal && (
+                    <button type="button" className="btn secondary" onClick={() => setProposal(true)}>
+                      {t(language, 'prop.title')}
+                    </button>
+                  )}
                   <PluginNote status={plugin} language={language} />
                 </div>
                 {confirmed && (
@@ -640,38 +665,50 @@ export function App(): JSX.Element {
               </section>
             )}
 
-            {mode === 'service' && duties.length > 0 && !confirmed && (
-              <section className="card">
-                <h2 className="section-title">{t(language, 'app.roster', { count: duties.length })}</h2>
-                <DutyList duties={duties} selected={selected} onSelect={setSelected} />
-              </section>
-            )}
-
-            {assignment ? (
-              <DutyCard
-                assignment={assignment}
-                ibis={ibis}
-                vehicle={vehicle}
-                vehicleGroups={vehicleGroups}
-                vehicleOverride={vehicleOverride}
-                onVehicleChange={setVehicleOverride}
-                busy={busy}
-                confirmed={confirmed}
-                started={started}
-                overlayOpen={overlayOpen}
-                exam={Boolean(exam)}
-                onConfirm={() => void confirmDuty()}
-                onCancel={cancelDuty}
-                onBegin={begin}
-                onToggleOverlay={toggleOverlay}
-                onFinish={finish}
-                printers={printers}
-                printer={printer}
-                onPrinterChange={setPrinter}
-              />
-            ) : (
-              duties.length > 0 && <p className="empty">{t(language, 'app.pickDuty')}</p>
-            )}
+            {/*
+              Dezelfde kaart, twee plekken: in het voorstelvenster zolang dat
+              openstaat, en anders gewoon op het scherm. Eén kaart, want alles
+              wat je moet weten staat erop.
+            */}
+            {assignment &&
+              (() => {
+                const card = (
+                  <DutyCard
+                    assignment={assignment}
+                    ibis={ibis}
+                    vehicle={vehicle}
+                    vehicleGroups={vehicleGroups}
+                    vehicleOverride={vehicleOverride}
+                    onVehicleChange={setVehicleOverride}
+                    busy={busy}
+                    confirmed={confirmed}
+                    started={started}
+                    overlayOpen={overlayOpen}
+                    exam={Boolean(exam)}
+                    onConfirm={() => void confirmDuty()}
+                    onCancel={cancelDuty}
+                    onBegin={begin}
+                    onToggleOverlay={toggleOverlay}
+                    onFinish={finish}
+                    printers={printers}
+                    printer={printer}
+                    onPrinterChange={setPrinter}
+                  />
+                )
+                return proposal ? (
+                  <DutyProposal
+                    language={language}
+                    confirmed={confirmed}
+                    busy={busy}
+                    onRegenerate={() => void generate()}
+                    onClose={() => setProposal(false)}
+                  >
+                    {card}
+                  </DutyProposal>
+                ) : (
+                  card
+                )
+              })()}
           </>
         )}
       </main>

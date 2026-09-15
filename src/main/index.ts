@@ -706,7 +706,13 @@ function registerHandlers(): void {
     return readKeyboard(omsi())
   })
 
-  ipcMain.handle('omsi:live', () => Boolean(readLive()?.alive))
+  /*
+   * "Draait OMSI?" betekent: geeft de plugin nu gegevens door. Een live.json van
+   * een vorige sessie blijft met alive:true op schijf staan, en daarop afgaan
+   * zou het opstartvenster meteen sluiten en de overlay boven een spel hangen
+   * dat nog aan het laden is.
+   */
+  ipcMain.handle('omsi:live', () => Boolean(freshLive()?.alive))
 
   /** Printers die Windows kent, met de standaardprinter vooraan. */
   ipcMain.handle('print:printers', async (event) => {
@@ -974,7 +980,14 @@ function registerHandlers(): void {
 
     captureBaseline()
     const live = freshLive()
-    openOverlay(duty, ibis)
+    /*
+     * De overlay gaat pas open als het spel er is. Draait OMSI al met de plugin,
+     * dan kan dat nu; anders wacht de app op het venstertje dat meldt dat het
+     * spel geladen is, en opent hem daar. Een overlay die boven een leeg
+     * bureaublad hangt terwijl OMSI nog aan het laden is, is alleen maar in de
+     * weg.
+     */
+    if (live?.alive) openOverlay(duty, ibis)
 
     // Het spel erbij starten, tenzij het al draait.
     let launched = false
