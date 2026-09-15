@@ -27,11 +27,17 @@
   position: absolute;
   display: flex;
   flex-direction: column;
-  background: rgba(12, 16, 22, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-left: 3px solid #f0b429;
+  /*
+   * --fade is de dichtheid uit de schuif in de titelbalk. Alles wat het spel
+   * afdekt rekent ermee: de achtergrond, de randen en het waas erachter. De
+   * titelbalk zelf blijft erbuiten, anders kun je de schuif niet meer aflezen
+   * op het moment dat je hem gebruikt.
+   */
+  background: rgba(12, 16, 22, calc(0.82 * var(--fade, 1)));
+  border: 1px solid rgba(255, 255, 255, calc(0.09 * var(--fade, 1)));
+  border-left: 3px solid rgba(240, 180, 41, var(--fade, 1));
   border-radius: 10px;
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(calc(6px * var(--fade, 1)));
 }
 
 .editing .panel {
@@ -41,6 +47,7 @@
 .panel-body {
   flex: 1;
   min-height: 0;
+  opacity: var(--fade, 1);
   padding: 9px 13px 11px;
 }
 
@@ -611,4 +618,57 @@
   font-variant-numeric: tabular-nums;
   min-width: 34px;
   text-align: center;
+}
+
+/* De schuif voor de doorzichtigheid, naast de vergroting in dezelfde balk. */
+.panel-fade {
+  appearance: none;
+  width: 56px;
+  height: 4px;
+  margin: 0 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgba(240, 180, 41, 0.22), #f0b429);
+  cursor: pointer;
+}
+
+.panel-fade::-webkit-slider-thumb {
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border: none;
+  border-radius: 50%;
+  background: #e6ecf5;
+}
+
+/* ---------- tijden bij de haltes ---------- */
+
+.stop-time {
+  margin-left: auto;
+  padding-left: 8px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  color: #8d9bad;
+  font-variant-numeric: tabular-nums;
+}
+
+.stop.now .stop-time {
+  color: #f0b429;
+  font-weight: 700;
+}
+
+.stop.done .stop-time {
+  color: #5a6472;
+}
+
+.value-time {
+  margin-left: 8px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 13px;
+  color: #8d9bad;
+  font-weight: 400;
+}
+
+/* Voor op de dienstregeling is net zo goed het vermelden waard als achter. */
+.delay.early {
+  color: #6fb8ff;
 }

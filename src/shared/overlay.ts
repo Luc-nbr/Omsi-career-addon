@@ -23,6 +23,11 @@ export interface PanelState {
    * ruimte; hiermee wordt alles groter, voor wie verder van het scherm zit.
    */
   scale: number
+  /**
+   * Hoe dicht het element is. De navigatie ligt over de weg heen, dus wie er
+   * doorheen wil kunnen kijken zet hem lichter.
+   */
+  opacity: number
   /** Alleen de navigatie heeft een eigen hoogte; het paneel groeit met zijn inhoud. */
   h: number
   visible: boolean
@@ -48,6 +53,9 @@ export const SCALE_MIN = 0.6
 export const SCALE_MAX = 2.2
 export const SCALE_STEP = 0.1
 
+/** Nog lichter dan dit en er valt niets meer af te lezen. */
+export const OPACITY_MIN = 0.25
+
 export const PANELS: PanelInfo[] = [
   { id: 'dienst', title: 'Dienst', minW: 230, minH: 60, autoHeight: true },
   { id: 'navigatie', title: 'Navigatie', minW: 240, minH: 170 }
@@ -56,8 +64,8 @@ export const PANELS: PanelInfo[] = [
 /** Het paneel linksboven, de navigatie eronder. */
 export const DEFAULT_LAYOUT: OverlayLayout = {
   detail: 1,
-  dienst: { x: 24, y: 30, w: 320, h: 0, scale: 1, visible: true },
-  navigatie: { x: 24, y: 470, w: 360, h: 300, scale: 1, visible: true }
+  dienst: { x: 24, y: 30, w: 320, h: 0, scale: 1, opacity: 1, visible: true },
+  navigatie: { x: 24, y: 470, w: 360, h: 300, scale: 1, opacity: 1, visible: true }
 }
 
 export function defaultLayout(): OverlayLayout {
@@ -90,6 +98,7 @@ export function mergeLayout(saved: unknown): OverlayLayout {
       w: Math.max(panel.minW, numberOr(state.w, fallback.w)),
       h: Math.max(panel.minH, numberOr(state.h, fallback.h)),
       scale: Math.min(SCALE_MAX, Math.max(SCALE_MIN, numberOr(state.scale, 1))),
+      opacity: Math.min(1, Math.max(OPACITY_MIN, numberOr(state.opacity, 1))),
       visible: state.visible !== false
     }
   }

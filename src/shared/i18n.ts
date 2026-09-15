@@ -583,7 +583,7 @@ const TEXT = {
   'act.prepared': {
     en: 'Ready. In OMSI choose the situation "OMSI Career" and press Start — the date, the time and the bus are already set.',
     de: 'Fertig. Wähle in OMSI die Situation "OMSI Career" und drücke Start — Datum, Uhrzeit und Bus stehen schon.',
-    fr: 'Prêt. Dans OMSI, choisissez la situation « OMSI Career » et appuyez sur Start — la date, l’heure et le bus sont déj\u00e0 réglés.',
+    fr: 'Prêt. Dans OMSI, choisissez la situation « OMSI Career » et appuyez sur Start — la date, l’heure et le bus sont déjà réglés.',
     nl: 'Klaar. Kies in OMSI de situatie "OMSI Career" en druk op Start — de datum, de tijd en de bus staan al goed.'
   },
   'act.preparedNoSpawn': {
@@ -695,6 +695,9 @@ const TEXT = {
   },
   'ovl.noData': { en: 'No data', de: 'Keine Daten', fr: 'Aucune donnée', nl: 'Geen gegevens' },
   'ovl.ontime': { en: 'on time', de: 'pünktlich', fr: 'à l’heure', nl: 'op tijd' },
+  'ovl.onTheDot': { en: 'on the dot', de: 'auf die Sekunde', fr: 'à la seconde', nl: 'op de seconde' },
+  'ovl.aheadBy': { en: '{time} early', de: '{time} zu früh', fr: '{time} en avance', nl: '{time} te vroeg' },
+  'ovl.behindBy': { en: '{time} late', de: '{time} zu spät', fr: '{time} de retard', nl: '{time} te laat' },
   'ovl.late': { en: '+{minutes} min', de: '+{minutes} Min', fr: '+{minutes} min', nl: '+{minutes} min' },
   'ovl.done': {
     en: 'Duty finished — close it in the app',
@@ -914,6 +917,12 @@ const TEXT = {
   },
   'ovl.smaller': { en: 'Smaller', de: 'Kleiner', fr: 'Plus petit', nl: 'Kleiner' },
   'ovl.bigger': { en: 'Bigger', de: 'Größer', fr: 'Plus grand', nl: 'Groter' },
+  'ovl.opacity': {
+    en: 'Transparency',
+    de: 'Transparenz',
+    fr: 'Transparence',
+    nl: 'Doorzichtigheid'
+  },
   'ovl.centre': {
     en: 'Centre on the bus',
     de: 'Auf den Bus zentrieren',

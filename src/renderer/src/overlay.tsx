@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type JSX, type PointerEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type JSX,
+  type PointerEvent
+} from 'react'
 import { createRoot } from 'react-dom/client'
 import type { MapGeometry } from '../../core/geo'
 import type { IbisPlan } from '../../core/ibis'
@@ -8,6 +16,7 @@ import type { CareerApi } from '../../shared/api'
 import { formatTime } from '../../shared/format'
 import { DEFAULT_LANGUAGE, loose, t, type Language } from '../../shared/i18n'
 import {
+  OPACITY_MIN,
   PANELS,
   SCALE_MAX,
   SCALE_MIN,
@@ -283,16 +292,21 @@ function Panel({
   return (
     <section
       className={`panel panel-${info.id}`}
-      style={{
-        left: state.x,
-        top: state.y,
-        width: state.w,
-        height: info.autoHeight ? undefined : state.h,
-        // Schalen bij de linkerbovenhoek: dan blijft het element staan waar je
-        // het hebt neergezet en groeit het naar rechtsonder weg.
-        transform: state.scale === 1 ? undefined : `scale(${state.scale})`,
-        transformOrigin: 'top left'
-      }}
+      style={
+        {
+          left: state.x,
+          top: state.y,
+          width: state.w,
+          height: info.autoHeight ? undefined : state.h,
+          // Schalen bij de linkerbovenhoek: dan blijft het element staan waar je
+          // het hebt neergezet en groeit het naar rechtsonder weg.
+          transform: state.scale === 1 ? undefined : `scale(${state.scale})`,
+          transformOrigin: 'top left',
+          // Eigen eigenschap: de stylesheet rekent er de dichtheid van de
+          // achtergrond, de randen en de inhoud mee uit.
+          '--fade': state.opacity
+        } as CSSProperties
+      }
       onPointerMove={onMove}
       onPointerUp={stop}
       onPointerCancel={stop}
@@ -319,6 +333,22 @@ function Panel({
           >
             +
           </button>
+          {/*
+            De schuif zit in de balk waaraan je sleept, dus een sleep erop zou
+            het hele element meenemen; stopPropagation houdt hem bij de schuif.
+          */}
+          <input
+            type="range"
+            className="panel-fade"
+            min={Math.round(OPACITY_MIN * 100)}
+            max={100}
+            step={5}
+            value={Math.round(state.opacity * 100)}
+            title={`${t(language, 'ovl.opacity')} ${Math.round(state.opacity * 100)}%`}
+            aria-label={t(language, 'ovl.opacity')}
+            onPointerDown={(event) => event.stopPropagation()}
+            onChange={(event) => onChange({ opacity: Number(event.target.value) / 100 })}
+          />
           <button
             type="button"
             className="panel-hide"
@@ -373,7 +403,6 @@ function DutyPanel({
     )
   }
 
-  const late = status.delayMinutes >= 1
   const passed = walkedStops(status)
   const total = leg?.stops.length ?? 0
 
@@ -382,10 +411,7 @@ function DutyPanel({
       <div className="topline">
         <span className="clock">{formatTime(status.clockMinutes)}</span>
         {leg && <span className="line">{leg.lineNumber}</span>}
-        <span className={`delay ${late ? 'late' : 'ontime'}`}>
-          {late ? tr('ovl.late', { minutes: Math.round(status.delayMinutes) }) : tr('ovl.ontime')}
-          {status.delayFromIbis ? '' : '*'}
-        </span>
+        <Delta status={status} tr={tr} />
         <button
           type="button"
           className="expand"
@@ -497,6 +523,42 @@ function DutyPanel({
           </div>
         ))}
     </>
+  )
+}
+
+/**
+ * Voor of achter op de dienstregeling, op de seconde.
+ *
+ * Het verschil komt uit de tijd die bij de eerstvolgende halte hoort; is die er
+ * niet -- geen IBIS, geen dienstregeling in het menu -- dan valt hij terug op de
+ * vertraging in hele minuten die de bus zelf meldt.
+ */
+function Delta({
+  status,
+  tr
+}: {
+  status: LiveStatus
+  tr: (key: Parameters<typeof t>[1], vars?: Record<string, string | number>) => string
+}): JSX.Element {
+  const delta = status.deltaSeconds
+  if (delta === undefined) {
+    const late = status.delayMinutes >= 1
+    return (
+      <span className={`delay ${late ? 'late' : 'ontime'}`}>
+        {late ? tr('ovl.late', { minutes: Math.round(status.delayMinutes) }) : tr('ovl.ontime')}
+        {status.delayFromIbis ? '' : '*'}
+      </span>
+    )
+  }
+
+  // Binnen een halve minuut heet het op tijd; daarbuiten telt elke seconde.
+  const size = Math.abs(delta)
+  const clock = `${Math.floor(size / 60)}:${String(size % 60).padStart(2, '0')}`
+  const state = size < 30 ? 'ontime' : delta > 0 ? 'late' : 'early'
+  return (
+    <span className={`delay ${state}`} title={tr('ovl.onTheDot')}>
+      {size < 30 ? tr('ovl.ontime') : `${delta > 0 ? '+' : '\u2212'}${clock}`}
+    </span>
   )
 }
 
@@ -717,6 +779,9 @@ function NextStops({
             <li key={`${index2}-${name}`} className={`stop ${state}`}>
               <span className="pin" />
               <span className="name">{name}</span>
+              {leg.stopTimes[index2] !== undefined && (
+                <span className="stop-time">{formatTime(leg.stopTimes[index2])}</span>
+              )}
               {index2 === total - 1 && <span className="tag">{tr('ovl.endpoint')}</span>}
             </li>
           )
