@@ -307,6 +307,25 @@ function stopIndexByName(
 }
 
 /**
+ * Welke halte aan de beurt is volgens de klok.
+ *
+ * Terugval voor als OMSI een naam meldt die niet in deze rit voorkomt. Zijn
+ * nummer overnemen kan niet -- dat telt in zijn eigen lijst -- en dan zou de
+ * halteteller ineens tien plaatsen verspringen. De klok weet het ook: de eerste
+ * halte waarvan de geplande tijd nog voor ons ligt.
+ */
+function stopIndexByTime(
+  leg: DutyLeg | undefined,
+  clockMinutes: number,
+  delayMinutes: number
+): number | undefined {
+  if (!leg || leg.stopTimes.length === 0) return undefined
+  const onSchedule = clockMinutes - delayMinutes
+  const at = leg.stopTimes.findIndex((when) => when >= onSchedule)
+  return at >= 0 ? at : Math.max(0, leg.stops.length - 1)
+}
+
+/**
  * Het verschil met de dienstregeling, op de seconde.
  *
  * De klok van het spel en de tijd die bij de eerstvolgende halte hoort staan
@@ -424,7 +443,7 @@ export function describeLive(
 
   const fromIbis = ibisDelay(data)
   let delayMinutes = 0
-  if (fromMenu && data.mem) {
+  if (fromMenu && data.mem && Math.abs(data.mem.delay) <= MAX_SENSIBLE_DELAY_S) {
     // OMSI houdt de vertraging van een rijdende dienstregeling in seconden bij.
     delayMinutes = data.mem.delay / 60
   } else if (fromIbis !== undefined) {
@@ -459,13 +478,11 @@ export function describeLive(
    * dienstregeling in het menu de teller van de IBIS.
    */
   const byName = fromMenu && data.mem ? stopIndexByName(leg, data.mem.nextStop, clockMinutes, delayMinutes) : undefined
-  const stopIndex =
-    byName ??
-    (fromMenu && data.mem && data.mem.nextIndex >= 0
-      ? Math.min(data.mem.nextIndex, Math.max(0, (leg?.stops.length ?? 1) - 1))
-      : has(data, BIT.busstopIndex) && data.busstop.trim() !== ''
-        ? Math.max(0, Math.round(data.busstopIndex))
-        : undefined)
+  const stopIndex = fromMenu
+    ? byName ?? stopIndexByTime(leg, clockMinutes, delayMinutes)
+    : has(data, BIT.busstopIndex) && data.busstop.trim() !== ''
+      ? Math.max(0, Math.round(data.busstopIndex))
+      : undefined
 
   return {
     clockMinutes,
@@ -491,15 +508,18 @@ export function describeLive(
      * tijd die bij de eerstvolgende halte hoort.
      */
     /*
-     * Het getal van OMSI, maar alleen als het ergens op slaat. Zolang er geen
-     * dienstregeling rijdt staat er van alles in dat geheugen -- er is een
-     * verschil van zesenhalf jaar voorbijgekomen -- en dan rekenen we het liever
-     * zelf uit tegen de eerstvolgende halte.
+     * Eén bron tegelijk. Rijdt er een dienstregeling in OMSI, dan is dat het
+     * getal van OMSI en niets anders: onze eigen som meet tegen de aankomsttijd
+     * van de volgende halte en komt daardoor een paar minuten anders uit. Door
+     * tussen die twee te wisselen sprong het verschil heen en weer zonder dat er
+     * iets gebeurd was. Slaat het getal van OMSI nergens op, dan tonen we liever
+     * niets dan een ander soort getal.
      */
-    deltaSeconds:
-      fromMenu && data.mem && Math.abs(data.mem.delay) <= MAX_SENSIBLE_DELAY_S
+    deltaSeconds: fromMenu
+      ? data.mem && Math.abs(data.mem.delay) <= MAX_SENSIBLE_DELAY_S
         ? Math.round(data.mem.delay)
-        : scheduleDelta(leg, stopIndex, clockMinutes),
+        : undefined
+      : scheduleDelta(leg, stopIndex, clockMinutes),
     mood,
     moodLabel: !hasPassengers
       ? 'empty'

@@ -41,7 +41,19 @@ function dutyFor(mapFolder: string) {
   const key = mem!.tripName.trim().toLowerCase()
   for (let attempt = 0; attempt < 40; attempt++) {
     for (const duty of generateDuties(map, net, { targetMinutes: 90, lineFile: mem!.lineName.trim() }, 8)) {
-      if (duty.legs.some((leg) => leg.tripFile.toLowerCase() === key)) return duty
+      /*
+       * Ook de omloop moet kloppen. Een dienst kan onderweg overstappen, en een
+       * dienst die dezelfde rit in een andere omloop rijdt is niet de dienst die
+       * in OMSI stond -- dan herkent de app hem terecht niet.
+       */
+      const tour = mem!.tourName.trim()
+      if (
+        duty.legs.some(
+          (leg) => leg.tripFile.toLowerCase() === key && (!tour || leg.tourNumber.trim() === tour)
+        )
+      ) {
+        return duty
+      }
     }
   }
   return undefined
