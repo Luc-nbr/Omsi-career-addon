@@ -1690,3 +1690,37 @@ input[type='range'] {
   color: var(--accent);
   margin-right: 4px;
 }
+
+/* ---------- terwijl je rijdt ---------- */
+
+/*
+ * Het scherm in de bus. Groter lettertype dan de dienstkaart: je kijkt er met
+ * een half oog naar, tussen twee haltes door, en dan moet de lijn en de route
+ * van een meter afstand leesbaar zijn.
+ */
+.card.running {
+  max-width: 720px;
+}
+
+.running-grid {
+  margin-top: 16px;
+}
+
+.running-grid .ibis-field {
+  padding: 10px 18px;
+}
+
+.running-grid .ibis-field.wide b {
+  font-size: 19px;
+  color: var(--text);
+}
+
+.running-status {
+  margin-top: 14px;
+  font-size: 13.5px;
+}
+
+/* Annuleren staat apart: dat is de knop die je niet per ongeluk wilt raken. */
+.running-cancel {
+  margin-left: auto;
+}

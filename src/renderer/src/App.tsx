@@ -11,7 +11,8 @@ import {
   type CareerPayload,
   type DutyRequest,
   type MapSummary,
-  type PrinterInfo
+  type PrinterInfo,
+  type SessionResult
 } from '../../shared/api'
 import { formatDuration } from '../../shared/format'
 import { CareerPanel } from './CareerPanel'
@@ -22,6 +23,7 @@ import { GameSetup } from './GameSetup'
 import { LinePicker } from './LinePicker'
 import { Modes } from './Modes'
 import { Profiles } from './Profiles'
+import { RunningDuty } from './RunningDuty'
 import { Sidebar } from './Sidebar'
 import { StartingDialog } from './StartingDialog'
 import { Welcome } from './Welcome'
@@ -82,6 +84,9 @@ export function App(): JSX.Element {
   const [note, setNote] = useState<string>()
   const [plugin, setPlugin] = useState<PluginStatus>()
   const [starting, setStarting] = useState(false)
+  /** Wat OMSI tijdens het rijden doorgeeft; voedt het compacte scherm. */
+  const [session, setSession] = useState<SessionResult>()
+  const [connected, setConnected] = useState(false)
   const [printers, setPrinters] = useState<PrinterInfo[]>([])
   const [printer, setPrinter] = useState('')
   const finishRef = useRef<(() => Promise<void>) | undefined>(undefined)
@@ -336,12 +341,21 @@ export function App(): JSX.Element {
    * de bus stil. Dan boekt de app hem zelf, zoals een chauffeur die afmeldt.
    */
   useEffect(() => {
-    if (!started) return
-    const timer = setInterval(() => {
+    if (!started) {
+      setSession(undefined)
+      setConnected(false)
+      return
+    }
+    const look = (): void => {
       void window.career.checkSession().then((result) => {
+        setSession(result)
         if (result.dutyComplete) void finishRef.current?.()
       })
-    }, 5000)
+      void window.career.liveConnected().then(setConnected)
+    }
+    // Meteen kijken, anders staat het scherm de eerste vijf seconden leeg.
+    look()
+    const timer = setInterval(look, 5000)
     return () => clearInterval(timer)
   }, [started])
 
@@ -507,13 +521,23 @@ export function App(): JSX.Element {
           </button>
         </div>
 
-        {/* De kop zegt in welke modus je bent; alleen bij dienst is dat "dienst kiezen". */}
-        <h1>{mode === 'service' ? t(language, 'app.title') : t(language, `mode.${mode}` as const)}</h1>
-        <p className="subtitle">
-          {mode === 'service'
-            ? t(language, 'app.subtitle')
-            : t(language, mode === 'career' ? 'mode.careerIntro' : 'mode.freeIntro')}
-        </p>
+        {/*
+          De kop zegt in welke modus je bent; alleen bij dienst is dat "dienst
+          kiezen". Rijdt de dienst, dan valt er niets meer te kiezen en zegt het
+          compacte scherm zelf wel waar je aan toe bent.
+        */}
+        {!started && (
+          <>
+            <h1>
+              {mode === 'service' ? t(language, 'app.title') : t(language, `mode.${mode}` as const)}
+            </h1>
+            <p className="subtitle">
+              {mode === 'service'
+                ? t(language, 'app.subtitle')
+                : t(language, mode === 'career' ? 'mode.careerIntro' : 'mode.freeIntro')}
+            </p>
+          </>
+        )}
 
         {mode === 'free' ? (
           <FreePlay
@@ -528,7 +552,7 @@ export function App(): JSX.Element {
           />
         ) : (
           <>
-            {mode === 'career' && career?.state && (
+            {mode === 'career' && career?.state && !started && (
               <CareerPanel
                 language={language}
                 state={career.state}
@@ -569,7 +593,7 @@ export function App(): JSX.Element {
               />
             )}
 
-            {mode === 'service' && (
+            {mode === 'service' && !started && (
               <section className="card">
                 <div className="field-grid">
                   <div>
@@ -695,19 +719,42 @@ export function App(): JSX.Element {
                     onPrinterChange={setPrinter}
                   />
                 )
-                return proposal ? (
-                  <DutyProposal
-                    language={language}
-                    confirmed={confirmed}
-                    busy={busy}
-                    onRegenerate={() => void generate()}
-                    onClose={() => setProposal(false)}
-                  >
-                    {card}
-                  </DutyProposal>
-                ) : (
-                  card
-                )
+                if (proposal) {
+                  return (
+                    <DutyProposal
+                      language={language}
+                      confirmed={confirmed}
+                      busy={busy}
+                      onRegenerate={() => void generate()}
+                      onClose={() => setProposal(false)}
+                    >
+                      {card}
+                    </DutyProposal>
+                  )
+                }
+                /*
+                 * Zodra de dienst loopt zit je in de bus. Dan hoort er alleen te
+                 * staan wat je voor de eerste rit nodig hebt; de hele kaart en de
+                 * route gaan achter een knop.
+                 */
+                if (started && duty) {
+                  return (
+                    <RunningDuty
+                      duty={duty}
+                      ibis={ibis}
+                      session={session}
+                      connected={connected}
+                      busy={busy}
+                      exam={Boolean(exam)}
+                      overlayOpen={overlayOpen}
+                      onToggleOverlay={toggleOverlay}
+                      onCancel={cancelDuty}
+                      onFinish={finish}
+                      full={card}
+                    />
+                  )
+                }
+                return card
               })()}
           </>
         )}

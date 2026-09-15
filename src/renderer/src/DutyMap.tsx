@@ -75,6 +75,52 @@ export function DutyMap({ duty, ibis }: Props): JSX.Element {
   )
 }
 
+/**
+ * De grote kaart, los van de dienstkaart.
+ *
+ * Tijdens het rijden staat er geen dienstkaart meer op het scherm -- daar past
+ * alleen de kern van de eerste rit -- maar de route wil je wel kunnen opzoeken.
+ * Dit is dezelfde kaart achter een eigen knop, die zijn eigen posities ophaalt.
+ */
+export function RouteViewer({
+  duty,
+  ibis,
+  onClose
+}: {
+  duty: Duty
+  ibis?: IbisPlan
+  onClose(): void
+}): JSX.Element {
+  const [geometry, setGeometry] = useState<MapGeometry>()
+  const tr = useT()
+
+  useEffect(() => {
+    let current = true
+    void window.career.geometry(duty.mapFolder).then((found) => {
+      if (current) setGeometry(found)
+    })
+    return () => {
+      current = false
+    }
+  }, [duty.mapFolder])
+
+  // Het inlezen duurt even; een knop die niets lijkt te doen is erger dan wachten.
+  if (!geometry) {
+    return (
+      <div className="backdrop">
+        <section className="dialog">
+          <h2>{tr('map.title')}</h2>
+          <p className="note">{tr('map.reading')}</p>
+          <button type="button" className="btn secondary" onClick={onClose}>
+            {tr('map.close')}
+          </button>
+        </section>
+      </div>
+    )
+  }
+  return <RouteWindow duty={duty} ibis={ibis} geometry={geometry} onClose={onClose} />
+}
+
 /** De hele dienst op een grote kaart, met de haltes ernaast. */
 function RouteWindow({
   duty,

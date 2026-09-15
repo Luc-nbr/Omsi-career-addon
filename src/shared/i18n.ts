@@ -858,6 +858,45 @@ const TEXT = {
   },
   'prop.close': { en: 'Close', de: 'Schließen', fr: 'Fermer', nl: 'Sluiten' },
 
+  // ---------- terwijl je rijdt ----------
+  'run.title': { en: 'On the road', de: 'Unterwegs', fr: 'En service', nl: 'Je rijdt' },
+  'run.sub': {
+    en: '{map} · {trips} trips in this duty',
+    de: '{map} · {trips} Fahrten in diesem Dienst',
+    fr: '{map} · {trips} courses dans ce service',
+    nl: '{map} · {trips} ritten in deze dienst'
+  },
+  'run.firstTrip': { en: 'first trip', de: 'erste Fahrt', fr: 'première course', nl: 'eerste rit' },
+  'run.route': { en: 'Route', de: 'Route', fr: 'Parcours', nl: 'Route' },
+  'run.departs': { en: 'Departs', de: 'Abfahrt', fr: 'Départ', nl: 'Vertrek' },
+  'run.from': { en: 'From stop', de: 'Ab Haltestelle', fr: 'Depuis l’arrêt', nl: 'Vanaf halte' },
+  'run.towards': { en: 'Towards', de: 'Richtung', fr: 'Direction', nl: 'Richting' },
+  'run.stops': {
+    en: '{stops} stops, {minutes} minutes',
+    de: '{stops} Haltestellen, {minutes} Minuten',
+    fr: '{stops} arrêts, {minutes} minutes',
+    nl: '{stops} haltes, {minutes} minuten'
+  },
+  'run.waiting': {
+    en: 'Waiting for OMSI — pick the duty in the game and the overlay takes over.',
+    de: 'Warte auf OMSI — wähle den Dienst im Spiel, dann übernimmt das Overlay.',
+    fr: 'En attente d’OMSI — choisissez le service dans le jeu et la surcouche prend le relais.',
+    nl: 'Wacht op OMSI — kies de dienst in het spel, dan neemt de overlay het over.'
+  },
+  'run.live': { en: '{km} km driven, {delay}', de: '{km} km gefahren, {delay}', fr: '{km} km parcourus, {delay}', nl: '{km} km gereden, {delay}' },
+  'run.onTime': { en: 'on time', de: 'pünktlich', fr: 'à l’heure', nl: 'op tijd' },
+  'run.late': { en: '{minutes} min late', de: '{minutes} Min Verspätung', fr: '{minutes} min de retard', nl: '{minutes} min te laat' },
+  'run.early': { en: '{minutes} min early', de: '{minutes} Min zu früh', fr: '{minutes} min d’avance', nl: '{minutes} min te vroeg' },
+  'run.full': { en: 'View the whole duty', de: 'Ganzen Dienst ansehen', fr: 'Voir tout le service', nl: 'Bekijk volledige dienst' },
+  'run.fullTitle': { en: 'The whole duty', de: 'Der ganze Dienst', fr: 'Le service complet', nl: 'De volledige dienst' },
+  'run.viewRoute': { en: 'View the route', de: 'Route ansehen', fr: 'Voir l’itinéraire', nl: 'Bekijk route' },
+  'run.note': {
+    en: 'The overlay follows the rest of the duty. Finish when you are done; cancel and nothing is logged.',
+    de: 'Das Overlay begleitet den Rest des Dienstes. Beende ihn, wenn du fertig bist; brichst du ab, wird nichts eingetragen.',
+    fr: 'La surcouche suit le reste du service. Terminez quand vous avez fini ; en annulant, rien n’est enregistré.',
+    nl: 'De overlay loopt de rest van de dienst met je mee. Afronden als je klaar bent; annuleer je, dan wordt er niets geboekt.'
+  },
+
   // ---------- rooster ----------
   'list.tour': { en: 'tour {tour}', de: 'Umlauf {tour}', fr: 'roulement {tour}', nl: 'omloop {tour}' },
   'list.trips': { en: '{count} trips', de: '{count} Fahrten', fr: '{count} courses', nl: '{count} ritten' },
