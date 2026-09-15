@@ -525,6 +525,12 @@ const TEXT = {
     nl: 'Esc annuleert, Backspace wist de toewijzing.'
   },
   'keys.none': { en: 'not set', de: 'nicht belegt', fr: 'non attribué', nl: 'niet ingesteld' },
+  'keys.noMatch': {
+    en: 'Nothing found for “{text}”. The names come from OMSI itself, so they are in the language the game is set to.',
+    de: 'Nichts gefunden für „{text}“. Die Namen kommen aus OMSI selbst, also in der Sprache, auf die das Spiel steht.',
+    fr: 'Rien pour « {text} ». Les noms viennent d’OMSI, donc dans la langue du jeu.',
+    nl: 'Niets gevonden voor “{text}”. De namen komen uit OMSI zelf, dus in de taal waarop het spel staat.'
+  },
   'keys.section.game': { en: 'Game', de: 'Spiel', fr: 'Jeu', nl: 'Spel' },
   'keys.section.vehicles': { en: 'Vehicle', de: 'Fahrzeug', fr: 'Véhicule', nl: 'Voertuig' },
   'keys.reset': { en: 'Restore OMSI defaults', de: 'OMSI-Standard wiederherstellen', fr: 'Rétablir les valeurs d’OMSI', nl: 'Standaard van OMSI herstellen' },

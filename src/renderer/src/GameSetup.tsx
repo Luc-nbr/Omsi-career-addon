@@ -374,6 +374,7 @@ function KeysTab({ language }: { language: Language }): JSX.Element {
           const label = labels.get(binding.action) ?? binding.action
           return label.toLowerCase().includes(needle) || binding.action.toLowerCase().includes(needle)
         })
+        // Geen regels in deze sectie: alleen melden als er gezocht is.
         if (rows.length === 0) return null
         return (
           <section className="card" key={section}>
@@ -421,6 +422,11 @@ function KeysTab({ language }: { language: Language }): JSX.Element {
           </section>
         )
       })}
+
+      {needle && bindings.every((binding) => {
+        const label = labels.get(binding.action) ?? binding.action
+        return !label.toLowerCase().includes(needle) && !binding.action.toLowerCase().includes(needle)
+      }) && <p className="empty">{t(language, 'keys.noMatch', { text: search.trim() })}</p>}
 
       {capturing && <p className="note">{t(language, 'keys.escape')}</p>}
     </>
