@@ -353,10 +353,22 @@ function pushFrame(): void {
   overlayWindow.webContents.send('overlay:frame', frame)
 }
 
+/**
+ * Waar de overlay mag komen: het hele scherm.
+ *
+ * Niet het werkgebied. Dat is het scherm min de taakbalk, en OMSI draait daar
+ * dwars overheen -- een element dat je onderin wilt hebben kon daardoor niet
+ * helemaal naar beneden. De overlay ligt over een spel heen, dus de taakbalk is
+ * hier niet de baas.
+ */
+function overlayArea(): Electron.Rectangle {
+  return screen.getPrimaryDisplay().bounds
+}
+
 /** Zet het venster om zijn inhoud heen, of over het hele scherm bij het slepen. */
 function applyOverlayBounds(): void {
   if (!overlayWindow || overlayWindow.isDestroyed()) return
-  const area = screen.getPrimaryDisplay().workArea
+  const area = overlayArea()
   if (overlayEditing || !overlayBox) {
     overlayWindow.setBounds(area)
     return
@@ -427,7 +439,7 @@ function openOverlay(duty: Duty, ibis?: IbisPlan): void {
 
   // Het venster beslaat het hele scherm, zodat je een paneel overal neer kunt
   // zetten. Wat niet beschilderd is, is doorzichtig en laat klikken door.
-  const area = screen.getPrimaryDisplay().workArea
+  const area = overlayArea()
 
   overlayWindow = new BrowserWindow({
     width: area.width,

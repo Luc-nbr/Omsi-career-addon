@@ -33,6 +33,17 @@ import {
 import { RouteMap } from './RouteMap'
 import './overlay.css'
 
+/**
+ * Hoe groot het scherm is, in dezelfde punten als de indeling.
+ *
+ * Niet `window.innerWidth`: buiten de sleepstand is het venster niet groter dan
+ * zijn inhoud, en dan zou een element zichzelf naar de linkerbovenhoek klemmen.
+ * Het scherm blijft even groot, wat het venster ook doet.
+ */
+function screenSize(): { w: number; h: number } {
+  return { w: window.screen.width, h: window.screen.height }
+}
+
 /** Een vak in schermpunten: waar iets staat en hoe groot het is. */
 interface Box {
   x: number
@@ -250,6 +261,21 @@ function Overlay(): JSX.Element | null {
         const next = union(delen)
         return same(old, next) ? old : next
       })
+
+      /*
+       * En wat er al buiten beeld stond, halen we terug. De overlay gebruikte
+       * eerst het werkgebied in plaats van het hele scherm; een element dat
+       * daardoor half over de rand hing, hoort weer helemaal zichtbaar te zijn.
+       */
+      const room = screenSize()
+      for (const info of PANELS) {
+        const state = layout[info.id]
+        const element = panelRefs.current[info.id]
+        if (!state.visible || !element) continue
+        const x = clamp(state.x, 0, Math.max(0, room.w - element.offsetWidth * state.scale))
+        const y = clamp(state.y, 0, Math.max(0, room.h - element.offsetHeight * state.scale))
+        if (Math.abs(x - state.x) > 1 || Math.abs(y - state.y) > 1) move(info.id, { x, y })
+      }
     }
     meet()
 
@@ -465,6 +491,12 @@ function Panel({
 }): JSX.Element {
   const drag = useRef<{ x: number; y: number; ox: number; oy: number }>(undefined)
   const size = useRef<{ x: number; y: number; w: number; h: number }>(undefined)
+  /** Het element zelf: de overlay meet er de hoogte aan, het slepen de grens. */
+  const self = useRef<HTMLElement | null>(null)
+  const hold = (element: HTMLElement | null): void => {
+    self.current = element
+    innerRef?.(element)
+  }
 
   const startDrag = (event: PointerEvent<HTMLElement>): void => {
     event.currentTarget.setPointerCapture(event.pointerId)
@@ -486,10 +518,18 @@ function Panel({
   const onMove = (event: PointerEvent<HTMLElement>): void => {
     if (drag.current) {
       const { x, y, ox, oy } = drag.current
-      // Op zijn plek houden gaat over wat je ziet, dus over de vergrote maat.
+      /*
+       * Helemaal in beeld blijven. Op zijn plek houden gaat over wat je ziet,
+       * dus over de vergrote maat -- en dan over het hele element, niet alleen
+       * over zijn linkerbovenhoek: een navigatie die voor driekwart buiten beeld
+       * hangt, valt niet meer af te lezen.
+       */
+      const room = screenSize()
+      const wide = (self.current?.offsetWidth ?? state.w) * state.scale
+      const tall = (self.current?.offsetHeight ?? state.h) * state.scale
       onChange({
-        x: clamp(ox + event.clientX - x, 0, window.innerWidth - 80),
-        y: clamp(oy + event.clientY - y, 0, window.innerHeight - 40)
+        x: clamp(ox + event.clientX - x, 0, Math.max(0, room.w - wide)),
+        y: clamp(oy + event.clientY - y, 0, Math.max(0, room.h - tall))
       })
     } else if (size.current) {
       const { x, y, w, h } = size.current
@@ -508,7 +548,7 @@ function Panel({
 
   return (
     <section
-      ref={innerRef}
+      ref={hold}
       className={`panel panel-${info.id}`}
       style={
         {

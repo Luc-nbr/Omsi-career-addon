@@ -83,7 +83,9 @@ app.whenReady().then(async () => {
   }
   await wait(2500)
 
-  const area = screen.getPrimaryDisplay().workArea
+  // Het hele scherm, niet het werkgebied: de overlay ligt over een spel heen
+  // en trekt zich van de taakbalk niets aan.
+  const area = screen.getPrimaryDisplay().bounds
   const vol = area.width * area.height
 
   let ok = true
@@ -94,7 +96,7 @@ app.whenReady().then(async () => {
 
   const krap = overlay.getBounds()
   const deel = (krap.width * krap.height) / vol
-  console.log(`werkgebied ${area.width}x${area.height}, venster ${krap.width}x${krap.height} op ${krap.x},${krap.y}\n`)
+  console.log(`scherm ${area.width}x${area.height}, venster ${krap.width}x${krap.height} op ${krap.x},${krap.y}\n`)
   console.log('zonder slepen:')
   eis('het venster is kleiner dan het scherm', krap.width < area.width && krap.height < area.height)
   eis(
@@ -135,7 +137,7 @@ app.whenReady().then(async () => {
   await wait(1200)
   const groot = overlay.getBounds()
   eis(
-    'het venster beslaat het hele werkgebied',
+    'het venster beslaat het hele scherm',
     groot.width === area.width && groot.height === area.height,
     `${groot.width}x${groot.height}`
   )
@@ -164,6 +166,31 @@ app.whenReady().then(async () => {
    * worden los opgeslagen: de taal wisselen mag de verversing niet terugzetten
    * en andersom ook niet.
    */
+  /*
+   * En een element dat buiten beeld is gezet -- of daar stond sinds de overlay
+   * nog het werkgebied gebruikte -- hoort weer helemaal zichtbaar te worden.
+   */
+  console.log('\neen element dat buiten beeld stond:')
+  const ver = { ...layout, navigatie: { ...layout.navigatie, x: area.width + 400, y: area.height + 400 } }
+  await js(main, `window.career.saveOverlayLayout(${JSON.stringify(ver)})`)
+  // De overlay leest de indeling bij het openen, dus even dicht en weer open.
+  await js(main, `window.career.setOverlay(undefined, false)`)
+  await wait(800)
+  await js(main, `window.career.setOverlay(${JSON.stringify(duty)}, true)`)
+  await wait(4000)
+  const opnieuw = BrowserWindow.getAllWindows().find((w) => w !== main && !w.isDestroyed())
+  const terecht = await js(main, `window.career.overlayLayout()`)
+  const nav = await js(
+    opnieuw,
+    `(() => { const el = document.querySelector('.panel-navigatie'); if (!el) return null; const r = el.getBoundingClientRect(); return { w: r.width, h: r.height } })()`
+  )
+  eis(
+    'de navigatie is teruggehaald',
+    terecht.navigatie.x + (nav?.w ?? 0) <= area.width + 1 &&
+      terecht.navigatie.y + (nav?.h ?? 0) <= area.height + 1,
+    `staat op ${Math.round(terecht.navigatie.x)},${Math.round(terecht.navigatie.y)} en is ${Math.round(nav?.w ?? 0)}x${Math.round(nav?.h ?? 0)}`
+  )
+
   console.log('\nde instellingen:')
   const eerst = await js(main, `window.career.settings()`)
   const naRate = await js(main, `window.career.saveSettings({ overlayRate: 'zuinig' })`)
