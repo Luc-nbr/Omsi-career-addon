@@ -1,6 +1,13 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, screen } from 'electron'
 import { join } from 'node:path'
-import { completeDuty, summarise, type CareerState } from '../core/career'
+import {
+  completeDuty,
+  recordExam,
+  summarise,
+  type ActiveDuty,
+  type CareerState,
+  type GameMode
+} from '../core/career'
 import {
   createProfile,
   deleteProfile,
@@ -11,7 +18,16 @@ import {
   writeProfile
 } from '../core/profiles'
 import { dateForMask, dayKind, readCalendar, type Calendar } from '../core/calendar'
-import { buildNetwork, generateDuties, type Network } from '../core/duty'
+import {
+  buildNetwork,
+  examTrip,
+  generateDuties,
+  generateDuty,
+  listLines,
+  type LineSummary,
+  type Network
+} from '../core/duty'
+import { judgeExam, type ExamMeasurement } from '../core/exam'
 import { buildFleetIndex, pickVehicleForDuty, readMapFleet, type FleetIndex } from '../core/fleet'
 import { readMapData, readTileGrid, type Lane, type MapGeometry } from '../core/geo'
 import { LaneNetwork, routeForTrip, type TripRoute } from '../core/routing'
@@ -26,6 +42,7 @@ import { receiptHeightMicrons, RECEIPT_WIDTH_MICRONS } from '../core/receipt'
 import { readSettings, writeSettings, type Settings } from '../core/settings'
 import { formatTime } from '../shared/format'
 import { findTemplate, readSituationTime, writeSituation } from '../core/situation'
+import { presetStartup } from '../core/startup'
 import { spawnAtStop } from '../core/spawn'
 import { listMaps, loadMap } from '../core/timetable'
 import { listVehicles } from '../core/vehicles'
@@ -33,6 +50,8 @@ import type { Duty, OmsiMap } from '../core/types'
 import {
   TIME_WINDOWS,
   type Assignment,
+  type BeginRequest,
+  type FreeRequest,
   type DutyDate,
   type DutyRequest,
   type MapSummary
@@ -493,6 +512,66 @@ function persist(next: CareerState) {
   return careerPayload()
 }
 
+/**
+ * Hoeveelste rit van zijn omloop deze rit is.
+ *
+ * OMSI telt de ritten in de volgorde waarin het lijnbestand ze opsomt, en dat
+ * nummer hoort in `[settimetable]`. Alleen op bestandsnaam zoeken is niet
+ * genoeg: een omloop rijdt dezelfde rit vaak meerdere keren op een dag.
+ */
+function tripIndexInTour(duty: Duty): number | undefined {
+  const first = duty.legs[0]
+  if (!first) return undefined
+  const tour = map(duty.mapFolder).tours.find(
+    (item) => item.lineFile === duty.lineFile && item.number === duty.tourNumber
+  )
+  if (!tour) return undefined
+  const index = tour.trips.findIndex(
+    (trip) =>
+      trip.tripFile.toLowerCase() === first.tripFile.toLowerCase() &&
+      trip.departure === first.departure
+  )
+  return index >= 0 ? index : undefined
+}
+
+/**
+ * Zet de dienst klaar in OMSI: het situatiebestand met de datum, de tijd, de bus
+ * bij de eerste halte en de dienstregeling, en daarna het startscherm zo dat die
+ * situatie er al staat.
+ */
+function prepareSituation(
+  duty: Duty,
+  vehiclePath: string | undefined,
+  date: DutyDate | undefined,
+  lineNumber: string,
+  terminus: string,
+  yard?: string
+) {
+  const when = date ?? dutyDate(duty.mapFolder, duty.days | duty.period)
+  if (!when) throw new Error('Geen datum gevonden waarop deze omloop rijdt.')
+
+  const first = duty.legs[0]
+  const spawn = vehiclePath ? spawnFor(duty.mapFolder, first?.stopIds[0]) : undefined
+  const trip = tripIndexInTour(duty)
+
+  const result = writeSituation(omsi(), {
+    mapFolder: duty.mapFolder,
+    name: `OMSI Career — lijn ${duty.lineFile}, omloop ${duty.tourNumber}`,
+    description: `Vertrek ${formatTime(duty.start)} vanaf ${first?.stops[0] ?? '?'}.`,
+    year: when.year,
+    dayOfYear: when.dayOfYear,
+    // Aanmelden: tien minuten voor vertrek, tijd genoeg voor de IBIS.
+    minutes: duty.signOn,
+    vehicle: vehiclePath ? { relativePath: vehiclePath, lineNumber, terminus, yard } : undefined,
+    spawn,
+    timetable: trip !== undefined ? { lineFile: duty.lineFile, tour: duty.tourNumber, trip } : undefined
+  })
+
+  // En het startscherm van OMSI erop zetten, zodat Start genoeg is.
+  const startup = presetStartup(omsi(), duty.mapFolder, result.file)
+  return { ...result, date: when, startup, timetableSet: trip !== undefined }
+}
+
 function registerHandlers(): void {
   ipcMain.handle('omsi:status', () => {
     const found = findOmsiInstall()
@@ -565,26 +644,7 @@ function registerHandlers(): void {
       lineNumber: string,
       terminus: string,
       yard?: string
-    ) => {
-      const when = date ?? dutyDate(duty.mapFolder, duty.days | duty.period)
-      if (!when) throw new Error('Geen datum gevonden waarop deze omloop rijdt.')
-
-      const first = duty.legs[0]
-      const spawn = vehiclePath ? spawnFor(duty.mapFolder, first?.stopIds[0]) : undefined
-
-      const result = writeSituation(omsi(), {
-        mapFolder: duty.mapFolder,
-        name: `OMSI Career \u2014 lijn ${duty.lineFile}, omloop ${duty.tourNumber}`,
-        description: `Vertrek ${formatTime(duty.start)} vanaf ${first?.stops[0] ?? '?'}.`,
-        year: when.year,
-        dayOfYear: when.dayOfYear,
-        // Aanmelden: tien minuten voor vertrek, tijd genoeg voor de IBIS.
-        minutes: duty.signOn,
-        vehicle: vehiclePath ? { relativePath: vehiclePath, lineNumber, terminus, yard } : undefined,
-        spawn
-      })
-      return { ...result, date: when }
-    }
+    ) => prepareSituation(duty, vehiclePath, date, lineNumber, terminus, yard)
   )
 
   ipcMain.handle('omsi:live', () => Boolean(readLive()?.alive))
@@ -643,7 +703,8 @@ function registerHandlers(): void {
         targetMinutes: request.targetMinutes,
         toleranceMinutes: tolerance,
         earliestStart: window.from,
-        latestStart: window.to
+        latestStart: window.to,
+        lineFile: request.lineFile
       })
       if (duties.length > 0) break
     }
@@ -666,18 +727,150 @@ function registerHandlers(): void {
     buildIbisPlan(omsi(), vehicle.relativePath, duty, year)
   )
 
+  /** De lijnen van een kaart, om er een route mee te kiezen of een examen op te doen. */
+  ipcMain.handle('map:lines', (_event, mapFolder: string): LineSummary[] =>
+    listLines(map(mapFolder), network(mapFolder))
+  )
+
+  /**
+   * De examenrit: één rit op de gekozen lijn, met een bus erbij gezocht. Slaagt
+   * de kandidaat, dan levert dat de vergunning voor deze lijn op.
+   */
+  ipcMain.handle('duty:exam', (_event, mapFolder: string, lineFile: string): Assignment | null => {
+    const duty = examTrip(map(mapFolder), network(mapFolder), lineFile)
+    if (!duty) return null
+    const choice = pickVehicleForDuty(fleet(), duty, era(mapFolder).year, fleetOf(mapFolder))
+    return {
+      duty,
+      date: dutyDate(mapFolder, duty.days | duty.period),
+      vehicle: choice?.vehicle ?? null,
+      yard: choice?.yard,
+      fit: choice?.fit,
+      fromMapFleet: choice?.fromMapFleet,
+      alternatives: choice?.alternatives
+    }
+  })
+
+  /**
+   * Het examen afronden: de gereden rit langs de eisen leggen en het oordeel in
+   * het profiel zetten. Geslaagd betekent een vergunning voor deze lijn erbij.
+   */
+  ipcMain.handle(
+    'career:exam',
+    (_event, duty: Duty, measured: ExamMeasurement, basic: boolean) => {
+      if (!career) return careerPayload()
+      const judgement = judgeExam(measured)
+      return persist(
+        recordExam(career, {
+          id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+          takenAt: new Date().toISOString(),
+          mapFolder: duty.mapFolder,
+          mapName: duty.mapName,
+          lineFile: duty.lineFile,
+          lineNumbers: duty.lineNumbers,
+          basic,
+          passed: judgement.passed,
+          score: judgement.score,
+          criteria: judgement.criteria
+        })
+      )
+    }
+  )
+
+  /**
+   * Vrij rijden: alleen klaarzetten wat de speler zelf heeft samengesteld.
+   *
+   * Er komt geen dienst aan te pas en er wordt niets geboekt. Kiest hij een
+   * lijn, dan zoeken we daar de omloop bij die het dichtst bij zijn tijd
+   * vertrekt -- dan staat het dienstregelingsmenu ook meteen goed en heeft de
+   * overlay een route om te tekenen.
+   */
+  ipcMain.handle('free:start', async (_event, request: FreeRequest) => {
+    const loaded = map(request.mapFolder)
+    const net = network(request.mapFolder)
+
+    const duty = request.lineFile
+      ? generateDuty(loaded, net, {
+          lineFile: request.lineFile,
+          targetMinutes: 90,
+          earliestStart: request.minutes - 30,
+          latestStart: request.minutes + 120
+        })
+      : undefined
+
+    const vehiclePath = request.vehiclePath
+    const spawnStop = request.stopId ?? duty?.legs[0]?.stopIds[0]
+    const spawn = vehiclePath ? spawnFor(request.mapFolder, spawnStop) : undefined
+    const trip = duty ? tripIndexInTour(duty) : undefined
+
+    const result = writeSituation(omsi(), {
+      mapFolder: request.mapFolder,
+      name: 'OMSI Career — vrij rijden',
+      description: duty
+        ? `Lijn ${duty.lineNumbers.join('/')} vanaf ${formatTime(request.minutes)}.`
+        : `Vrij rijden vanaf ${formatTime(request.minutes)}.`,
+      year: request.year,
+      dayOfYear: request.dayOfYear,
+      minutes: request.minutes,
+      vehicle: vehiclePath
+        ? {
+            relativePath: vehiclePath,
+            lineNumber: duty?.lineNumbers[0] ?? '',
+            terminus: duty?.legs[0]?.terminus ?? '',
+            yard: request.yard
+          }
+        : undefined,
+      spawn,
+      weather: request.weather,
+      timetable:
+        duty && trip !== undefined
+          ? { lineFile: duty.lineFile, tour: duty.tourNumber, trip }
+          : undefined
+    })
+
+    const startup = presetStartup(omsi(), request.mapFolder, result.file)
+    if (duty) openOverlay(duty)
+
+    let launched = false
+    const running = await isOmsiRunning()
+    if (!running) {
+      try {
+        launchOmsi(omsi())
+        launched = true
+      } catch {
+        // Lukt starten niet, dan doet de speler het zelf.
+      }
+    }
+    return { file: result.file, startup, launched, running, duty: duty ?? null }
+  })
+
   /**
    * De chauffeur neemt een dienst aan. Vanaf nu staat hij in het profiel en
    * blijft hij daar tot hij is afgerond of geannuleerd. Een tweede dienst
    * aannemen terwijl er een loopt kan niet.
    */
-  ipcMain.handle('duty:confirm', (_event, assignment: Assignment, vehicleOverride: string) => {
-    if (!career || career.activeDuty) return careerPayload()
-    return persist({
-      ...career,
-      activeDuty: { assignment, vehicleOverride, confirmedAt: new Date().toISOString() }
-    })
-  })
+  ipcMain.handle(
+    'duty:confirm',
+    (
+      _event,
+      assignment: Assignment,
+      vehicleOverride: string,
+      mode?: GameMode,
+      exam?: ActiveDuty['exam']
+    ) => {
+      if (!career || career.activeDuty) return careerPayload()
+      return persist({
+        ...career,
+        activeDuty: {
+          assignment,
+          vehicleOverride,
+          confirmedAt: new Date().toISOString(),
+          mode,
+          exam
+        }
+      })
+    }
+  )
 
   /** De aangenomen dienst teruggeven, zonder hem in het logboek te zetten. */
   ipcMain.handle('duty:cancel', () => {
@@ -690,13 +883,36 @@ function registerHandlers(): void {
 
   /**
    * De dienst begint: overlay openen, het spel starten en de kilometerstand
-   * vastleggen. De app schrijft niets in de spelmap — de speler laadt zijn bus
-   * en kaart zelf, wij geven de instructies.
+   * vastleggen. Het klaarzetten hoort hierbij en is geen aparte knop meer: de
+   * situatie wordt geschreven en als "Last Situation" klaargezet, en pas daarna
+   * gaat het spel aan. Zo hoeft de chauffeur in OMSI alleen op Start te drukken.
    */
-  ipcMain.handle('duty:begin', async (_event, duty: Duty, ibis?: IbisPlan) => {
+  ipcMain.handle('duty:begin', async (_event, request: BeginRequest) => {
+    const { duty, ibis } = request
     if (career?.activeDuty && !career.activeDuty.startedAt) {
       persist({ ...career, activeDuty: { ...career.activeDuty, startedAt: new Date().toISOString() } })
     }
+
+    /*
+     * Eerst klaarzetten, dan pas starten. Andersom heeft geen zin: OMSI leest
+     * het startscherm bij het opstarten, dus wat er daarna nog geschreven wordt
+     * ziet het spel deze sessie niet meer.
+     */
+    let prepared: ReturnType<typeof prepareSituation> | undefined
+    let prepareError: string | undefined
+    try {
+      prepared = prepareSituation(
+        duty,
+        request.vehiclePath,
+        request.date,
+        request.lineNumber,
+        request.terminus,
+        request.yard
+      )
+    } catch (cause) {
+      prepareError = cause instanceof Error ? cause.message : String(cause)
+    }
+
     captureBaseline()
     const live = freshLive()
     openOverlay(duty, ibis)
@@ -712,7 +928,7 @@ function registerHandlers(): void {
         // Lukt starten niet, dan doet de speler het zelf; de overlay staat klaar.
       }
     }
-    return { connected: Boolean(live?.alive), launched, running }
+    return { connected: Boolean(live?.alive), launched, running, prepared, prepareError }
   })
 
   /** Wat er sinds het begin van de dienst gereden is, volgens de plugin. */

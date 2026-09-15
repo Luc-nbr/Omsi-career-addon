@@ -19,6 +19,8 @@ interface Props {
   confirmed: boolean
   /** Of de dienst al loopt: dan is de kilometerstand vastgelegd. */
   started: boolean
+  /** Een examenrit gaat naar de examencommissie in plaats van naar het logboek. */
+  exam?: boolean
   overlayOpen: boolean
   onConfirm(): void
   onCancel(): void
@@ -42,6 +44,7 @@ export function DutyCard({
   confirmed,
   started,
   overlayOpen,
+  exam,
   onConfirm,
   onCancel,
   onBegin,
@@ -52,37 +55,9 @@ export function DutyCard({
   onPrinterChange
 }: Props): JSX.Element {
   const [openLeg, setOpenLeg] = useState<number>()
-  const [preparing, setPreparing] = useState(false)
-  const [prepared, setPrepared] = useState<string>()
   const language = useLanguage()
   const tr = useT()
   const { duty } = assignment
-
-  /**
-   * De dienst klaarzetten in OMSI. Dit schrijft een situatiebestand met de
-   * datum, de tijd en de bus bij de eerste halte; in het spel kies je die
-   * situatie en drukt op Start.
-   */
-  const prepare = useCallback(async () => {
-    setPreparing(true)
-    try {
-      const result = await window.career.prepareDuty(
-        duty,
-        vehicle?.relativePath,
-        assignment.date,
-        ibis?.line || duty.legs[0]?.lineNumber || '',
-        duty.legs[0]?.terminus ?? '',
-        ibis?.yard
-      )
-      setPrepared(tr(result.spawnPlaced ? 'act.prepared' : 'act.preparedNoSpawn'))
-    } catch (cause) {
-      setPrepared(
-        tr('act.prepareFailed', { reason: cause instanceof Error ? cause.message : String(cause) })
-      )
-    } finally {
-      setPreparing(false)
-    }
-  }, [duty, vehicle, assignment.date, ibis, tr])
 
   return (
     <section className="card">
@@ -179,7 +154,7 @@ export function DutyCard({
           </button>
         ) : (
           <button type="button" className="btn" onClick={onFinish} disabled={busy}>
-            {tr('act.finish')}
+            {tr(exam ? 'exam.finish' : 'act.finish')}
           </button>
         )}
         {confirmed && (
@@ -200,25 +175,21 @@ export function DutyCard({
             {tr('act.overlayEdit')}
           </button>
         )}
-        <button
-          type="button"
-          className="btn secondary"
-          disabled={preparing}
-          onClick={() => void prepare()}
-        >
-          {tr(preparing ? 'act.preparing' : 'act.prepare')}
-        </button>
+        {/*
+          Klaarzetten is geen aparte knop meer: "Dienst starten" schrijft de
+          situatie en start daarna pas OMSI. Twee knoppen in de goede volgorde
+          indrukken hoort niet het werk van de chauffeur te zijn.
+        */}
         <span className="note">
-          {prepared ??
-            tr(
-              !confirmed
-                ? 'act.confirmNote'
-                : started
-                  ? 'act.startedNote'
-                  : overlayOpen
-                    ? 'act.overlayNote'
-                    : 'act.loadNote'
-            )}
+          {tr(
+            !confirmed
+              ? 'act.confirmNote'
+              : started
+                ? 'act.startedNote'
+                : overlayOpen
+                  ? 'act.overlayNote'
+                  : 'act.loadNote'
+          )}
         </span>
       </div>
 

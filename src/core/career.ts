@@ -1,6 +1,46 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
+import type { ExamCriterion } from './exam'
 import type { Duty } from './types'
+
+/**
+ * De drie manieren waarop je met de app kunt rijden.
+ *
+ * `career` is de loopbaan met rijbewijzen en examens: de app kiest de dienst.
+ * `service` is vrij dienst rijden zonder die regels, met een zelfgekozen route
+ * en lengte. `free` zet alleen klaar wat je zelf samenstelt -- lijn, bus, plek,
+ * weer, tijd -- en biedt verder de overlay aan.
+ */
+export type GameMode = 'career' | 'service' | 'free'
+
+/** Een lijnvergunning: hierop mag de chauffeur in de carrièremodus rijden. */
+export interface Licence {
+  mapFolder: string
+  mapName: string
+  /** Het lijnbestand, zoals OMSI de lijn in het dienstregelingsmenu noemt. */
+  lineFile: string
+  /** De lijnnummers die eronder vallen; alleen om te tonen. */
+  lineNumbers: string[]
+  earnedAt: string
+  /** Cijfer van het examen waarmee hij gehaald is, 0-100. */
+  score: number
+  /** Of dit het rijexamen was: de eerste route, waarmee de loopbaan begint. */
+  basic: boolean
+}
+
+/** Een afgelegd examen, geslaagd of niet. */
+export interface ExamRecord {
+  id: string
+  takenAt: string
+  mapFolder: string
+  mapName: string
+  lineFile: string
+  lineNumbers: string[]
+  basic: boolean
+  passed: boolean
+  score: number
+  criteria: ExamCriterion[]
+}
 
 /** Een gereden dienst in het logboek. */
 export interface CareerEntry {
@@ -39,6 +79,15 @@ export interface ActiveDuty {
   /** Pad van de bus waarmee hij gereden wordt, als de chauffeur een andere koos. */
   vehicleOverride: string
   confirmedAt: string
+  /** In welke modus de dienst is aangenomen; daar keert de app na een herstart naar terug. */
+  mode?: GameMode
+  /** Is dit een examenrit, dan staat hier waarvoor hij telt. */
+  exam?: {
+    lineFile: string
+    lineNumbers: string[]
+    /** Het rijexamen zelf, of een lijnexamen voor een extra route. */
+    basic: boolean
+  }
   /** Wanneer op "Dienst starten" is gedrukt; daarvoor is hij bevestigd maar niet begonnen. */
   startedAt?: string
   /**
@@ -60,6 +109,10 @@ export interface CareerState {
   startedAt: string
   entries: CareerEntry[]
   activeDuty?: ActiveDuty
+  /** Waar de chauffeur op mag rijden in de carrièremodus. */
+  licences: Licence[]
+  /** Alle examens die hij heeft afgelegd, ook de gezakte. */
+  exams: ExamRecord[]
 }
 
 /** Basisuurloon van een buschauffeur in de app-economie. */
@@ -68,7 +121,7 @@ const HOURLY_PAY = 18.5
 const PAY_PER_STOP = 0.35
 
 export function emptyCareer(driver = 'Nieuwe chauffeur'): CareerState {
-  return { driver, startedAt: new Date().toISOString(), entries: [] }
+  return { driver, startedAt: new Date().toISOString(), entries: [], licences: [], exams: [] }
 }
 
 export function loadCareer(file: string): CareerState {
@@ -83,7 +136,10 @@ export function loadCareer(file: string): CareerState {
       activeDuty:
         parsed.activeDuty && typeof parsed.activeDuty === 'object' && parsed.activeDuty.assignment
           ? parsed.activeDuty
-          : undefined
+          : undefined,
+      // Profielen van voor de modi hebben deze lijsten nog niet.
+      licences: Array.isArray(parsed.licences) ? parsed.licences : [],
+      exams: Array.isArray(parsed.exams) ? parsed.exams : []
     }
   } catch {
     // Een kapot logboek mag de app niet blokkeren; we beginnen dan opnieuw.
@@ -135,6 +191,42 @@ export function completeDuty(
   return { ...state, entries: [entry, ...state.entries], activeDuty: undefined }
 }
 
+/** Mag deze chauffeur op deze lijn rijden? */
+export function hasLicence(state: CareerState, mapFolder: string, lineFile: string): boolean {
+  return state.licences.some(
+    (licence) => licence.mapFolder === mapFolder && licence.lineFile === lineFile
+  )
+}
+
+/**
+ * Heeft de chauffeur zijn rijexamen gehaald? Zonder dat mag hij in de
+ * carrièremodus nog niets: de eerste route is meteen de examenroute.
+ */
+export function isQualified(state: CareerState): boolean {
+  return state.licences.length > 0
+}
+
+/**
+ * Schrijft een examen in het profiel. Geslaagd levert een vergunning op; een
+ * tweede keer slagen op dezelfde lijn laat de eerste staan, want de datum
+ * waarop je hem haalde is het vermelden waard.
+ */
+export function recordExam(state: CareerState, exam: ExamRecord): CareerState {
+  const licences = [...state.licences]
+  if (exam.passed && !hasLicence(state, exam.mapFolder, exam.lineFile)) {
+    licences.push({
+      mapFolder: exam.mapFolder,
+      mapName: exam.mapName,
+      lineFile: exam.lineFile,
+      lineNumbers: exam.lineNumbers,
+      earnedAt: exam.takenAt,
+      score: exam.score,
+      basic: exam.basic
+    })
+  }
+  return { ...state, licences, exams: [exam, ...state.exams], activeDuty: undefined }
+}
+
 export interface CareerSummary {
   duties: number
   minutes: number
@@ -148,6 +240,8 @@ export interface CareerSummary {
   progress: number
   nextRank?: string
   mapsDriven: number
+  /** Hoeveel lijnen hij mag rijden; nul betekent: het rijexamen moet nog. */
+  licences: number
 }
 
 /** Rangen op gereden uren; de eerste stap gaat snel, daarna wordt het rustiger. */
@@ -177,6 +271,7 @@ export function summarise(state: CareerState): CareerSummary {
     rank: RANKS[index].name,
     nextRank: next?.name,
     progress: next ? Math.min(1, (hours - floor) / (next.hours - floor)) : 1,
-    mapsDriven: new Set(state.entries.map((entry) => entry.mapFolder)).size
+    mapsDriven: new Set(state.entries.map((entry) => entry.mapFolder)).size,
+    licences: state.licences.length
   }
 }

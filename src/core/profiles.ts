@@ -14,6 +14,10 @@ export interface ProfileSummary {
   startedAt: string
   duties: number
   minutes: number
+  /** Staat er nog een dienst open? Dan wacht die op deze chauffeur. */
+  onDuty: boolean
+  /** Hoeveel lijnen hij mag rijden in de carrieremodus. */
+  licences: number
 }
 
 const PROFILE_DIR = 'profiles'
@@ -66,7 +70,9 @@ export function listProfiles(userData: string): ProfileSummary[] {
       driver: state.driver,
       startedAt: state.startedAt,
       duties: summary.duties,
-      minutes: summary.minutes
+      minutes: summary.minutes,
+      onDuty: Boolean(state.activeDuty),
+      licences: state.licences.length
     })
   }
   return entries.sort((a, b) => a.startedAt.localeCompare(b.startedAt))

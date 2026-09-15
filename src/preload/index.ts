@@ -15,6 +15,10 @@ const api: CareerApi = {
   settings: () => ipcRenderer.invoke('settings:read'),
   saveSettings: (settings) => ipcRenderer.invoke('settings:write', settings),
   listDuties: (request: DutyRequest) => ipcRenderer.invoke('duty:list', request),
+  lines: (mapFolder) => ipcRenderer.invoke('map:lines', mapFolder),
+  examDuty: (mapFolder, lineFile) => ipcRenderer.invoke('duty:exam', mapFolder, lineFile),
+  finishExam: (duty, measured, basic) => ipcRenderer.invoke('career:exam', duty, measured, basic),
+  startFree: (request) => ipcRenderer.invoke('free:start', request),
   ibis: (duty, vehicle, year) => ipcRenderer.invoke('duty:ibis', duty, vehicle, year),
   setOverlay: (duty, open, ibis) => ipcRenderer.invoke('overlay:set', duty, open, ibis),
   overlayIsOpen: () => ipcRenderer.invoke('overlay:isOpen'),
@@ -29,9 +33,10 @@ const api: CareerApi = {
   overlayLayout: () => ipcRenderer.invoke('overlay:layout'),
   saveOverlayLayout: (layout) => ipcRenderer.invoke('overlay:layout:save', layout),
   resetOverlayLayout: () => ipcRenderer.invoke('overlay:layout:reset'),
-  confirmDuty: (assignment, vehicleOverride) => ipcRenderer.invoke('duty:confirm', assignment, vehicleOverride),
+  confirmDuty: (assignment, vehicleOverride, mode, exam) =>
+    ipcRenderer.invoke('duty:confirm', assignment, vehicleOverride, mode, exam),
   cancelDuty: () => ipcRenderer.invoke('duty:cancel'),
-  beginDuty: (duty, ibis) => ipcRenderer.invoke('duty:begin', duty, ibis),
+  beginDuty: (request) => ipcRenderer.invoke('duty:begin', request),
   prepareDuty: (duty, vehiclePath, date, lineNumber, terminus, yard) =>
     ipcRenderer.invoke('duty:prepare', duty, vehiclePath, date, lineNumber, terminus, yard),
   liveConnected: () => ipcRenderer.invoke('omsi:live'),

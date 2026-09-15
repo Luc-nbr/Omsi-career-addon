@@ -78,6 +78,243 @@ const TEXT = {
   },
   'welcome.creating': { en: 'Creating…', de: 'Wird angelegt…', fr: 'Création…', nl: 'Bezig…' },
 
+  // ---------- chauffeur kiezen ----------
+  'pick.title': {
+    en: 'Who is driving?',
+    de: 'Wer fährt?',
+    fr: 'Qui conduit ?',
+    nl: 'Wie rijdt er?'
+  },
+  'pick.intro': {
+    en: 'Every driver keeps their own logbook, licences and running duty.',
+    de: 'Jeder Fahrer hat sein eigenes Fahrtenbuch, seine Lizenzen und seinen laufenden Dienst.',
+    fr: 'Chaque conducteur garde son carnet de bord, ses permis et son service en cours.',
+    nl: 'Elke chauffeur heeft zijn eigen logboek, vergunningen en lopende dienst.'
+  },
+  'pick.continue': { en: 'Drive', de: 'Fahren', fr: 'Conduire', nl: 'Rijden' },
+  'pick.new': { en: 'New driver', de: 'Neuer Fahrer', fr: 'Nouveau conducteur', nl: 'Nieuwe chauffeur' },
+  'pick.create': { en: 'Create', de: 'Anlegen', fr: 'Créer', nl: 'Aanmaken' },
+  'pick.cancel': { en: 'Cancel', de: 'Abbrechen', fr: 'Annuler', nl: 'Annuleren' },
+  'pick.record': {
+    en: '{count} duties, {duration} behind the wheel',
+    de: '{count} Dienste, {duration} am Steuer',
+    fr: '{count} services, {duration} au volant',
+    nl: '{count} diensten, {duration} achter het stuur'
+  },
+  'pick.fresh': {
+    en: 'No duties driven yet',
+    de: 'Noch keine Dienste gefahren',
+    fr: 'Aucun service effectué',
+    nl: 'Nog geen diensten gereden'
+  },
+  'pick.onDuty': { en: 'Duty in progress', de: 'Dienst läuft', fr: 'Service en cours', nl: 'Dienst loopt' },
+
+  // ---------- modus kiezen ----------
+  'mode.title': {
+    en: 'How do you want to drive, {driver}?',
+    de: 'Wie möchtest du fahren, {driver}?',
+    fr: 'Comment voulez-vous conduire, {driver} ?',
+    nl: 'Hoe wil je rijden, {driver}?'
+  },
+  'mode.intro': {
+    en: 'You can switch at any time. Your logbook keeps counting in every mode.',
+    de: 'Du kannst jederzeit wechseln. Dein Fahrtenbuch zählt in jedem Modus weiter.',
+    fr: 'Vous pouvez changer à tout moment. Votre carnet de bord continue dans tous les modes.',
+    nl: 'Je kunt altijd wisselen. Je logboek telt in elke modus door.'
+  },
+  'mode.career': { en: 'Career', de: 'Karriere', fr: 'Carrière', nl: 'Carrière' },
+  'mode.careerIntro': {
+    en: 'The depot decides. First pass your driving test on a route you choose yourself; from then on you drive that line, and every extra line needs its own test.',
+    de: 'Der Betriebshof entscheidet. Zuerst die Fahrprüfung auf einer Strecke deiner Wahl; danach fährst du diese Linie, und jede weitere Linie braucht ihre eigene Prüfung.',
+    fr: 'Le dépôt décide. Passez d’abord l’examen sur un itinéraire de votre choix ; ensuite vous conduisez cette ligne, et chaque ligne supplémentaire exige son propre examen.',
+    nl: 'De remise beslist. Eerst je rijexamen op een route die je zelf kiest; daarna rijd je die lijn, en elke extra lijn vraagt een eigen examen.'
+  },
+  'mode.service': { en: 'Service', de: 'Dienst', fr: 'Service', nl: 'Dienst' },
+  'mode.serviceIntro': {
+    en: 'Pick your own route and how long you want to drive. No licences, no rules; the app finds a real tour that fits.',
+    de: 'Wähle Strecke und Dauer selbst. Keine Lizenzen, keine Regeln; die App sucht einen echten Umlauf dazu.',
+    fr: 'Choisissez votre itinéraire et la durée. Aucun permis, aucune règle ; l’application trouve un vrai roulement.',
+    nl: 'Kies zelf je route en hoe lang je wilt rijden. Geen vergunningen, geen regels; de app zoekt er een echte omloop bij.'
+  },
+  'mode.free': { en: 'Free play', de: 'Freies Fahren', fr: 'Jeu libre', nl: 'Vrij rijden' },
+  'mode.freeIntro': {
+    en: 'You choose the line, the bus, the place, the weather, the date and the time. The app only sets it up in OMSI and offers the overlay.',
+    de: 'Du wählst Linie, Bus, Ort, Wetter, Datum und Uhrzeit. Die App richtet es nur in OMSI ein und bietet das Overlay an.',
+    fr: 'Vous choisissez la ligne, le bus, le lieu, la météo, la date et l’heure. L’application ne fait que préparer OMSI et proposer la surimpression.',
+    nl: 'Jij kiest de lijn, de bus, de plek, het weer, de datum en de tijd. De app zet het alleen klaar in OMSI en biedt de overlay aan.'
+  },
+  'mode.otherDriver': { en: 'Other driver', de: 'Anderer Fahrer', fr: 'Autre conducteur', nl: 'Andere chauffeur' },
+  'mode.otherMode': { en: 'Other mode', de: 'Anderer Modus', fr: 'Autre mode', nl: 'Andere modus' },
+  'mode.running': {
+    en: 'A duty is waiting for you here',
+    de: 'Hier wartet ein Dienst auf dich',
+    fr: 'Un service vous attend ici',
+    nl: 'Hier wacht een dienst op je'
+  },
+  'mode.licences': {
+    en: '{count} lines licensed',
+    de: '{count} Linien freigegeben',
+    fr: '{count} lignes autorisées',
+    nl: '{count} lijnen vrijgegeven'
+  },
+  'mode.noLicence': {
+    en: 'Driving test not passed yet',
+    de: 'Fahrprüfung noch offen',
+    fr: 'Examen pas encore passé',
+    nl: 'Rijexamen nog niet gehaald'
+  },
+
+  // ---------- examen en vergunningen ----------
+  'exam.title': { en: 'Driving test', de: 'Fahrprüfung', fr: 'Examen de conduite', nl: 'Rijexamen' },
+  'exam.lineTitle': { en: 'Line test', de: 'Linienprüfung', fr: 'Examen de ligne', nl: 'Lijnexamen' },
+  'exam.intro': {
+    en: 'Choose the route you want to be tested on. One trip, from the first stop to the terminus. Pass it and that line is yours to drive.',
+    de: 'Wähle die Strecke für deine Prüfung. Eine Fahrt, von der ersten Haltestelle bis zur Endstation. Bestehst du, fährst du diese Linie.',
+    fr: 'Choisissez l’itinéraire de votre examen. Un trajet, du premier arrêt au terminus. Réussissez et cette ligne est à vous.',
+    nl: 'Kies de route waarop je examen doet. Eén rit, van de eerste halte tot het eindpunt. Haal je hem, dan mag je die lijn rijden.'
+  },
+  'exam.lineIntro': {
+    en: 'Every line needs its own test before you may drive it in career mode.',
+    de: 'Jede Linie braucht ihre eigene Prüfung, bevor du sie im Karrieremodus fahren darfst.',
+    fr: 'Chaque ligne exige son propre examen avant de pouvoir la conduire en mode carrière.',
+    nl: 'Elke lijn vraagt een eigen examen voordat je hem in de carrièremodus mag rijden.'
+  },
+  'exam.route': { en: 'Test route', de: 'Prüfungsstrecke', fr: 'Itinéraire d’examen', nl: 'Examenroute' },
+  'exam.start': { en: 'Take the test', de: 'Prüfung ablegen', fr: 'Passer l’examen', nl: 'Examen afleggen' },
+  'exam.searching': { en: 'Finding a trip…', de: 'Fahrt wird gesucht…', fr: 'Recherche d’un trajet…', nl: 'Rit zoeken…' },
+  'exam.none': {
+    en: 'No suitable trip on this line during the day.',
+    de: 'Auf dieser Linie fährt tagsüber keine passende Fahrt.',
+    fr: 'Aucun trajet adapté sur cette ligne en journée.',
+    nl: 'Op deze lijn rijdt overdag geen geschikte rit.'
+  },
+  'exam.rules': { en: 'What you are judged on', de: 'Worauf geachtet wird', fr: 'Ce qui est évalué', nl: 'Waar je op beoordeeld wordt' },
+  'exam.rule.finish': {
+    en: 'Drive the whole trip to the terminus',
+    de: 'Die ganze Fahrt bis zur Endstation fahren',
+    fr: 'Conduire tout le trajet jusqu’au terminus',
+    nl: 'De hele rit tot het eindpunt rijden'
+  },
+  'exam.rule.punctual': {
+    en: 'Finish within {limit} minutes of the timetable',
+    de: 'Höchstens {limit} Minuten vom Fahrplan abweichen',
+    fr: 'Terminer à moins de {limit} minutes de l’horaire',
+    nl: 'Hooguit {limit} minuten afwijken van de dienstregeling'
+  },
+  'exam.rule.smooth': {
+    en: 'At most {limit} harsh stops or take-offs',
+    de: 'Höchstens {limit} mal hart bremsen oder anfahren',
+    fr: 'Au plus {limit} freinages ou démarrages brusques',
+    nl: 'Hooguit {limit} keer hard remmen of optrekken'
+  },
+  'exam.rule.speed': {
+    en: 'Never faster than {limit} km/h',
+    de: 'Nie schneller als {limit} km/h',
+    fr: 'Jamais plus vite que {limit} km/h',
+    nl: 'Nooit harder dan {limit} km/u'
+  },
+  'exam.passed': { en: 'Passed', de: 'Bestanden', fr: 'Réussi', nl: 'Geslaagd' },
+  'exam.failed': { en: 'Not passed', de: 'Nicht bestanden', fr: 'Échoué', nl: 'Niet gehaald' },
+  'exam.score': { en: 'Score {score} out of 100', de: 'Note {score} von 100', fr: 'Note {score} sur 100', nl: 'Cijfer {score} van de 100' },
+  'exam.finish': { en: 'Hand in the test', de: 'Prüfung abgeben', fr: 'Rendre l’examen', nl: 'Examen inleveren' },
+  'exam.granted': {
+    en: 'Licence granted for {line}. You may drive this line from now on.',
+    de: 'Lizenz für {line} erteilt. Ab jetzt darfst du diese Linie fahren.',
+    fr: 'Permis accordé pour {line}. Vous pouvez désormais conduire cette ligne.',
+    nl: 'Vergunning voor {line} verleend. Vanaf nu mag je deze lijn rijden.'
+  },
+  'exam.again': {
+    en: 'Not this time. You can take the test again whenever you like.',
+    de: 'Diesmal nicht. Du kannst die Prüfung jederzeit wiederholen.',
+    fr: 'Pas cette fois. Vous pouvez repasser l’examen quand vous voulez.',
+    nl: 'Deze keer niet. Je mag het examen zo vaak overdoen als je wilt.'
+  },
+  'lic.title': { en: 'Your licences', de: 'Deine Lizenzen', fr: 'Vos permis', nl: 'Je vergunningen' },
+  'lic.none': {
+    en: 'No licences yet. Start with your driving test.',
+    de: 'Noch keine Lizenzen. Fang mit der Fahrprüfung an.',
+    fr: 'Aucun permis. Commencez par l’examen de conduite.',
+    nl: 'Nog geen vergunningen. Begin met je rijexamen.'
+  },
+  'lic.earned': { en: 'since {date}', de: 'seit {date}', fr: 'depuis le {date}', nl: 'sinds {date}' },
+  'lic.another': { en: 'Learn another line', de: 'Weitere Linie lernen', fr: 'Apprendre une autre ligne', nl: 'Nieuwe lijn leren' },
+  'lic.onlyThese': {
+    en: 'In career mode the depot picks your duty from the lines you are licensed for.',
+    de: 'Im Karrieremodus wählt der Betriebshof deinen Dienst aus den Linien, für die du eine Lizenz hast.',
+    fr: 'En mode carrière, le dépôt choisit votre service parmi les lignes autorisées.',
+    nl: 'In de carrièremodus kiest de remise je dienst uit de lijnen waar je een vergunning voor hebt.'
+  },
+  'lic.assign': { en: 'Give me a duty', de: 'Dienst zuteilen', fr: 'Attribuez-moi un service', nl: 'Wijs me een dienst toe' },
+
+  // ---------- route kiezen ----------
+  'line.pick': { en: 'Route', de: 'Strecke', fr: 'Itinéraire', nl: 'Route' },
+  'line.any': { en: 'Any line on this map', de: 'Beliebige Linie dieser Karte', fr: 'N’importe quelle ligne', nl: 'Elke lijn van deze kaart' },
+  'line.meta': {
+    en: '{tours} tours, {trips} trips, around {minutes} min each',
+    de: '{tours} Umläufe, {trips} Fahrten, je rund {minutes} Min.',
+    fr: '{tours} roulements, {trips} trajets, environ {minutes} min',
+    nl: '{tours} omlopen, {trips} ritten, elk ongeveer {minutes} min'
+  },
+
+  // ---------- vrij rijden ----------
+  'free.title': { en: 'Set up your own drive', de: 'Eigene Fahrt einrichten', fr: 'Préparez votre trajet', nl: 'Zet je eigen rit klaar' },
+  'free.intro': {
+    en: 'Nothing is logged and nothing is judged. The app writes the situation, starts OMSI and puts the overlay on top.',
+    de: 'Nichts wird gebucht und nichts bewertet. Die App schreibt die Situation, startet OMSI und legt das Overlay darüber.',
+    fr: 'Rien n’est enregistré ni évalué. L’application écrit la situation, lance OMSI et pose la surimpression.',
+    nl: 'Er wordt niets geboekt en niets beoordeeld. De app schrijft de situatie, start OMSI en legt de overlay erboven.'
+  },
+  'free.stop': { en: 'Where the bus starts', de: 'Wo der Bus steht', fr: 'Où démarre le bus', nl: 'Waar de bus begint' },
+  'free.stopAuto': { en: 'At the first stop of the line', de: 'An der ersten Haltestelle der Linie', fr: 'Au premier arrêt de la ligne', nl: 'Bij de eerste halte van de lijn' },
+  'free.date': { en: 'Date', de: 'Datum', fr: 'Date', nl: 'Datum' },
+  'free.time': { en: 'Time', de: 'Uhrzeit', fr: 'Heure', nl: 'Tijd' },
+  'free.weather': { en: 'Weather', de: 'Wetter', fr: 'Météo', nl: 'Weer' },
+  'free.start': { en: 'Set up and start OMSI', de: 'Einrichten und OMSI starten', fr: 'Préparer et lancer OMSI', nl: 'Klaarzetten en OMSI starten' },
+  'free.starting': { en: 'Setting up…', de: 'Wird eingerichtet…', fr: 'Préparation…', nl: 'Bezig met klaarzetten…' },
+  'free.ready': {
+    en: 'Ready. OMSI opens on {map}; press Start there.',
+    de: 'Fertig. OMSI öffnet auf {map}; drücke dort auf Start.',
+    fr: 'Prêt. OMSI s’ouvre sur {map} ; appuyez sur Start.',
+    nl: 'Klaar. OMSI opent op {map}; druk daar op Start.'
+  },
+  'weather.clear': { en: 'Clear', de: 'Klar', fr: 'Dégagé', nl: 'Helder' },
+  'weather.summer': { en: 'Summer day', de: 'Sommertag', fr: 'Journée d’été', nl: 'Zomerdag' },
+  'weather.cloudy': { en: 'Overcast', de: 'Bewölkt', fr: 'Couvert', nl: 'Bewolkt' },
+  'weather.rain': { en: 'Rain', de: 'Regen', fr: 'Pluie', nl: 'Regen' },
+  'weather.fog': { en: 'Fog', de: 'Nebel', fr: 'Brouillard', nl: 'Mist' },
+
+  // ---------- starten in OMSI ----------
+  'start.preparing': {
+    en: 'Writing the situation…',
+    de: 'Situation wird geschrieben…',
+    fr: 'Écriture de la situation…',
+    nl: 'Situatie wordt geschreven…'
+  },
+  'start.ready': {
+    en: 'OMSI opens on {map} with this duty ready. Just press Start.',
+    de: 'OMSI öffnet auf {map} mit diesem Dienst. Einfach auf Start drücken.',
+    fr: 'OMSI s’ouvre sur {map} avec ce service prêt. Appuyez simplement sur Start.',
+    nl: 'OMSI opent op {map} met deze dienst klaar. Je hoeft alleen op Start te drukken.'
+  },
+  'start.timetableSet': {
+    en: 'Line and tour are already selected in the timetable menu.',
+    de: 'Linie und Umlauf sind im Fahrplanmenü bereits gewählt.',
+    fr: 'La ligne et le roulement sont déjà sélectionnés dans le menu horaires.',
+    nl: 'De lijn en de omloop staan al gekozen in het dienstregelingsmenu.'
+  },
+  'start.alreadyRunning': {
+    en: 'OMSI was already running, so it has not seen this yet. Restart the game, or load the situation OMSI Career yourself.',
+    de: 'OMSI lief bereits und kennt das noch nicht. Starte das Spiel neu oder lade die Situation OMSI Career selbst.',
+    fr: 'OMSI tournait déjà et ne l’a pas encore vu. Relancez le jeu ou chargez vous-même la situation OMSI Career.',
+    nl: 'OMSI draaide al en heeft dit nog niet gezien. Start het spel opnieuw, of laad de situatie OMSI Career zelf.'
+  },
+  'start.failed': {
+    en: 'Could not set it up: {reason}',
+    de: 'Einrichten nicht möglich: {reason}',
+    fr: 'Préparation impossible : {reason}',
+    nl: 'Klaarzetten lukte niet: {reason}'
+  },
+
   // ---------- hoofdscherm ----------
   'app.loading': {
     en: 'Reading the timetables…',
@@ -110,10 +347,10 @@ const TEXT = {
     nl: 'Dienst kiezen'
   },
   'app.subtitle': {
-    en: 'Load your map and bus in OMSI yourself. Then pick a duty here; the app gives you the instructions, the IBIS codes and the overlay.',
-    de: 'Lade Karte und Bus selbst in OMSI. Wähle hier danach einen Dienst; die App liefert die Anweisungen, die IBIS-Eingaben und die Overlay.',
-    fr: 'Chargez vous-même votre carte et votre bus dans OMSI. Choisissez ensuite un service ici ; l’application fournit les instructions, les codes IBIS et la surcouche.',
-    nl: 'Laad je kaart en bus zelf in OMSI. Kies hier daarna een dienst; de app geeft de instructies, de IBIS-codes en de overlay.'
+    en: 'Pick a duty and the app sets it up in OMSI: the map, the bus at the right stop, the date and the time. You press Start, the overlay does the rest.',
+    de: 'Wähle einen Dienst, und die App richtet ihn in OMSI ein: Karte, Bus an der richtigen Haltestelle, Datum und Uhrzeit. Du drückst auf Start, das Overlay macht den Rest.',
+    fr: 'Choisissez un service et l’application le prépare dans OMSI : la carte, le bus au bon arrêt, la date et l’heure. Vous appuyez sur Start, la surimpression fait le reste.',
+    nl: 'Kies een dienst en de app zet hem klaar in OMSI: de kaart, de bus bij de juiste halte, de datum en de tijd. Jij drukt op Start, de overlay doet de rest.'
   },
   'app.map': { en: 'Map', de: 'Karte', fr: 'Carte', nl: 'Kaart' },
   'app.mapTours': {
@@ -471,6 +708,7 @@ const TEXT = {
     nl: 'Gekozen uit {count} passende bussen — geen ervan staat in het wagenpark van de kaart{yard}.'
   },
   'bus.yard': { en: ', fleet {yard}', de: ', Fuhrpark {yard}', fr: ', parc {yard}', nl: ', wagenpark {yard}' },
+  'bus.pick': { en: 'Bus', de: 'Bus', fr: 'Bus', nl: 'Bus' },
   'bus.other': { en: 'Another bus', de: 'Anderer Bus', fr: 'Autre bus', nl: 'Andere bus' },
   'bus.auto': { en: 'Automatic', de: 'Automatisch', fr: 'Automatique', nl: 'Automatisch' },
 

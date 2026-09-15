@@ -1,4 +1,7 @@
-import type { CareerState, CareerSummary } from '../core/career'
+import type { ActiveDuty, CareerState, CareerSummary, GameMode } from '../core/career'
+import type { LineSummary } from '../core/duty'
+import type { ExamMeasurement } from '../core/exam'
+import type { WeatherKind } from './weather'
 import type { ProfileSummary } from '../core/profiles'
 import type { MapGeometry } from '../core/geo'
 import type { IbisPlan } from '../core/ibis'
@@ -31,6 +34,36 @@ export interface DutyRequest {
   targetMinutes: number
   /** Dagdeel waarin de dienst moet beginnen. */
   window: 'heledag' | 'ochtend' | 'middag' | 'avond' | 'nacht'
+  /**
+   * Alleen diensten op deze lijn. In dienstmodus kiest de chauffeur zijn route
+   * zelf, in carrieremodus mag hij alleen waar hij een vergunning voor heeft.
+   */
+  lineFile?: string
+}
+
+/** Wat vrij rijden nodig heeft: de speler stelt alles zelf samen. */
+export interface FreeRequest {
+  mapFolder: string
+  /** Optioneel: dan staat het dienstregelingsmenu meteen op deze lijn. */
+  lineFile?: string
+  vehiclePath?: string
+  /** Waar de bus komt te staan; zonder halte zet de app hem bij de lijn neer. */
+  stopId?: string
+  yard?: string
+  year: number
+  dayOfYear: number
+  /** Tijd in minuten na middernacht. */
+  minutes: number
+  weather: WeatherKind
+}
+
+export interface FreeResult {
+  file: string
+  startup?: PreparedSituation['startup']
+  launched: boolean
+  running: boolean
+  /** De dienst die erbij hoort, als er een lijn gekozen was; anders niets. */
+  duty: Duty | null
 }
 
 /** Een toegewezen dienst met de bus die erbij gezocht is. */
@@ -52,6 +85,35 @@ export interface PreparedSituation {
   spawnPlaced: boolean
   template?: string
   date: DutyDate
+  /** Of het startscherm van OMSI de situatie al klaar heeft staan. */
+  startup?: {
+    lastSituation: boolean
+    lastMap: boolean
+    backup?: string
+  }
+  /** Of de lijn en de omloop in het dienstregelingsmenu al gekozen zijn. */
+  timetableSet?: boolean
+}
+
+/** Alles wat het klaarzetten en starten van een dienst nodig heeft. */
+export interface BeginRequest {
+  duty: Duty
+  ibis?: IbisPlan
+  /** Pad van de bus vanaf de OMSI-map; zonder bus wordt er niets neergezet. */
+  vehiclePath?: string
+  date?: DutyDate
+  lineNumber: string
+  terminus: string
+  yard?: string
+}
+
+export interface BeginResult {
+  connected: boolean
+  launched: boolean
+  running: boolean
+  prepared?: PreparedSituation
+  /** Waarom het klaarzetten niet lukte; de overlay staat er dan alsnog. */
+  prepareError?: string
 }
 
 export interface Assignment {
@@ -142,6 +204,14 @@ export interface CareerApi {
   pluginStatus(): Promise<PluginStatus>
   /** Een rooster om uit te kiezen. */
   listDuties(request: DutyRequest): Promise<Assignment[]>
+  /** De lijnen van een kaart, om een route of een examen te kiezen. */
+  lines(mapFolder: string): Promise<LineSummary[]>
+  /** Een examenrit op deze lijn: een rit, met een bus erbij gezocht. */
+  examDuty(mapFolder: string, lineFile: string): Promise<Assignment | null>
+  /** Legt de examenrit langs de eisen en zet het oordeel in het profiel. */
+  finishExam(duty: Duty, measured: ExamMeasurement, basic: boolean): Promise<CareerPayload>
+  /** Vrij rijden: alleen klaarzetten en starten, zonder dienst en zonder logboek. */
+  startFree(request: FreeRequest): Promise<FreeResult>
   ibis(duty: Duty, vehicle: Vehicle, year: number): Promise<IbisPlan>
   /** Zet de overlay boven het spel open of dicht. Geeft terug of hij nu open is. */
   setOverlay(duty: Duty | undefined, open: boolean, ibis?: IbisPlan): Promise<boolean>
@@ -154,14 +224,19 @@ export interface CareerApi {
    * Neemt een dienst aan. Hij staat daarna in het profiel en blijft vast tot hij
    * is afgerond of geannuleerd; zolang kan er geen andere worden aangenomen.
    */
-  confirmDuty(assignment: Assignment, vehicleOverride: string): Promise<CareerPayload>
+  confirmDuty(
+    assignment: Assignment,
+    vehicleOverride: string,
+    mode?: GameMode,
+    exam?: ActiveDuty['exam']
+  ): Promise<CareerPayload>
   /** Geeft de aangenomen dienst terug zonder hem te boeken. */
   cancelDuty(): Promise<CareerPayload>
-  /** Start de dienst: overlay openen en de kilometerstand vastleggen. */
-  beginDuty(
-    duty: Duty,
-    ibis?: IbisPlan
-  ): Promise<{ connected: boolean; launched: boolean; running: boolean }>
+  /**
+   * Start de dienst: eerst de situatie klaarzetten in OMSI, dan de overlay
+   * openen, de kilometerstand vastleggen en het spel aanzwengelen.
+   */
+  beginDuty(request: BeginRequest): Promise<BeginResult>
   /** Schrijft het situatiebestand waarmee OMSI de dienst startklaar laadt. */
   prepareDuty(
     duty: Duty,

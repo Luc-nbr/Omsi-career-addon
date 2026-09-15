@@ -1,6 +1,8 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { readOmsiLines, str } from './omsiFile'
+import { writeWeather } from './weather'
+import type { WeatherKind } from '../shared/weather'
 
 /**
  * Situatiebestanden (.osn) leggen vast waar het spel begint: kaart, datum,
@@ -39,6 +41,24 @@ export interface SituationRequest {
     /** Wagenpark waar de bestemmingscodes uit komen; staat achter in het blok. */
     yard?: string
   }
+  /**
+   * De dienstregeling die OMSI meteen moet klaarzetten. Met dit blok staat de
+   * lijn, de omloop en de rit al gekozen zodra de situatie geladen is, en hoeft
+   * de chauffeur het dienstregelingsmenu niet meer in.
+   */
+  timetable?: {
+    /** Naam van het lijnbestand zonder .ttl, zoals het menu hem toont. */
+    lineFile: string
+    /** Naam van de omloop, zoals in `[newtour]`. */
+    tour: string
+    /** Hoeveelste rit van die omloop; daar begint de dienst. */
+    trip: number
+  }
+  /**
+   * Het weer. Zonder keuze nemen we over wat er voor deze kaart al klaarstaat;
+   * dat past bij de streek en het tijdvak.
+   */
+  weather?: WeatherKind
   /** Waar het bestand heen gaat; standaard de Situations-map van OMSI. */
   into?: string
   /** Waar de bus komt te staan, in de tegelmaat van OMSI zelf. */
@@ -199,6 +219,13 @@ function buildSituation(request: SituationRequest): string[] {
   // waarden weg, ongeacht het voertuig.
   lines.push('[egopos]', '10', '0', '10', '0', '0', '')
 
+  /*
+   * De vlag dat er met een dienstregeling gereden wordt. OMSI zet hem in elke
+   * situatie waarin de speler een omloop heeft gekozen, met een lege regel
+   * erachter; zonder de vlag blijft het menu op "vrij rijden" staan.
+   */
+  if (request.timetable) lines.push('[TT_active]', '')
+
   if (vehicle && spawn) {
     const q = yawQuaternion(spawn.heading)
     lines.push(
@@ -239,7 +266,30 @@ function buildSituation(request: SituationRequest): string[] {
       ` ${vehicle.lineNumber} `,
       'IBIS_cabindisplay',
       vehicle.terminus,
-      '',
+      ''
+    )
+
+    /*
+     * De gekozen dienstregeling. De velden zijn afgelezen aan situaties die
+     * OMSI zelf wegschrijft: het lijnbestand, de naam van de omloop, het
+     * volgnummer van de rit, de halte waar de bus staat, een vlag en de
+     * afwijking op de dienstregeling in seconden. Wij zetten de bus aan het
+     * begin van zijn eerste rit en op tijd, dus halte nul en geen afwijking.
+     */
+    if (request.timetable) {
+      lines.push(
+        '[settimetable]',
+        request.timetable.lineFile,
+        request.timetable.tour,
+        String(request.timetable.trip),
+        '0',
+        '1',
+        '0',
+        ''
+      )
+    }
+
+    lines.push(
       '----------------------------------------------',
       '',
       '[myvehicle]',
@@ -255,10 +305,8 @@ function buildSituation(request: SituationRequest): string[] {
 /**
  * Schrijft de situatie waarmee OMSI opstart.
  *
- * Er is een sjabloon voor nodig: het voertuigblok bevat meer dan wij weten -- de
- * stand van honderden scriptvariabelen van dat busmodel -- en dat is niet te
- * verzinnen. OMSI bewaart na elke sessie `laststn.osn` per kaart, dus wie een
- * kaart één keer heeft gereden heeft er vanaf dan een.
+ * Alles wordt zelf opgebouwd, zonder sjabloon; zie `buildSituation`. Alleen het
+ * weer komt van elders als de beller er geen kiest.
  */
 export function writeSituation(omsiPath: string, request: SituationRequest): SituationResult {
   const lines = buildSituation(request)
@@ -268,17 +316,16 @@ export function writeSituation(omsiPath: string, request: SituationRequest): Sit
   writeFileSync(file, Buffer.concat([BOM, Buffer.from(lines.join('\r\n'), 'utf16le')]))
 
   /*
-   * Het weer hoort bij de situatie. Zonder bestand valt OMSI terug op zijn
-   * standaard; een bestaande situatie van deze kaart levert iets dat bij de
-   * streek past, dus die nemen we over als hij er is.
+   * Het weer hoort bij de situatie. Wie het zelf kiest krijgt precies dat;
+   * anders nemen we over wat er voor deze kaart al klaarstond, want dat past bij
+   * de streek en het tijdvak. Zonder bestand valt OMSI terug op zijn standaard.
    */
   const template = findTemplate(omsiPath, request.mapFolder)
-  if (template && existsSync(`${template}.owt`)) {
-    try {
-      copyFileSync(`${template}.owt`, `${file}.owt`)
-    } catch {
-      // Weer is bijzaak; de dienst werkt ook zonder.
-    }
+  try {
+    if (request.weather) writeWeather(file, request.weather)
+    else if (template && existsSync(`${template}.owt`)) copyFileSync(`${template}.owt`, `${file}.owt`)
+  } catch {
+    // Weer is bijzaak; de dienst werkt ook zonder.
   }
 
   return {
