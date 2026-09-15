@@ -144,6 +144,45 @@ const TEXT = {
     nl: 'Jij kiest de lijn, de bus, de plek, het weer, de datum en de tijd. De app zet het alleen klaar in OMSI en biedt de overlay aan.'
   },
   'mode.otherDriver': { en: 'Other driver', de: 'Anderer Fahrer', fr: 'Autre conducteur', nl: 'Andere chauffeur' },
+  // ---------- opnieuw kijken wat er geïnstalleerd is ----------
+  'check.button': {
+    en: 'Check installed folders',
+    de: 'Installierte Ordner prüfen',
+    fr: 'Vérifier les dossiers installés',
+    nl: 'Controleer geïnstalleerde mappen'
+  },
+  'check.busy': { en: 'Looking…', de: 'Schaue nach…', fr: 'Recherche…', nl: 'Even kijken…' },
+  'check.first': {
+    en: 'Found {maps} maps and {buses} bus folders. From now on this button reports what is new.',
+    de: '{maps} Karten und {buses} Busordner gefunden. Ab jetzt meldet diese Schaltfläche, was neu ist.',
+    nl: '{maps} kaarten en {buses} busmappen gevonden. Vanaf nu meldt deze knop wat erbij komt.',
+    fr: '{maps} cartes et {buses} dossiers de bus trouvés. Désormais ce bouton signale les nouveautés.'
+  },
+  'check.nothing': {
+    en: 'Nothing new: {maps} maps, {buses} bus folders.',
+    de: 'Nichts Neues: {maps} Karten, {buses} Busordner.',
+    fr: 'Rien de neuf : {maps} cartes, {buses} dossiers de bus.',
+    nl: 'Niets nieuws: {maps} kaarten, {buses} busmappen.'
+  },
+  'check.newMaps': {
+    en: 'New map: {items}.',
+    de: 'Neue Karte: {items}.',
+    fr: 'Nouvelle carte : {items}.',
+    nl: 'Nieuwe kaart: {items}.'
+  },
+  'check.newBuses': {
+    en: 'New buses: {items}.',
+    de: 'Neue Busse: {items}.',
+    fr: 'Nouveaux bus : {items}.',
+    nl: 'Nieuwe bussen: {items}.'
+  },
+  'check.gone': {
+    en: 'Gone: {items}.',
+    de: 'Verschwunden: {items}.',
+    fr: 'Disparu : {items}.',
+    nl: 'Verdwenen: {items}.'
+  },
+
   'mode.otherMode': { en: 'Other mode', de: 'Anderer Modus', fr: 'Autre mode', nl: 'Andere modus' },
   'mode.running': {
     en: 'A duty is waiting for you here',

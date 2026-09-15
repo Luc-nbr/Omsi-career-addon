@@ -26,6 +26,26 @@ export interface MapSummary {
   dayOfYear: number
 }
 
+/**
+ * Wat er in de OMSI-map staat, en wat er nieuw is sinds de vorige keer kijken.
+ *
+ * Kaarten en bussen zet je erbij door een map neer te zetten; niets meldt dat
+ * aan de app. Deze uitkomst hoort bij de knop die opnieuw gaat kijken.
+ */
+export interface InstalledCheck {
+  /** De verse lijsten, zodat de app meteen bij is. */
+  maps: MapSummary[]
+  vehicles: Vehicle[]
+  /** Nooit eerder gekeken? Dan is alles "nieuw", en dat is geen nieuws. */
+  first: boolean
+  /** Namen van kaarten die erbij kwamen of verdwenen sinds de vorige keer. */
+  addedMaps: string[]
+  removedMaps: string[]
+  /** Mapnamen van bussen, idem. */
+  addedBuses: string[]
+  removedBuses: string[]
+}
+
 export interface OmsiStatus {
   found: boolean
   path?: string
@@ -208,6 +228,8 @@ export interface GameControllersPayload {
 export interface CareerApi {
   status(): Promise<OmsiStatus>
   maps(): Promise<MapSummary[]>
+  /** Opnieuw in de OMSI-map kijken en melden wat erbij is gekomen. */
+  checkInstalled(): Promise<InstalledCheck>
   vehicles(): Promise<Vehicle[]>
   /** Halteposities van een kaart, om te tonen waar je de bus neerzet. */
   geometry(mapFolder: string): Promise<MapGeometry>

@@ -53,6 +53,7 @@ import { isOmsiRunning, launchOmsi } from '../core/launch'
 import { ensurePlugin, pluginSourceDir, type PluginStatus } from '../core/pluginInstall'
 import { readOverlayLayout, writeOverlayLayout } from '../core/overlayLayout'
 import { receiptHeightMicrons, RECEIPT_WIDTH_MICRONS } from '../core/receipt'
+import { difference, readKnown, writeKnown } from '../core/installed'
 import { readSettings, writeSettings, type Settings } from '../core/settings'
 import { formatTime } from '../shared/format'
 import { findTemplate, readSituationTime, writeSituation } from '../core/situation'
@@ -68,6 +69,7 @@ import {
   type FreeRequest,
   type DutyDate,
   type DutyRequest,
+  type InstalledCheck,
   type MapSummary
 } from '../shared/api'
 import { defaultLayout, OVERLAY_RATES, type OverlayLayout } from '../shared/overlay'
@@ -680,6 +682,76 @@ function registerHandlers(): void {
   )
 
   ipcMain.handle('omsi:vehicles', () => listVehicles(omsi()))
+
+  /**
+   * Opnieuw kijken wat er staat.
+   *
+   * Een kaart of een bus installeer je door een map in de OMSI-map te zetten;
+   * er is niets dat dat aan ons meldt, en de app leest die mappen alleen bij het
+   * starten. Deze knop leest ze opnieuw -- en omdat alles wat we van een kaart
+   * weten in geheugen staat, gaat dat geheugen er eerst uit: een kaart die
+   * bijgewerkt is, is anders nog steeds de oude.
+   *
+   * Wat er nieuw is, weten we doordat we bewaren wat er de vorige keer stond.
+   */
+  ipcMain.handle('omsi:check', (): InstalledCheck => {
+    mapCache.clear()
+    networkCache.clear()
+    mapFleetCache.clear()
+    mapEraCache.clear()
+    calendarCache.clear()
+    geometryCache.clear()
+    laneCache.clear()
+    laneNetworkCache.clear()
+    routeCache.clear()
+    vehicleTrackers.clear()
+
+    const maps = listMaps(omsi()).map((folder) => {
+      const loaded = map(folder)
+      const time = era(folder)
+      return {
+        folder,
+        name: loaded.name,
+        tours: loaded.tours.length,
+        hasTemplate: Boolean(findTemplate(omsi(), folder)),
+        year: time.year,
+        dayOfYear: time.dayOfYear
+      }
+    })
+    const vehicles = listVehicles(omsi())
+    // Per map kijken, niet per busbestand: een add-on is een map, en anders
+    // meldt de app dertig "nieuwe bussen" voor één pakket.
+    const busFolders = [...new Set(vehicles.map((item) => item.folder))].sort()
+
+    const known = readKnown(userData())
+    const mapDiff = difference(known?.maps ?? [], maps.map((item) => item.folder))
+    const busDiff = difference(known?.buses ?? [], busFolders)
+    writeKnown(userData(), { maps: maps.map((item) => item.folder), buses: busFolders })
+
+    // De naam van een kaart zegt de gebruiker meer dan zijn mapnaam.
+    const nameOf = (folder: string): string =>
+      maps.find((item) => item.folder === folder)?.name || folder
+
+    /*
+     * De eerste keer is alles nieuw, en dat is geen nieuws: dan hebben we
+     * niets om mee te vergelijken. We melden dan wat er staat en houden de
+     * lijsten leeg, zodat niemand -- de interface noch een proef -- elf kaarten
+     * als aanwinst leest.
+     */
+    if (!known) {
+      return { maps, vehicles, first: true, addedMaps: [], removedMaps: [], addedBuses: [], removedBuses: [] }
+    }
+
+    return {
+      maps,
+      vehicles,
+      first: false,
+      addedMaps: mapDiff.added.map(nameOf),
+      removedMaps: mapDiff.removed,
+      addedBuses: busDiff.added,
+      removedBuses: busDiff.removed
+    }
+  })
 
   /**
    * Halteposities van een kaart. Het doorlezen van de tegels kost een fractie

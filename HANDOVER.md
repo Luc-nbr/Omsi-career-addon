@@ -106,6 +106,7 @@ blijft eenmalig een kopie staan als `laststn.osn.voor-omsi-career`. Verder niets
 | `weather.ts` | Schrijft het `.owt`-bestand bij een situatie |
 | `profiles.ts` | Profielen in `%APPDATA%\omsi-career\profiles\` |
 | `settings.ts` | Taal, in `settings.json` |
+| `installed.ts` | Wat er de vorige keer in de OMSI-map stond, in `installed.json` |
 | `overlayLayout.ts` | Indeling van de overlay, in `overlay.json` |
 
 ### `src/shared/`
@@ -366,6 +367,17 @@ zelf vast welke Direct3D-as het noorden is (de lezing die op een rijstrook valt)
 van de vertraging en of `tripName` een pad of een naam is. Kijk in `live.json`
 onder `mem` zodra een bus staat. Proeven: `scripts/probe-vehicle.ts` (kern) en
 `scripts/screenshotLive.cjs` (overlay met rijdende nepbus).
+
+**Opnieuw kijken wat er geinstalleerd is** (sinds 15-09-2026). Kaarten en bussen
+komen als een map de OMSI-map in en niets meldt dat aan de app, die ze alleen
+bij het starten leest. De knop "Controleer geinstalleerde mappen" in de balk
+boven het dienstscherm roept `omsi:check` aan: dat leegt alle kaartcaches (anders
+blijft een bijgewerkte kaart de oude), leest `maps/` en `Vehicles/` opnieuw, en
+vergelijkt met `installed.json` bij de gebruikersgegevens. Bussen worden per map
+geteld, niet per `.bus`, anders meldt hij dertig aanwinsten voor een pakket. De
+eerste keer valt er niets te vergelijken; dan zegt hij alleen wat er staat.
+Proef: `scripts/probe-installed.cjs`, die doet alsof er iets bij komt door
+`installed.json` aan te passen -- in de spelmap wordt niets veranderd.
 
 **Tijdens het rijden toont de app zelf alleen de kern** (sinds 15-09-2026).
 Zodra de dienst gestart is komt `RunningDuty.tsx` in beeld in plaats van de

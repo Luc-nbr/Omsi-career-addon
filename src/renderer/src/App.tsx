@@ -87,6 +87,9 @@ export function App(): JSX.Element {
   /** Wat OMSI tijdens het rijden doorgeeft; voedt het compacte scherm. */
   const [session, setSession] = useState<SessionResult>()
   const [connected, setConnected] = useState(false)
+  /** Wat de laatste keer kijken opleverde; staat in de balk bovenaan. */
+  const [checked, setChecked] = useState<string>()
+  const [checking, setChecking] = useState(false)
   const [printers, setPrinters] = useState<PrinterInfo[]>([])
   const [printer, setPrinter] = useState('')
   const finishRef = useRef<(() => Promise<void>) | undefined>(undefined)
@@ -326,6 +329,57 @@ export function App(): JSX.Element {
     }
   }, [duty, confirmed, ibis, vehicle, assignment, language])
 
+  /**
+   * Opnieuw kijken wat er in de OMSI-map staat.
+   *
+   * Een kaart of een bus installeer je door een map neer te zetten, en de app
+   * leest die mappen alleen bij het starten -- wie tussendoor iets installeert,
+   * ziet het pas na een herstart. Deze knop leest ze opnieuw en zegt wat erbij
+   * is gekomen sinds de vorige keer.
+   */
+  const checkInstalled = useCallback(async () => {
+    setChecking(true)
+    setChecked(undefined)
+    try {
+      const found = await window.career.checkInstalled()
+      setMaps(found.maps)
+      setVehicles(found.vehicles)
+      // Een kaart die weg is, kan niet gekozen blijven.
+      if (!found.maps.some((item) => item.folder === mapFolder)) {
+        setMapFolder(found.maps[0]?.folder ?? '')
+      }
+
+      const buses = new Set(found.vehicles.map((item) => item.folder)).size
+      if (found.first) {
+        setChecked(t(language, 'check.first', { maps: found.maps.length, buses }))
+        return
+      }
+      const parts: string[] = []
+      if (found.addedMaps.length > 0) {
+        parts.push(t(language, 'check.newMaps', { items: found.addedMaps.join(', ') }))
+      }
+      if (found.addedBuses.length > 0) {
+        parts.push(t(language, 'check.newBuses', { items: found.addedBuses.join(', ') }))
+      }
+      if (found.removedMaps.length > 0 || found.removedBuses.length > 0) {
+        parts.push(
+          t(language, 'check.gone', {
+            items: [...found.removedMaps, ...found.removedBuses].join(', ')
+          })
+        )
+      }
+      setChecked(
+        parts.length > 0
+          ? parts.join(' ')
+          : t(language, 'check.nothing', { maps: found.maps.length, buses })
+      )
+    } catch (cause) {
+      setChecked(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setChecking(false)
+    }
+  }, [language, mapFolder])
+
   const createProfile = useCallback(async (name: string) => {
     setCareer(await window.career.createProfile(name))
     setScreen('modes')
@@ -519,6 +573,19 @@ export function App(): JSX.Element {
           <button type="button" className="link-button" onClick={() => setScreen('game')}>
             {t(language, 'cfg.title')}
           </button>
+          {/*
+            Kaarten en bussen komen als een map de OMSI-map in; niets meldt dat
+            aan ons. Deze knop gaat opnieuw kijken, zonder de app te herstarten.
+          */}
+          <button
+            type="button"
+            className="link-button"
+            disabled={checking}
+            onClick={() => void checkInstalled()}
+          >
+            {t(language, checking ? 'check.busy' : 'check.button')}
+          </button>
+          {checked && <span className="note mode-note">{checked}</span>}
         </div>
 
         {/*
