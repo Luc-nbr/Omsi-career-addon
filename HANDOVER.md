@@ -368,6 +368,31 @@ van de vertraging en of `tripName` een pad of een naam is. Kijk in `live.json`
 onder `mem` zodra een bus staat. Proeven: `scripts/probe-vehicle.ts` (kern) en
 `scripts/screenshotLive.cjs` (overlay met rijdende nepbus).
 
+**De rit die aan de beurt is, is de eerste die nog niet is aangekomen** (sinds
+15-09-2026). `describeLive` pakte de laatste rit die al vertrokken was, en die
+bleef staan nadat hij was aangekomen: stond de bus op het eindpunt te wachten op
+de volgende rit, dan lag de gereden route nog op de kaart en hoorden de
+instructies bij een rit van een half uur geleden. Nu geldt overal dezelfde regel
+-- wat in OMSI gekozen is gaat voor, anders de eerste rit met `arrival >
+clockMinutes` -- en `overlay.tsx` rekent hem niet meer zelf na. Proef:
+`scripts/probe-legswitch.ts`, zes standen inclusief "OMSI rijdt iets dat niet in
+de dienst zit".
+
+**Bij het kiezen van een vervolgrit telt de lijn, niet het aantal ritten**
+(sinds 15-09-2026). `pickNext` woog per rit: stonden er op een knooppunt twintig
+vervolgritten van de eigen lijn en een van een andere, dan hadden die twintig
+samen twintig lootjes tegen de zes van die ene. Nu wordt eerst de lijn gekozen en
+dan pas de rit. Rheinhausen ging van 23% naar 39% van de overgangen op een andere
+lijn, TH_Wald naar 67%. Hohenkirchen blijft op 9%, en dat is de kaart: van de 569
+eindpunten bieden er 18 een tweede lijn, en er zijn maar twee haltes waar meer
+dan een lijn vertrekt. Proef: `scripts/probe-variety.ts`.
+
+**De navigatie staat op 25 m zodra de bus stapvoets rijdt** (sinds 15-09-2026).
+Onder de 30 km/u vast op 25/90 meter per punt -- de schaalbalk van de navigatie
+mikt op negentig punten, dus dat leest als "25 m" -- en daarboven vloeiend open
+tot 2 m per punt bij 80 km/u, zonder sprong op de grens. `liveZoom` in
+`RouteMap.tsx`; proef: `scripts/probe-zoom.cjs`.
+
 **Opnieuw kijken wat er geinstalleerd is** (sinds 15-09-2026). Kaarten en bussen
 komen als een map de OMSI-map in en niets meldt dat aan de app, die ze alleen
 bij het starten leest. De knop "Controleer geinstalleerde mappen" in de balk

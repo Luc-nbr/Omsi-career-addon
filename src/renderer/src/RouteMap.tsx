@@ -125,14 +125,40 @@ const MANUAL_MS = 6000
 const BUS_MPP = 0.9
 
 /**
- * Meerijden als een navigatiesysteem. Stilstaand ingezoomd, bij 50 km/u zo ver
- * uit dat je de volgende kruising ruim ziet aankomen. De bus staat onder het
- * midden, want wat voor je ligt is belangrijker dan wat achter je ligt.
+ * Meerijden als een navigatiesysteem: langzaam rijden zoomt in, harder rijden
+ * zoomt uit, zodat je de volgende kruising ruim ziet aankomen. De bus staat
+ * onder het midden, want wat voor je ligt telt zwaarder dan wat achter je ligt.
  */
-const LIVE_MIN_MPP = 0.55
 const LIVE_MAX_MPP = 2
-const LIVE_MPP_PER_KMH = 0.02
 const LIVE_AHEAD = 0.22
+
+/**
+ * Stapvoets hoort de kaart op vijfentwintig meter te staan.
+ *
+ * Dat is de stand waarin je de halte, de inrit en de stoeprand nog uit elkaar
+ * houdt -- precies wat je nodig hebt als je langzaam rijdt, want dan ben je aan
+ * het aanrijden, keren of invoegen. De schaalbalk van de navigatie mikt op
+ * negentig punten breed, dus vijfentwintig meter valt op 25/90 meter per punt.
+ */
+const SLOW_KMH = 30
+const SLOW_MPP = 25 / 90
+
+/** En bij deze snelheid is hij helemaal uitgezoomd. */
+const FAST_KMH = 80
+
+/** Hoeveel meter per punt erbij komt boven stapvoets. */
+const LIVE_MPP_PER_KMH = (LIVE_MAX_MPP - SLOW_MPP) / (FAST_KMH - SLOW_KMH)
+
+/**
+ * De zoomstand die bij een snelheid hoort. Onder de stapvoetsgrens vast op
+ * vijfentwintig meter, daarboven vloeiend verder open -- zonder sprong op de
+ * grens zelf, want een kaart die bij precies dertig ineens wegspringt leest als
+ * een storing.
+ */
+export function liveZoom(speedKmh: number): number {
+  if (!(speedKmh > SLOW_KMH)) return SLOW_MPP
+  return Math.min(LIVE_MAX_MPP, SLOW_MPP + (speedKmh - SLOW_KMH) * LIVE_MPP_PER_KMH)
+}
 /** Hoe snel de getoonde bus de gemeten plek volgt, in seconden; kleiner is strakker. */
 const LIVE_SMOOTH_S = 0.18
 /** Zo ver rekent de kaart vooruit op de snelheid, tussen twee metingen in. */
@@ -446,7 +472,7 @@ export function RouteMap({
         shown.y += (ty - shown.y) * step
         shown.heading = (shown.heading + turn(shown.heading, target.data.heading) * step + 360) % 360
       }
-      const wanted = clamp(LIVE_MIN_MPP + target.data.speedKmh * LIVE_MPP_PER_KMH, LIVE_MIN_MPP, LIVE_MAX_MPP)
+      const wanted = liveZoom(target.data.speedKmh)
       shown.mpp += (wanted - shown.mpp) * (1 - Math.exp(-dt / 1.2))
       setLiveBus({ x: shown.x, y: shown.y, heading: shown.heading })
       if (Date.now() < manualUntil.current) return
@@ -1123,8 +1149,8 @@ function overlaps(
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
 }
 
-/** Een ronde maat voor de schaalbalk: 50 m, 100 m, 250 m, 500 m, 1 km, … */
-function niceScale(mpp: number, aim: number): { px: number; label: string } {
+/** Een ronde maat voor de schaalbalk: 25 m, 50 m, 100 m, 250 m, 500 m, 1 km, … */
+export function niceScale(mpp: number, aim: number): { px: number; label: string } {
   const target = mpp * aim
   const steps = [25, 50, 100, 250, 500, 1000, 2000, 5000]
   const metres = steps.find((step) => step >= target) ?? steps[steps.length - 1]

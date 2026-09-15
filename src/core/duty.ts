@@ -53,27 +53,49 @@ function lineOf(run: TripRun): string {
  * deze dienst nog niet voorbijkwam. Het blijft een voorkeur en geen regel: is er
  * alleen dezelfde lijn, dan rijdt hij die gewoon door.
  */
-function appetite(run: TripRun, current: string, driven: Set<string>): number {
-  const line = lineOf(run)
+function appetite(line: string, current: string, driven: Set<string>): number {
   if (line === current) return 1
   return driven.has(line) ? 3 : 6
 }
 
-/** Kiest een vervolg, met die voorkeur meegewogen. */
+/**
+ * Kiest een vervolg: eerst de lijn, dan pas de rit.
+ *
+ * Dat onderscheid is het hele punt. Op een knooppunt staat de eigen lijn vaak
+ * met twintig vervolgritten klaar en een andere lijn met één. Woog je per rit,
+ * dan hadden die twintig samen twintig lootjes tegen de zes van die ene -- en
+ * dan reed je alsnog de hele dienst dezelfde lus, hoe zwaar een andere lijn ook
+ * meetelde. Zo krijgt elke lijn zijn gewicht een keer, en maakt het niet uit
+ * hoeveel ritten erachter staan.
+ */
 function pickNext(
   options: TripRun[],
   current: string,
   driven: Set<string>,
   random: () => number
 ): TripRun {
-  let total = 0
-  for (const run of options) total += appetite(run, current, driven)
-  let ticket = random() * total
+  const perLine = new Map<string, TripRun[]>()
   for (const run of options) {
-    ticket -= appetite(run, current, driven)
-    if (ticket <= 0) return run
+    const line = lineOf(run)
+    const list = perLine.get(line)
+    if (list) list.push(run)
+    else perLine.set(line, [run])
   }
-  return options[options.length - 1]
+
+  let total = 0
+  for (const line of perLine.keys()) total += appetite(line, current, driven)
+  let ticket = random() * total
+  let chosen = [...perLine.values()][perLine.size - 1]
+  for (const [line, runs] of perLine) {
+    ticket -= appetite(line, current, driven)
+    if (ticket <= 0) {
+      chosen = runs
+      break
+    }
+  }
+
+  // Binnen die lijn maakt het niet uit welke; ze vertrekken allemaal vanaf hier.
+  return chosen[Math.min(chosen.length - 1, Math.floor(random() * chosen.length))]
 }
 
 /**

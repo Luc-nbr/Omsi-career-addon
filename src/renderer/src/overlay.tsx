@@ -318,18 +318,12 @@ function Overlay(): JSX.Element | null {
   const ibisCapable = status ? status.offersStops : true
 
   /*
-   * De rit waar de instructies over gaan: de eerste die nog niet voorbij is.
-   * Zolang er niets in OMSI gekozen is, gaat de klok gewoon door; dan hoort de
-   * chauffeur de rit te zien die nu aan de beurt is en niet die van vanochtend.
-   * Rijdt er wel een dienstregeling, dan volgen we die.
+   * De rit waar de instructies over gaan. Dat rekent `describeLive` uit: wat in
+   * OMSI gekozen is gaat voor, en anders de eerste rit die nog niet is
+   * aangekomen. Hier stond diezelfde som nog eens; twee plekken met dezelfde
+   * regel lopen uit elkaar zodra er een verandert.
    */
-  const upcomingIndex = (() => {
-    if (ibisLoaded && status) return status.legIndex
-    const clock = status?.clockMinutes
-    if (clock === undefined) return 0
-    const at = duty?.legs.findIndex((item) => item.arrival > clock) ?? -1
-    return at >= 0 ? at : Math.max(0, (duty?.legs.length ?? 1) - 1)
-  })()
+  const upcomingIndex = status?.legIndex ?? 0
   const upcoming = duty?.legs[upcomingIndex]
   /*
    * Elke rit zijn eigen afmelding. De sleutel bevat het ritbestand, zodat een

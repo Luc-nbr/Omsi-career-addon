@@ -417,19 +417,22 @@ export function describeLive(
 ): LiveStatus {
   const clockMinutes = data.time / 60
 
+  /*
+   * Welke rit aan de beurt is volgens de klok: de eerste die nog niet is
+   * aangekomen. Dat is de rit die nu rijdt, of -- als de bus op het eindpunt
+   * staat te wachten -- de rit die zo vertrekt.
+   *
+   * Hier stond eerst de laatste rit die al vertrokken was, en die bleef staan
+   * nadat hij was aangekomen. Dan lag de gereden route nog op de kaart terwijl
+   * de chauffeur al aan de volgende begon, met de instructies van een rit van
+   * een half uur geleden erbij.
+   */
   let legIndex = -1
   let leg: DutyLeg | undefined
-  if (duty) {
-    for (let i = 0; i < duty.legs.length; i++) {
-      if (duty.legs[i].departure <= clockMinutes) {
-        legIndex = i
-        leg = duty.legs[i]
-      }
-    }
-    if (legIndex < 0 && duty.legs.length > 0) {
-      legIndex = 0
-      leg = duty.legs[0]
-    }
+  if (duty && duty.legs.length > 0) {
+    const ahead = duty.legs.findIndex((item) => item.arrival > clockMinutes)
+    legIndex = ahead >= 0 ? ahead : duty.legs.length - 1
+    leg = duty.legs[legIndex]
   }
 
   // Wat in OMSI zelf gekozen is, gaat voor de klok: dat is de rit die gereden wordt.
