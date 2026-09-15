@@ -672,3 +672,32 @@
 .delay.early {
   color: #6fb8ff;
 }
+
+/* De twee stappen in het instructiepaneel: eerst het menu, dan de IBIS. */
+.step-title {
+  display: block;
+  margin: 10px 0 4px;
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8d9bad;
+}
+
+.select-duty .grid .wide {
+  grid-column: 1 / -1;
+}
+
+/* Een haltenaam is lang; die mag over twee regels in plaats van het paneel uit. */
+.select-duty .grid .wide b {
+  font-size: 15px;
+  line-height: 1.25;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Rit klaar: wat je voor de volgende moet doen. */
+.advice.next-trip {
+  border-left: 3px solid #f0b429;
+  background: rgba(240, 180, 41, 0.12);
+  color: #f5e6c8;
+}

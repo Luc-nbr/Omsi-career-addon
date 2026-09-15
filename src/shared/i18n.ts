@@ -1398,6 +1398,28 @@ const TEXT = {
     fr: 'Menu des horaires : ligne {line} · tournée {tour} · départ {time}',
     nl: 'Dienstregelingsmenu: lijn {line} · omloop {tour} · vertrek {time}'
   },
+  'ovl.menu': { en: 'In the OMSI menu', de: 'Im OMSI-Menü', fr: 'Dans le menu d’OMSI', nl: 'In het menu van OMSI' },
+  'ovl.onTheIbis': { en: 'On the IBIS', de: 'Auf dem IBIS', fr: 'Sur l’IBIS', nl: 'Op de IBIS' },
+  'ovl.menuTrip': { en: 'Trip', de: 'Fahrt', fr: 'Trajet', nl: 'Rit' },
+  'ovl.menuFirst': { en: 'First stop', de: 'Erste Haltestelle', fr: 'Premier arrêt', nl: 'Eerste halte' },
+  'ovl.selectSteps': {
+    en: 'Set Time Table: pick the line, then the tour, then the trip leaving at {time}. Then key the line and route into the IBIS; the destination follows from the route.',
+    de: 'Set Time Table: erst die Linie, dann den Umlauf, dann die Fahrt um {time}. Danach Linie und Route ins IBIS tippen; das Ziel folgt aus der Route.',
+    fr: 'Set Time Table : la ligne, puis le roulement, puis le trajet de {time}. Ensuite saisissez la ligne et la route sur l’IBIS ; la destination suit la route.',
+    nl: 'Set Time Table: eerst de lijn, dan de omloop, dan de rit die om {time} vertrekt. Toets daarna lijn en route in op de IBIS; de bestemming volgt uit de route.'
+  },
+  'ovl.nextTrip': {
+    en: 'Trip done. Next: pick the trip leaving at {time} in OMSI and key route {route} into the IBIS.',
+    de: 'Fahrt beendet. Weiter: in OMSI die Fahrt um {time} wählen und Route {route} ins IBIS tippen.',
+    fr: 'Trajet terminé. Ensuite : choisissez le trajet de {time} dans OMSI et saisissez la route {route} sur l’IBIS.',
+    nl: 'Rit klaar. Verder: kies in OMSI de rit die om {time} vertrekt en toets route {route} in op de IBIS.'
+  },
+  'ovl.nextTripPlain': {
+    en: 'Trip done. Next: the trip leaving at {time} in OMSI.',
+    de: 'Fahrt beendet. Weiter: die Fahrt um {time} in OMSI.',
+    fr: 'Trajet terminé. Ensuite : le trajet de {time} dans OMSI.',
+    nl: 'Rit klaar. Verder: de rit die om {time} vertrekt in OMSI.'
+  },
   'ovl.selectWrong': {
     en: 'Selected in OMSI: line {line}, tour {tour}. That is not your accepted duty.',
     de: 'In OMSI gewählt: Linie {line}, Umlauf {tour}. Das ist nicht dein angenommener Dienst.',

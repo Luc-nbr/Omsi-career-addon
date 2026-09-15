@@ -152,6 +152,21 @@ function Overlay(): JSX.Element | null {
    * want daar komt het antwoord dan vandaan.
    */
   const ibisCapable = status ? status.offersStops : true
+
+  /*
+   * De rit waar de instructies over gaan: de eerste die nog niet voorbij is.
+   * Zolang er niets in OMSI gekozen is, gaat de klok gewoon door; dan hoort de
+   * chauffeur de rit te zien die nu aan de beurt is en niet die van vanochtend.
+   * Rijdt er wel een dienstregeling, dan volgen we die.
+   */
+  const upcomingIndex = (() => {
+    if (ibisLoaded && status) return status.legIndex
+    const clock = status?.clockMinutes
+    if (clock === undefined) return 0
+    const at = duty?.legs.findIndex((item) => item.arrival > clock) ?? -1
+    return at >= 0 ? at : Math.max(0, (duty?.legs.length ?? 1) - 1)
+  })()
+  const upcoming = duty?.legs[upcomingIndex]
   // Alleen schatten waar de bus is als OMSI zijn plek niet laat lezen.
   const bus =
     !frame.vehicle && status && ibisLoaded && passed !== undefined && stopOdometer.current?.key === stopKey
@@ -184,7 +199,14 @@ function Overlay(): JSX.Element | null {
             ibisCapable && !readable ? (
               <IbisPanel duty={duty} ibis={frame.ibis} status={status} language={language} />
             ) : (
-              <SelectPanel duty={duty} status={status} language={language} />
+              <SelectPanel
+                duty={duty}
+                ibis={frame.ibis}
+                leg={upcoming}
+                legIndex={upcomingIndex}
+                status={status}
+                language={language}
+              />
             )
           ) : (
             <DutyPanel frame={frame} detail={layout.detail} language={language} onCycle={cycle} />
@@ -416,6 +438,16 @@ function DutyPanel({
   const passed = walkedStops(status)
   const total = leg?.stops.length ?? 0
 
+  /*
+   * De rit is voorbij maar de dienst nog niet: dan moet de chauffeur in OMSI de
+   * volgende rit kiezen, en op de IBIS de route ervan intoetsen. Dat staat hier,
+   * want anders zit hij aan het eindpunt te wachten op een overlay die niets
+   * meer te melden heeft.
+   */
+  const next = duty && status.legIndex >= 0 ? duty.legs[status.legIndex + 1] : undefined
+  const legDone = Boolean(leg && status.clockMinutes >= leg.arrival)
+  const nextRoute = duty && frame.ibis ? frame.ibis.legs[status.legIndex + 1]?.route : undefined
+
   return (
     <>
       <div className="topline">
@@ -437,6 +469,14 @@ function DutyPanel({
         </button>
         <LayoutButton language={language} />
       </div>
+
+      {legDone && next && !status.dutyComplete && (
+        <div className="advice next-trip">
+          {nextRoute
+            ? tr('ovl.nextTrip', { time: formatTime(next.departure), route: nextRoute })
+            : tr('ovl.nextTripPlain', { time: formatTime(next.departure) })}
+        </div>
+      )}
 
       {status.dutyComplete ? (
         <div className="line-done">{tr('ovl.done')}</div>
@@ -647,37 +687,78 @@ function IbisPanel({
 }
 
 /**
- * Voordat de dienst in OMSI zelf gekozen is. Tijd, haltes en vertraging hebben
- * dan nog geen betekenis; wat de chauffeur wel nodig heeft, is wat hij in het
- * dienstregelingsmenu moet aanklikken.
+ * Voordat de dienst in OMSI zelf gekozen is.
+ *
+ * Tijd, haltes en vertraging hebben dan nog geen betekenis; wat de chauffeur
+ * nodig heeft is wat hij moet aanklikken en intoetsen. Dat staat hier allebei:
+ * de lijn, de omloop en de rit voor Set Time Table, en de lijn en de route voor
+ * de IBIS. En het gaat over de rit die nu aan de beurt is, niet over de eerste
+ * van de dienst -- na een voltooide rit hoort hier de volgende te staan.
  */
 function SelectPanel({
   duty,
+  ibis,
+  leg,
+  legIndex,
   status,
   language
 }: {
   duty: Duty
+  ibis?: IbisPlan
+  leg?: DutyLeg
+  legIndex: number
   status?: LiveStatus
   language: Language
 }): JSX.Element {
-  const first = duty.legs[0]
   const chosen = status?.schedule
+  const route = ibis?.legs[legIndex]?.route
+  const line = ibis?.line || leg?.lineNumber || duty.lineNumbers[0] || '—'
   return (
     <div className="select-duty">
       <div className="topline">
-        <span className="line">{duty.lineNumbers.join(' / ')}</span>
+        <span className="line">{leg?.lineNumber ?? duty.lineNumbers.join(' / ')}</span>
         <b>{t(language, 'ovl.selectTitle')}</b>
         <LayoutButton language={language} />
       </div>
+
+      <span className="step-title">{t(language, 'ovl.menu')}</span>
+      <div className="grid">
+        <div>
+          <b>{leg?.lineFile ?? duty.lineFile}</b>
+          <span>Line</span>
+        </div>
+        <div>
+          <b>{leg?.tourNumber ?? duty.tourNumber}</b>
+          <span>Tour</span>
+        </div>
+        <div>
+          <b>{leg ? formatTime(leg.departure) : '—'}</b>
+          <span>{t(language, 'ovl.menuTrip')}</span>
+        </div>
+      </div>
+
+      <span className="step-title">{t(language, 'ovl.onTheIbis')}</span>
+      <div className="grid">
+        <div>
+          <b>{line}</b>
+          <span>{t(language, 'ibis.line')}</span>
+        </div>
+        <div>
+          <b>{route ?? '—'}</b>
+          <span>{t(language, 'ibis.routeAtStart')}</span>
+        </div>
+        <div className="wide">
+          <b>{leg?.stops[0] ?? '—'}</b>
+          <span>{t(language, 'ovl.menuFirst')}</span>
+        </div>
+      </div>
+
       <div className="row">
-        <span className="value">
-          {t(language, 'ovl.selectHow', {
-            line: duty.lineFile,
-            tour: duty.tourNumber,
-            time: first ? formatTime(first.departure) : '—'
-          })}
+        <span className="sub">
+          {t(language, 'ovl.selectSteps', { time: leg ? formatTime(leg.departure) : '—' })}
         </span>
       </div>
+
       {chosen && !chosen.matchesDuty && (
         <div className="advice warn">
           {t(language, 'ovl.selectWrong', { line: chosen.lineName || '—', tour: chosen.tourName || '—' })}

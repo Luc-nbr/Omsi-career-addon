@@ -234,7 +234,13 @@ function tripKey(name: string): string {
 function readSchedule(data: LiveData, duty: Duty | undefined, clockMinutes: number): OmsiSchedule | undefined {
   const mem = data.mem
   if (!mem || mem.ok !== 1 || !mem.tripName.trim()) return undefined
-  if (!(mem.schedActive > 0.5) && mem.trip < 0) return undefined
+  /*
+   * Alleen een dienstregeling die daadwerkelijk rijdt. Terwijl het venster Set
+   * Time Table openstaat houdt OMSI de rit die je aan het bekijken bent al in
+   * het geheugen; daarop afgaan vult de overlay met een dienst die de chauffeur
+   * nog niet gekozen heeft.
+   */
+  if (!(mem.schedActive > 0.5)) return undefined
   const key = tripKey(mem.tripName)
   let legIndex: number | undefined
   if (duty) {
@@ -322,6 +328,12 @@ function scheduleDelta(
   if (Math.abs(difference) > 180) return undefined
   return Math.round(difference * 60)
 }
+
+/**
+ * Groter dan dit is geen vertraging maar rommel uit een geheugenplek die nog
+ * niet in gebruik is. Drie uur te laat haalt geen enkele dienstregeling.
+ */
+const MAX_SENSIBLE_DELAY_S = 3 * 3600
 
 /** Vertaalt de vertragingstekst van de IBIS naar minuten. */
 function ibisDelay(data: LiveData): number | undefined {
@@ -472,8 +484,16 @@ export function describeLive(
      * ziet. Alleen zonder die dienstregeling rekenen we het zelf uit, tegen de
      * tijd die bij de eerstvolgende halte hoort.
      */
+    /*
+     * Het getal van OMSI, maar alleen als het ergens op slaat. Zolang er geen
+     * dienstregeling rijdt staat er van alles in dat geheugen -- er is een
+     * verschil van zesenhalf jaar voorbijgekomen -- en dan rekenen we het liever
+     * zelf uit tegen de eerstvolgende halte.
+     */
     deltaSeconds:
-      fromMenu && data.mem ? Math.round(data.mem.delay) : scheduleDelta(leg, stopIndex, clockMinutes),
+      fromMenu && data.mem && Math.abs(data.mem.delay) <= MAX_SENSIBLE_DELAY_S
+        ? Math.round(data.mem.delay)
+        : scheduleDelta(leg, stopIndex, clockMinutes),
     mood,
     moodLabel: !hasPassengers
       ? 'empty'
