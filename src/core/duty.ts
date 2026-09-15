@@ -175,6 +175,21 @@ function toDuty(map: OmsiMap, legs: TripRun[]): Duty {
 }
 
 /**
+ * Zoveel bruikbare diensten zoeken we voordat we er één uitkiezen.
+ *
+ * De wandeling kiest onderweg al liever een andere lijn, maar dat blijft kansspel:
+ * staan er op een eindpunt vijf ritten van de eigen lijn klaar en één van een
+ * andere, dan valt het lot vaak op de eigen. Door er een paar te maken en dan te
+ * kiezen, zie je de afwisseling die de kaart te bieden heeft ook echt terug.
+ */
+const POOL = 6
+
+/** Hoeveel verschillende lijnen er in een dienst zitten. */
+function lineCount(legs: TripRun[]): number {
+  return new Set(legs.map(lineOf)).size
+}
+
+/**
  * Wijst een dienst toe van ongeveer de gevraagde lengte.
  *
  * De ritten sluiten op elkaar aan omdat ze uit het net van de kaart komen: waar
@@ -208,14 +223,34 @@ export function generateDuty(
   const attempts = options.attempts ?? 60
   const floor = Math.max(MIN_DUTY_MINUTES, target - tolerance)
   let best: TripRun[] | undefined
+  const good: TripRun[][] = []
 
-  for (let attempt = 0; attempt < attempts; attempt++) {
+  for (let attempt = 0; attempt < attempts && good.length < POOL; attempt++) {
     const legs = walk(network, pick(starts, random), target, tolerance, random, options.lineFile)
     const duration = legs[legs.length - 1].arrival - legs[0].departure
-    if (legs.length >= MIN_LEGS && duration >= floor) return toDuty(map, legs)
+    if (legs.length >= MIN_LEGS && duration >= floor) {
+      good.push(legs)
+      continue
+    }
     // Anders de langste poging bewaren, zodat er iets bruikbaars overblijft.
     if (legs.length < MIN_LEGS) continue
     if (!best || duration > best[best.length - 1].arrival - best[0].departure) best = legs
+  }
+
+  if (good.length > 0) {
+    /*
+     * Uit wat er ligt die met de meeste lijnen, maar niet altijd: het kwadraat
+     * maakt twee lijnen vier keer zo waarschijnlijk als één en drie negen keer,
+     * en toch blijft elke dienst mogelijk. Anders krijg je op een kaart met één
+     * knooppunt steeds dezelfde dienst voorgeschoteld.
+     */
+    const weights = good.map((legs) => lineCount(legs) ** 2)
+    let ticket = random() * weights.reduce((sum, weight) => sum + weight, 0)
+    for (let i = 0; i < good.length; i++) {
+      ticket -= weights[i]
+      if (ticket <= 0) return toDuty(map, good[i])
+    }
+    return toDuty(map, good[good.length - 1])
   }
 
   if (

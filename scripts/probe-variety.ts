@@ -17,7 +17,9 @@ import { loadMap } from '../src/core/timetable'
 const omsi = findOmsiInstall()
 if (!omsi) throw new Error('Geen OMSI 2 gevonden.')
 const maps = join(omsi, 'maps')
-const only = process.argv.slice(2)
+const only = process.argv.slice(2).filter((arg) => !/^\d+$/.test(arg))
+/** Dienstlengte om mee te meten; korte diensten hebben minder overgangen. */
+const minutes = Number(process.argv.slice(2).find((arg) => /^\d+$/.test(arg)) ?? 120)
 
 for (const folder of readdirSync(maps)) {
   if (only.length > 0 && !only.includes(folder)) continue
@@ -32,7 +34,7 @@ for (const folder of readdirSync(maps)) {
   let reselect = 0
 
   for (let i = 0; i < 120; i++) {
-    const duty = generateDuty(map, net, { targetMinutes: 120 })
+    const duty = generateDuty(map, net, { targetMinutes: minutes })
     if (!duty) continue
     duties++
     legs += duty.legs.length
@@ -49,7 +51,7 @@ for (const folder of readdirSync(maps)) {
     .map(([lines, count]) => `${lines} lijn${lines === 1 ? '' : 'en'}: ${count}`)
     .join(', ')
   console.log(
-    `${folder.padEnd(22)} ${duties} diensten van ~2u, gemiddeld ${(legs / duties).toFixed(1)} ritten, ` +
+    `${folder.padEnd(22)} ${duties} diensten van ~${minutes} min, gemiddeld ${(legs / duties).toFixed(1)} ritten, ` +
       `${((switches / Math.max(1, legs - duties)) * 100).toFixed(0)}% van de overgangen is een andere lijn\n` +
       `${' '.repeat(23)}${spread}`
   )
