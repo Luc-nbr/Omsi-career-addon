@@ -474,6 +474,13 @@ export function RouteMap({
       }
       const wanted = liveZoom(target.data.speedKmh)
       shown.mpp += (wanted - shown.mpp) * (1 - Math.exp(-dt / 1.2))
+      /*
+       * Een glijdende beweging komt er nooit helemaal: hij blijft op een kruimel
+       * na hangen. Dat is onzichtbaar op de kaart, maar niet op de schaalbalk --
+       * die staat op vijfentwintig meter en springt van een honderdste te veel
+       * naar vijftig. Dus dicht genoeg is aangekomen.
+       */
+      if (Math.abs(wanted - shown.mpp) < wanted * 0.01) shown.mpp = wanted
       setLiveBus({ x: shown.x, y: shown.y, heading: shown.heading })
       if (Date.now() < manualUntil.current) return
       const ahead = sizeRef.current.h * LIVE_AHEAD * shown.mpp
@@ -1153,7 +1160,8 @@ function overlaps(
 export function niceScale(mpp: number, aim: number): { px: number; label: string } {
   const target = mpp * aim
   const steps = [25, 50, 100, 250, 500, 1000, 2000, 5000]
-  const metres = steps.find((step) => step >= target) ?? steps[steps.length - 1]
+  // Een half procent speling: anders kost een rekenkruimel een hele maat.
+  const metres = steps.find((step) => step >= target * 0.995) ?? steps[steps.length - 1]
   return {
     px: metres / mpp,
     label: metres >= 1000 ? `${metres / 1000} km` : `${metres} m`
