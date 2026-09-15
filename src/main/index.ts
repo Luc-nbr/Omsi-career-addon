@@ -626,27 +626,6 @@ function registerHandlers(): void {
     }
   )
 
-  /**
-   * Zet de dienst klaar in OMSI: een situatiebestand met de kaart, de datum
-   * waarop deze omloop rijdt, de tijd vlak voor vertrek en de bus bij de eerste
-   * halte, met de neus de goede kant op. In het spel hoef je dan alleen nog
-   * "OMSI Career" te kiezen en op Start te drukken.
-   *
-   * Dit is het enige dat de app in de spelmap schrijft, naast de plugin.
-   */
-  ipcMain.handle(
-    'duty:prepare',
-    (
-      _event,
-      duty: Duty,
-      vehiclePath: string | undefined,
-      date: DutyDate | undefined,
-      lineNumber: string,
-      terminus: string,
-      yard?: string
-    ) => prepareSituation(duty, vehiclePath, date, lineNumber, terminus, yard)
-  )
-
   ipcMain.handle('omsi:live', () => Boolean(readLive()?.alive))
 
   /** Printers die Windows kent, met de standaardprinter vooraan. */

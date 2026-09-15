@@ -1264,3 +1264,41 @@ input[type='range'] {
 .licence-date {
   font-size: 11.5px;
 }
+
+/* De uitslag van het examen: per eis of hij gehaald is. */
+.verdict {
+  margin: 14px 0 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--muted);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+
+.verdict.passed {
+  border-left-color: var(--good);
+}
+
+.verdict.failed {
+  border-left-color: #e2604a;
+}
+
+.verdict b {
+  font-size: 15px;
+}
+
+.verdict ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+.verdict li.met {
+  color: var(--good);
+}
+
+.verdict li.missed {
+  color: #e2604a;
+}

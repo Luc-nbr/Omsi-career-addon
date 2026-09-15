@@ -237,15 +237,6 @@ export interface CareerApi {
    * openen, de kilometerstand vastleggen en het spel aanzwengelen.
    */
   beginDuty(request: BeginRequest): Promise<BeginResult>
-  /** Schrijft het situatiebestand waarmee OMSI de dienst startklaar laadt. */
-  prepareDuty(
-    duty: Duty,
-    vehiclePath: string | undefined,
-    date: DutyDate | undefined,
-    lineNumber: string,
-    terminus: string,
-    yard?: string
-  ): Promise<PreparedSituation>
   /** Geeft de plugin gegevens door? Zo ja, dan draait OMSI en is de kaart geladen. */
   liveConnected(): Promise<boolean>
   /** Printers die Windows kent, standaardprinter vooraan. */

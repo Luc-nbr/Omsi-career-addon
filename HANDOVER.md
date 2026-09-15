@@ -10,18 +10,33 @@ Repo: https://github.com/Luc-nbr/Omsi-career-addon — tak `master`.
 ## 1. Wat het is
 
 Een Windows-app die van OMSI 2 een carrièremodus maakt, in de geest van Advanced
-Omni Bus Driver maar modern. De gebruiker kiest een kaart en een dienstlengte; de
-app zoekt een echte omloop uit de dienstregeling van die kaart, geeft een
-dienstkaart met de IBIS-codes, laat op een kaartje zien waar de bus neergezet
-moet worden, start OMSI en hangt een overlay boven het spel met live gegevens.
+Omni Bus Driver maar modern. De app zoekt een echte omloop uit de dienstregeling
+van een kaart, geeft een dienstkaart met de IBIS-codes, zet de dienst klaar in
+OMSI (kaart, bus, datum, tijd, dienstregeling), start het spel en hangt een
+overlay boven het spel met live gegevens.
+
+De app opent altijd met twee vragen: **wie rijdt er** (profielkeuze) en **hoe wil
+je rijden**. Die tweede vraag kent drie antwoorden:
+
+- **Carrière** — met papieren. Zonder rijexamen mag je niets; dat examen doe je op
+  een route die je zelf kiest, en die route is daarna je eerste vergunning. Elke
+  lijn erbij vraagt een eigen examen. De remise wijst de dienst toe en kiest
+  alleen uit lijnen waar je een vergunning voor hebt.
+- **Dienst** — hetzelfde rijden zonder die regels: eigen route, eigen lengte.
+- **Vrij rijden** — niets wordt geboekt of beoordeeld. Je kiest lijn, bus, plek,
+  weer, datum en tijd; de app zet het klaar en biedt de overlay aan.
 
 Electron 33 + electron-vite + React 19 + TypeScript. `npm run dev` voor
 ontwikkelen, `npm run typecheck`, `npm run build`, `npm run dist` voor de
 installer.
 
-**De app schrijft twee dingen in de spelmap**: de overlay-plugin in `plugins/`
-en, als je op "Zet klaar in OMSI" drukt, `Situations\OMSI Career.osn` met de
-kaart, de datum, de tijd en de bus bij de eerste halte. Verder niets.
+**Wat de app in de spelmap schrijft**: de overlay-plugin in `plugins/`, en bij
+het starten van een dienst `Situations\OMSI Career.osn` (kaart, datum, tijd, bus
+bij de eerste halte, gekozen dienstregeling) plus het weerbestand ernaast. Om het
+startscherm van OMSI goed te zetten gaat diezelfde situatie ook naar
+`maps\<kaart>\laststn.osn` -- daar leest OMSI "Last Situation" -- en wordt
+`[last_map]` in `options.cfg` op die kaart gezet. Van de bestaande `laststn.osn`
+blijft eenmalig een kopie staan als `laststn.osn.voor-omsi-career`. Verder niets.
 
 ---
 
@@ -64,7 +79,10 @@ kaart, de datum, de tijd en de bus bij de eerste halte. Verder niets.
 | `track.ts` | Route van een rit uit OMSI's eigen `.ttr` |
 | `routing.ts` | Rijstrokennet en routeplanner van halte naar halte; kiest per rit `.ttr` of planner |
 | `live.ts` | Leest `live.json` van de plugin, maakt er een `LiveStatus` van |
-| `career.ts` | Loopbaan: diensten, uren, rangen |
+| `career.ts` | Loopbaan: diensten, uren, rangen, modi, vergunningen, examens |
+| `exam.ts` | De eisen van het rijexamen en het oordeel erover |
+| `startup.ts` | Het startscherm van OMSI: `laststn.osn` en `[last_map]` |
+| `weather.ts` | Schrijft het `.owt`-bestand bij een situatie |
 | `profiles.ts` | Profielen in `%APPDATA%\omsi-career\profiles\` |
 | `settings.ts` | Taal, in `settings.json` |
 | `overlayLayout.ts` | Indeling van de overlay, in `overlay.json` |
@@ -77,11 +95,20 @@ kaart, de datum, de tijd en de bus bij de eerste halte. Verder niets.
 - `format.ts` — tijd, duur, bedrag, dagen. Alles wat een taal kent neemt die als
   laatste argument.
 - `overlay.ts` — indeling en standen van de overlay.
+- `weather.ts` — de weertypes waaruit gekozen kan worden, met hun waarden. Staat
+  hier en niet in `core/` omdat de interface ze toont; de schrijver zit in
+  `core/weather.ts`.
 - `api.ts` — het contract tussen hoofdproces en interface.
 
 ### `src/renderer/src/`
 
-- `App.tsx` — hoofdscherm, laadt instellingen, zet de `LanguageProvider`.
+- `App.tsx` — de drie schermen (chauffeur, modus, rijden), laadt instellingen,
+  zet de `LanguageProvider`.
+- `Profiles.tsx` — wie rijdt er? Het scherm waarmee de app opent.
+- `Modes.tsx` — carrière, dienst of vrij rijden.
+- `CareerPanel.tsx` — rijexamen, lijnexamens en de vergunningen.
+- `FreePlay.tsx` — lijn, bus, plek, weer, datum en tijd zelf samenstellen.
+- `LinePicker.tsx` — een lijn kiezen; wat OMSI een lijn noemt is een bestand.
 - `Welcome.tsx` — eerste start: taal kiezen en een account aanmaken.
 - `DutyCard.tsx` — de dienstkaart met alle deelpanelen.
 - `RouteMap.tsx` — de kaart (halteborden, routes, zoomen, slepen), in SVG.
@@ -146,6 +173,26 @@ aan `geo.ts`, `roads.ts`, `track.ts` of `routing.ts` komt.
   object (`probe-objjoin.ts`).
 - Op de naam filteren werkt niet: Thüringer Wald gebruikt achthonderd
   verschillende splinebestanden.
+
+**Situaties en het startscherm (`situation.ts`, `startup.ts`)**
+
+- Een situatie kan `[TT_active]` dragen (vlag: er wordt met een dienstregeling
+  gereden, met een lege regel erachter) en per voertuig `[settimetable]`. Dat
+  laatste blok heeft zes velden: lijnbestand, naam van de omloop, volgnummer van
+  de rit in die omloop, halte, een vlag, en de afwijking op de dienstregeling in
+  seconden. Afgelezen aan de twee situaties die OMSI zelf schreef en nagerekend
+  tegen de dienstregeling (`probe-settimetable.ts`): in het Spandau-scenario is
+  veld 3 elf, en rit 11 van omloop "Mo-Fr 6" vertrekt om 14:04 terwijl de klok in
+  het bestand op 14:06 staat.
+- `options.cfg` is **gewone tekst in de Windows-codering met CRLF**, geen UTF-16.
+  Lees en schrijf hem als losse bytes (`latin1`), dan blijven umlauten heel.
+  `[last_map]` bepaalt op welke kaart het startscherm opent.
+- Het startscherm biedt bovenaan "Last Situation" aan; dat is
+  `maps\<kaart>\laststn.osn`. OMSI schrijft dat bestand zelf bij het afsluiten.
+- Weer staat in `<situatie>.osn.owt`, UTF-16, zelfde blokindeling: `[fog]` (zicht
+  in meters, helderheid), `[wind]`, `[temp]`, `[press]`, `[clouds]` (textuurnaam
+  of -1, wolkenbasis in meters), `[precip]` (eerste veld 0 droog, 1 nat) en
+  `[groundwet]`. De vijf keuzes in de app komen uit het weer dat OMSI meelevert.
 
 **Routes (`track.ts`, `routing.ts`)**
 
@@ -232,10 +279,18 @@ Nog niet gebouwd:
 2. **Het infoscherm toont eerst wat er ingetoetst moet worden** (lijn + route uit
    het IBIS-plan), en schakelt om zodra de IBIS gevuld is. Teksten:
    `ovl.ibisTitle`, `ovl.ibisWaiting`, `ovl.ibisNoSupport`.
-3. **Situatie klaarzetten** (bus, startpositie bij de eerste halte, datum en tijd,
-   zodat de speler in OMSI alleen op Start drukt) — gevraagd, en op verzoek van de
-   gebruiker uitgesteld. Eerdere versie: commits 4a67952 en f6b4cc1, weer
-   verwijderd in ec31136.
+3. **Situatie klaarzetten** — gebouwd. "Dienst starten" schrijft de situatie en
+   start daarna pas het spel; de losse knop is weg.
+
+**Nog in het spel na te kijken.** Dat het startscherm van OMSI de dienst al
+geselecteerd heeft, is op bestandsniveau bewezen (`probe-startup.ts`) maar niet
+met eigen ogen gezien: schermafdrukken van OMSI maken lukt niet vanuit deze
+omgeving ("The handle is invalid" -- er is geen bureaublad om te grijpen). Wat er
+nog gekeken moet worden zodra iemand voor het scherm zit:
+
+- opent OMSI op de goede kaart met de situatie al aangewezen?
+- staat in het dienstregelingsmenu de lijn, de omloop én de rit goed?
+- klopt de vijfde waarde van `[settimetable]` (wij zetten 1) en de zesde (0)?
 
 ### 5.3 Kleiner grut
 
@@ -266,6 +321,16 @@ Er staan probes in `scripts/`:
 - `screenshotMap.cjs` — de kaart in de echte app op een gekozen kaart, met
   tijdelijke gebruikersmap, plus framtijden van slepen en zoomen.
 - `probe.ts`, `probeChain.ts` — dienstregeling en ketens.
+- `probe-settimetable.ts` — wat de velden van `[settimetable]` betekenen,
+  gemeten aan situaties die OMSI zelf schreef.
+- `probe-startup.ts` — zet een dienst klaar in een nagebouwde spelmap en leest
+  terug of de situatie, `laststn.osn` en `[last_map]` kloppen.
+- `probe-exam.ts` — hoe lang een examenrit per lijn duurt.
+- `prepare-real.ts` — zet één dienst klaar in de échte spelmap, om in OMSI zelf
+  te kijken of het startscherm klopt.
+- `screenshotModes.cjs` — loopt de schermen langs: chauffeur, modus, en de drie
+  modi. Eigen gebruikersmap, raakt de spelmap niet aan.
+- `screenshotExam.cjs` — het rijexamen van routekeuze tot examenrit.
 
 Schermafdrukken maken kan door het hoofdproces te laden in een klein
 Electron-scriptje en de renderer met `executeJavaScript` te bedienen; zie de

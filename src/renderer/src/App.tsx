@@ -208,9 +208,12 @@ export function App(): JSX.Element {
     }
   }, [duty, vehicle, selectedMap])
 
-  /** Zoekt diensten. In de carrièremodus alleen op lijnen met een vergunning. */
+  /**
+   * Zoekt diensten. In de carrièremodus alleen op lijnen met een vergunning, en
+   * dan wijst de remise er meteen een aan: daar is het die modus voor.
+   */
   const search = useCallback(
-    async (onlyLine?: string) => {
+    async (onlyLine?: string, assign?: boolean) => {
       if (confirmed) return
       setBusy(true)
       setError(undefined)
@@ -226,6 +229,7 @@ export function App(): JSX.Element {
           lineFile: onlyLine ?? lineFile ?? undefined
         })
         setDuties(found)
+        if (assign && found.length > 0) setSelected(0)
         if (found.length === 0) {
           setError(
             t(language, 'app.noDuty', { length: formatDuration(LENGTHS[lengthIndex], language) })
@@ -501,7 +505,7 @@ export function App(): JSX.Element {
                 mapFolder={mapFolder}
                 onMapChange={setMapFolder}
                 busy={busy || confirmed}
-                onAssign={(licensedLine) => void search(licensedLine)}
+                onAssign={(licensedLine) => void search(licensedLine, true)}
                 onExam={async (line, basic) => {
                   setBusy(true)
                   setError(undefined)
@@ -624,7 +628,7 @@ export function App(): JSX.Element {
               </section>
             )}
 
-            {duties.length > 0 && !confirmed && (
+            {mode === 'service' && duties.length > 0 && !confirmed && (
               <section className="card">
                 <h2 className="section-title">{t(language, 'app.roster', { count: duties.length })}</h2>
                 <DutyList duties={duties} selected={selected} onSelect={setSelected} />

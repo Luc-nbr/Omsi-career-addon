@@ -1,5 +1,5 @@
 import { useState, type JSX } from 'react'
-import type { CareerState, Licence } from '../../core/career'
+import type { CareerState, ExamRecord, Licence } from '../../core/career'
 import type { LineSummary } from '../../core/duty'
 import { EXAM_LIMITS, type ExamRule } from '../../core/exam'
 import type { MapSummary } from '../../shared/api'
@@ -27,6 +27,29 @@ const RULES: Array<{ rule: ExamRule; key: 'exam.rule.finish' | 'exam.rule.punctu
   { rule: 'smooth', key: 'exam.rule.smooth', limit: EXAM_LIMITS.harsh },
   { rule: 'speed', key: 'exam.rule.speed', limit: EXAM_LIMITS.topSpeed }
 ]
+
+/** De uitslag van het laatste examen, eis voor eis. */
+function ExamResult({ exam, language }: { exam: ExamRecord; language: Language }): JSX.Element {
+  return (
+    <div className={`verdict ${exam.passed ? 'passed' : 'failed'}`}>
+      <b>
+        {t(language, exam.passed ? 'exam.passed' : 'exam.failed')} —{' '}
+        {t(language, 'exam.score', { score: exam.score })}
+      </b>
+      <ul>
+        {exam.criteria.map((criterion) => {
+          const rule = RULES.find((item) => item.rule === criterion.rule)
+          return (
+            <li key={criterion.rule} className={criterion.passed ? 'met' : 'missed'}>
+              {rule ? t(language, rule.key, { limit: criterion.limit }) : criterion.rule}
+              {criterion.rule !== 'finish' && ` — ${Math.round(criterion.value)}`}
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
 
 /**
  * De carrièremodus.
@@ -99,6 +122,10 @@ export function CareerPanel({
             </div>
           </div>
 
+          {state.exams[0] && !state.exams[0].passed && (
+            <ExamResult exam={state.exams[0]} language={language} />
+          )}
+
           <h3 className="section-title" style={{ marginTop: 18 }}>
             {t(language, 'exam.rules')}
           </h3>
@@ -126,6 +153,7 @@ export function CareerPanel({
         </>
       ) : (
         <>
+          {state.exams[0] && <ExamResult exam={state.exams[0]} language={language} />}
           <p className="note">{t(language, 'lic.onlyThese')}</p>
           <div className="licences">
             {licences.map((licence) => (

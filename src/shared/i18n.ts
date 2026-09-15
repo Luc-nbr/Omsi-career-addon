@@ -811,31 +811,6 @@ const TEXT = {
     fr: 'Vous avez un service accepté. Terminez-le ou annulez-le avant d’en choisir un autre.',
     nl: 'Je hebt een bevestigde dienst. Rond hem af of annuleer hem voordat je een andere kiest.'
   },
-  'act.prepare': {
-    en: 'Set up in OMSI',
-    de: 'In OMSI vorbereiten',
-    fr: 'Préparer dans OMSI',
-    nl: 'Zet klaar in OMSI'
-  },
-  'act.preparing': { en: 'Setting up…', de: 'Wird vorbereitet…', fr: 'Préparation…', nl: 'Bezig…' },
-  'act.prepared': {
-    en: 'Ready. In OMSI choose the situation "OMSI Career" and press Start — the date, the time and the bus are already set.',
-    de: 'Fertig. Wähle in OMSI die Situation "OMSI Career" und drücke Start — Datum, Uhrzeit und Bus stehen schon.',
-    fr: 'Prêt. Dans OMSI, choisissez la situation « OMSI Career » et appuyez sur Start — la date, l’heure et le bus sont déjà réglés.',
-    nl: 'Klaar. Kies in OMSI de situatie "OMSI Career" en druk op Start — de datum, de tijd en de bus staan al goed.'
-  },
-  'act.preparedNoSpawn': {
-    en: 'Ready, but the bus keeps the place from the template: this map has no height data for that tile.',
-    de: 'Fertig, aber der Bus behält den Platz aus der Vorlage: für diese Kachel fehlen die Höhendaten.',
-    fr: 'Prêt, mais le bus garde la place du mod\u00e8le : cette tuile n’a pas de données d’altitude.',
-    nl: 'Klaar, maar de bus houdt de plek uit het sjabloon: voor die tegel ontbreken de hoogtegegevens.'
-  },
-  'act.prepareFailed': {
-    en: 'Setting up did not work: {reason}',
-    de: 'Das Vorbereiten hat nicht geklappt: {reason}',
-    fr: 'La préparation a échoué : {reason}',
-    nl: 'Het klaarzetten is niet gelukt: {reason}'
-  },
   'act.start': { en: 'Start duty', de: 'Dienst beginnen', fr: 'Commencer le service', nl: 'Dienst starten' },
   'act.finish': { en: 'Finish duty', de: 'Dienst beenden', fr: 'Terminer le service', nl: 'Dienst afronden' },
   'act.overlayShow': { en: 'Show overlay', de: 'Overlay zeigen', fr: 'Afficher la surcouche', nl: 'Overlay tonen' },
@@ -854,10 +829,10 @@ const TEXT = {
     nl: 'Verslepen kan ook tijdens het rijden: Ctrl+Alt+O.'
   },
   'act.loadNote': {
-    en: 'Load this bus in OMSI and press start here.',
-    de: 'Lade diesen Bus in OMSI und drücke hier auf Beginnen.',
-    fr: 'Chargez ce bus dans OMSI et appuyez ici sur Commencer.',
-    nl: 'Laad deze bus in OMSI en druk hier op starten.'
+    en: 'Press start here: the app writes the situation and opens OMSI with this duty ready.',
+    de: 'Hier auf Beginnen drücken: die App schreibt die Situation und öffnet OMSI mit diesem Dienst.',
+    fr: 'Appuyez ici sur Commencer : l’application écrit la situation et ouvre OMSI avec ce service prêt.',
+    nl: 'Druk hier op starten: de app schrijft de situatie en opent OMSI met deze dienst klaar.'
   },
 
   // ---------- afdrukken ----------

@@ -283,7 +283,14 @@ export function examTrip(
     }
   }
   if (candidates.length === 0) return undefined
-  return toDuty(map, [pick(candidates, random)])
+
+  /*
+   * Van de ritten die overblijven de langste nemen. Een lijn heeft vaak korte
+   * staartritten van zeven minuten naar de remise, en daar valt niets aan af te
+   * rijden; het examen hoort over de route te gaan.
+   */
+  const longest = [...candidates].sort((a, b) => b.minutes - a.minutes)
+  return toDuty(map, [pick(longest.slice(0, Math.max(3, Math.ceil(longest.length / 4))), random)])
 }
 
 /** Gemiddeld aantal vervolgritten op een eindpunt: maat voor de keuzevrijheid. */
