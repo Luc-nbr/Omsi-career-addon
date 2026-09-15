@@ -1,6 +1,42 @@
 {
   "pages": [
     {
+      "id": "page-11",
+      "name": "Navigatie"
+    },
+    {
+      "id": "page-10",
+      "name": "Glas, geel en lijnennet"
+    },
+    {
+      "id": "page-9",
+      "name": "Achtergrond en tijdkleur"
+    },
+    {
+      "id": "page-8",
+      "name": "Feller"
+    },
+    {
+      "id": "page-7",
+      "name": "Kleuropzet"
+    },
+    {
+      "id": "page-6",
+      "name": "De app in glas"
+    },
+    {
+      "id": "page-5",
+      "name": "Nog drie"
+    },
+    {
+      "id": "page-4",
+      "name": "Drie concepten"
+    },
+    {
+      "id": "page-3",
+      "name": "Nieuw concept"
+    },
+    {
       "id": "page-1",
       "name": "Kleur en letter"
     },
@@ -10,6 +46,267 @@
     }
   ],
   "artboards": [
+    {
+      "file": "Navigatie.dc.html",
+      "page": "page-11",
+      "x": 0,
+      "y": 0,
+      "w": 420,
+      "h": 620,
+      "title": "Navigatie — met wegen, water en groen"
+    },
+    {
+      "file": "GlasGeel.dc.html",
+      "page": "page-10",
+      "x": 0,
+      "y": 0,
+      "w": 880,
+      "h": 560,
+      "title": "1 · Hoofdknop wit — afgevallen"
+    },
+    {
+      "file": "GlasOverlay3.dc.html",
+      "page": "page-10",
+      "x": 980,
+      "y": 0,
+      "w": 400,
+      "h": 620,
+      "title": "Overlay — zelfde familie"
+    },
+    {
+      "file": "GlasGeel2.dc.html",
+      "page": "page-10",
+      "x": 0,
+      "y": 700,
+      "w": 880,
+      "h": 560,
+      "title": "2 · Hoofdknop ook geel — GEKOZEN"
+    },
+    {
+      "file": "AchtergrondVlak.dc.html",
+      "page": "page-9",
+      "x": 0,
+      "y": 0,
+      "w": 880,
+      "h": 560,
+      "title": "A · Vlak  — te laat (rood)"
+    },
+    {
+      "file": "GlasOverlay2.dc.html",
+      "page": "page-9",
+      "x": 980,
+      "y": 0,
+      "w": 400,
+      "h": 620,
+      "title": "Overlay — met de nieuwe regel"
+    },
+    {
+      "file": "AchtergrondRaster.dc.html",
+      "page": "page-9",
+      "x": 0,
+      "y": 700,
+      "w": 880,
+      "h": 560,
+      "title": "B · Fijn raster  — op tijd (groen)"
+    },
+    {
+      "file": "AchtergrondVignet.dc.html",
+      "page": "page-9",
+      "x": 0,
+      "y": 1400,
+      "w": 880,
+      "h": 560,
+      "title": "C · Zacht licht van boven  — te vroeg (blauw)"
+    },
+    {
+      "file": "Kleuropzet2.dc.html",
+      "page": "page-8",
+      "x": 0,
+      "y": 0,
+      "w": 880,
+      "h": 620,
+      "title": "Overzicht — feller"
+    },
+    {
+      "file": "FelNacht.dc.html",
+      "page": "page-8",
+      "x": 0,
+      "y": 760,
+      "w": 880,
+      "h": 560,
+      "title": "1 · Nacht"
+    },
+    {
+      "file": "FelDiepzee.dc.html",
+      "page": "page-8",
+      "x": 980,
+      "y": 760,
+      "w": 880,
+      "h": 560,
+      "title": "2 · Diepzee"
+    },
+    {
+      "file": "FelGrafiet.dc.html",
+      "page": "page-8",
+      "x": 0,
+      "y": 1440,
+      "w": 880,
+      "h": 560,
+      "title": "3 · Grafiet"
+    },
+    {
+      "file": "FelAubergine.dc.html",
+      "page": "page-8",
+      "x": 980,
+      "y": 1440,
+      "w": 880,
+      "h": 560,
+      "title": "4 · Aubergine"
+    },
+    {
+      "file": "FelBos.dc.html",
+      "page": "page-8",
+      "x": 0,
+      "y": 2120,
+      "w": 880,
+      "h": 560,
+      "title": "5 · Bos"
+    },
+    {
+      "file": "Kleuropzet.dc.html",
+      "page": "page-7",
+      "x": 0,
+      "y": 0,
+      "w": 880,
+      "h": 620,
+      "title": "Overzicht — wat er per opzet verandert"
+    },
+    {
+      "file": "GlasRijden.dc.html",
+      "page": "page-7",
+      "x": 0,
+      "y": 760,
+      "w": 880,
+      "h": 560,
+      "title": "1 · Nacht  (huidig)"
+    },
+    {
+      "file": "KleurDiepzee.dc.html",
+      "page": "page-7",
+      "x": 980,
+      "y": 760,
+      "w": 880,
+      "h": 560,
+      "title": "2 · Diepzee"
+    },
+    {
+      "file": "KleurGrafiet.dc.html",
+      "page": "page-7",
+      "x": 0,
+      "y": 1440,
+      "w": 880,
+      "h": 560,
+      "title": "3 · Grafiet"
+    },
+    {
+      "file": "KleurAubergine.dc.html",
+      "page": "page-7",
+      "x": 980,
+      "y": 1440,
+      "w": 880,
+      "h": 560,
+      "title": "4 · Aubergine"
+    },
+    {
+      "file": "KleurBos.dc.html",
+      "page": "page-7",
+      "x": 0,
+      "y": 2120,
+      "w": 880,
+      "h": 560,
+      "title": "5 · Bos"
+    },
+    {
+      "file": "GlasKiezen.dc.html",
+      "page": "page-6",
+      "x": 0,
+      "y": 700,
+      "w": 880,
+      "h": 560,
+      "title": "De app — dienst kiezen"
+    },
+    {
+      "file": "Dimensionaal.dc.html",
+      "page": "page-5",
+      "x": 0,
+      "y": 0,
+      "w": 880,
+      "h": 560,
+      "title": "J · Dimensional Layering — Figtree"
+    },
+    {
+      "file": "GlasOverlay.dc.html",
+      "page": "page-6",
+      "x": 980,
+      "y": 0,
+      "w": 400,
+      "h": 620,
+      "title": "Overlay — gekozen"
+    },
+    {
+      "file": "Dicht.dc.html",
+      "page": "page-5",
+      "x": 0,
+      "y": 760,
+      "w": 880,
+      "h": 560,
+      "title": "K · Data-Dense Dashboard — Source Sans 3"
+    },
+    {
+      "file": "Monitor.dc.html",
+      "page": "page-4",
+      "x": 0,
+      "y": 0,
+      "w": 880,
+      "h": 560,
+      "title": "G · Real-Time Monitoring — IBM Plex"
+    },
+    {
+      "file": "Bento.dc.html",
+      "page": "page-4",
+      "x": 0,
+      "y": 680,
+      "w": 880,
+      "h": 560,
+      "title": "H · Bento Box Grid — Plus Jakarta Sans"
+    },
+    {
+      "file": "Swiss.dc.html",
+      "page": "page-4",
+      "x": 0,
+      "y": 1360,
+      "w": 880,
+      "h": 560,
+      "title": "I · Swiss Modernism 2.0 — Archivo"
+    },
+    {
+      "file": "BrutRijden.dc.html",
+      "page": "page-3",
+      "x": 0,
+      "y": 0,
+      "w": 880,
+      "h": 560,
+      "title": "Concept · Brutalism — je rijdt"
+    },
+    {
+      "file": "BrutOverlay.dc.html",
+      "page": "page-3",
+      "x": 980,
+      "y": 0,
+      "w": 400,
+      "h": 620,
+      "title": "Concept · Brutalism — overlay"
+    },
     {
       "file": "Main.dc.html",
       "page": "page-1",
@@ -94,6 +391,166 @@
   ],
   "annotations": [
     {
+      "id": "nav-wat",
+      "page": "page-11",
+      "x": -430,
+      "y": 0,
+      "w": 350,
+      "text": "DE NAVIGATIE, VOLWAARDIG\n\nWat erbij is gekomen ten opzichte van de vier streepjes van eerst:\n\n· WEGENHIËRARCHIE  drie breedtes met een omranding eromheen, zodat een doorgaande weg eruit springt tussen de zijstraten\n· WATER EN GROEN  vlakken in gedempt blauw en groen; daarmee herken je waar je bent zonder namen te lezen\n· STRAATNAMEN  klein en gedempt, en het park en het water dragen hun eigen kleur in de naam\n· ROUTELIJN  geel met een donkere omranding, zodat hij op elke ondergrond leesbaar blijft\n· DE BUS  een koerspijl in een lichthof, niet zomaar een stip\n· HALTES  de volgende met een gele ring, de daaropvolgende gedempt\n· MANOEUVREBALK  wat je nu moet doen, over hoeveel meter, en hoe laat je er hoort te zijn -- met de tijd in rood omdat je te laat bent\n· KNOPPEN  plus, min en centreren, in hetzelfde glas\n· SCHAALBALK  op 25 meter, want de bus rijdt stapvoets\n\nWat ik niet heb gedaan: Google Maps natekenen. Dat is hun eigen vormgeving. Dit gebruikt de conventies die elk navigatiesysteem deelt, in jouw eigen taal."
+    },
+    {
+      "id": "achtergrond-net",
+      "page": "page-10",
+      "x": -430,
+      "y": 0,
+      "w": 350,
+      "text": "DE ACHTERGROND: EEN LIJNENNET\n\nGeen vlekken en geen kleurverloop, maar een routekaart die in de ondergrond zit -- vier lijnen en zeven knooppunten, op vijf procent wit. Het raster van de knooppunten heeft dezelfde vorm als de haltes op je navigatie.\n\nWaarom dit en niet niets: glas heeft iets nodig om op te liggen, anders is doorzichtig hetzelfde als grijs. En als er dan toch iets achter moet, laat het dan over bussen gaan.\n\nHet staat expres net onder de drempel waarop je het bewust ziet. Wil je het sterker of zwakker, dat is één getal."
+    },
+    {
+      "id": "geel-en-knoppen",
+      "page": "page-10",
+      "x": -430,
+      "y": 400,
+      "w": 350,
+      "text": "GEEL EN GETINTE KNOPPEN\n\nHet lijnnummer is geel -- ook op het paneel boven het spel, want dat is hetzelfde nummer. Geel staat hier voor identiteit, niet voor een waarschuwing; daarom blijven rood, groen en blauw exclusief voor de tijd.\n\nDe tweede knoppen zijn niet langer grijs maar indigo glas met een lichtere rand en blauwwitte letters. Ze horen bij elkaar en staan duidelijk achter de hoofdknop.\n\nTwee standen om uit te kiezen:\n1  hoofdknop wit -- geel blijft dan van het lijnnummer alleen\n2  hoofdknop ook geel -- meer kleur, maar de knop en het lijnnummer vragen dan om dezelfde aandacht"
+    },
+    {
+      "id": "acht-weg",
+      "page": "page-9",
+      "x": -430,
+      "y": 0,
+      "w": 350,
+      "text": "DE GEKLEURDE VLEKKEN ZIJN WEG\n\nDaar had je gelijk in: twee wazige gekleurde ballen achter glas is precies het soort versiering waar we mee begonnen.\n\nWat ervoor in de plaats komt, in drie smaken -- kies er één:\n\nA  VLAK. Niets. Een egale donkere grond. Het glas is dan een lichtere plaat, meer niet.\nB  FIJN RASTER. Lijnen om de 34 punten op 3 procent wit. Je ziet het nauwelijks, maar het geeft het vlak maat -- en het past bij een programma dat over roosters en tijden gaat.\nC  ZACHT LICHT VAN BOVEN. Eén neutrale lichtval bovenaan, geen kleur. Geeft diepte zonder dat er iets te zien valt."
+    },
+    {
+      "id": "tijd-kleur",
+      "page": "page-9",
+      "x": -430,
+      "y": 700,
+      "w": 350,
+      "text": "KLEUR ZEGT NOG MAAR ÉÉN DING\n\nROOD    te laat\nGROEN   op tijd\nBLAUW   te vroeg\n\nElk scherm hier laat er één zien, zodat je ze naast elkaar kunt beoordelen: A staat op rood, B op groen, C op blauw.\n\nDat heeft een gevolg dat je moet weten: alles wat eerst ook kleur had is nu neutraal. De stip „dienst loopt“ was groen -- dat is geen punctualiteit, dus die is wit. „Vloeiend“ bij rijstijl was groen; ook wit. De pijl van de bus op de kaart was abrikoos; wit.\n\nAnders weet je bij groen niet meer of het iets betekent of gewoon staat."
+    },
+    {
+      "id": "feller-hoe",
+      "page": "page-8",
+      "x": -430,
+      "y": 0,
+      "w": 350,
+      "text": "WAAROM HET DOF STOND\n\nDrie oorzaken, alle drie aangedraaid:\n\n1  De statuskleuren waren pasteltinten. Abrikoos en mint zijn zacht van verzadiging; nu staan er echte kleuren -- oranje, amber, groen, roze -- op dezelfde helderheid, dus even leesbaar maar met kleur erin.\n\n2  Het licht onder het glas kwam er nauwelijks doorheen: twee vlekken op 50 en 55 procent, in vuile tinten. Nu op 66 en 72, en verzadigd.\n\n3  Het glas zelf stond op 5,5 procent wit met een rand van 13. Alles wat daarop ligt leest dan grijs. Nu 7,5 en 18: je ziet dat het glas is."
+    },
+    {
+      "id": "feller-oordeel",
+      "page": "page-8",
+      "x": -430,
+      "y": 760,
+      "w": 350,
+      "text": "WAT ER NU STAAT\n\n1 NACHT  blauw en violet licht, oranje voor te laat, fris groen voor goed.\n2 DIEPZEE  het diepste blauw met amber; de hardste aflezing van de vijf.\n3 GRAFIET  koper en brons, met limoen als tegenkleur. Warm zonder bruin te worden.\n4 AUBERGINE  violet licht en magenta. Verreweg het meest eigen, en niets voor iedereen.\n5 BOS  dennengroen met amber -- en groen betekent hier zowel de sfeer als „goed“, dus die twee moeten uit elkaar blijven. Let daar bij deze even op.\n\nKan het nog feller? Ja, maar dan gaat contrast met de witte tekst het probleem worden. Zeg het als je verder wilt."
+    },
+    {
+      "id": "kleur-hoe",
+      "page": "page-7",
+      "x": -430,
+      "y": 0,
+      "w": 350,
+      "text": "KLEUR ZIT OP DRIE PLEKKEN\n\nDe indeling, de letter, het glas en de randen liggen vast. Wat per opzet verandert is de ondergrond van het venster, de twee lichtvlekken die er onder het glas doorheen schijnen, en de twee statuskleuren -- te laat en goed.\n\nDaardoor is dit geen keuze tussen vijf ontwerpen maar tussen vijf stemmingen van hetzelfde ontwerp. Mengen kan ook: de ondergrond van Bos met de statuskleuren van Nacht is gewoon een regel."
+    },
+    {
+      "id": "kleur-oordeel",
+      "page": "page-7",
+      "x": -430,
+      "y": 760,
+      "w": 350,
+      "text": "WAT ZE DOEN\n\n1 NACHT  koel en neutraal. Verdwijnt het beste naast OMSI, valt het minst op als ontwerp.\n\n2 DIEPZEE  hetzelfde maar blauwer en dieper. De amber springt er harder uit -- goed als je vooral op de vertraging let.\n\n3 GRAFIET  warm bruinzwart. Rustig voor de ogen 's avonds; de enige die niet klinisch aanvoelt.\n\n4 AUBERGINE  paars-inkt met roze. Het eigenzinnigst, en het minst als een dashboard.\n\n5 BOS  groenzwart met amber. Past bij een kaart als Hohenkirchen: bos, dorp, landweg."
+    },
+    {
+      "id": "app-in-glas",
+      "page": "page-6",
+      "x": -430,
+      "y": 0,
+      "w": 350,
+      "text": "DE APP, IN DE TAAL VAN DE OVERLAY\n\nHetzelfde stel als het paneel dat je koos: Manrope, hoeken van 22, randen van één punt licht, koele donkere ondergrond, wit als hoofdkleur. Abrikoos betekent overal hetzelfde -- achter op de dienstregeling -- en mint betekent goed.\n\nHet verschil: de overlay kijkt door naar het spel, de app heeft geen spel achter zich. Daarom ligt er onder het glas een eigen ondergrond: twee heel flauwe lichtvlekken, geen foto en geen kleurverloop. Zonder iets om op te liggen is doorzichtig gewoon grijs."
+    },
+    {
+      "id": "app-tweede-scherm",
+      "page": "page-6",
+      "x": -430,
+      "y": 700,
+      "w": 350,
+      "text": "EN HET SCHERM ERVÓÓR\n\nHet dienstkeuzescherm in dezelfde taal, want daar zitten de knoppen, keuzelijsten en schuiven -- als het daar niet werkt, werkt het nergens.\n\nWat hier verandert ten opzichte van nu: de zijbalk is geen apart grijs blok meer maar dezelfde ondergrond met één scheidingslijn; de dagdelen zijn pillen waarvan er precies één wit is; en er is nog maar één knop die er echt uitspringt. Alles wat je nu in amber ziet oplichten is hier gewoon tekst."
+    },
+    {
+      "id": "app-let-op",
+      "page": "page-6",
+      "x": -430,
+      "y": 1400,
+      "w": 350,
+      "text": "VÓÓR DIT IN DE APP GAAT\n\nMatglas kost GPU-tijd. In het app-venster maakt dat niets uit -- dat staat naast het spel. In de overlay wél: die ligt er bovenop, en daar waren we vanochtend juist haperingen aan het wegwerken.\n\nIk wil daarom eerst meten wat `backdrop-filter` kost met de kostenproef, en anders een tweede stand maken die er hetzelfde uitziet met een vaste doorschijnende kleur in plaats van vervaging. Dan kies jij tussen mooi en vloeiend in plaats van dat ik dat voor je doe."
+    },
+    {
+      "id": "concept-j",
+      "page": "page-5",
+      "x": -430,
+      "y": 0,
+      "w": 350,
+      "text": "J · DIMENSIONAL LAYERING\n\n\"Depth, overlapping, z-index, elevation, floating.\" Geen tegels naast elkaar maar vlakken bovén elkaar: het paarse lijnblok ligt het hoogst, het verschil steekt over de rand van het grote vlak heen, de volgende halte drijft er half onder.\n\nVier hoogtes schaduw, zoals de skill voorschrijft. Dat geeft rangorde zonder één lijn of kader.\n\nVoor: het voelt als software uit 2026 in plaats van een tabel.\nTegen: overlap kost ruimte, en op een klein venster gaan die vlakken vechten."
+    },
+    {
+      "id": "concept-k",
+      "page": "page-5",
+      "x": -430,
+      "y": 760,
+      "w": 350,
+      "text": "K · DATA-DENSE DASHBOARD\n\nHet tegenovergestelde van bento: minimale opvulling, alles in één beeld. Hier zie je niet vier haltes maar de hele rit als tabel -- gepland, werkelijk, en het verschil per halte. Plus je rijstijl: hard geremd, opgetrokken, topsnelheid.\n\nDe skill noemt hierbij \"operational dashboards\" en \"maximum data visibility\".\n\nVoor: je hoeft nergens meer heen te klikken. Alles staat er.\nTegen: dit is een werkblad, geen gezicht. En kleiner dan dit kan het niet."
+    },
+    {
+      "id": "concept-l",
+      "page": "page-5",
+      "x": -430,
+      "y": 1520,
+      "w": 350,
+      "text": "L · SPATIAL / GLAS  — en dit is de interessante\n\nDe stijl heet Spatial UI: matglas, diepte, doorkijk. Voor een gewoon app-venster is dat mode. Maar jouw overlay ligt over een rijdend spel -- dat is letterlijk een laag in een 3D-scène.\n\nDus is doorkijken hier geen effect maar functie: je ziet de weg door het paneel heen. Daarom staat dit artboard op de overlay en niet op het rijscherm, met een stuk weg eronder om het te laten zien.\n\nVoor: het dekt je zicht niet af, en het hoort bij het beeld eronder.\nTegen: matglas kost rekenkracht op de GPU -- precies waar we vanochtend haperingen zaten op te lossen. Dit moet gemeten worden voordat het erin gaat."
+    },
+    {
+      "id": "concept-g",
+      "page": "page-4",
+      "x": -430,
+      "y": 0,
+      "w": 350,
+      "text": "G · REAL-TIME MONITORING\n\nDe enige stijl in de catalogus die letterlijk over jouw geval gaat: \"live data updates, status indicators, alert notifications, active monitoring\". Bij \"Do Not Use For\" staat historische analyse -- dus precies niet wat jij doet.\n\nDe vorm volgt daaruit: een statusbalk bovenaan met drie bewakingen (dienstregeling, rijstijl, bezetting), elk met een gekleurd blokje. Alarmkleuren zoals de skill ze voorschrijft: groen normaal, oranje waarschuwing, rood kritiek. De rit is een balk van achttien vakjes -- gereden, nu, nog te gaan.\n\nVoor: je ziet in één oogopslag of er iets mis is.\nTegen: het is een meetkamer. Sfeer heeft het niet."
+    },
+    {
+      "id": "concept-h",
+      "page": "page-4",
+      "x": -430,
+      "y": 680,
+      "w": 350,
+      "text": "H · BENTO BOX GRID\n\nModulaire tegels van verschillende grootte, ruime afronding, veel lucht. De stijl van nu, en de vrolijkste van de drie: het lijnnummer in een blauw blok, de vertraging in een zacht oranje blok, de richting groot in de grootste tegel.\n\nEerlijk, want het staat in de skill zelf: bij \"Do Not Use For\" noemt hij dichte datatabellen en real-time monitoring. Jouw scherm zit daar tussenin -- het toont acht waarden, geen tabel, dus het kan net. Maar het is de stijl waar de skill zelf het meest voor waarschuwt."
+    },
+    {
+      "id": "concept-i",
+      "page": "page-4",
+      "x": -430,
+      "y": 1360,
+      "w": 350,
+      "text": "I · SWISS MODERNISM 2.0\n\nEen zichtbaar raster van twaalf kolommen, zwart op wit, één felle kleur en verder niets. Alles hangt aan dezelfde lijnen; de vertraging is het enige dat rood is.\n\nDit is geen trend maar een school -- het ziet er over vijf jaar nog zo uit. Archivo met strakke letterafstand, cijfers van vaste breedte.\n\nVoor: rustig, volwassen, en het schaalt moeiteloos naar je andere schermen.\nTegen: wit. Over een donker spel moet de overlay dan een donkere tweeling krijgen."
+    },
+    {
+      "id": "concept-brut",
+      "page": "page-3",
+      "x": -430,
+      "y": 0,
+      "w": 350,
+      "text": "CONCEPT · BRUTALISM\n\nBedacht door de skill, niet door mij. Gevraagd om een gedurfd concept (variance 9) voor \"bus driver companion, live duty, timetable, navigatie, desktop\" en dit kwam eruit:\n\nSTIJL  Brutalism -- rauw, hoekig, hoog contrast, zichtbare randen, grote blokken, asymmetrisch\nKLEUR  #2563EB blauw, #EA580C oranje, #F8FAFC papier, #1E293B inkt\nLETTER Space Grotesk + Space Mono (uit zijn eigen typografiedata, rij \"Brutalist Raw\" en \"Neo Brutalism\")\nEFFECT scherpe hoeken 0px, vet vanaf 700, geen zachte overgangen\n\nWat ik heb toegevoegd: de randen van 3px in inkt in plaats van lichtgrijs, en één harde slagschaduw op de hoofdknop. Verder is dit zijn voorschrift."
+    },
+    {
+      "id": "concept-eerlijk",
+      "page": "page-3",
+      "x": -430,
+      "y": 330,
+      "w": 350,
+      "text": "WAT DIT DOET, EN WAT HET KOST\n\nVoor: het is onmiskenbaar. Geen enkele andere OMSI-tool ziet er zo uit, en het lijnnummer en de vertraging zijn van drie meter afstand te lezen.\n\nTegen: brutalisme is luid. Acht uur naar oranje en kobalt kijken is iets anders dan een landingspagina bezoeken. En over een donker spel legt dit een lichte, harde plaat -- het valt op, maar het dekt ook af.\n\nDe skill koos dit bij variance 9. Zet je die op 6, dan komt hij uit op Dark Mode (OLED) met groen en rood -- dat staat als stel 5 op de tweede pagina."
+    },
+    {
       "id": "hoe-te-lezen",
       "page": "page-1",
       "x": -430,
@@ -152,6 +609,6 @@
   ],
   "launch": {
     "view": "canvas",
-    "page": "page-1"
+    "page": "page-11"
   }
 }

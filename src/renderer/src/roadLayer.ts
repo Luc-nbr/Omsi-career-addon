@@ -24,9 +24,14 @@ const CACHE_MAX_PX = 4096
 /** Lucht rond de kaart in de buffer, zodat de stoeprand aan de rand niet wegvalt. */
 const CACHE_PAD_M = 40
 
-const CASING = '#202834'
-const ROAD = '#3b4554'
-const RAIL = '#2d3540'
+/*
+ * De wegen. Het verschil tussen omranding en wegdek doet het werk: daardoor
+ * springt een doorgaande weg eruit tussen de zijstraten, zoals op elke
+ * navigatiekaart.
+ */
+const CASING = '#232a34'
+const ROAD = '#3a434f'
+const RAIL = '#2b323c'
 
 interface Chunk {
   minX: number

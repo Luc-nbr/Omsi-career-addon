@@ -46,7 +46,7 @@
 
 .route-casing {
   fill: none;
-  stroke: #17386b;
+  stroke: #8a6a12;
   stroke-width: 9;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -54,18 +54,20 @@
 
 .route-line {
   fill: none;
-  stroke: #4c9aff;
+  stroke: #ffd23f;
   stroke-width: 5;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
-.route-done .route-casing {
-  stroke: #1c222b;
-}
-
+/*
+ * Wat je gereden hebt, verdwijnt. Je hoeft niet te weten waar je vandaan komt;
+ * wat telt is wat er nog voor je ligt, en een tweede lijn erbij maakt de kaart
+ * alleen maar drukker.
+ */
+.route-done .route-casing,
 .route-done .route-line {
-  stroke: #46505f;
+  stroke: transparent;
 }
 
 .route-arrow {
@@ -95,7 +97,7 @@
 
 .sign-h {
   fill: #0a6b3d;
-  font-family: "Segoe UI", system-ui, sans-serif;
+  font-family: Manrope, "Segoe UI", system-ui, sans-serif;
   font-weight: 800;
   text-anchor: middle;
   dominant-baseline: central;
@@ -114,9 +116,13 @@
   fill: #414a44;
 }
 
+/*
+ * De ring om de eerstvolgende halte draagt de lijnkleur. Groen zou hier
+ * "op tijd" betekenen, en dat zegt deze ring niet.
+ */
 .sign-next-ring {
   fill: none;
-  stroke: var(--good, #4ec9a5);
+  stroke: var(--lijn, #ffd23f);
   stroke-width: 2.5;
 }
 
@@ -127,14 +133,14 @@
 }
 
 .bus-halo {
-  fill: rgba(76, 154, 255, 0.18);
-  stroke: rgba(76, 154, 255, 0.55);
+  fill: rgba(255, 210, 63, 0.18);
+  stroke: rgba(255, 210, 63, 0.4);
   stroke-width: 1.5;
 }
 
 .bus-arrow {
-  fill: #e8f1ff;
-  stroke: #1d4f95;
+  fill: #ffffff;
+  stroke: #10141a;
   stroke-width: 1.5;
   stroke-linejoin: round;
 }
@@ -164,7 +170,7 @@
 
 .map-start-halo {
   fill: none;
-  stroke: var(--accent, #f0b429);
+  stroke: var(--lijn, #ffd23f);
   stroke-width: 2.5;
   pointer-events: none;
 }
@@ -176,7 +182,7 @@
   font-family: "Segoe UI", system-ui, sans-serif;
   font-size: 11px;
   paint-order: stroke;
-  stroke: rgba(10, 14, 20, 0.92);
+  stroke: rgba(16, 20, 26, 0.92);
   stroke-width: 3;
   stroke-linejoin: round;
   pointer-events: none;
@@ -188,7 +194,7 @@
 }
 
 .map-scale line {
-  stroke: var(--muted, #8d9bad);
+  stroke: var(--muted, rgba(255, 255, 255, 0.6));
   stroke-width: 1.5;
 }
 

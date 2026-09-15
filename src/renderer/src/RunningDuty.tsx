@@ -3,6 +3,7 @@ import type { IbisPlan } from '../../core/ibis'
 import type { Duty } from '../../core/types'
 import type { SessionResult } from '../../shared/api'
 import { formatTime } from '../../shared/format'
+import { punctuality } from '../../shared/status'
 import { RouteViewer } from './DutyMap'
 import { useT } from './language'
 
@@ -54,19 +55,19 @@ export function RunningDuty({
   const entry = ibis?.legs[0]
   const line = ibis?.line || leg.lineNumber
 
-  /* Hoe het ervoor staat: eerst of het spel er is, dan pas de cijfers. */
+  /*
+   * Hoe het ervoor staat. Het verschil met de dienstregeling is het enige op
+   * dit scherm dat kleur krijgt -- rood te laat, groen op tijd, blauw te vroeg --
+   * en het staat groot, want dat is waar een chauffeur op stuurt.
+   */
   const delay = session?.delayMinutes
-  const status = !connected
-    ? tr('run.waiting')
-    : tr('run.live', {
-        km: (session?.drivenKm ?? 0).toFixed(1),
-        delay:
-          delay === undefined || Math.abs(delay) < 1
-            ? tr('run.onTime')
-            : delay > 0
-              ? tr('run.late', { minutes: Math.round(delay) })
-              : tr('run.early', { minutes: Math.round(-delay) })
-      })
+  const stand = punctuality(delay === undefined ? undefined : delay * 60)
+  const verschil =
+    delay === undefined
+      ? undefined
+      : `${delay > 0 ? '+' : delay < 0 ? '\u2212' : ''}${Math.floor(Math.abs(delay))}:${String(
+          Math.round((Math.abs(delay) % 1) * 60)
+        ).padStart(2, '0')}`
 
   return (
     <section className="card running">
@@ -109,9 +110,31 @@ export function RunningDuty({
         </div>
       </div>
 
+      {/*
+        Het verschil met de dienstregeling, groot en in kleur. Zolang OMSI de
+        dienst niet draait valt er niets af te lezen; dan staat er wat er te
+        doen is in plaats van een cijfer dat nergens op slaat.
+      */}
+      <div className={`running-delta${stand ? ` is-${stand}` : ''}`}>
+        {connected && verschil !== undefined && stand ? (
+          <>
+            <b>{stand === 'optijd' ? tr('run.onTime') : verschil}</b>
+            <span>
+              {stand === 'laat'
+                ? tr('run.lateWord')
+                : stand === 'vroeg'
+                  ? tr('run.earlyWord')
+                  : tr('run.onScheduleWord')}
+            </span>
+          </>
+        ) : (
+          <span className="running-wait">{tr('run.waiting')}</span>
+        )}
+      </div>
+
       <p className="note running-status">
-        {status}
-        {' · '}
+        {connected ? tr('run.driven', { km: (session?.drivenKm ?? 0).toFixed(1) }) : ''}
+        {connected ? ' · ' : ''}
         {tr('run.stops', { stops: leg.stops.length, minutes: Math.round(leg.minutes) })}
       </p>
 

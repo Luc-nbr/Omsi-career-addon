@@ -15,6 +15,7 @@ import type { LiveStatus } from '../../core/live'
 import type { Duty, DutyLeg } from '../../core/types'
 import type { CareerApi } from '../../shared/api'
 import { formatTime } from '../../shared/format'
+import { punctuality } from '../../shared/status'
 import { DEFAULT_LANGUAGE, loose, t, type Language } from '../../shared/i18n'
 import {
   OPACITY_MIN,
@@ -31,6 +32,11 @@ import {
   type PanelInfo
 } from '../../shared/overlay'
 import { RouteMap } from './RouteMap'
+import '@fontsource/manrope/400.css'
+import '@fontsource/manrope/500.css'
+import '@fontsource/manrope/600.css'
+import '@fontsource/manrope/700.css'
+import '@fontsource/manrope/800.css'
 import './overlay.css'
 
 /**
@@ -821,13 +827,18 @@ function Delta({
     )
   }
 
-  // Binnen een halve minuut heet het op tijd; daarbuiten telt elke seconde.
+  /*
+   * Waar de grens ligt tussen op tijd, te laat en te vroeg staat op één plek:
+   * `punctuality`. Het venster van de app rekent met dezelfde grens, anders
+   * staat er op het ene scherm groen en op het andere rood.
+   */
   const size = Math.abs(delta)
   const clock = `${Math.floor(size / 60)}:${String(size % 60).padStart(2, '0')}`
-  const state = size < 30 ? 'ontime' : delta > 0 ? 'late' : 'early'
+  const state = punctuality(delta)
+  const klasse = state === 'laat' ? 'late' : state === 'vroeg' ? 'early' : 'ontime'
   return (
-    <span className={`delay ${state}`} title={tr('ovl.onTheDot')}>
-      {size < 30 ? tr('ovl.ontime') : `${delta > 0 ? '+' : '\u2212'}${clock}`}
+    <span className={`delay ${klasse}`} title={tr('ovl.onTheDot')}>
+      {state === 'optijd' ? tr('ovl.ontime') : `${delta > 0 ? '+' : '\u2212'}${clock}`}
     </span>
   )
 }

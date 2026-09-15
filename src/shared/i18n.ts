@@ -926,6 +926,15 @@ const TEXT = {
   'run.onTime': { en: 'on time', de: 'pünktlich', fr: 'à l’heure', nl: 'op tijd' },
   'run.late': { en: '{minutes} min late', de: '{minutes} Min Verspätung', fr: '{minutes} min de retard', nl: '{minutes} min te laat' },
   'run.early': { en: '{minutes} min early', de: '{minutes} Min zu früh', fr: '{minutes} min d’avance', nl: '{minutes} min te vroeg' },
+  'run.lateWord': { en: 'behind schedule', de: 'zu spät', fr: 'en retard', nl: 'te laat' },
+  'run.earlyWord': { en: 'ahead of schedule', de: 'zu früh', fr: 'en avance', nl: 'te vroeg' },
+  'run.onScheduleWord': {
+    en: 'on schedule',
+    de: 'nach Fahrplan',
+    fr: 'à l’heure',
+    nl: 'op de dienstregeling'
+  },
+  'run.driven': { en: '{km} km driven', de: '{km} km gefahren', fr: '{km} km parcourus', nl: '{km} km gereden' },
   'run.full': { en: 'View the whole duty', de: 'Ganzen Dienst ansehen', fr: 'Voir tout le service', nl: 'Bekijk volledige dienst' },
   'run.fullTitle': { en: 'The whole duty', de: 'Der ganze Dienst', fr: 'Le service complet', nl: 'De volledige dienst' },
   'run.viewRoute': { en: 'View the route', de: 'Route ansehen', fr: 'Voir l’itinéraire', nl: 'Bekijk route' },

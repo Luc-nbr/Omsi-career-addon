@@ -393,6 +393,29 @@ mikt op negentig punten, dus dat leest als "25 m" -- en daarboven vloeiend open
 tot 2 m per punt bij 80 km/u, zonder sprong op de grens. `liveZoom` in
 `RouteMap.tsx`; proef: `scripts/probe-zoom.cjs`.
 
+**De vormtaal** (sinds 15-09-2026). Luc vond de oude interface op een sjabloon
+lijken; na een ronde ontwerpen op canvas is dit eruit gekomen:
+
+- **Glas op een lijnennet.** Vlakken zijn doorschijnend wit met een lichte rand
+  (`--glas`, `--glas-rand`, hoeken 22); erachter ligt `Backdrop.tsx`, een
+  routekaart van vier lijnen en zeven knooppunten op drie procent wit. Glas
+  heeft iets nodig om op te liggen -- zonder iets erachter is doorzichtig
+  hetzelfde als grijs. Het net staat in `main.tsx`, achter elk scherm.
+- **Kleur betekent twee dingen, en verder niets.** Geel (`--lijn`) is de lijn:
+  het nummer op de bus en de knop die de dienst afmaakt. Rood, groen en blauw
+  zijn de tijd: te laat, op tijd, te vroeg, met de grens op een minuut in
+  `src/shared/status.ts`. Die ene bron voedt zowel het rijscherm als de overlay,
+  zodat er niet op het ene scherm groen en op het andere rood staat. Alles wat
+  vroeger ook kleur had -- de stip "dienst loopt", de rijstijl, de buspijl op de
+  kaart -- is nu wit.
+- **Manrope**, meegeleverd via `@fontsource/manrope` (het programma mag niet van
+  het internet afhangen). De losse schrijfmachineletter is eruit: cijfers staan
+  in Manrope met `font-variant-numeric: tabular-nums`, dus kolommen dansen niet.
+- **De navigatie houdt zijn afspraken**: de Duitse H-bordjes (geel vlak, groene
+  ring en H -- een echt object, geen statuskleur), de zoom op 25 m onder de
+  30 km/u (`liveZoom`), en de gereden route verdwijnt achter je.
+- De ontwerpbestanden staan in `design/`; het canvas erbij is een Artifact.
+
 **Opnieuw kijken wat er geinstalleerd is** (sinds 15-09-2026). Kaarten en bussen
 komen als een map de OMSI-map in en niets meldt dat aan de app, die ze alleen
 bij het starten leest. De knop "Controleer geinstalleerde mappen" in de balk

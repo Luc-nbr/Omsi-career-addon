@@ -33,7 +33,9 @@
    * titelbalk zelf blijft erbuiten, anders kun je de schuif niet meer aflezen
    * op het moment dat je hem gebruikt.
    */
-  background: rgba(12, 16, 22, calc(0.82 * var(--fade, 1)));
+  background: rgba(16, 20, 26, calc(0.58 * var(--fade, 1)));
+  backdrop-filter: blur(22px) saturate(1.3);
+  -webkit-backdrop-filter: blur(22px) saturate(1.3);
   border: 1px solid rgba(255, 255, 255, calc(0.09 * var(--fade, 1)));
   border-left: 3px solid rgba(240, 180, 41, var(--fade, 1));
   border-radius: 10px;
@@ -126,18 +128,18 @@
 }
 
 .clock {
-  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
-  font-size: 21px;
+  font-size: 22px;
   font-weight: 700;
-  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
+/* Het lijnnummer draagt de lijnkleur, net als in het venster van de app. */
 .line {
-  background: #f0b429;
-  color: #1d1607;
-  font-weight: 700;
-  font-family: ui-monospace, Consolas, monospace;
-  border-radius: 5px;
+  background: #ffd23f;
+  color: #1a1400;
+  font-weight: 800;
+  border-radius: 8px;
   padding: 1px 8px;
 }
 
@@ -147,12 +149,16 @@
   font-size: 14px;
 }
 
+/*
+ * De enige plek in de overlay waar kleur iets betekent. Groen op tijd, rood te
+ * laat, blauw te vroeg -- zie `src/shared/status.ts` voor waar de grens ligt.
+ */
 .delay.ontime {
-  color: #57d6a8;
+  color: #37d67a;
 }
 
 .delay.late {
-  color: #ff8f6b;
+  color: #ff5f57;
 }
 
 /*
@@ -686,7 +692,7 @@
 
 /* Voor op de dienstregeling is net zo goed het vermelden waard als achter. */
 .delay.early {
-  color: #6fb8ff;
+  color: #4da3ff;
 }
 
 /* De twee stappen in het instructiepaneel: eerst het menu, dan de IBIS. */
