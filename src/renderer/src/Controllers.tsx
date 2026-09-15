@@ -373,7 +373,29 @@ function ButtonList({
   // Zoveel knoppen als het bestand kent, en anders wat het apparaat meldt.
   const count = Math.max(controller.buttons.length, pad?.buttons.length ?? 0)
 
-  const rows = Array.from({ length: count }, (_, index) => index).filter((index) => {
+  /*
+   * Druk je een knop op je stuur in, dan springt de lijst ernaartoe. Bij
+   * vierentwintig knoppen is "welke was dit ook alweer" de hele vraag, en die
+   * beantwoordt het apparaat zelf het beste.
+   *
+   * Alleen bij de eerste beeldwissel waarin hij ingedrukt raakt, en niet terwijl
+   * je een handeling aan het uitzoeken bent: dan zou het scherm onder je handen
+   * wegschuiven.
+   */
+  const rows = useRef(new Map<number, HTMLDivElement>())
+  const wasDown = useRef<number | undefined>(undefined)
+  useEffect(() => {
+    const down = pad?.buttons.findIndex((button) => button.pressed) ?? -1
+    if (down < 0) {
+      wasDown.current = undefined
+      return
+    }
+    if (down === wasDown.current || picking !== undefined) return
+    wasDown.current = down
+    rows.current.get(down)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [pad, picking])
+
+  const shown = Array.from({ length: count }, (_, index) => index).filter((index) => {
     if (!needle) return true
     const action = controller.buttons[index]?.action ?? ''
     const label = labels.get(action) ?? action
@@ -386,11 +408,18 @@ function ButtonList({
 
   return (
     <div className="keys">
-      {rows.map((index) => {
+      {shown.map((index) => {
         const button = controller.buttons[index] ?? { action: '', flag: 0 }
         const pressed = pad?.buttons[index]?.pressed ?? false
         return (
-          <div className={`key-row ${pressed ? 'pressed' : ''}`} key={index}>
+          <div
+            className={`key-row ${pressed ? 'pressed' : ''}`}
+            key={index}
+            ref={(element) => {
+              if (element) rows.current.set(index, element)
+              else rows.current.delete(index)
+            }}
+          >
             <span className="key-name">
               {t(language, 'ctrl.button', { number: index + 1 })}
               {pressed && <span className="key-hold">{t(language, 'ctrl.pressed')}</span>}
@@ -412,7 +441,7 @@ function ButtonList({
           </div>
         )
       })}
-      {rows.length === 0 && <p className="empty">{t(language, 'ctrl.noButtons')}</p>}
+      {shown.length === 0 && <p className="empty">{t(language, 'ctrl.noButtons')}</p>}
     </div>
   )
 }

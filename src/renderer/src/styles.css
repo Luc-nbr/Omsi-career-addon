@@ -1533,9 +1533,20 @@ input[type='range'] {
   background: var(--accent);
 }
 
-/* Een knop die op dit moment wordt ingedrukt. */
+/*
+ * Een knop die op dit moment wordt ingedrukt. Hij licht op én de lijst springt
+ * ernaartoe, zodat je op je stuur kunt drukken om te zien welke regel je hebben
+ * moet.
+ */
+.key-row.pressed {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+  border-radius: 4px;
+}
+
 .key-row.pressed .key-name {
   color: var(--accent);
+  padding-left: 8px;
 }
 
 .picker {

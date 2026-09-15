@@ -227,7 +227,9 @@ export function App(): JSX.Element {
           mapFolder,
           targetMinutes: LENGTHS[lengthIndex],
           window: timeWindow,
-          lineFile: onlyLine ?? lineFile ?? undefined
+          // Een lege keuze is "elke lijn"; die mag niet als filter meegaan,
+          // want dan zoekt de planner naar een lijn die zo heet.
+          lineFile: (onlyLine ?? lineFile) || undefined
         })
         setDuties(found)
         if (assign && found.length > 0) setSelected(0)

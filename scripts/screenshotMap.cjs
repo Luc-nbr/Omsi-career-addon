@@ -91,6 +91,19 @@ app.whenReady().then(async () => {
     await window.webContents.executeJavaScript(`document.querySelector('.welcome .actions .btn')?.click()`)
   }
 
+  /*
+   * De app begint sinds de modi bij de chauffeur en dan bij de keuze hoe je wilt
+   * rijden. De kaart met de diensten zit achter "Dienst".
+   */
+  if (await waitFor(window, `document.querySelector('.driver-grid')`, 40)) {
+    await window.webContents.executeJavaScript(`document.querySelector('.driver-pick')?.click()`)
+  }
+  if (await waitFor(window, `document.querySelector('.mode-grid')`, 40)) {
+    await window.webContents.executeJavaScript(
+      `[...document.querySelectorAll('.mode-card')].find((c) => c.textContent.includes('Dienst'))?.click()`
+    )
+  }
+
   if (!(await waitFor(window, `document.querySelector('select#map option')`))) {
     console.error('geen kaartkeuze')
     app.exit(1)
@@ -105,8 +118,13 @@ app.whenReady().then(async () => {
   console.log(`kaart: ${picked}`)
   await wait(500)
   await window.webContents.executeJavaScript(`document.querySelector('.main .actions .btn')?.click()`)
-  if (!(await waitFor(window, `document.querySelector('.duty-item')`, 120))) {
+  if (!(await waitFor(window, `document.querySelector('.duty-item')`, 160))) {
     console.error('geen diensten')
+    console.error(
+      await window.webContents.executeJavaScript(
+        `[...document.querySelectorAll('.note, h1, h2')].map((n) => n.textContent.trim()).slice(0, 10).join(' | ')`
+      )
+    )
     app.exit(1)
     return
   }
