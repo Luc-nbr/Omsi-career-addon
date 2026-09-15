@@ -37,6 +37,13 @@ const CASING = '#212833'
  */
 const ROAD = ['#333b47', '#3c4552', '#495261']
 const RAIL = '#2b323c'
+/*
+ * Water en groen liggen onder alles. Ze zijn met opzet flauw: ze moeten zeggen
+ * waar je bent zonder de aandacht te trekken -- de route is het enige dat mag
+ * opvallen.
+ */
+const WATER = '#1d3550'
+const GREEN = '#1e2a20'
 
 /** Ondergrens per klasse, zodat een straat uitgezoomd niet wegvalt. */
 const MIN_PX = [4, 6, 8.5]
@@ -63,6 +70,8 @@ interface Chunk {
   /** Eén pad per breedteklasse; ze worden apart gestreken. */
   road?: (Path2D | undefined)[]
   rail?: Path2D
+  /** De volle vakjes van het groenrooster, als vierkantjes. */
+  green?: Path2D
 }
 
 export interface RoadView {
@@ -100,6 +109,8 @@ function worldMatrix(view: RoadView): [number, number, number, number, number, n
 
 export class RoadLayer {
   private readonly chunks: Chunk[]
+  /** Rivieren en kanalen; te weinig om te hoeven wegknippen. */
+  private readonly water: { path: Path2D; w: number }[] = []
   private readonly bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
   private cache?: { canvas: HTMLCanvasElement; pxPerM: number }
 
@@ -147,6 +158,45 @@ export class RoadLayer {
       this.bounds.maxX = Math.max(this.bounds.maxX, maxX)
       this.bounds.maxY = Math.max(this.bounds.maxY, maxY)
     }
+    /*
+     * Water gaat buiten de vakjes om: een kaart heeft er een handvol, en
+     * veertien lijnen tekenen kost minder dan uitzoeken welke in beeld liggen.
+     */
+    for (const line of geometry.water ?? []) {
+      const p = line.points
+      if (p.length < 4) continue
+      const path = new Path2D()
+      path.moveTo(p[0], p[1])
+      for (let i = 2; i < p.length; i += 2) path.lineTo(p[i], p[i + 1])
+      this.water.push({ path, w: line.w ?? 20 })
+    }
+
+    // En het groen in de vakjes, zodat het wel meedoet met het wegknippen.
+    const groen = geometry.green
+    if (groen) {
+      for (let i = 0; i < groen.cells.length; i += 2) {
+        const x = groen.cells[i]
+        const y = groen.cells[i + 1]
+        const key = `${Math.floor(x / CELL_M)},${Math.floor(y / CELL_M)}`
+        let chunk = cells.get(key)
+        if (!chunk) {
+          chunk = { minX: x, minY: y, maxX: x + groen.cellM, maxY: y + groen.cellM }
+          cells.set(key, chunk)
+        }
+        chunk.minX = Math.min(chunk.minX, x)
+        chunk.minY = Math.min(chunk.minY, y)
+        chunk.maxX = Math.max(chunk.maxX, x + groen.cellM)
+        chunk.maxY = Math.max(chunk.maxY, y + groen.cellM)
+        const path = (chunk.green ??= new Path2D())
+        // Een haartje overlap, anders staan er naden tussen de vakjes.
+        path.rect(x, y, groen.cellM + 0.6, groen.cellM + 0.6)
+        this.bounds.minX = Math.min(this.bounds.minX, x)
+        this.bounds.minY = Math.min(this.bounds.minY, y)
+        this.bounds.maxX = Math.max(this.bounds.maxX, x + groen.cellM)
+        this.bounds.maxY = Math.max(this.bounds.maxY, y + groen.cellM)
+      }
+    }
+
     this.chunks = [...cells.values()]
   }
 
@@ -188,7 +238,7 @@ export class RoadLayer {
         chunk.maxY > view.cy - marginY &&
         chunk.minY < view.cy + marginY
     )
-    stroke(ctx, visible, view.mpp)
+    stroke(ctx, visible, view.mpp, this.water)
   }
 
   private render(pxPerM: number, mpp: number, width: number, height: number): { canvas: HTMLCanvasElement; pxPerM: number } {
@@ -200,7 +250,7 @@ export class RoadLayer {
       const left = this.bounds.minX - CACHE_PAD_M
       const top = this.bounds.maxY + CACHE_PAD_M
       ctx.setTransform(pxPerM, 0, 0, -pxPerM, -left * pxPerM, top * pxPerM)
-      stroke(ctx, this.chunks, mpp)
+      stroke(ctx, this.chunks, mpp, this.water)
     }
     return { canvas, pxPerM }
   }
@@ -227,8 +277,25 @@ export class RoadLayer {
  * over de straat ligt. Binnen elke ronde het breedst eerst, zodat een zijstraat
  * netjes op een doorgaande weg uitkomt.
  */
-function stroke(ctx: CanvasRenderingContext2D, chunks: Chunk[], mpp: number): void {
+function stroke(
+  ctx: CanvasRenderingContext2D,
+  chunks: Chunk[],
+  mpp: number,
+  water: { path: Path2D; w: number }[]
+): void {
   const railWidth = Math.max(3, mpp * 0.7)
+
+  // Eerst het landschap: groen eronder, dan het water erop.
+  ctx.fillStyle = GREEN
+  for (const chunk of chunks) if (chunk.green) ctx.fill(chunk.green)
+
+  ctx.strokeStyle = WATER
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  for (const stroom of water) {
+    ctx.lineWidth = Math.max(2, stroom.w / mpp)
+    ctx.stroke(stroom.path)
+  }
   // De baan is in meters bekend; een strook van 3,5 m hoort 3,5 m breed te zijn.
   const breedte = (klasse: number): number => Math.max(MIN_PX[klasse], (3 + klasse) / mpp)
 
