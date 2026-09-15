@@ -10,7 +10,7 @@
  * Er wordt niets geschreven: alleen gekeken.
  */
 const { app, BrowserWindow } = require('electron')
-const { mkdtempSync } = require('node:fs')
+const { mkdtempSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 
@@ -113,6 +113,15 @@ app.whenReady().then(async () => {
        return box.top >= 0 && box.bottom <= window.innerHeight
      })()`
   )
+  // Een plaatje van het moment zelf, om te laten zien wat je ziet.
+  if (process.env.SHOT_DIR) {
+    main.showInactive()
+    main.moveTop()
+    await wait(250)
+    const file = join(process.env.SHOT_DIR, 'pad-ingedrukt.png')
+    writeFileSync(file, (await main.capturePage()).toPNG())
+    console.log(`geschreven: ${file}`)
+  }
   console.log(`opgelicht: ${lit || '(niets)'}`)
   console.log(`in beeld gescrold: ${inView}`)
 
