@@ -232,7 +232,8 @@
 .map-tools button {
   width: 34px;
   height: 34px;
-  border-radius: 11px;
+  /* Rond, zoals de knoppen op een telefoon; een vierkantje leest als een venster. */
+  border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.18);
   background: rgba(16, 20, 26, 0.62);
   backdrop-filter: blur(12px);

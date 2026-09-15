@@ -58,19 +58,48 @@
  * met wat erna komt. Die volgorde is niet willekeurig -- tijdens het rijden kijk
  * je naar boven, niet naar beneden.
  */
+/*
+ * De navigatie is geen paneel met een kaart erin maar een toestel: één glazen
+ * kaart met ronde hoeken, waarin de kaart van rand tot rand staat en de
+ * manoeuvrebalk erboven zweeft. Daarom krijgt dit paneel geen gele rand en geen
+ * binnenmarge -- alles wat je anders als lijst zou lezen, hoort hier bij het
+ * scherm zelf.
+ */
+.panel:has(.nav-wrap) {
+  border-radius: 26px;
+  border-left: 1px solid rgba(255, 255, 255, calc(0.09 * var(--fade, 1)));
+}
+
+.panel:has(.nav-wrap) .panel-body {
+  padding: 5px;
+}
+
 .nav-wrap {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  border-radius: 21px;
+  overflow: hidden;
 }
 
 .navbar {
+  position: absolute;
+  z-index: 2;
+  top: 7px;
+  left: 7px;
+  right: 7px;
   display: flex;
   align-items: center;
   gap: 11px;
-  padding: 10px 12px 9px;
-  flex-shrink: 0;
+  padding: 11px 13px 10px;
+  border-radius: 16px;
+  background: rgba(18, 22, 29, 0.74);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
 }
 
 .navbar-arrow {
@@ -139,15 +168,28 @@
 .nav-wrap .route-map {
   flex: 1;
   min-height: 0;
+  border: none;
+  border-radius: 0;
+}
+
+/* De knoppen schuiven onder de zwevende balk door. */
+.nav-wrap .map-tools {
+  top: 66px;
+  right: 9px;
 }
 
 .navfoot {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 8px 12px;
+  padding: 9px 13px;
   flex-shrink: 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(18, 22, 29, 0.74);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
   font-size: 13px;
   color: rgba(255, 255, 255, 0.82);
 }
