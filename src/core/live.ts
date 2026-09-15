@@ -259,6 +259,42 @@ function readSchedule(data: LiveData, duty: Duty | undefined, clockMinutes: numb
 }
 
 /**
+ * Welke halte van de rit OMSI bedoelt met de naam die hij doorgeeft.
+ *
+ * Het nummer dat OMSI erbij levert is niet ons nummer: het telt in zijn eigen
+ * lijst en die loopt anders. Gemeten op Rheinhausen, rit 35_DIAK_BREIT: OMSI
+ * meldde halte 6 "Rothhauser Strasse", terwijl dat bij ons halte 1 is en halte
+ * 6 "Plankenhof" heet. Op het nummer afgaan wijst dus de verkeerde halte aan,
+ * en rekent ook het verschil met de dienstregeling tegen de verkeerde tijd af.
+ *
+ * De naam is wel dezelfde -- beide komen uit de dienstregeling van de kaart.
+ * Komt een halte twee keer voor in dezelfde rit, dan wint die waarvan de
+ * geplande tijd het dichtst ligt bij waar we volgens de klok zouden moeten zijn.
+ */
+function stopIndexByName(
+  leg: DutyLeg | undefined,
+  name: string,
+  clockMinutes: number,
+  delayMinutes: number
+): number | undefined {
+  const wanted = name.trim().toLowerCase()
+  if (!leg || !wanted) return undefined
+  const onSchedule = clockMinutes - delayMinutes
+  let best: number | undefined
+  let closest = Infinity
+  leg.stops.forEach((stop, index) => {
+    if (stop.trim().toLowerCase() !== wanted) return
+    const when = leg.stopTimes[index]
+    const gap = when === undefined ? 0 : Math.abs(when - onSchedule)
+    if (gap < closest) {
+      closest = gap
+      best = index
+    }
+  })
+  return best
+}
+
+/**
  * Het verschil met de dienstregeling, op de seconde.
  *
  * De klok van het spel en de tijd die bij de eerstvolgende halte hoort staan
@@ -393,12 +429,19 @@ export function describeLive(
    * is "0 van 9 gehad" een bewering die nergens op slaat. Met een dienstregeling
    * uit het menu weet OMSI zelf welke halte de volgende is.
    */
+  /*
+   * De naam gaat voor het nummer: dat van OMSI telt in zijn eigen lijst en komt
+   * niet overeen met de onze. Zonder naam blijft het nummer over, en zonder
+   * dienstregeling in het menu de teller van de IBIS.
+   */
+  const byName = fromMenu && data.mem ? stopIndexByName(leg, data.mem.nextStop, clockMinutes, delayMinutes) : undefined
   const stopIndex =
-    fromMenu && data.mem && data.mem.nextIndex >= 0
-      ? data.mem.nextIndex
+    byName ??
+    (fromMenu && data.mem && data.mem.nextIndex >= 0
+      ? Math.min(data.mem.nextIndex, Math.max(0, (leg?.stops.length ?? 1) - 1))
       : has(data, BIT.busstopIndex) && data.busstop.trim() !== ''
         ? Math.max(0, Math.round(data.busstopIndex))
-        : undefined
+        : undefined)
 
   return {
     clockMinutes,
@@ -417,7 +460,14 @@ export function describeLive(
     offersStops: fromMenu || ((data.seenStr >>> 0) & 1) === 1,
     delayMinutes,
     delayFromIbis: fromMenu || fromIbis !== undefined,
-    deltaSeconds: scheduleDelta(leg, stopIndex, clockMinutes),
+    /*
+     * Rijdt er een dienstregeling in OMSI, dan houdt het spel het verschil zelf
+     * op de seconde bij; dat is hetzelfde getal dat de chauffeur in het spel
+     * ziet. Alleen zonder die dienstregeling rekenen we het zelf uit, tegen de
+     * tijd die bij de eerstvolgende halte hoort.
+     */
+    deltaSeconds:
+      fromMenu && data.mem ? Math.round(data.mem.delay) : scheduleDelta(leg, stopIndex, clockMinutes),
     mood,
     moodLabel: !hasPassengers
       ? 'empty'

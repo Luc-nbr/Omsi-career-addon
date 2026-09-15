@@ -147,8 +147,9 @@ function Overlay(): JSX.Element | null {
   const scheduled = Boolean(status?.schedule?.matchesDuty)
   const ibisLoaded = readable ? scheduled : Boolean(status?.reportsStops) && passed !== undefined
   /*
-   * Een bus zonder IBIS meldt nooit een halte. Die chauffeur eindeloos naar
-   * "toets de route in" laten kijken helpt hem niet; dan maar meteen de dienst.
+   * Een bus zonder IBIS meldt nooit een halte; die chauffeur heeft niets aan
+   * "toets de route in". Hij krijgt de vraag om zijn dienst in OMSI te kiezen,
+   * want daar komt het antwoord dan vandaan.
    */
   const ibisCapable = status ? status.offersStops : true
   // Alleen schatten waar de bus is als OMSI zijn plek niet laat lezen.
@@ -172,10 +173,19 @@ function Overlay(): JSX.Element | null {
           language={language}
           onChange={(patch) => move('dienst', patch)}
         >
-          {readable && !scheduled && duty ? (
-            <SelectPanel duty={duty} status={status} language={language} />
-          ) : duty && !ibisLoaded && ibisCapable ? (
-            <IbisPanel duty={duty} ibis={frame.ibis} status={status} language={language} />
+          {/*
+            Het scherm vult zich pas als het spel zegt dat de dienst loopt: de
+            dienstregeling gekozen in OMSI, of anders een IBIS die haltes meldt.
+            Tot die tijd staat er wat er te doen valt. Een dienst die al ingevuld
+            lijkt terwijl OMSI nog niets weet, geeft cijfers die nergens op slaan
+            -- de bus stond gisteren nog stil en de klok loopt gewoon door.
+          */}
+          {duty && !ibisLoaded ? (
+            ibisCapable && !readable ? (
+              <IbisPanel duty={duty} ibis={frame.ibis} status={status} language={language} />
+            ) : (
+              <SelectPanel duty={duty} status={status} language={language} />
+            )
           ) : (
             <DutyPanel frame={frame} detail={layout.detail} language={language} onCycle={cycle} />
           )}
