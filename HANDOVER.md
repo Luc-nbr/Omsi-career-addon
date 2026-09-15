@@ -302,6 +302,26 @@ Nog open:
 
 Gebouwd:
 
+- **Het venster is niet groter dan zijn inhoud** (sinds 15-09-2026). Het lag
+  doorzichtig over het hele scherm, en alles wat zo'n venster beslaat moet
+  Windows bij elk spelbeeld opnieuw over OMSI heen mengen -- Luc merkte daar
+  haperingen van. `overlay.tsx` meet het vak waar de elementen in staan (breedte
+  uit de indeling, hoogte uit de inhoud, een `ResizeObserver` per element) en
+  geeft dat door met `overlay:bounds`; het hoofdproces zet het venster precies zo
+  groot en de pagina schuift zichzelf op met de hoek van dat vak, zodat alles op
+  zijn eigen plek op het scherm blijft staan. In de bewerkstand wordt het weer
+  schermvullend, anders kun je nergens heen slepen. Van 100% naar ~8% van het
+  scherm; nagekeken met `scripts/probe-overlaybox.cjs`.
+- **Minder werk per beeld.** De dienst kwam elke tel opnieuw door de brug, wat
+  voor React een andere dienst is: `useStable` in `overlay.tsx` houdt dezelfde
+  kopie vast zolang de ritten gelijk blijven, zodat de kaart zijn rekenwerk laat
+  staan. Het hoofdproces stuurt niets meer als er niets veranderd is, en de
+  verversing is te kiezen in de sleepbalk (`OVERLAY_RATES`: vloeiend 100 ms,
+  rustig 200 ms, zuinig 500 ms; standaard rustig, bewaard in `settings.json`).
+  **Let op**: wat het spel zelf kwijt is aan het mengen gebeurt in `dwm.exe` en
+  valt hiervandaan niet te meten. `scripts/probe-overlaycost.cjs` meet alleen ons
+  eigen verbruik; of de hapering echt weg is, weet alleen Luc in het spel.
+
 - **De kaart tekent pas een route als de IBIS is ingetoetst** (`status.reportsStops`
   plus een halte-index), en dan alleen de rit die nu gereden wordt. Daarvoor staat
   de eerste halte van de rit in beeld met `ovl.mapWaiting`.
@@ -332,6 +352,14 @@ zelf vast welke Direct3D-as het noorden is (de lezing die op een rijstrook valt)
 van de vertraging en of `tripName` een pad of een naam is. Kijk in `live.json`
 onder `mem` zodra een bus staat. Proeven: `scripts/probe-vehicle.ts` (kern) en
 `scripts/screenshotLive.cjs` (overlay met rijdende nepbus).
+
+**Tijdens het rijden toont de app zelf alleen de kern** (sinds 15-09-2026).
+Zodra de dienst gestart is komt `RunningDuty.tsx` in beeld in plaats van de
+dienstkaart: lijn, route, vertrektijd, de halte waar je begint en de richting,
+plus of OMSI er al is. De hele dienstkaart en de routekaart (`RouteViewer` uit
+`DutyMap.tsx`) zitten achter een knop; annuleren en afronden staan ernaast.
+Nagekeken met `scripts/probe-running.cjs`, dat het scherm uit de bron bouwt en de
+knoppen ook echt indrukt.
 
 In de overlay: het dienstpaneel toont "kies je dienst in OMSI" (lijn, omloop,
 vertrektijd) tot die in het menu gekozen is; de kaart toont de bus altijd en de
