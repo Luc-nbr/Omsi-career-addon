@@ -129,6 +129,7 @@ export function FreePlay({
 
         <div>
           <LinePicker language={language} lines={lines} value={lineFile} onChange={onLineChange} />
+          {!lineFile && <p className="note">{t(language, 'free.noLine')}</p>}
         </div>
 
         <div>

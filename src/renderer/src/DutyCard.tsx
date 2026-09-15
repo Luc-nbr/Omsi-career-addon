@@ -303,6 +303,8 @@ function SelectPanel({ duty, date }: { duty: Duty; date?: DutyDate }): JSX.Eleme
   return (
     <div className="ibis select-panel">
       <h3 className="section-title">{tr('select.title')}</h3>
+      {/* Sinds het klaarzetten bij het starten hoort, is dit naslag geworden. */}
+      <p className="note">{tr('select.preset')}</p>
       <div className="ibis-grid">
         <div className="ibis-field">
           <span>Line</span>

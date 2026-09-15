@@ -201,7 +201,7 @@ export function CareerPanel({
             >
               {t(language, 'lic.another')}
             </button>
-            {here.length === 0 && <span className="note">{t(language, 'lic.none')}</span>}
+            {here.length === 0 && <span className="note">{t(language, 'lic.noneHere')}</span>}
           </div>
         </>
       )}

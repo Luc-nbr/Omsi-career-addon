@@ -236,6 +236,12 @@ const TEXT = {
     fr: 'Aucun permis. Commencez par l’examen de conduite.',
     nl: 'Nog geen vergunningen. Begin met je rijexamen.'
   },
+  'lic.noneHere': {
+    en: 'No licence on this map yet. Pick another map, or take a test on a line here.',
+    de: 'Auf dieser Karte noch keine Lizenz. Wähle eine andere Karte oder lege hier eine Prüfung ab.',
+    fr: 'Aucun permis sur cette carte. Choisissez une autre carte ou passez un examen ici.',
+    nl: 'Op deze kaart nog geen vergunning. Kies een andere kaart, of doe hier examen op een lijn.'
+  },
   'lic.earned': { en: 'since {date}', de: 'seit {date}', fr: 'depuis le {date}', nl: 'sinds {date}' },
   'lic.another': { en: 'Learn another line', de: 'Weitere Linie lernen', fr: 'Apprendre une autre ligne', nl: 'Nieuwe lijn leren' },
   'lic.onlyThese': {
@@ -263,6 +269,12 @@ const TEXT = {
     de: 'Nichts wird gebucht und nichts bewertet. Die App schreibt die Situation, startet OMSI und legt das Overlay darüber.',
     fr: 'Rien n’est enregistré ni évalué. L’application écrit la situation, lance OMSI et pose la surimpression.',
     nl: 'Er wordt niets geboekt en niets beoordeeld. De app schrijft de situatie, start OMSI en legt de overlay erboven.'
+  },
+  'free.noLine': {
+    en: 'Without a line you simply drive around; the overlay then has no route to show.',
+    de: 'Ohne Linie fährst du einfach herum; das Overlay hat dann keine Strecke zu zeigen.',
+    fr: 'Sans ligne, vous roulez librement ; la surimpression n’a alors aucun itinéraire à afficher.',
+    nl: 'Zonder lijn rijd je gewoon rond; de overlay heeft dan geen route om te tonen.'
   },
   'free.stop': { en: 'Where the bus starts', de: 'Wo der Bus steht', fr: 'Où démarre le bus', nl: 'Waar de bus begint' },
   'free.stopAuto': { en: 'At the first stop of the line', de: 'An der ersten Haltestelle der Linie', fr: 'Au premier arrêt de la ligne', nl: 'Bij de eerste halte van de lijn' },
@@ -571,10 +583,16 @@ const TEXT = {
 
   // ---------- zo kies je hem in OMSI ----------
   'select.title': {
-    en: 'How to pick it in OMSI',
-    de: 'So wählst du ihn in OMSI',
-    fr: 'Comment le choisir dans OMSI',
-    nl: 'Zo kies je hem in OMSI'
+    en: 'What is set up in OMSI',
+    de: 'Was in OMSI eingestellt ist',
+    fr: 'Ce qui est préparé dans OMSI',
+    nl: 'Wat er in OMSI klaarstaat'
+  },
+  'select.preset': {
+    en: 'The app selects this for you. The values are here in case you ever need to set them by hand.',
+    de: 'Die App wählt das für dich aus. Die Werte stehen hier, falls du sie doch einmal selbst eingeben musst.',
+    fr: 'L’application le sélectionne pour vous. Les valeurs sont ici au cas où vous devriez les saisir vous-même.',
+    nl: 'De app kiest dit voor je. De waarden staan er voor het geval je ze ooit zelf moet invoeren.'
   },
   'select.howto': {
     en: 'Menu Set Time Table: choose Line {line}, Tour {tour}, the trip leaving at {time} for {terminus}, and {stop} as First stop — that is where OMSI puts you.',

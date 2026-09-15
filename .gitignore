@@ -4,3 +4,6 @@ dist/
 release/
 release-new/
 *.log
+# Bouwen buiten het project gaat via de omgevingsvariabele; in bash blijft
+# %TEMP% letterlijk staan en komt de hele build hier terecht.
+%TEMP%/
