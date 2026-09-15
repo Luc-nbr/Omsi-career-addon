@@ -8,6 +8,13 @@ export interface BusStop {
 export interface TripProfile {
   name: string
   minutes: number
+  /**
+   * Vaste tijden uit de dienstregeling, in minuten na vertrek: per halte-index
+   * de aankomst en het vertrek. Niet elke halte heeft ze -- op Thüringer Wald
+   * staan ze overal, op Rheinhausen bij een op de twintig.
+   */
+  arrivals?: Map<number, number>
+  departures?: Map<number, number>
 }
 
 /**
@@ -17,6 +24,12 @@ export interface TripProfile {
 export interface TripStop {
   id: string
   name?: string
+  /**
+   * Rijtijd tot deze halte, opgeteld vanaf het begin van de rit. OMSI noteert
+   * hem in de oude halteschrijfwijze; de nieuwe (`[station_typ2]`) laat hem weg
+   * en dan verdelen we de rittijd gelijkmatig over de haltes.
+   */
+  cumulative?: number
 }
 
 /** Een rit: één keer van beginpunt naar eindbestemming over een reeks haltes. */
@@ -89,6 +102,12 @@ export interface DutyLeg {
   stops: string[]
   /** Dezelfde haltes als id, om ze op de kaart terug te vinden. */
   stopIds: string[]
+  /**
+   * Wanneer je bij elke halte hoort te zijn, in minuten na middernacht. Uit de
+   * vaste tijden van het rijtijdprofiel; waar die ontbreken verdeeld naar
+   * rijtijd.
+   */
+  stopTimes: number[]
 }
 
 /** De dienst die de speler krijgt toegewezen. */

@@ -1,4 +1,5 @@
 import { buildNetwork, continuationsOf, WEEKDAY_MASK, type Network, type TripRun } from './network'
+import { stopOffsets } from './timetable'
 import { formatDuration, formatTime } from '../shared/format'
 import type { Duty, DutyLeg, OmsiMap } from './types'
 
@@ -91,7 +92,9 @@ function toDuty(map: OmsiMap, legs: TripRun[]): Duty {
     stops: run.trip.stops.map(
       (stop) => stop.name ?? map.stops.get(stop.id)?.name ?? `halte ${stop.id}`
     ),
-    stopIds: run.trip.stops.map((stop) => stop.id)
+    stopIds: run.trip.stops.map((stop) => stop.id),
+    // Vanaf het vertrek van deze rit: de tijden uit het rijtijdprofiel.
+    stopTimes: stopOffsets(run.trip, run.profileIndex).map((offset) => run.departure + offset)
   }))
 
   return {

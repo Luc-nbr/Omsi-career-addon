@@ -16,7 +16,23 @@ const LINE_SCHEMA = { '[newtour]': 3, '[addtrip]': 3, '[userallowed]': 0 }
  * met de naam er middenin. Hamburg Tag & Nacht en Thüringer Wald gebruiken die
  * nog en hebben een lege Busstops.cfg — zonder deze tag houden ze nul haltes over.
  */
-const TRIP_SCHEMA = { '[trip]': 3, '[station_typ2]': 1, '[station]': 6, '[profile]': 2 }
+/*
+ * Een `[station]` heeft acht velden: id, groep, naam, iets, de afstand van het
+ * vorige punt in kilometers, de rijtijd tot hier opgeteld in seconden, de
+ * halteertijd, en een minimale wachttijd. De zesde is waar het om gaat: die
+ * verdeelt de rittijd over de haltes.
+ *
+ * `[profile_man_arr_time]` en `[profile_man_dep_time]` noemen per halte-index
+ * een vaste aankomst- of vertrektijd in minuten na het begin van de rit.
+ */
+const TRIP_SCHEMA = {
+  '[trip]': 3,
+  '[station_typ2]': 1,
+  '[station]': 8,
+  '[profile]': 2,
+  '[profile_man_arr_time]': 2,
+  '[profile_man_dep_time]': 2
+}
 
 /** Masker waarin elke dag aanstaat; gebruikt als een omloop er geen opgeeft. */
 const ALL_DAYS = 0b1111111111
@@ -56,12 +72,30 @@ export function readTrip(path: string): Trip {
       const id = str(block.values[0])
       if (id) trip.stops.push({ id })
     } else if (block.tag === '[station]') {
-      // velden: id, groep, naam, 3x positie/afstand
       const id = str(block.values[0])
-      if (id) trip.stops.push({ id, name: str(block.values[2]) || undefined })
+      if (id) {
+        trip.stops.push({
+          id,
+          name: str(block.values[2]) || undefined,
+          cumulative: num(block.values[5])
+        })
+      }
     } else if (block.tag === '[profile]') {
       const profile: TripProfile = { name: str(block.values[0]), minutes: num(block.values[1]) }
       trip.profiles.push(profile)
+    } else if (block.tag === '[profile_man_arr_time]' || block.tag === '[profile_man_dep_time]') {
+      // Deze blokken horen bij het profiel waar ze onder staan.
+      const profile = trip.profiles[trip.profiles.length - 1]
+      if (!profile) continue
+      const index = Math.round(num(block.values[0]))
+      const minutes = num(block.values[1])
+      if (block.tag === '[profile_man_arr_time]') {
+        profile.arrivals ??= new Map()
+        profile.arrivals.set(index, minutes)
+      } else {
+        profile.departures ??= new Map()
+        profile.departures.set(index, minutes)
+      }
     }
   }
   return trip
@@ -105,6 +139,58 @@ export function readTours(path: string): Tour[] {
   }
   for (const tour of tours) tour.userAllowed = userAllowed
   return tours
+}
+
+/**
+ * Wanneer je bij elke halte hoort te zijn, in minuten na het begin van de rit.
+ *
+ * De dienstregeling geeft vaste tijden voor een deel van de haltes -- op de ene
+ * kaart voor allemaal, op de andere voor bijna geen. Daartussen verdelen we naar
+ * rijtijd: de opgetelde seconden uit het ritbestand, en ontbreken die ook, dan
+ * gelijkmatig over de haltes. De aankomsttijd telt, want daar gaat het om als je
+ * wilt weten of je te vroeg bent.
+ */
+export function stopOffsets(trip: Trip | undefined, profileIndex: number): number[] {
+  if (!trip || trip.stops.length === 0) return []
+  const profile = trip.profiles[profileIndex] ?? trip.profiles[0]
+  const total = profile?.minutes ?? 0
+  const count = trip.stops.length
+
+  // Maatstaf om tussen vaste punten te verdelen.
+  const basis = trip.stops.map((stop, index) =>
+    stop.cumulative !== undefined && stop.cumulative > 0 ? stop.cumulative : index
+  )
+  const last = basis[count - 1] || count - 1 || 1
+
+  const fixed = new Array<number | undefined>(count)
+  for (let i = 0; i < count; i++) {
+    const arrival = profile?.arrivals?.get(i)
+    const departure = profile?.departures?.get(i)
+    const value = arrival ?? departure
+    if (value !== undefined && Number.isFinite(value)) fixed[i] = value
+  }
+  // Het begin en het eind liggen vast, ook zonder opgave.
+  fixed[0] ??= 0
+  fixed[count - 1] ??= total
+
+  const times = new Array<number>(count)
+  let anchor = 0
+  for (let i = 0; i < count; i++) {
+    if (fixed[i] === undefined) continue
+    times[i] = fixed[i] as number
+    // Alles tussen het vorige vaste punt en dit, naar rato van de rijtijd.
+    const span = basis[i] - basis[anchor]
+    for (let k = anchor + 1; k < i; k++) {
+      const part = span > 0 ? (basis[k] - basis[anchor]) / span : (k - anchor) / (i - anchor)
+      times[k] = times[anchor] + (times[i] - times[anchor]) * part
+    }
+    anchor = i
+  }
+  // Mocht er na het laatste vaste punt nog iets komen: naar rato van het geheel.
+  for (let k = anchor + 1; k < count; k++) {
+    times[k] = total * (basis[k] / last)
+  }
+  return times
 }
 
 /** Rijtijd van een rit volgens het profiel dat de dienst voorschrijft. */

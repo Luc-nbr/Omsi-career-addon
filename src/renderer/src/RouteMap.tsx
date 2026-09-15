@@ -19,6 +19,8 @@ import './routemap.css'
 export interface RouteStop extends StopPoint {
   /** Hoeveelste halte van de hele dienst, over de ritten heen. */
   order: number
+  /** Hoeveelste halte binnen de rit, zoals de dienst hem opsomt. */
+  at: number
   legIndex: number
   /** Eerste halte van de dienst: hier zet je de bus neer. */
   isStart: boolean
@@ -113,6 +115,9 @@ const ROUTE_LABEL_MPP = 14
 /** Afstand tussen de rijrichtingspijltjes op de route. */
 const ARROW_GAP_PX = 110
 
+/** Zoveel meter voorbij een halte telt hij pas als gehad. */
+const STOP_PASSED_M = 12
+
 /** Wie de kaart zelf versleept of zoomt, krijgt zoveel rust voordat hij terugveert naar de bus. */
 const MANUAL_MS = 6000
 
@@ -171,6 +176,7 @@ export function RouteMap({
             ...point,
             name: leg.stops[at] || point.name,
             order: order++,
+            at,
             legIndex,
             isStart: legIndex === 0 && at === 0,
             isEnd: legIndex === duty.legs.length - 1 && at === leg.stopIds.length - 1
@@ -564,6 +570,39 @@ export function RouteMap({
     return -1
   }, [legs, nextStopId])
 
+  /**
+   * Welke haltes je gehad hebt.
+   *
+   * Dat volgt uit waar de bus op de route staat en niet uit de halteteller van
+   * de IBIS: die twee liepen uit de pas, waardoor haltes vóór de bus al
+   * vergrijsden. Nu kleuren de lijn en de borden op dezelfde bron.
+   *
+   * Een halte die verderop nog een keer langskomt blijft groen; een rit doet
+   * dezelfde straat vaak twee keer aan.
+   */
+  const passedStops = useMemo(() => {
+    const state = new Map<string, boolean>()
+    const track = activeLeg !== undefined ? legTracks[activeLeg] : undefined
+    for (const leg of legs) {
+      for (const stop of leg) {
+        let done = false
+        if (activeLeg === undefined) done = false
+        else if (stop.legIndex < activeLeg) done = true
+        else if (stop.legIndex > activeLeg) done = false
+        else if (track && progressAlong !== undefined) {
+          const along = track.stops[stop.at]
+          // Een paar meter speling: op de halte zelf ben je er nog niet voorbij.
+          done = along !== undefined && along < progressAlong - STOP_PASSED_M
+        } else {
+          done = passedBefore >= 0 && stop.order < passedBefore
+        }
+        if (!done) state.set(stop.id, false)
+        else if (!state.has(stop.id)) state.set(stop.id, true)
+      }
+    }
+    return state
+  }, [legs, legTracks, activeLeg, progressAlong, passedBefore])
+
   const big = variant === 'full'
   /*
    * De borden krimpen naarmate je verder uitzoomt. Op ware grootte kruipen ze
@@ -805,7 +844,7 @@ export function RouteMap({
         {routeStops.map((stop) => {
           const [x, y] = toScreen(stop.x, stop.y)
           if (x < -40 || y < -40 || x > size.w + 40 || y > size.h + 40) return null
-          const dim = passedBefore >= 0 && stop.order < passedBefore
+          const dim = passedStops.get(stop.id) === true
           const next = stop.id === nextStopId
           return (
             <StopSign
@@ -814,7 +853,7 @@ export function RouteMap({
               y={y}
               r={stop.isStart ? Math.max(signR, 6) + 2 : signR}
               dim={dim}
-              ahead={passedBefore >= 0 && !dim}
+              ahead={!dim}
               next={next}
               letter={showLetter}
               onEnter={() => setHovered(stop.id)}

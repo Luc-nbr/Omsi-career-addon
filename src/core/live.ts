@@ -175,6 +175,12 @@ export interface LiveStatus {
   delayMinutes: number
   delayFromIbis: boolean
   /**
+   * Hoeveel seconden je voor of achter ligt op de dienstregeling, gerekend
+   * tegen de tijd die bij de eerstvolgende halte hoort. Positief is te laat.
+   * Niets als er geen halte bekend is om tegen af te zetten.
+   */
+  deltaSeconds?: number
+  /**
    * Stemming van 0 tot 1. Alleen zinnig met passagiers aan boord: een lege bus
    * heeft niemand die ergens iets van vindt.
    */
@@ -244,6 +250,29 @@ function readSchedule(data: LiveData, duty: Duty | undefined, clockMinutes: numb
     matchesDuty: legIndex !== undefined && tourMatches,
     legIndex
   }
+}
+
+/**
+ * Het verschil met de dienstregeling, op de seconde.
+ *
+ * De klok van het spel en de tijd die bij de eerstvolgende halte hoort staan
+ * allebei in minuten; het verschil daartussen is wat de chauffeur wil weten.
+ * Rond middernacht loopt de een door en de ander niet, dus een verschil van
+ * meer dan een paar uur is een dagovergang en geen vertraging.
+ */
+function scheduleDelta(
+  leg: DutyLeg | undefined,
+  stopIndex: number | undefined,
+  clockMinutes: number
+): number | undefined {
+  if (!leg || stopIndex === undefined || leg.stopTimes.length === 0) return undefined
+  const scheduled = leg.stopTimes[Math.min(Math.max(stopIndex, 0), leg.stopTimes.length - 1)]
+  if (scheduled === undefined) return undefined
+  let difference = clockMinutes - scheduled
+  if (difference > 720) difference -= 1440
+  if (difference < -720) difference += 1440
+  if (Math.abs(difference) > 180) return undefined
+  return Math.round(difference * 60)
 }
 
 /** Vertaalt de vertragingstekst van de IBIS naar minuten. */
@@ -352,6 +381,19 @@ export function describeLive(
   const mood = Math.max(0, Math.min(1, punctuality * 0.6 + smoothness * 0.4))
   const hasPassengers = data.passengers >= 1
 
+  /*
+   * Alleen een voortgang tonen als de bus werkelijk iets meldt. Een index van
+   * nul zonder haltenaam betekent dat de IBIS nog niet is ingetoetst, en dan
+   * is "0 van 9 gehad" een bewering die nergens op slaat. Met een dienstregeling
+   * uit het menu weet OMSI zelf welke halte de volgende is.
+   */
+  const stopIndex =
+    fromMenu && data.mem && data.mem.nextIndex >= 0
+      ? data.mem.nextIndex
+      : has(data, BIT.busstopIndex) && data.busstop.trim() !== ''
+        ? Math.max(0, Math.round(data.busstopIndex))
+        : undefined
+
   return {
     clockMinutes,
     speedKmh: data.velocity,
@@ -363,23 +405,13 @@ export function describeLive(
     leg,
     nextStop: fromMenu && data.mem ? data.mem.nextStop.trim() : data.busstop.trim(),
     odometerKm: data.km + data.metres / 1000,
-    /*
-     * Alleen een voortgang tonen als de bus werkelijk iets meldt. Een index van
-     * nul zonder haltenaam betekent dat de IBIS nog niet is ingetoetst, en dan
-     * is "0 van 9 gehad" een bewering die nergens op slaat. Met een dienstregeling
-     * uit het menu weet OMSI zelf welke halte de volgende is.
-     */
-    stopIndex:
-      fromMenu && data.mem && data.mem.nextIndex >= 0
-        ? data.mem.nextIndex
-        : has(data, BIT.busstopIndex) && data.busstop.trim() !== ''
-          ? Math.max(0, Math.round(data.busstopIndex))
-          : undefined,
+    stopIndex,
     stopsTotal: leg?.stops.length ?? 0,
     reportsStops: fromMenu || data.busstop.trim() !== '',
     offersStops: fromMenu || ((data.seenStr >>> 0) & 1) === 1,
     delayMinutes,
     delayFromIbis: fromMenu || fromIbis !== undefined,
+    deltaSeconds: scheduleDelta(leg, stopIndex, clockMinutes),
     mood,
     moodLabel: !hasPassengers
       ? 'empty'
