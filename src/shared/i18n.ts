@@ -575,11 +575,18 @@ const TEXT = {
   'ctrl.connected': { en: 'connected', de: 'angeschlossen', fr: 'connecté', nl: 'aangesloten' },
   'ctrl.offline': { en: 'not connected', de: 'nicht angeschlossen', fr: 'non connecté', nl: 'niet aangesloten' },
   'ctrl.inUse': { en: 'used by OMSI', de: 'von OMSI genutzt', fr: 'utilisé par OMSI', nl: 'in gebruik door OMSI' },
-  'ctrl.unknown': {
-    en: 'Also connected, but not in the OMSI file yet: {names}. OMSI adds a device once you select it in the game.',
-    de: 'Ebenfalls angeschlossen, aber noch nicht in der OMSI-Datei: {names}. OMSI trägt ein Gerät ein, sobald du es im Spiel auswählst.',
-    fr: 'Également connecté mais absent du fichier OMSI : {names}. OMSI ajoute un périphérique dès que vous le sélectionnez dans le jeu.',
-    nl: 'Ook aangesloten, maar nog niet in het bestand van OMSI: {names}. OMSI zet een apparaat erin zodra je het in het spel kiest.'
+  'ctrl.newDevices': {
+    en: 'Connected, but not in the OMSI file yet',
+    de: 'Angeschlossen, aber noch nicht in der OMSI-Datei',
+    fr: 'Connecté, mais absent du fichier OMSI',
+    nl: 'Aangesloten, maar nog niet in het bestand van OMSI'
+  },
+  'ctrl.add': { en: 'Add', de: 'Hinzufügen', fr: 'Ajouter', nl: 'Toevoegen' },
+  'ctrl.addNote': {
+    en: 'Adding writes the device into the OMSI file under the name Windows gives it. If OMSI spells it differently, pick the device once in the game and it appears here.',
+    de: 'Beim Hinzufügen kommt das Gerät unter dem Namen in die OMSI-Datei, den Windows ihm gibt. Schreibt OMSI ihn anders, wähle das Gerät einmal im Spiel aus -- dann steht es hier.',
+    fr: 'L’ajout inscrit le périphérique dans le fichier OMSI sous le nom donné par Windows. Si OMSI l’orthographie autrement, sélectionnez-le une fois dans le jeu et il apparaîtra ici.',
+    nl: 'Toevoegen zet het apparaat in het bestand van OMSI onder de naam die Windows eraan geeft. Schrijft OMSI hem anders, kies het apparaat dan één keer in het spel; daarna staat het hier.'
   },
   'ctrl.axes': { en: 'Axes', de: 'Achsen', fr: 'Axes', nl: 'Assen' },
   'ctrl.axesIntro': {

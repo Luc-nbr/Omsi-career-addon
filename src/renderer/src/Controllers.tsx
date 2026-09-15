@@ -43,6 +43,11 @@ function clean(name: string): string {
   return name.replace(/[\u0000-\u001f\u007f-\u009f]/g, '').trim()
 }
 
+/** De naam waaronder we een nieuw apparaat wegschrijven; zonder de vendor-code. */
+function deviceName(pad: Gamepad): string {
+  return pad.id.split('(')[0].trim()
+}
+
 /** Hoort deze aangesloten controller bij dit blok uit het bestand? */
 function matches(pad: Gamepad | null, name: string): boolean {
   if (!pad) return false
@@ -150,11 +155,50 @@ export function ControllersTab({ language }: { language: Language }): JSX.Elemen
           })}
         </div>
         {unknown.length > 0 && (
-          <p className="note">
-            {t(language, 'ctrl.unknown', {
-              names: unknown.map((item) => item?.id.split('(')[0].trim()).join(', ')
-            })}
-          </p>
+          <>
+            <h3 className="section-title" style={{ marginTop: 14 }}>
+              {t(language, 'ctrl.newDevices')}
+            </h3>
+            <div className="devices">
+              {unknown.map((pad) =>
+                pad ? (
+                  <div className="device" key={pad.id}>
+                    <span className="device-name">{deviceName(pad)}</span>
+                    <span className="device-meta">
+                      {t(language, 'ctrl.axes')} {pad.axes.length} ·{' '}
+                      {t(language, 'ctrl.buttons')} {pad.buttons.length}
+                    </span>
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={() => {
+                        const next = [
+                          ...controllers,
+                          {
+                            name: deviceName(pad),
+                            selected: true,
+                            axes: Array.from({ length: AXIS_SLOTS }, () => ({ action: -1, shape: 0 })),
+                            buttons: Array.from({ length: pad.buttons.length }, () => ({
+                              action: '',
+                              flag: 0
+                            })),
+                            force: ['1.000', '1.000']
+                          }
+                        ]
+                        void apply(next)
+                        setChosen(next.length - 1)
+                        // Meteen door naar de wizard: daar is dit voor bedoeld.
+                        setWizard(0)
+                      }}
+                    >
+                      {t(language, 'ctrl.add')}
+                    </button>
+                  </div>
+                ) : null
+              )}
+            </div>
+            <p className="note">{t(language, 'ctrl.addNote')}</p>
+          </>
         )}
       </section>
 
