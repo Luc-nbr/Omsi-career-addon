@@ -1,0 +1,95 @@
+{
+  "naam": "OMSI Enhancer",
+  "beschrijving": "De inrichting van de Discord-server, als gegevens. Het script leest dit bestand; wie iets wil veranderen, verandert het hier en niet in de code.",
+
+  "rollen": [
+    {
+      "naam": "Ontwikkelaar",
+      "kleur": "ffd23f",
+      "apart": true,
+      "aanspreekbaar": true,
+      "waarvoor": "Jij. Dezelfde kleur als het lijnnummer in de app."
+    },
+    {
+      "naam": "Testrijder",
+      "kleur": "4da3ff",
+      "apart": true,
+      "aanspreekbaar": true,
+      "waarvoor": "Wie een versie vooraf draait en bugs terugkoppelt. Geeft toegang tot #testrijden."
+    },
+    {
+      "naam": "Chauffeur",
+      "kleur": "37d67a",
+      "apart": false,
+      "aanspreekbaar": false,
+      "waarvoor": "Iedereen die de app gebruikt. Geen rechten, wel een gezicht in de ledenlijst."
+    }
+  ],
+
+  "categorieen": [
+    {
+      "naam": "Begin hier",
+      "kanalen": [
+        {
+          "naam": "welkom-en-regels",
+          "onderwerp": "Wat OMSI Enhancer is, en hoe we hier met elkaar omgaan. Lees dit eerst.",
+          "alleen-lezen": true
+        },
+        {
+          "naam": "aankondigingen",
+          "onderwerp": "Nieuwe versies en wat erin zit. Zet hem op volgen als je niets wilt missen.",
+          "alleen-lezen": true
+        }
+      ]
+    },
+    {
+      "naam": "Rijden",
+      "kanalen": [
+        {
+          "naam": "algemeen",
+          "onderwerp": "Praten over OMSI, de app, en alles wat erbij hoort."
+        },
+        {
+          "naam": "je-dienst",
+          "onderwerp": "Laat zien wat je rijdt: schermafbeeldingen van je dienst, je route, je bus."
+        },
+        {
+          "naam": "kaarten-en-bussen",
+          "onderwerp": "Welke add-ons werken goed met de app, en welke niet. Waar je ze vandaan haalt."
+        }
+      ]
+    },
+    {
+      "naam": "Hulp",
+      "kanalen": [
+        {
+          "naam": "installeren",
+          "onderwerp": "De app werkt niet, OMSI wordt niet gevonden, de plugin doet niets. Hier vragen."
+        },
+        {
+          "naam": "bugs-melden",
+          "onderwerp": "Iets werkt niet zoals het hoort? Gebruik het sjabloon dat vastgepind staat."
+        },
+        {
+          "naam": "ideeen",
+          "onderwerp": "Wat zou de app moeten kunnen? Eén idee per bericht, dan kunnen anderen erop reageren."
+        }
+      ]
+    },
+    {
+      "naam": "Achter de schermen",
+      "kanalen": [
+        {
+          "naam": "testrijden",
+          "onderwerp": "Versies die nog niet uit zijn, en wat eraan mankeert.",
+          "alleen-voor": "Testrijder"
+        },
+        {
+          "naam": "ontwikkeling",
+          "onderwerp": "Waar ik mee bezig ben, en waarom iets is zoals het is.",
+          "alleen-lezen": true
+        }
+      ]
+    }
+  ]
+}
