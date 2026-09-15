@@ -38,6 +38,15 @@
   --radius-knop: 14px;
 
   /*
+   * Invulvelden hebben een dekkende kleur nodig, geen glas. De uitklaplijst van
+   * een select wordt niet door de pagina getekend maar door Windows, en die
+   * neemt de kleur van het veld over. Met doorschijnend wit kwam die lijst licht
+   * uit terwijl onze letters wit zijn -- je zag alleen de regel waar de muis op
+   * stond. Deze tint ligt op wat glas boven de ondergrond zou opleveren.
+   */
+  --veld: #262a31;
+
+  /*
    * De oude namen wijzen naar de nieuwe, zodat het hele scherm in één keer
    * meeverhuist en er geen half oud, half nieuw ontstaat.
    */
@@ -99,12 +108,24 @@ button {
 select,
 input {
   font: inherit;
-  color: inherit;
-  background: var(--glas-sterk);
+  color: var(--text);
+  background: var(--veld);
   border: 1px solid var(--glas-rand);
   border-radius: 12px;
   padding: 10px 13px;
   width: 100%;
+}
+
+/* En de regels in die lijst ook, want ze erven niet altijd van het veld. */
+select option,
+select optgroup {
+  background: var(--veld);
+  color: var(--text);
+}
+
+select optgroup {
+  color: var(--muted);
+  font-style: normal;
 }
 
 select:focus-visible,
