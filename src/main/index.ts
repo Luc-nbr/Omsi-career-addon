@@ -70,7 +70,7 @@ import {
   type DutyRequest,
   type MapSummary
 } from '../shared/api'
-import { defaultLayout, type OverlayLayout } from '../shared/overlay'
+import { defaultLayout, OVERLAY_RATES, type OverlayLayout } from '../shared/overlay'
 
 /** Kaarten inlezen kost merkbaar tijd, dus we doen het één keer per sessie. */
 const mapCache = new Map<string, OmsiMap>()
@@ -244,6 +244,15 @@ let overlayIbis: IbisPlan | undefined
  * je hem aanpast niet.
  */
 let overlayEditing = false
+/**
+ * Het vak waar de elementen van de overlay in staan, zoals de pagina het meet.
+ *
+ * Het venster is doorzichtig en ligt over het spel heen, en alles wat eronder
+ * zit moet Windows bij elk beeld opnieuw mengen -- ook de lege hoeken. Dus maken
+ * we het venster niet groter dan zijn inhoud. In de bewerkstand mag dat niet:
+ * dan moet je de elementen over het hele scherm kunnen slepen.
+ */
+let overlayBox: { x: number; y: number; w: number; h: number } | undefined
 
 /**
  * Nulmeting van de lopende dienst: het verschil met de stand aan het eind is wat
@@ -270,10 +279,9 @@ function freshLive(): ReturnType<typeof readLive> {
  * anders bij de eerste verse gegevens daarna. Een oud live-bestand van een
  * vorige keer telt niet; dat zou kilometers van toen als begin nemen.
  */
-function captureBaseline(): void {
+function captureBaseline(live = freshLive()): void {
   const active = career?.activeDuty
   if (!career || !active?.startedAt || active.baseline) return
-  const live = freshLive()
   if (!live) return
   persist({
     ...career,
@@ -308,24 +316,56 @@ function vehicleOnMap(live: ReturnType<typeof readLive>, duty: Duty | undefined)
   }
 }
 
+/**
+ * Wat de overlay het laatst gekregen heeft, als tekst.
+ *
+ * De overlay ligt over het spel heen: elke keer dat hij zichzelf opnieuw
+ * tekent, moet Windows dat beeld over OMSI heen mengen, en dat kost het spel
+ * beeldjes. Staat de bus stil bij een halte, dan is er tien keer per seconde
+ * niets veranderd -- en dan sturen we ook niets.
+ */
+let lastFrame: string | undefined
+
 function pushFrame(): void {
   if (!overlayWindow || overlayWindow.isDestroyed()) return
-  captureBaseline()
   /*
    * Alleen verse gegevens. Een live.json van een vorige keer blijft op schijf
    * staan met alive:true, en dan bleef de overlay een dienst tonen die allang
    * uitgereden was -- inclusief een dienstregelingsmenu dat niemand meer had
-   * openstaan.
+   * openstaan. Eén keer lezen per beeld: de nulmeting krijgt hem doorgegeven in
+   * plaats van het bestand nog eens van schijf te halen.
    */
   const live = freshLive()
+  captureBaseline(live)
   const duty = currentDuty()
-  overlayWindow.webContents.send('overlay:frame', {
+  const frame = {
     connected: Boolean(live?.alive),
     status: live ? describeLive(live, duty, baseline()) : undefined,
     vehicle: vehicleOnMap(live, duty),
     duty,
     ibis: overlayIbis,
     editing: overlayEditing
+  }
+
+  const signature = JSON.stringify(frame)
+  if (signature === lastFrame) return
+  lastFrame = signature
+  overlayWindow.webContents.send('overlay:frame', frame)
+}
+
+/** Zet het venster om zijn inhoud heen, of over het hele scherm bij het slepen. */
+function applyOverlayBounds(): void {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return
+  const area = screen.getPrimaryDisplay().workArea
+  if (overlayEditing || !overlayBox) {
+    overlayWindow.setBounds(area)
+    return
+  }
+  overlayWindow.setBounds({
+    x: area.x + Math.round(overlayBox.x),
+    y: area.y + Math.round(overlayBox.y),
+    width: Math.max(40, Math.min(area.width, Math.round(overlayBox.w))),
+    height: Math.max(40, Math.min(area.height, Math.round(overlayBox.h)))
   })
 }
 
@@ -334,6 +374,8 @@ function setOverlayEdit(on: boolean): boolean {
   overlayEditing = on
   passMouseThrough(!on)
   overlayWindow.setFocusable(on)
+  // Slepen kan alleen als het venster het hele scherm beslaat; daarna weer krap.
+  applyOverlayBounds()
   if (on) overlayWindow.focus()
   pushFrame()
   return on
@@ -379,6 +421,9 @@ function openOverlay(duty: Duty, ibis?: IbisPlan): void {
   overlayDuty = duty
   if (ibis) overlayIbis = ibis
   if (overlayIsOpen()) return
+  // Een vers venster weet nog niets; het eerste beeld moet er hoe dan ook komen.
+  lastFrame = undefined
+  overlayBox = undefined
 
   // Het venster beslaat het hele scherm, zodat je een paneel overal neer kunt
   // zetten. Wat niet beschilderd is, is doorzichtig en laat klikken door.
@@ -391,8 +436,8 @@ function openOverlay(duty: Duty, ibis?: IbisPlan): void {
     y: area.y,
     frame: false,
     transparent: true,
-    resizable: false,
-    movable: false,
+    resizable: true,
+    movable: true,
     fullscreenable: false,
     skipTaskbar: true,
     focusable: false,
@@ -421,8 +466,12 @@ function openOverlay(duty: Duty, ibis?: IbisPlan): void {
     overlayWindow.loadFile(join(__dirname, '../renderer/overlay.html'))
   }
 
-  // Even vaak als de plugin schrijft: de kaart rijdt mee, en haperen valt op.
-  overlayTimer = setInterval(pushFrame, 100)
+  /*
+   * Hoe vaak, dat kiest de speler. Vaker ziet er vloeiender uit, maar elke
+   * verversing van een doorzichtig venster over het spel kost OMSI beeldjes;
+   * wie haperingen merkt, zet hem rustiger.
+   */
+  overlayTimer = setInterval(pushFrame, OVERLAY_RATES[readSettings(userData()).overlayRate])
   announceOverlay()
 }
 
@@ -1057,9 +1106,20 @@ function registerHandlers(): void {
 
   ipcMain.handle('settings:read', () => readSettings(userData()))
 
-  ipcMain.handle('settings:write', (_event, settings: Settings) =>
-    writeSettings(userData(), settings)
-  )
+  ipcMain.handle('settings:write', (_event, settings: Partial<Settings>) => {
+    const saved = writeSettings(userData(), settings)
+    // Een overlay die al openstaat hoort de nieuwe verversing meteen te volgen.
+    if (overlayTimer) {
+      clearInterval(overlayTimer)
+      overlayTimer = setInterval(pushFrame, OVERLAY_RATES[saved.overlayRate])
+    }
+    return saved
+  })
+
+  ipcMain.handle('overlay:bounds', (_event, box?: { x: number; y: number; w: number; h: number }) => {
+    overlayBox = box
+    applyOverlayBounds()
+  })
 
   ipcMain.handle('overlay:layout', () => readOverlayLayout(userData()))
 

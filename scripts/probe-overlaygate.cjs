@@ -117,6 +117,7 @@ app.whenReady().then(async () => {
     js(
       overlay,
       `(() => {
+         if (document.querySelector('.ibis-step')) return 'meld de IBIS af'
          if (document.querySelector('.select-duty')) return 'kies in OMSI'
          if (document.querySelector('.ibis-entry')) return 'toets de IBIS in'
          if (document.querySelector('.topline .clock')) return 'dienst ingevuld'
@@ -126,24 +127,44 @@ app.whenReady().then(async () => {
   const mapMode = () =>
     js(overlay, `document.querySelectorAll('.route-line').length > 0 ? 'route' : 'geen route'`)
 
-  // Per geval: mag het scherm de dienst laten zien?
+  /*
+   * Per geval wat er hoort te staan. Weet de app niet wat er gereden wordt, dan
+   * staat er wat er te doen valt. Weet ze het wel, dan komt eerst de vraag om de
+   * IBIS af te melden -- de route moet ingetoetst zijn voordat de haltes en de
+   * route iets waard zijn -- en pas daarna de dienst zelf.
+   */
   const cases = [
-    ['OMSI leesbaar, niets gekozen', { readable: true, matches: false, reportsStops: false }, false],
-    ['OMSI leesbaar, dienst gekozen', { readable: true, matches: true, reportsStops: true }, true],
-    ['niet leesbaar, IBIS leeg, bus met IBIS', { readable: false, matches: false, reportsStops: false }, false],
-    ['niet leesbaar, IBIS leeg, bus zonder IBIS', { readable: false, matches: false, reportsStops: false, offersStops: false }, false],
-    ['niet leesbaar, IBIS ingetoetst', { readable: false, matches: false, reportsStops: true }, true]
+    ['OMSI leesbaar, niets gekozen', { readable: true, matches: false, reportsStops: false }, 'kies in OMSI'],
+    ['OMSI leesbaar, dienst gekozen', { readable: true, matches: true, reportsStops: true }, 'meld de IBIS af'],
+    ['niet leesbaar, IBIS leeg, bus met IBIS', { readable: false, matches: false, reportsStops: false }, 'toets de IBIS in'],
+    ['niet leesbaar, IBIS leeg, bus zonder IBIS', { readable: false, matches: false, reportsStops: false, offersStops: false }, 'kies in OMSI'],
+    ['niet leesbaar, IBIS ingetoetst', { readable: false, matches: false, reportsStops: true }, 'meld de IBIS af']
   ]
 
   let ok = true
-  for (const [name, state, wantsDuty] of cases) {
+  for (const [name, state, wanted] of cases) {
     send(state)
     await wait(1200)
     const panel = await shown()
     const route = await mapMode()
-    console.log(`${name.padEnd(38)} -> ${panel.padEnd(18)} | kaart: ${route}`)
-    if (wantsDuty !== (panel === 'dienst ingevuld')) ok = false
+    console.log(`${name.padEnd(42)} -> ${panel.padEnd(18)} | kaart: ${route}`)
+    if (panel !== wanted) ok = false
+    // Zolang de IBIS niet is afgemeld hoort de route van de kaart te blijven.
+    if (route !== 'geen route') ok = false
   }
+
+  /*
+   * En dan de afmelding zelf: na die knop hoort het dienstscherm te komen, met
+   * de route op de kaart. Dat is het hele punt van de stap.
+   */
+  send({ readable: true, matches: true, reportsStops: true })
+  await wait(800)
+  await js(overlay, `document.querySelector('.ibis-step .ovl-btn')?.click()`)
+  await wait(2500)
+  const na = await shown()
+  const naRoute = await mapMode()
+  console.log(`${'na "ik heb de IBIS ingevoerd"'.padEnd(42)} -> ${na.padEnd(18)} | kaart: ${naRoute}`)
+  if (na !== 'dienst ingevuld' || naRoute !== 'route') ok = false
 
   console.log(ok ? '\nhet scherm wacht op OMSI' : '\nKLOPT NIET')
   app.exit(ok ? 0 : 1)

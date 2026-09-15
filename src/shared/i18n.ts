@@ -1417,6 +1417,16 @@ const TEXT = {
     fr: 'glissez la barre, tirez le coin — Ctrl+Alt+O ferme ceci',
     nl: 'sleep aan de balk, trek aan de hoek — Ctrl+Alt+O sluit dit'
   },
+  'ovl.rate': { en: 'Refresh', de: 'Auffrischen', fr: 'Rafraîchissement', nl: 'Verversing' },
+  'ovl.rate.vloeiend': { en: 'Smooth', de: 'Flüssig', fr: 'Fluide', nl: 'Vloeiend' },
+  'ovl.rate.rustig': { en: 'Steady', de: 'Ruhig', fr: 'Modéré', nl: 'Rustig' },
+  'ovl.rate.zuinig': { en: 'Sparing', de: 'Sparsam', fr: 'Économe', nl: 'Zuinig' },
+  'ovl.rateHint': {
+    en: 'stuttering in the game? set it lower',
+    de: 'ruckelt das Spiel? stelle es niedriger',
+    fr: 'le jeu saccade ? réglez plus bas',
+    nl: 'hapert het spel? zet hem lager'
+  },
   'ovl.hidden': { en: 'Turned off:', de: 'Ausgeschaltet:', fr: 'Désactivé :', nl: 'Uitgezet:' },
   'ovl.reset': {
     en: 'Restore defaults',

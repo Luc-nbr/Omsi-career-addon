@@ -220,11 +220,18 @@ export interface CareerApi {
     legs: Array<{ tripFile: string; stopIds: string[] }>
   ): Promise<TripRoute[]>
   settings(): Promise<Settings>
-  saveSettings(settings: Settings): Promise<Settings>
+  /** Bewaart alleen wat je meegeeft; de rest blijft staan. */
+  saveSettings(settings: Partial<Settings>): Promise<Settings>
   /** Zet de overlay in of uit de bewerkstand; geeft terug of hij nu aan staat. */
   editOverlay(on?: boolean): Promise<boolean>
   /** Meldt of de muis boven een knop van de overlay hangt. */
   overlayHit(on: boolean): Promise<void>
+  /**
+   * Hoe groot het overlayvenster hoeft te zijn: het vak waar de elementen in
+   * staan, in schermpunten vanaf de linkerbovenhoek van het werkgebied. Niets
+   * meegeven betekent schermvullend, wat nodig is om te kunnen slepen.
+   */
+  overlayBounds(box?: { x: number; y: number; w: number; h: number }): Promise<void>
   overlayLayout(): Promise<OverlayLayout>
   saveOverlayLayout(layout: OverlayLayout): Promise<OverlayLayout>
   resetOverlayLayout(): Promise<OverlayLayout>

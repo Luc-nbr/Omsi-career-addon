@@ -30,6 +30,7 @@ const api: CareerApi = {
   closeOverlay: () => ipcRenderer.invoke('overlay:close'),
   editOverlay: (on) => ipcRenderer.invoke('overlay:edit', on),
   overlayHit: (on) => ipcRenderer.invoke('overlay:hit', on),
+  overlayBounds: (box) => ipcRenderer.invoke('overlay:bounds', box),
   overlayLayout: () => ipcRenderer.invoke('overlay:layout'),
   saveOverlayLayout: (layout) => ipcRenderer.invoke('overlay:layout:save', layout),
   resetOverlayLayout: () => ipcRenderer.invoke('overlay:layout:reset'),

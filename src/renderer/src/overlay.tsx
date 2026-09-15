@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -17,6 +18,7 @@ import { formatTime } from '../../shared/format'
 import { DEFAULT_LANGUAGE, loose, t, type Language } from '../../shared/i18n'
 import {
   OPACITY_MIN,
+  OVERLAY_RATES,
   PANELS,
   SCALE_MAX,
   SCALE_MIN,
@@ -24,11 +26,47 @@ import {
   nextDetail,
   type DetailLevel,
   type OverlayLayout,
+  type OverlayRate,
   type PanelId,
   type PanelInfo
 } from '../../shared/overlay'
 import { RouteMap } from './RouteMap'
 import './overlay.css'
+
+/** Een vak in schermpunten: waar iets staat en hoe groot het is. */
+interface Box {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+/** Het kleinste vak waar alles in past, met wat lucht voor de schaduwranden. */
+function union(parts: Box[]): Box | undefined {
+  if (parts.length === 0) return undefined
+  const LUCHT = 12
+  const minX = Math.min(...parts.map((part) => part.x))
+  const minY = Math.min(...parts.map((part) => part.y))
+  const maxX = Math.max(...parts.map((part) => part.x + part.w))
+  const maxY = Math.max(...parts.map((part) => part.y + part.h))
+  return {
+    x: Math.max(0, Math.floor(minX - LUCHT)),
+    y: Math.max(0, Math.floor(minY - LUCHT)),
+    w: Math.ceil(maxX - minX) + LUCHT * 2,
+    h: Math.ceil(maxY - minY) + LUCHT * 2
+  }
+}
+
+/** Een punt verschil is geen verschil; anders blijft het venster trillen. */
+function same(a: Box | undefined, b: Box | undefined): boolean {
+  if (!a || !b) return a === b
+  return (
+    Math.abs(a.x - b.x) < 2 &&
+    Math.abs(a.y - b.y) < 2 &&
+    Math.abs(a.w - b.w) < 2 &&
+    Math.abs(a.h - b.h) < 2
+  )
+}
 
 interface Frame {
   status?: LiveStatus
@@ -54,6 +92,31 @@ declare global {
   }
 }
 
+/**
+ * Dezelfde inhoud, hetzelfde voorwerp.
+ *
+ * Elk beeld komt door de brug als een verse kopie. Voor React is dat elke tel
+ * een andere dienst, en dan rekent de kaart alles opnieuw uit: alle haltes, alle
+ * borden, alle lijnen, tien keer per seconde, terwijl er niets veranderd is. Dat
+ * werk ging ten koste van het spel eronder. Zolang de sleutel gelijk blijft
+ * houden we de eerste kopie vast, en laat de kaart zijn rekenwerk staan.
+ */
+function useStable<T>(value: T | undefined, key: string): T | undefined {
+  const held = useRef<{ key: string; value: T } | undefined>(undefined)
+  if (value === undefined) {
+    held.current = undefined
+    return undefined
+  }
+  if (held.current?.key !== key) held.current = { key, value }
+  return held.current.value
+}
+
+/** Waaraan je een dienst herkent: welke ritten, in welke volgorde. */
+function dutyKeyOf(duty: Duty | undefined): string {
+  if (!duty) return ''
+  return `${duty.mapFolder}|${duty.legs.map((leg) => `${leg.tripFile}@${leg.departure}`).join(';')}`
+}
+
 function Overlay(): JSX.Element | null {
   const [frame, setFrame] = useState<Frame>({ connected: false, editing: false })
   const [layout, setLayout] = useState<OverlayLayout>()
@@ -66,13 +129,28 @@ function Overlay(): JSX.Element | null {
   const [ibisReady, setIbisReady] = useState<string>()
   const [geometry, setGeometry] = useState<MapGeometry>()
   const [language, setLanguage] = useState<Language>(DEFAULT_LANGUAGE)
+  /** Hoe vaak de overlay wordt bijgewerkt; in de sleepbalk te kiezen. */
+  const [rate, setRate] = useState<OverlayRate>('rustig')
+  /** De elementen zelf, om hun hoogte te kunnen meten. */
+  const panelRefs = useRef<Partial<Record<PanelId, HTMLElement | null>>>({})
+  /** Het vak waar ze samen in passen; het venster wordt precies zo groot. */
+  const [box, setBox] = useState<Box>()
 
-  const { status, duty, editing } = frame
+  const { status, editing } = frame
+  /*
+   * De dienst en de codes veranderen zelden; ze komen alleen elke tel opnieuw
+   * door de brug. Vasthouden scheelt de kaart een hoop nutteloos rekenwerk.
+   */
+  const duty = useStable(frame.duty, dutyKeyOf(frame.duty))
+  const ibis = useStable(frame.ibis, frame.ibis ? `${frame.ibis.line}|${frame.ibis.tour}` : '')
 
   useEffect(() => {
     window.overlay.onFrame(setFrame)
     void window.career.overlayLayout().then(setLayout)
-    void window.career.settings().then((settings) => setLanguage(settings.language))
+    void window.career.settings().then((settings) => {
+      setLanguage(settings.language)
+      setRate(settings.overlayRate)
+    })
   }, [])
 
   useEffect(() => {
@@ -141,6 +219,59 @@ function Overlay(): JSX.Element | null {
     }
   }, [editing])
 
+  /*
+   * Hoe groot moet het venster zijn?
+   *
+   * Het venster is doorzichtig en ligt over OMSI heen; elke punt die het beslaat
+   * moet Windows bij elk spelbeeld opnieuw over het spel heen mengen, ook de
+   * lege hoeken. Daarom meten we het vak waar de elementen in staan en geven we
+   * dat door -- het venster wordt niet groter dan zijn inhoud.
+   *
+   * Meten gaat op de eigen maat van de elementen (breedte uit de indeling,
+   * hoogte uit de inhoud), niet op hun plek in beeld: die verschuift mee met het
+   * venster, en dan zou de ene meting de volgende uitlokken.
+   */
+  useLayoutEffect(() => {
+    if (!layout) return
+    const meet = (): void => {
+      const delen: Box[] = []
+      for (const info of PANELS) {
+        const state = layout[info.id]
+        const element = panelRefs.current[info.id]
+        if (!state.visible || !element) continue
+        delen.push({
+          x: state.x,
+          y: state.y,
+          w: element.offsetWidth * state.scale,
+          h: element.offsetHeight * state.scale
+        })
+      }
+      setBox((old) => {
+        const next = union(delen)
+        return same(old, next) ? old : next
+      })
+    }
+    meet()
+
+    // De inhoud groeit en krimpt vanzelf: een waarschuwing erbij, een stand
+    // verder. Een waarnemer hoort dat, een lijst met afhankelijkheden niet.
+    const watcher = new ResizeObserver(meet)
+    for (const info of PANELS) {
+      const element = panelRefs.current[info.id]
+      if (element) watcher.observe(element)
+    }
+    return () => watcher.disconnect()
+  }, [layout])
+
+  /*
+   * In de bewerkstand beslaat het venster het hele scherm, anders kun je een
+   * element nergens heen slepen. Daarbuiten krimpt het naar zijn inhoud.
+   */
+  const boxKey = box ? `${box.x}|${box.y}|${box.w}|${box.h}` : ''
+  useEffect(() => {
+    void window.career.overlayBounds(editing ? undefined : box)
+  }, [boxKey, editing])
+
   if (!layout) return null
 
   const leg = status?.leg
@@ -191,8 +322,18 @@ function Overlay(): JSX.Element | null {
         }
       : undefined
 
+  /*
+   * De elementen staan op hun plek op het scherm, maar het venster begint niet
+   * meer linksboven: het ligt om de inhoud heen. Dus schuiven we alles op met de
+   * hoek van dat vak, en blijft alles staan waar de chauffeur het heeft neergezet.
+   */
+  const origin = editing || !box ? { x: 0, y: 0 } : box
+
   return (
-    <div className={editing ? 'stage editing' : 'stage'}>
+    <div
+      className={editing ? 'stage editing' : 'stage'}
+      style={origin.x || origin.y ? { transform: `translate(${-origin.x}px, ${-origin.y}px)` } : undefined}
+    >
       {layout.dienst.visible && (
         <Panel
           info={PANELS[0]}
@@ -200,6 +341,9 @@ function Overlay(): JSX.Element | null {
           state={layout.dienst}
           editing={editing}
           language={language}
+          innerRef={(element) => {
+            panelRefs.current.dienst = element
+          }}
           onChange={(patch) => move('dienst', patch)}
         >
           {/*
@@ -211,11 +355,11 @@ function Overlay(): JSX.Element | null {
           */}
           {duty && !ibisLoaded ? (
             ibisCapable && !readable ? (
-              <IbisPanel duty={duty} ibis={frame.ibis} status={status} language={language} />
+              <IbisPanel duty={duty} ibis={ibis} status={status} language={language} />
             ) : (
               <SelectPanel
                 duty={duty}
-                ibis={frame.ibis}
+                ibis={ibis}
                 leg={upcoming}
                 legIndex={upcomingIndex}
                 status={status}
@@ -225,7 +369,7 @@ function Overlay(): JSX.Element | null {
           ) : duty && ibisCapable && ibisReady !== tripKey ? (
             <IbisStep
               leg={upcoming}
-              ibis={frame.ibis}
+              ibis={ibis}
               legIndex={upcomingIndex}
               language={language}
               onDone={() => setIbisReady(tripKey)}
@@ -243,6 +387,9 @@ function Overlay(): JSX.Element | null {
           state={layout.navigatie}
           editing={editing}
           language={language}
+          innerRef={(element) => {
+            panelRefs.current.navigatie = element
+          }}
           onChange={(patch) => move('navigatie', patch)}
         >
           {duty && geometry ? (
@@ -282,6 +429,11 @@ function Overlay(): JSX.Element | null {
         <EditBar
           layout={layout}
           language={language}
+          rate={rate}
+          onRate={(next) => {
+            setRate(next)
+            void window.career.saveSettings({ overlayRate: next })
+          }}
           onShow={(id) => move(id, { visible: true })}
           onReset={() => void window.career.resetOverlayLayout().then(setLayout)}
         />
@@ -297,6 +449,7 @@ function Panel({
   state,
   editing,
   language,
+  innerRef,
   onChange,
   children
 }: {
@@ -305,6 +458,8 @@ function Panel({
   state: OverlayLayout['dienst']
   editing: boolean
   language: Language
+  /** Het element zelf, zodat de overlay kan meten hoe hoog het geworden is. */
+  innerRef?(element: HTMLElement | null): void
   onChange(patch: Partial<OverlayLayout['dienst']>): void
   children: JSX.Element | null
 }): JSX.Element {
@@ -353,6 +508,7 @@ function Panel({
 
   return (
     <section
+      ref={innerRef}
       className={`panel panel-${info.id}`}
       style={
         {
@@ -825,7 +981,9 @@ function IbisStep({
   const route = ibis?.legs[legIndex]?.route
   const line = ibis?.line || leg?.lineNumber || '—'
   return (
-    <div className="select-duty">
+    // Een eigen naam naast die van het keuzescherm: ze lijken op elkaar, en een
+    // proef moet kunnen zien welke van de twee er staat.
+    <div className="select-duty ibis-step">
       <div className="topline">
         <span className="line">{leg?.lineNumber ?? '—'}</span>
         <b>{t(language, 'ovl.ibisStepTitle')}</b>
@@ -861,11 +1019,15 @@ function IbisStep({
 function EditBar({
   layout,
   language,
+  rate,
+  onRate,
   onShow,
   onReset
 }: {
   layout: OverlayLayout
   language: Language
+  rate: OverlayRate
+  onRate(next: OverlayRate): void
   onShow(id: PanelId): void
   onReset(): void
 }): JSX.Element {
@@ -887,6 +1049,29 @@ function EditBar({
           ))}
         </div>
       )}
+
+      {/*
+        Hoe vaak de overlay zichzelf opnieuw tekent. Hij ligt doorzichtig over
+        OMSI heen, en elke verversing moet Windows over het spel heen mengen --
+        dat kost beeldjes. Wie haperingen merkt, zet hem hier rustiger; de
+        cijfers lopen net zo goed mee, de bus op de kaart schuift alleen met
+        grotere stappen op.
+      */}
+      <div className="editbar-rate">
+        <span>{t(language, 'ovl.rate')}</span>
+        {(Object.keys(OVERLAY_RATES) as OverlayRate[]).map((key) => (
+          <button
+            key={key}
+            type="button"
+            aria-pressed={rate === key}
+            className={rate === key ? 'on' : undefined}
+            onClick={() => onRate(key)}
+          >
+            {t(language, `ovl.rate.${key}` as const)}
+          </button>
+        ))}
+        <span className="editbar-hint">{t(language, 'ovl.rateHint')}</span>
+      </div>
 
       <div className="editbar-buttons">
         <button type="button" onClick={onReset}>

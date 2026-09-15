@@ -528,6 +528,22 @@
   color: #ffffff;
 }
 
+/* Hoe vaak de overlay zichzelf tekent; de gekozen stand licht op. */
+.editbar-rate {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  color: #8d9bad;
+  font-size: 12px;
+}
+
+.editbar-rate button.on {
+  border-color: #f0b429;
+  background: rgba(240, 180, 41, 0.18);
+  color: #ffffff;
+}
+
 .editbar-buttons {
   display: flex;
   gap: 8px;

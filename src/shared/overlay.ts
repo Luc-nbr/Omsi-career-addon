@@ -108,3 +108,25 @@ export function mergeLayout(saved: unknown): OverlayLayout {
 function numberOr(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
+
+/**
+ * Hoe vaak de overlay wordt bijgewerkt.
+ *
+ * De overlay is een doorzichtig venster over het spel heen. Elke keer dat hij
+ * zichzelf opnieuw tekent, moet Windows dat beeld over OMSI heen mengen -- en
+ * dat kost het spel beeldjes. Tien keer per seconde ziet er het mooist uit,
+ * maar wie haperingen merkt, zet hem rustiger; de cijfers lopen dan net zo goed
+ * mee, alleen de bus op de kaart schuift met grotere stappen op.
+ */
+export type OverlayRate = 'vloeiend' | 'rustig' | 'zuinig'
+
+/** Milliseconden tussen twee verversingen. */
+export const OVERLAY_RATES: Record<OverlayRate, number> = {
+  vloeiend: 100,
+  rustig: 200,
+  zuinig: 500
+}
+
+export function isOverlayRate(value: unknown): value is OverlayRate {
+  return value === 'vloeiend' || value === 'rustig' || value === 'zuinig'
+}
