@@ -29,7 +29,7 @@ export interface WeatherPreset {
 
 export const WEATHER_PRESETS: Record<WeatherKind, WeatherPreset> = {
   clear: {
-    name: 'OMSI Career - helder',
+    name: 'OMSI Enhancer - helder',
     fog: [50000, 1],
     wind: [0, 0],
     temp: [15, 5],
@@ -39,7 +39,7 @@ export const WEATHER_PRESETS: Record<WeatherKind, WeatherPreset> = {
     groundwet: [0, 0, 0]
   },
   summer: {
-    name: 'OMSI Career - zomers',
+    name: 'OMSI Enhancer - zomers',
     fog: [2000, 1],
     wind: [70, 0.836],
     temp: [25, 10.84],
@@ -49,7 +49,7 @@ export const WEATHER_PRESETS: Record<WeatherKind, WeatherPreset> = {
     groundwet: [0, 0, 0]
   },
   cloudy: {
-    name: 'OMSI Career - bewolkt',
+    name: 'OMSI Enhancer - bewolkt',
     fog: [1500, 1],
     wind: [120, 3.5],
     temp: [14, 10],
@@ -59,7 +59,7 @@ export const WEATHER_PRESETS: Record<WeatherKind, WeatherPreset> = {
     groundwet: [0, 0, 0]
   },
   rain: {
-    name: 'OMSI Career - regen',
+    name: 'OMSI Enhancer - regen',
     fog: [700, 0.5],
     wind: [209, 18.92],
     temp: [9, 9],
@@ -69,7 +69,7 @@ export const WEATHER_PRESETS: Record<WeatherKind, WeatherPreset> = {
     groundwet: [37.64, 255, 0]
   },
   fog: {
-    name: 'OMSI Career - mist',
+    name: 'OMSI Enhancer - mist',
     fog: [300, 0.5],
     wind: [94, 2.36],
     temp: [8, 8],

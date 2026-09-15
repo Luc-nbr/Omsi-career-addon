@@ -1,5 +1,5 @@
-appId: nl.lucruigrok.omsicareer
-productName: OMSI Career
+appId: nl.lucruigrok.omsienhancer
+productName: OMSI Enhancer
 copyright: Luc Ruigrok
 
 directories:
@@ -45,7 +45,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: OMSI Career
+  shortcutName: OMSI Enhancer
   # Het logboek staat in AppData en hoort een herinstallatie te overleven.
   deleteAppDataOnUninstall: false
   # 1043 = Nederlands (Nederland)

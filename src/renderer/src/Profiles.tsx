@@ -34,7 +34,7 @@ export function Profiles({ language, onLanguage, profiles, onChoose, onCreate }:
     <div className="welcome">
       <div className="welcome-inner">
         <header className="welcome-head">
-          <span className="welcome-mark">OMSI Career</span>
+          <span className="welcome-mark">OMSI Enhancer</span>
           <h1>{t(language, 'pick.title')}</h1>
           <p className="welcome-intro">{t(language, 'pick.intro')}</p>
         </header>

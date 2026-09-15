@@ -18,6 +18,7 @@ import { CareerPanel } from './CareerPanel'
 import { DutyCard } from './DutyCard'
 import { DutyList } from './DutyList'
 import { FreePlay } from './FreePlay'
+import { GameSetup } from './GameSetup'
 import { LinePicker } from './LinePicker'
 import { Modes } from './Modes'
 import { Profiles } from './Profiles'
@@ -40,7 +41,7 @@ const LENGTHS = [30, 45, 60, 90, 120, 150, 180, 240, 300, 360, 420, 480]
  * Welk scherm er staat. De app begint altijd bij de chauffeur en gaat dan naar
  * de modus; daarna pas komt het rijden in beeld.
  */
-type Screen = 'profiles' | 'modes' | 'drive'
+type Screen = 'profiles' | 'modes' | 'drive' | 'game'
 
 /** Staat de overlay-plugin klaar in OMSI? */
 function PluginNote({ status, language }: { status?: PluginStatus; language: Language }): JSX.Element {
@@ -429,6 +430,11 @@ export function App(): JSX.Element {
     )
   }
 
+  // De instellingen van het spel staan los van het rijden; ze gelden altijd.
+  if (screen === 'game') {
+    return <GameSetup language={language} onBack={() => setScreen('modes')} />
+  }
+
   if (screen === 'modes') {
     return (
       <Modes
@@ -441,6 +447,7 @@ export function App(): JSX.Element {
           setScreen('drive')
         }}
         onBack={() => setScreen('profiles')}
+        onGameSetup={() => setScreen('game')}
       />
     )
   }
@@ -472,6 +479,9 @@ export function App(): JSX.Element {
           <span className="mode-tag">{t(language, `mode.${mode}` as const)}</span>
           <button type="button" className="link-button" onClick={() => setScreen('modes')}>
             {t(language, 'mode.otherMode')}
+          </button>
+          <button type="button" className="link-button" onClick={() => setScreen('game')}>
+            {t(language, 'cfg.title')}
           </button>
         </div>
 

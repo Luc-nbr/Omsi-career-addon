@@ -1,4 +1,4 @@
-# Overdracht — OMSI Career
+# Overdracht — OMSI Enhancer
 
 Dit bestand is bedoeld voor wie het werk overneemt. Het beschrijft wat er staat,
 wat er is nagerekend, waar de valkuilen zitten en wat er nog open ligt.
@@ -10,7 +10,14 @@ Repo: https://github.com/Luc-nbr/Omsi-career-addon — tak `master`.
 ## 1. Wat het is
 
 Een Windows-app die van OMSI 2 een carrièremodus maakt, in de geest van Advanced
-Omni Bus Driver maar modern. De app zoekt een echte omloop uit de dienstregeling
+Omni Bus Driver maar modern. De app heette eerst OMSI Career; sinds hij ook de
+instellingen en de toetsen van het spel beheert heet hij **OMSI Enhancer**. De
+map met gebruikersgegevens heet daardoor `%APPDATA%\omsi-enhancer`, en bij de
+eerste start worden de profielen uit `%APPDATA%\omsi-career` overgenomen (een
+kopie, dus de oude versie blijft werken). Twee dingen houden hun oude naam met
+opzet: de map `%LOCALAPPDATA%\OMSI Career` waar de plugin zijn `live.json`
+neerzet -- dat pad zit in de DLL -- en de kopie `laststn.osn.voor-omsi-career`
+die er bij sommigen al staat. De app zoekt een echte omloop uit de dienstregeling
 van een kaart, geeft een dienstkaart met de IBIS-codes, zet de dienst klaar in
 OMSI (kaart, bus, datum, tijd, dienstregeling), start het spel en hangt een
 overlay boven het spel met live gegevens.
@@ -26,12 +33,18 @@ je rijden**. Die tweede vraag kent drie antwoorden:
 - **Vrij rijden** — niets wordt geboekt of beoordeeld. Je kiest lijn, bus, plek,
   weer, datum en tijd; de app zet het klaar en biedt de overlay aan.
 
+Daarnaast beheert de app de **instellingen en toetsen van OMSI zelf**: 33 van de
+47 blokken uit `options.cfg` met uitleg erbij in vier talen, en alle 128
+toetsbindingen uit `Inputs\keyboard.cfg` met de namen die OMSI er zelf aan geeft.
+Er wordt alleen geschreven wat je verandert; de rest van het bestand blijft byte
+voor byte staan (`probe-gamecfg.ts`).
+
 Electron 33 + electron-vite + React 19 + TypeScript. `npm run dev` voor
 ontwikkelen, `npm run typecheck`, `npm run build`, `npm run dist` voor de
 installer.
 
 **Wat de app in de spelmap schrijft**: de overlay-plugin in `plugins/`, en bij
-het starten van een dienst `Situations\OMSI Career.osn` (kaart, datum, tijd, bus
+het starten van een dienst `Situations\OMSI Enhancer.osn` (kaart, datum, tijd, bus
 bij de eerste halte, gekozen dienstregeling) plus het weerbestand ernaast. Om het
 startscherm van OMSI goed te zetten gaat diezelfde situatie ook naar
 `maps\<kaart>\laststn.osn` -- daar leest OMSI "Last Situation" -- en wordt
@@ -57,7 +70,7 @@ blijft eenmalig een kopie staan als `laststn.osn.voor-omsi-career`. Verder niets
   bronbestanden als Windows-1252; wie dat met `Set-Content` terugschrijft maakt
   van "één" "Ã©Ã©n". Tijdelijke wijzigingen met het Edit-gereedschap doen.
 - De gebruiker draait Smart App Control; ongetekende exes worden geblokkeerd.
-  `Start OMSI Career.cmd` start de app via `node_modules\electron\dist\electron.exe`.
+  `Start OMSI Enhancer.cmd` start de app via `node_modules\electron\dist\electron.exe`.
 
 ---
 
@@ -82,6 +95,9 @@ blijft eenmalig een kopie staan als `laststn.osn.voor-omsi-career`. Verder niets
 | `career.ts` | Loopbaan: diensten, uren, rangen, modi, vergunningen, examens |
 | `exam.ts` | De eisen van het rijexamen en het oordeel erover |
 | `startup.ts` | Het startscherm van OMSI: `laststn.osn` en `[last_map]` |
+| `omsiOptions.ts` | `options.cfg` regel voor regel lezen en terugschrijven |
+| `gameSettings.ts` | De brug tussen die blokken en de schuiven in het scherm |
+| `omsiKeys.ts` | `keyboard.cfg`, de toetsnamen (`.kyb`) en de handelingen (`.olf`) |
 | `weather.ts` | Schrijft het `.owt`-bestand bij een situatie |
 | `profiles.ts` | Profielen in `%APPDATA%\omsi-career\profiles\` |
 | `settings.ts` | Taal, in `settings.json` |
@@ -109,6 +125,7 @@ blijft eenmalig een kopie staan als `laststn.osn.voor-omsi-career`. Verder niets
 - `CareerPanel.tsx` — rijexamen, lijnexamens en de vergunningen.
 - `FreePlay.tsx` — lijn, bus, plek, weer, datum en tijd zelf samenstellen.
 - `LinePicker.tsx` — een lijn kiezen; wat OMSI een lijn noemt is een bestand.
+- `GameSetup.tsx` — de instellingen en de toetsen van OMSI, in twee tabbladen.
 - `Welcome.tsx` — eerste start: taal kiezen en een account aanmaken.
 - `DutyCard.tsx` — de dienstkaart met alle deelpanelen.
 - `RouteMap.tsx` — de kaart (halteborden, routes, zoomen, slepen), in SVG.
@@ -193,6 +210,32 @@ aan `geo.ts`, `roads.ts`, `track.ts` of `routing.ts` komt.
   in meters, helderheid), `[wind]`, `[temp]`, `[press]`, `[clouds]` (textuurnaam
   of -1, wolkenbasis in meters), `[precip]` (eerste veld 0 droog, 1 nat) en
   `[groundwet]`. De vijf keuzes in de app komen uit het weer dat OMSI meelevert.
+
+**De instellingen en toetsen van OMSI (`omsiOptions.ts`, `omsiKeys.ts`)**
+
+- `options.cfg` en `Inputs\keyboard.cfg` zijn **gewone tekst in de
+  Windows-codering met CRLF**. Lezen en schrijven als losse bytes (`latin1`)
+  houdt umlauten heel. Beide gaan byte-identiek heen en weer; zie
+  `probe-gamecfg.ts`, dat ook een vlag aan- en uitzet en controleert dat het
+  bestand daarna weer gelijk is.
+- Een blok in `options.cfg` heeft nul of meer waarderegels. **Nul betekent uit**
+  bij de vlaggen: `[no_collision]` staat altijd in het bestand, met een lege
+  regel eronder als hij uit staat. Zou de aanwezigheid van het blok "aan"
+  betekenen, dan zou niemand ooit botsingen hebben. "Aan" schrijven we als `1`.
+- Tussen de blokken staan kopregels (" GRAPHICS -------"). Die horen bij niets;
+  de lezer stopt op een regel met `-----`.
+- `keyboard.cfg` heeft twee secties met samen 128 `[entry]`-blokken van drie
+  regels: handeling, scancode, en een getal met de modificatietoetsen. **Bit 2 is
+  Shift, bit 4 is Ctrl** -- af te lezen aan de IBIS-cijfers (Ctrl+numeriek) en aan
+  "Quit OMSI" op Ctrl+Q. Bit 1 zit op gas, rem, sturen en nog wat; wat dat
+  betekent is niet nagemeten, dus de app laat die bit staan en verandert alleen
+  Shift en Ctrl.
+- Scancodes zijn set 1; toetsen die met een voorvoegsel komen (pijlen, numeriek
+  Enter, rechter Ctrl) staan er met 128 bij op. `shared/scancodes.ts` vertaalt de
+  `event.code` van de browser naar dat nummer.
+- De namen komen uit OMSI zelf: `Inputs\ENG.kyb` (130 toetsen) en
+  `Languages\<taal>_key_game.olf` en `_key_veh_gen.olf` (samen 178 handelingen,
+  genoeg voor 127 van de 128 bindingen).
 
 **Routes (`track.ts`, `routing.ts`)**
 
@@ -326,6 +369,9 @@ Er staan probes in `scripts/`:
 - `probe-startup.ts` — zet een dienst klaar in een nagebouwde spelmap en leest
   terug of de situatie, `laststn.osn` en `[last_map]` kloppen.
 - `probe-exam.ts` — hoe lang een examenrit per lijn duurt.
+- `probe-gamecfg.ts` — of `options.cfg` en `keyboard.cfg` byte-identiek heen en
+  weer gaan, en of een vlag aan- en uitzetten het bestand ongemoeid laat.
+- `screenshotGameSetup.cjs` — het scherm met de instellingen en de toetsen.
 - `prepare-real.ts` — zet één dienst klaar in de échte spelmap, om in OMSI zelf
   te kijken of het startscherm klopt.
 - `screenshotModes.cjs` — loopt de schermen langs: chauffeur, modus, en de drie

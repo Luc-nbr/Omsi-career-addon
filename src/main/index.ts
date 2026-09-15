@@ -1,5 +1,6 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, screen } from 'electron'
-import { join } from 'node:path'
+import { cpSync, existsSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import {
   completeDuty,
   recordExam,
@@ -28,6 +29,14 @@ import {
   type Network
 } from '../core/duty'
 import { judgeExam, type ExamMeasurement } from '../core/exam'
+import { readGameSettings, writeGameSettings } from '../core/gameSettings'
+import {
+  readActionLabels,
+  readKeyNames,
+  readKeyboard,
+  writeKeyboard,
+  type KeyBinding
+} from '../core/omsiKeys'
 import { buildFleetIndex, pickVehicleForDuty, readMapFleet, type FleetIndex } from '../core/fleet'
 import { readMapData, readTileGrid, type Lane, type MapGeometry } from '../core/geo'
 import { LaneNetwork, routeForTrip, type TripRoute } from '../core/routing'
@@ -196,6 +205,16 @@ function spawnFor(folder: string, stopId: string | undefined) {
   const grid = readTileGrid(path)
   if (!stop || !grid) return undefined
   return spawnAtStop(path, grid, laneNetwork(folder), stop)
+}
+
+/**
+ * In welke taal OMSI zelf staat. Zijn eigen keuze staat in options.cfg; die
+ * volgen we, want de namen van de toetsen komen uit zijn bestanden en moeten
+ * overeenkomen met wat er in het spel staat.
+ */
+function omsiLanguage(): string {
+  const value = readGameSettings(omsi()).language
+  return value && value.length === 3 ? value.toUpperCase() : 'ENG'
 }
 
 function fleet(): FleetIndex {
@@ -556,7 +575,7 @@ function prepareSituation(
 
   const result = writeSituation(omsi(), {
     mapFolder: duty.mapFolder,
-    name: `OMSI Career — lijn ${duty.lineFile}, omloop ${duty.tourNumber}`,
+    name: `OMSI Enhancer — lijn ${duty.lineFile}, omloop ${duty.tourNumber}`,
     description: `Vertrek ${formatTime(duty.start)} vanaf ${first?.stops[0] ?? '?'}.`,
     year: when.year,
     dayOfYear: when.dayOfYear,
@@ -625,6 +644,46 @@ function registerHandlers(): void {
       })
     }
   )
+
+  /*
+   * De instellingen en de toetsen van OMSI zelf.
+   *
+   * OMSI schrijft `options.cfg` en `Inputs\\keyboard.cfg` bij het afsluiten
+   * opnieuw. Draait het spel, dan is alles wat hier verandert straks weg, dus
+   * dat melden we erbij in plaats van het stilletjes te laten gebeuren.
+   */
+  ipcMain.handle('game:settings', async () => ({
+    values: readGameSettings(omsi()),
+    omsiRunning: await isOmsiRunning()
+  }))
+
+  ipcMain.handle('game:settings:save', (_event, changes: Record<string, string>) => {
+    writeGameSettings(omsi(), changes)
+    return readGameSettings(omsi())
+  })
+
+  /** De taal van OMSI zelf bepaalt hoe de toetsen en handelingen heten. */
+  ipcMain.handle('game:keys', async () => {
+    const language = omsiLanguage()
+    return {
+      bindings: readKeyboard(omsi()),
+      keyNames: [...readKeyNames(omsi(), language === 'DEU' ? 'DEU' : 'ENG')],
+      labels: [...readActionLabels(omsi(), language)],
+      omsiRunning: await isOmsiRunning()
+    }
+  })
+
+  ipcMain.handle('game:keys:save', (_event, bindings: KeyBinding[]) => {
+    writeKeyboard(omsi(), bindings)
+    return readKeyboard(omsi())
+  })
+
+  /** Terug naar de indeling waarmee OMSI geleverd wordt. */
+  ipcMain.handle('game:keys:reset', () => {
+    const defaults = readKeyboard(omsi(), true)
+    if (defaults.length > 0) writeKeyboard(omsi(), defaults)
+    return readKeyboard(omsi())
+  })
 
   ipcMain.handle('omsi:live', () => Boolean(readLive()?.alive))
 
@@ -784,7 +843,7 @@ function registerHandlers(): void {
 
     const result = writeSituation(omsi(), {
       mapFolder: request.mapFolder,
-      name: 'OMSI Career — vrij rijden',
+      name: 'OMSI Enhancer — vrij rijden',
       description: duty
         ? `Lijn ${duty.lineNumbers.join('/')} vanaf ${formatTime(request.minutes)}.`
         : `Vrij rijden vanaf ${formatTime(request.minutes)}.`,
@@ -1023,7 +1082,7 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#11151c',
-    title: 'OMSI Career',
+    title: 'OMSI Enhancer',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -1071,12 +1130,34 @@ function bringMainWindowForward(): void {
  * Electron legt het slot op de map met gebruikersgegevens, precies de plek die
  * we willen beschermen. Wie het slot niet krijgt, opent niets en stopt.
  */
+/**
+ * Chauffeurs meenemen uit de tijd dat de app OMSI Career heette.
+ *
+ * Electron leidt de map met gebruikersgegevens af van de naam in package.json,
+ * dus met de nieuwe naam kijkt de app naar een lege map en zou iedereen zijn
+ * logboek kwijt zijn. Kopiëren en niet verplaatsen: wie de oude versie nog eens
+ * start, vindt daar nog gewoon zijn profielen.
+ */
+function adoptOldProfiles(): void {
+  const now = userData()
+  const before = join(dirname(now), 'omsi-career')
+  if (now === before || existsSync(join(now, 'profiles')) || !existsSync(join(before, 'profiles'))) {
+    return
+  }
+  try {
+    cpSync(before, now, { recursive: true })
+  } catch {
+    // Lukt het niet, dan begint de chauffeur met een leeg logboek; niets breekt.
+  }
+}
+
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', bringMainWindowForward)
 
   app.whenReady().then(() => {
+    adoptOldProfiles()
     career = resolveActive(userData())
     registerHandlers()
     createWindow()

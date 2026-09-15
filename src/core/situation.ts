@@ -1,4 +1,11 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  unlinkSync,
+  writeFileSync
+} from 'node:fs'
 import { basename, join } from 'node:path'
 import { readOmsiLines, str } from './omsiFile'
 import { writeWeather } from './weather'
@@ -312,7 +319,20 @@ export function writeSituation(omsiPath: string, request: SituationRequest): Sit
   const lines = buildSituation(request)
   const folder = request.into ?? join(omsiPath, 'Situations')
   mkdirSync(folder, { recursive: true })
-  const file = join(folder, 'OMSI Career.osn')
+  const file = join(folder, 'OMSI Enhancer.osn')
+
+  /*
+   * De app heette eerst OMSI Career en schreef toen een situatie onder die naam.
+   * Die zou anders in het laadmenu blijven staan naast de nieuwe, met gegevens
+   * van een dienst die allang voorbij is.
+   */
+  for (const stale of ['OMSI Career.osn', 'OMSI Career.osn.owt']) {
+    try {
+      if (existsSync(join(folder, stale))) unlinkSync(join(folder, stale))
+    } catch {
+      // Zit hij vast, dan blijft hij staan; dat is hooguit rommel.
+    }
+  }
   writeFileSync(file, Buffer.concat([BOM, Buffer.from(lines.join('\r\n'), 'utf16le')]))
 
   /*

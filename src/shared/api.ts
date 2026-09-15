@@ -1,6 +1,7 @@
 import type { ActiveDuty, CareerState, CareerSummary, GameMode } from '../core/career'
 import type { LineSummary } from '../core/duty'
 import type { ExamMeasurement } from '../core/exam'
+import type { KeyBinding } from '../core/omsiKeys'
 import type { WeatherKind } from './weather'
 import type { ProfileSummary } from '../core/profiles'
 import type { MapGeometry } from '../core/geo'
@@ -176,6 +177,24 @@ export interface PrintResult {
   reason?: string
 }
 
+/** De instellingen van OMSI zelf, zoals ze in options.cfg staan. */
+export interface GameSettingsPayload {
+  /** Per sleutel de waarde uit het bestand; leeg betekent uit. */
+  values: Record<string, string>
+  /** Draait OMSI? Dan overschrijft het spel dit bij het afsluiten. */
+  omsiRunning: boolean
+}
+
+/** De toetsindeling van OMSI, met de namen die het spel er zelf bij toont. */
+export interface GameKeysPayload {
+  bindings: KeyBinding[]
+  /** Scancode -> naam van de toets, uit ENG.kyb of DEU.kyb. */
+  keyNames: Array<[number, string]>
+  /** Handeling -> leesbare naam, uit de taalbestanden van OMSI. */
+  labels: Array<[string, string]>
+  omsiRunning: boolean
+}
+
 /** Wat de renderer via `window.career` kan aanroepen. */
 export interface CareerApi {
   status(): Promise<OmsiStatus>
@@ -239,6 +258,15 @@ export interface CareerApi {
   beginDuty(request: BeginRequest): Promise<BeginResult>
   /** Geeft de plugin gegevens door? Zo ja, dan draait OMSI en is de kaart geladen. */
   liveConnected(): Promise<boolean>
+  /** De instellingen van OMSI zelf. */
+  gameSettings(): Promise<GameSettingsPayload>
+  /** Schrijft alleen de instellingen die veranderd zijn terug naar options.cfg. */
+  saveGameSettings(changes: Record<string, string>): Promise<Record<string, string>>
+  /** De toetsindeling van OMSI, met de namen uit zijn eigen bestanden. */
+  gameKeys(): Promise<GameKeysPayload>
+  saveGameKeys(bindings: KeyBinding[]): Promise<KeyBinding[]>
+  /** Zet de toetsen terug op de indeling waarmee OMSI geleverd wordt. */
+  resetGameKeys(): Promise<KeyBinding[]>
   /** Printers die Windows kent, standaardprinter vooraan. */
   printers(): Promise<PrinterInfo[]>
   /** Drukt het dienstkaartje af op een bonprinter van 80 mm. */

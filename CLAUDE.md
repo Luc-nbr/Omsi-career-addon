@@ -1,4 +1,4 @@
-# OMSI Career — afspraken voor Claude
+# OMSI Enhancer — afspraken voor Claude
 
 Lees eerst `HANDOVER.md`: daar staat wat de app is, hoe hij in elkaar zit en
 welke werkafspraken er gelden (Nederlands antwoorden, commentaar en commits in
@@ -21,8 +21,8 @@ npx electron-vite build
 npx electron-builder -c.directories.output=%TEMP%/omsi-release
 ```
 
-Kopieer daarna `OMSI Career <versie> Setup.exe`, `Setup.exe.blockmap` en
-`OMSI Career <versie> draagbaar.exe` uit `%TEMP%\omsi-release` naar `release\`
+Kopieer daarna `OMSI Enhancer <versie> Setup.exe`, `Setup.exe.blockmap` en
+`OMSI Enhancer <versie> draagbaar.exe` uit `%TEMP%\omsi-release` naar `release\`
 van de hoofdmap `C:\OMSI Career`, en controleer dat de kopieën gelijk zijn.
 `release/` staat in `.gitignore`; de exe's worden niet gecommit.
 
@@ -40,7 +40,8 @@ Valkuilen bij het bouwen:
 ## Testen naast de app van Luc
 
 De app laat één exemplaar tegelijk toe per map met gebruikersgegevens
-(`%APPDATA%\omsi-career`). Draait Lucs eigen app, sluit die dan niet af, maar
+(`%APPDATA%\omsi-enhancer`; profielen uit de tijd dat de app OMSI Career heette
+worden bij de eerste start uit `%APPDATA%\omsi-career` overgenomen). Draait Lucs eigen app, sluit die dan niet af, maar
 start je testexemplaar met een eigen map, zowel in dev
 (`npx electron-vite dev -- --user-data-dir=<tijdelijke map>`) als met de
 gebouwde exe (`"...draagbaar.exe" --user-data-dir=<tijdelijke map>`).

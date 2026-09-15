@@ -11,6 +11,8 @@ interface Props {
   running?: GameMode
   onPick(mode: GameMode): void
   onBack(): void
+  /** Naar de instellingen en de toetsen van OMSI zelf. */
+  onGameSetup(): void
 }
 
 const MODES: Array<{ mode: GameMode; title: 'mode.career' | 'mode.service' | 'mode.free'; intro: 'mode.careerIntro' | 'mode.serviceIntro' | 'mode.freeIntro' }> = [
@@ -26,12 +28,20 @@ const MODES: Array<{ mode: GameMode; title: 'mode.career' | 'mode.service' | 'mo
  * zit niet in de knop maar in de regels erachter. Ligt er nog een dienst open,
  * dan staat dat bij de modus waar hij bij hoort -- daar kom je hem tegen.
  */
-export function Modes({ language, driver, licences, running, onPick, onBack }: Props): JSX.Element {
+export function Modes({
+  language,
+  driver,
+  licences,
+  running,
+  onPick,
+  onBack,
+  onGameSetup
+}: Props): JSX.Element {
   return (
     <div className="welcome">
       <div className="welcome-inner wide">
         <header className="welcome-head">
-          <span className="welcome-mark">OMSI Career</span>
+          <span className="welcome-mark">OMSI Enhancer</span>
           <h1>{t(language, 'mode.title', { driver })}</h1>
           <p className="welcome-intro">{t(language, 'mode.intro')}</p>
         </header>
@@ -59,9 +69,15 @@ export function Modes({ language, driver, licences, running, onPick, onBack }: P
           ))}
         </div>
 
-        <button type="button" className="btn secondary" onClick={onBack}>
-          {t(language, 'mode.otherDriver')}
-        </button>
+        <div className="actions">
+          <button type="button" className="btn secondary" onClick={onBack}>
+            {t(language, 'mode.otherDriver')}
+          </button>
+          {/* De instellingen van het spel horen bij geen enkele modus; ze gelden overal. */}
+          <button type="button" className="btn secondary" onClick={onGameSetup}>
+            {t(language, 'cfg.title')}
+          </button>
+        </div>
       </div>
     </div>
   )

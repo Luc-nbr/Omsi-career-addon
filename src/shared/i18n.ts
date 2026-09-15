@@ -28,16 +28,16 @@ export function isLanguage(value: unknown): value is Language {
 const TEXT = {
   // ---------- welkomsscherm ----------
   'welcome.title': {
-    en: 'Welcome to OMSI Career',
-    de: 'Willkommen bei OMSI Career',
-    fr: 'Bienvenue dans OMSI Career',
-    nl: 'Welkom bij OMSI Career'
+    en: 'Welcome to OMSI Enhancer',
+    de: 'Willkommen bei OMSI Enhancer',
+    fr: 'Bienvenue dans OMSI Enhancer',
+    nl: 'Welkom bij OMSI Enhancer'
   },
   'welcome.intro': {
-    en: 'OMSI Career turns the maps you already own into a job. Choose how long you want to drive and you get a real duty: the line, the tour, the IBIS codes to key in and the stop where your bus belongs.',
-    de: 'OMSI Career macht aus den Karten, die du schon hast, einen Dienst. Du wählst, wie lange du fahren möchtest, und bekommst einen echten Umlauf: Linie, Kurs, die IBIS-Eingaben und die Haltestelle, an der dein Bus stehen muss.',
-    fr: 'OMSI Career transforme les cartes que vous possédez déjà en service. Choisissez la durée de conduite et vous recevez un vrai roulement : la ligne, le tour, les codes IBIS à saisir et l’arrêt où placer votre bus.',
-    nl: 'OMSI Career maakt van de kaarten die je al hebt een dienst. Je kiest hoe lang je wilt rijden en krijgt een echte omloop: de lijn, het omloopnummer, de IBIS-codes die je moet intoetsen en de halte waar je bus hoort te staan.'
+    en: 'OMSI Enhancer turns the maps you already own into a job. Choose how long you want to drive and you get a real duty: the line, the tour, the IBIS codes to key in and the stop where your bus belongs.',
+    de: 'OMSI Enhancer macht aus den Karten, die du schon hast, einen Dienst. Du wählst, wie lange du fahren möchtest, und bekommst einen echten Umlauf: Linie, Kurs, die IBIS-Eingaben und die Haltestelle, an der dein Bus stehen muss.',
+    fr: 'OMSI Enhancer transforme les cartes que vous possédez déjà en service. Choisissez la durée de conduite et vous recevez un vrai roulement : la ligne, le tour, les codes IBIS à saisir et l’arrêt où placer votre bus.',
+    nl: 'OMSI Enhancer maakt van de kaarten die je al hebt een dienst. Je kiest hoe lang je wilt rijden en krijgt een echte omloop: de lijn, het omloopnummer, de IBIS-codes die je moet intoetsen en de halte waar je bus hoort te staan.'
   },
   'welcome.language': { en: 'Language', de: 'Sprache', fr: 'Langue', nl: 'Taal' },
   'welcome.languageNote': {
@@ -315,16 +315,237 @@ const TEXT = {
     nl: 'De lijn en de omloop staan al gekozen in het dienstregelingsmenu.'
   },
   'start.alreadyRunning': {
-    en: 'OMSI was already running, so it has not seen this yet. Restart the game, or load the situation OMSI Career yourself.',
-    de: 'OMSI lief bereits und kennt das noch nicht. Starte das Spiel neu oder lade die Situation OMSI Career selbst.',
-    fr: 'OMSI tournait déjà et ne l’a pas encore vu. Relancez le jeu ou chargez vous-même la situation OMSI Career.',
-    nl: 'OMSI draaide al en heeft dit nog niet gezien. Start het spel opnieuw, of laad de situatie OMSI Career zelf.'
+    en: 'OMSI was already running, so it has not seen this yet. Restart the game, or load the situation OMSI Enhancer yourself.',
+    de: 'OMSI lief bereits und kennt das noch nicht. Starte das Spiel neu oder lade die Situation OMSI Enhancer selbst.',
+    fr: 'OMSI tournait déjà et ne l’a pas encore vu. Relancez le jeu ou chargez vous-même la situation OMSI Enhancer.',
+    nl: 'OMSI draaide al en heeft dit nog niet gezien. Start het spel opnieuw, of laad de situatie OMSI Enhancer zelf.'
   },
   'start.failed': {
     en: 'Could not set it up: {reason}',
     de: 'Einrichten nicht möglich: {reason}',
     fr: 'Préparation impossible : {reason}',
     nl: 'Klaarzetten lukte niet: {reason}'
+  },
+
+  // ---------- instellingen van OMSI ----------
+  'cfg.title': {
+    en: 'OMSI settings',
+    de: 'OMSI-Einstellungen',
+    fr: 'Réglages d’OMSI',
+    nl: 'Instellingen van OMSI'
+  },
+  'cfg.intro': {
+    en: 'These are the settings of the game itself, in options.cfg. Everything this app does not show stays exactly as it was.',
+    de: 'Das sind die Einstellungen des Spiels selbst, in options.cfg. Alles, was diese App nicht zeigt, bleibt genau so stehen.',
+    fr: 'Ce sont les réglages du jeu lui-même, dans options.cfg. Tout ce que cette application n’affiche pas reste inchangé.',
+    nl: 'Dit zijn de instellingen van het spel zelf, in options.cfg. Alles wat deze app niet toont, blijft precies zoals het stond.'
+  },
+  'cfg.tabSettings': { en: 'Settings', de: 'Einstellungen', fr: 'Réglages', nl: 'Instellingen' },
+  'cfg.tabKeys': { en: 'Keys', de: 'Tasten', fr: 'Touches', nl: 'Toetsen' },
+  'cfg.group.graphics': { en: 'Picture', de: 'Bild', fr: 'Image', nl: 'Beeld' },
+  'cfg.group.sound': { en: 'Sound', de: 'Ton', fr: 'Son', nl: 'Geluid' },
+  'cfg.group.game': { en: 'Game', de: 'Spiel', fr: 'Jeu', nl: 'Spel' },
+  'cfg.group.traffic': { en: 'Traffic', de: 'Verkehr', fr: 'Circulation', nl: 'Verkeer' },
+  'cfg.running': {
+    en: 'OMSI is running. It writes these files again when it closes, so change them with the game shut down.',
+    de: 'OMSI läuft. Das Spiel schreibt diese Dateien beim Beenden neu -- ändere sie also bei geschlossenem Spiel.',
+    fr: 'OMSI est en cours. Le jeu réécrit ces fichiers en quittant : modifiez-les jeu fermé.',
+    nl: 'OMSI draait. Het spel schrijft deze bestanden bij het afsluiten opnieuw, dus pas ze aan met het spel dicht.'
+  },
+  'cfg.save': { en: 'Save', de: 'Speichern', fr: 'Enregistrer', nl: 'Opslaan' },
+  'cfg.saving': { en: 'Saving…', de: 'Wird gespeichert…', fr: 'Enregistrement…', nl: 'Opslaan…' },
+  'cfg.saved': { en: 'Saved to options.cfg.', de: 'In options.cfg gespeichert.', fr: 'Enregistré dans options.cfg.', nl: 'Opgeslagen in options.cfg.' },
+  'cfg.revert': { en: 'Undo changes', de: 'Änderungen verwerfen', fr: 'Annuler les changements', nl: 'Wijzigingen ongedaan maken' },
+  'cfg.changed': {
+    en: '{count} changed',
+    de: '{count} geändert',
+    fr: '{count} modifiés',
+    nl: '{count} gewijzigd'
+  },
+  'cfg.back': { en: 'Back', de: 'Zurück', fr: 'Retour', nl: 'Terug' },
+  'cfg.failed': {
+    en: 'Could not read the OMSI files: {reason}',
+    de: 'Die OMSI-Dateien konnten nicht gelesen werden: {reason}',
+    fr: 'Impossible de lire les fichiers OMSI : {reason}',
+    nl: 'De bestanden van OMSI konden niet gelezen worden: {reason}'
+  },
+  'cfg.on': { en: 'On', de: 'An', fr: 'Activé', nl: 'Aan' },
+  'cfg.off': { en: 'Off', de: 'Aus', fr: 'Désactivé', nl: 'Uit' },
+
+  // ---------- de instellingen zelf ----------
+  'set.maxFPS': { en: 'Frame rate limit', de: 'Bildrate begrenzen', fr: 'Limite d’images par seconde', nl: 'Maximale beeldsnelheid' },
+  'set.maxFPS.hint': {
+    en: 'Keep it just under what your screen can show; OMSI runs most evenly that way.',
+    de: 'Knapp unter dem, was dein Bildschirm zeigen kann -- so läuft OMSI am gleichmäßigsten.',
+    fr: 'Restez juste sous ce que votre écran peut afficher : OMSI tourne alors le plus régulièrement.',
+    nl: 'Houd hem net onder wat je scherm aankan; zo loopt OMSI het gelijkmatigst.'
+  },
+  'set.performance_maxObjDist': { en: 'Object view distance (m)', de: 'Sichtweite Objekte (m)', fr: 'Distance d’affichage (m)', nl: 'Zichtafstand objecten (m)' },
+  'set.performance_maxObjDist.hint': {
+    en: 'How far buildings and trees stay visible. The biggest single lever on frame rate.',
+    de: 'Wie weit Gebäude und Bäume sichtbar bleiben. Der größte Hebel für die Bildrate.',
+    fr: 'Jusqu’où bâtiments et arbres restent visibles. Le plus gros levier sur la fluidité.',
+    nl: 'Hoe ver gebouwen en bomen zichtbaar blijven. De grootste knop voor je beeldsnelheid.'
+  },
+  'set.performance_tiledistmax': { en: 'Visible tiles', de: 'Sichtbare Kacheln', fr: 'Tuiles visibles', nl: 'Zichtbare tegels' },
+  'set.performance_tiledistmax.hint': {
+    en: 'How many 300 m squares are drawn ahead of you. Each step costs a lot.',
+    de: 'Wie viele 300-m-Kacheln vor dir gezeichnet werden. Jede Stufe kostet spürbar.',
+    fr: 'Combien de carrés de 300 m sont dessinés devant vous. Chaque cran coûte cher.',
+    nl: 'Hoeveel vakken van 300 meter er voor je uit getekend worden. Elke stap kost fors.'
+  },
+  'set.maxcomplexity': { en: 'Level of detail', de: 'Detailgrad', fr: 'Niveau de détail', nl: 'Detailniveau' },
+  'set.maxcomplexity.hint': {
+    en: 'How much detail objects are allowed to have.',
+    de: 'Wie viel Detail Objekte haben dürfen.',
+    fr: 'Le niveau de détail autorisé pour les objets.',
+    nl: 'Hoeveel detail objecten mogen hebben.'
+  },
+  'set.maxcomplexity_map': { en: 'Level of detail, map', de: 'Detailgrad Karte', fr: 'Niveau de détail, carte', nl: 'Detailniveau kaart' },
+  'set.texFilter.1': { en: 'Anisotropic filtering', de: 'Anisotrope Filterung', fr: 'Filtrage anisotrope', nl: 'Anisotropisch filteren' },
+  'set.texFilter.1.hint': {
+    en: 'Sharpness of surfaces seen at an angle -- the road ahead. Cheap, and it shows.',
+    de: 'Schärfe schräg gesehener Flächen -- der Straße vor dir. Kostet wenig, bringt viel.',
+    fr: 'Netteté des surfaces vues de biais, comme la route. Peu coûteux, très visible.',
+    nl: 'Scherpte van vlakken die je schuin ziet, zoals de weg voor je. Kost weinig, levert veel.'
+  },
+  'set.texmemlimit': { en: 'Texture memory (MB)', de: 'Texturspeicher (MB)', fr: 'Mémoire de textures (Mo)', nl: 'Geheugen voor texturen (MB)' },
+  'set.texmemlimit.hint': {
+    en: 'Do not set this above what your graphics card actually has.',
+    de: 'Nicht höher setzen, als deine Grafikkarte wirklich hat.',
+    fr: 'Ne dépassez pas ce que votre carte graphique possède réellement.',
+    nl: 'Zet dit niet hoger dan wat je videokaart werkelijk heeft.'
+  },
+  'set.performance_reflTexSize': { en: 'Mirror quality', de: 'Spiegelqualität', fr: 'Qualité des miroirs', nl: 'Kwaliteit van de spiegels' },
+  'set.performance_reflTexSize.hint': {
+    en: 'Size of the mirror image. Sharper mirrors cost frames.',
+    de: 'Größe des Spiegelbilds. Schärfere Spiegel kosten Bildrate.',
+    fr: 'Taille de l’image des miroirs. Plus net coûte des images par seconde.',
+    nl: 'Grootte van het spiegelbeeld. Scherpere spiegels kosten beeldsnelheid.'
+  },
+  'set.shadow_stencil': { en: 'Hard shadows', de: 'Harte Schatten', fr: 'Ombres dures', nl: 'Harde schaduwen' },
+  'set.sunglow': { en: 'Sun glare', de: 'Sonnenschein-Effekt', fr: 'Éblouissement du soleil', nl: 'Zonnegloed' },
+  'set.no_humans_on_rain_refl': { en: 'No people in wet reflections', de: 'Keine Menschen in nassen Spiegelungen', fr: 'Pas de piétons dans les reflets', nl: 'Geen mensen in natte weerspiegeling' },
+  'set.smokesystems': { en: 'Exhaust smoke', de: 'Abgasrauch', fr: 'Fumée d’échappement', nl: 'Uitlaatrook' },
+  'set.texture_uselow': { en: 'Low-resolution textures', de: 'Texturen in niedriger Auflösung', fr: 'Textures en basse résolution', nl: 'Texturen op lage resolutie' },
+  'set.texture_uselow.hint': {
+    en: 'For weaker cards: everything loads smaller and faster, and looks blurrier.',
+    de: 'Für schwächere Karten: alles lädt kleiner und schneller, sieht aber matschiger aus.',
+    fr: 'Pour les cartes modestes : tout charge plus petit et plus vite, mais plus flou.',
+    nl: 'Voor zwakkere videokaarten: alles laadt kleiner en sneller, en ziet er vager uit.'
+  },
+  'set.sound_vol_master': { en: 'Master volume', de: 'Gesamtlautstärke', fr: 'Volume général', nl: 'Hoofdvolume' },
+  'set.sound_maxcount': { en: 'Maximum sounds at once', de: 'Maximale Anzahl Klänge', fr: 'Sons simultanés maximum', nl: 'Maximaal aantal geluiden tegelijk' },
+  'set.sound_maxcount.hint': {
+    en: 'More at once sounds fuller and costs processor time.',
+    de: 'Mehr gleichzeitig klingt voller und kostet Rechenzeit.',
+    fr: 'Plus de sons ensemble donne un rendu plus riche et coûte du processeur.',
+    nl: 'Meer tegelijk klinkt voller en kost rekentijd.'
+  },
+  'set.sound_stereo': { en: 'Stereo width', de: 'Stereobreite', fr: 'Largeur stéréo', nl: 'Stereobreedte' },
+  'set.sound_doppler': { en: 'Doppler effect', de: 'Doppler-Effekt', fr: 'Effet Doppler', nl: 'Dopplereffect' },
+  'set.sound_scenery': { en: 'Ambient sound', de: 'Umgebungsgeräusche', fr: 'Ambiance sonore', nl: 'Omgevingsgeluid' },
+  'set.language': { en: 'Language of OMSI', de: 'Sprache von OMSI', fr: 'Langue d’OMSI', nl: 'Taal van OMSI' },
+  'set.language.hint': {
+    en: 'The language of the game itself. This app keeps its own.',
+    de: 'Die Sprache des Spiels selbst. Diese App behält ihre eigene.',
+    fr: 'La langue du jeu lui-même. Cette application garde la sienne.',
+    nl: 'De taal van het spel zelf. De app houdt zijn eigen taal.'
+  },
+  'set.ticketselling': { en: 'Ticket selling', de: 'Fahrkartenverkauf', fr: 'Vente de billets', nl: 'Kaartverkoop' },
+  'set.ticketselling.hint': {
+    en: 'Passengers buy a ticket from you. Without it they simply walk on.',
+    de: 'Fahrgäste kaufen bei dir einen Fahrschein. Ohne das steigen sie einfach ein.',
+    fr: 'Les passagers vous achètent un billet. Sinon ils montent directement.',
+    nl: 'Passagiers kopen een kaartje bij je. Zonder dit lopen ze gewoon door.'
+  },
+  'set.see_own_driver': { en: 'See your own driver', de: 'Eigenen Fahrer sehen', fr: 'Voir son propre conducteur', nl: 'Je eigen chauffeur zien' },
+  'set.driverview_smooth': { en: 'Smooth head movement', de: 'Weiche Kopfbewegung', fr: 'Mouvement de tête fluide', nl: 'Vloeiende hoofdbeweging' },
+  'set.noAutoSave': { en: 'Do not save on exit', de: 'Beim Beenden nicht speichern', fr: 'Ne pas enregistrer en quittant', nl: 'Niet opslaan bij afsluiten' },
+  'set.noAutoSave.hint': {
+    en: 'OMSI normally keeps your situation when you close it. That is also what this app uses to set your duty up, so leave it off.',
+    de: 'OMSI behält beim Beenden normalerweise deine Situation. Genau die nutzt diese App fürs Vorbereiten -- also besser aus lassen.',
+    fr: 'OMSI conserve normalement votre situation en quittant. C’est ce que cette application utilise pour préparer votre service : laissez-le désactivé.',
+    nl: 'OMSI bewaart bij afsluiten normaal je situatie. Die gebruikt deze app om je dienst klaar te zetten, dus laat dit uit staan.'
+  },
+  'set.no_collision': { en: 'Collisions off', de: 'Kollisionen aus', fr: 'Collisions désactivées', nl: 'Botsingen uit' },
+  'set.no_collision.hint': {
+    en: 'You drive through everything. Handy for practising a route, not for a test.',
+    de: 'Du fährst durch alles hindurch. Gut zum Üben einer Strecke, nicht für eine Prüfung.',
+    fr: 'Vous traversez tout. Pratique pour répéter un itinéraire, pas pour un examen.',
+    nl: 'Je rijdt overal doorheen. Handig om een route te oefenen, niet om examen te doen.'
+  },
+  'set.no_collision_terrain': { en: 'No collision with terrain', de: 'Keine Kollision mit dem Gelände', fr: 'Pas de collision avec le terrain', nl: 'Geen botsing met het landschap' },
+  'set.no_collision_vehToVeh': { en: 'No collision between vehicles', de: 'Keine Kollision zwischen Fahrzeugen', fr: 'Pas de collision entre véhicules', nl: 'Geen botsing tussen voertuigen' },
+  'set.no_collision_pedastrians': { en: 'No collision with pedestrians', de: 'Keine Kollision mit Fußgängern', fr: 'Pas de collision avec les piétons', nl: 'Geen botsing met voetgangers' },
+  'set.AIMaxCountRandom': { en: 'Traffic on the road', de: 'Verkehr auf der Straße', fr: 'Circulation sur la route', nl: 'Verkeer op straat' },
+  'set.AIMaxCountRandom.hint': {
+    en: 'How many cars drive around on their own.',
+    de: 'Wie viele Autos eigenständig herumfahren.',
+    fr: 'Combien de voitures circulent librement.',
+    nl: 'Hoeveel auto’s er uit zichzelf rondrijden.'
+  },
+  'set.AIMaxCountParked': { en: 'Parked cars', de: 'Geparkte Autos', fr: 'Voitures stationnées', nl: 'Geparkeerde auto’s' },
+  'set.AIMaxCountScheduled': { en: 'Buses on the timetable', de: 'Busse nach Fahrplan', fr: 'Bus à l’horaire', nl: 'Bussen op de dienstregeling' },
+  'set.AIMaxCountScheduled.hint': {
+    en: 'AI buses running to the timetable. These are the ones you meet on your own line.',
+    de: 'KI-Busse, die nach Fahrplan fahren. Die begegnen dir auf deiner eigenen Linie.',
+    fr: 'Les bus IA qui suivent l’horaire. Ce sont ceux que vous croisez sur votre ligne.',
+    nl: 'AI-bussen die volgens de dienstregeling rijden. Die kom je op je eigen lijn tegen.'
+  },
+  'set.AIUnschedFactor': { en: 'Traffic density', de: 'Verkehrsdichte', fr: 'Densité du trafic', nl: 'Drukte van het verkeer' },
+  'set.AIUnschedFactor.hint': {
+    en: 'A percentage: higher means busier streets.',
+    de: 'Ein Prozentwert: höher heißt vollere Straßen.',
+    fr: 'Un pourcentage : plus haut, rues plus chargées.',
+    nl: 'Een percentage: hoger is drukkere straten.'
+  },
+  'set.AIPassFactor': { en: 'Number of passengers', de: 'Anzahl Fahrgäste', fr: 'Nombre de passagers', nl: 'Aantal passagiers' },
+  'set.AIPassFactor.hint': {
+    en: 'A percentage of the normal crowd at the stops.',
+    de: 'Ein Prozentwert der üblichen Menge an den Haltestellen.',
+    fr: 'Un pourcentage de l’affluence habituelle aux arrêts.',
+    nl: 'Een percentage van de gewone drukte bij de haltes.'
+  },
+  'set.AIPriorityScheduled': { en: 'Priority for scheduled buses', de: 'Vorrang für Linienbusse', fr: 'Priorité aux bus de ligne', nl: 'Voorrang voor lijnbussen' },
+
+  // ---------- toetsen ----------
+  'keys.intro': {
+    en: 'Click a key combination and press the keys you want. Shift and Ctrl are picked up with it.',
+    de: 'Klicke auf eine Tastenkombination und drücke die gewünschten Tasten. Shift und Strg werden mit übernommen.',
+    fr: 'Cliquez sur une combinaison et appuyez sur les touches voulues. Maj et Ctrl sont pris en compte.',
+    nl: 'Klik op een toetscombinatie en druk de toetsen in die je wilt. Shift en Ctrl gaan mee.'
+  },
+  'keys.search': { en: 'Search', de: 'Suchen', fr: 'Rechercher', nl: 'Zoeken' },
+  'keys.press': { en: 'press a key…', de: 'Taste drücken…', fr: 'appuyez sur une touche…', nl: 'druk een toets…' },
+  'keys.escape': {
+    en: 'Esc cancels, Backspace clears the binding.',
+    de: 'Esc bricht ab, Rücktaste löscht die Belegung.',
+    fr: 'Échap annule, Retour arrière efface l’affectation.',
+    nl: 'Esc annuleert, Backspace wist de toewijzing.'
+  },
+  'keys.none': { en: 'not set', de: 'nicht belegt', fr: 'non attribué', nl: 'niet ingesteld' },
+  'keys.section.game': { en: 'Game', de: 'Spiel', fr: 'Jeu', nl: 'Spel' },
+  'keys.section.vehicles': { en: 'Vehicle', de: 'Fahrzeug', fr: 'Véhicule', nl: 'Voertuig' },
+  'keys.reset': { en: 'Restore OMSI defaults', de: 'OMSI-Standard wiederherstellen', fr: 'Rétablir les valeurs d’OMSI', nl: 'Standaard van OMSI herstellen' },
+  'keys.resetAsk': {
+    en: 'Put every key back the way OMSI ships it?',
+    de: 'Alle Tasten auf den Auslieferungszustand von OMSI zurücksetzen?',
+    fr: 'Rétablir toutes les touches telles qu’OMSI les livre ?',
+    nl: 'Alle toetsen terugzetten zoals OMSI ze levert?'
+  },
+  'keys.saved': { en: 'Saved to keyboard.cfg.', de: 'In keyboard.cfg gespeichert.', fr: 'Enregistré dans keyboard.cfg.', nl: 'Opgeslagen in keyboard.cfg.' },
+  'keys.taken': {
+    en: 'Also used by: {action}',
+    de: 'Auch belegt mit: {action}',
+    fr: 'Déjà utilisé par : {action}',
+    nl: 'Ook in gebruik bij: {action}'
+  },
+  'keys.unknown': {
+    en: 'This key is not one OMSI knows.',
+    de: 'Diese Taste kennt OMSI nicht.',
+    fr: 'OMSI ne connaît pas cette touche.',
+    nl: 'Deze toets kent OMSI niet.'
   },
 
   // ---------- hoofdscherm ----------

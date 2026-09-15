@@ -35,7 +35,7 @@ export function Welcome({ language, onLanguage, onCreate }: Props): JSX.Element 
     <div className="welcome">
       <div className="welcome-inner">
         <header className="welcome-head">
-          <span className="welcome-mark">OMSI Career</span>
+          <span className="welcome-mark">OMSI Enhancer</span>
           <h1>{t(language, 'welcome.title')}</h1>
           <p className="welcome-intro">{t(language, 'welcome.intro')}</p>
         </header>

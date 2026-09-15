@@ -119,7 +119,13 @@ function has(data: LiveData, bit: number): boolean {
   return ((data.seen >>> bit) & 1) === 1
 }
 
-/** Waar de plugin zijn gegevens neerzet. */
+/**
+ * Waar de plugin zijn gegevens neerzet.
+ *
+ * De map heet nog naar de oude naam van de app. Dat pad zit ingebakken in de
+ * DLL die in OMSI draait; meeveranderen betekent de plugin opnieuw bouwen en
+ * bij iedereen vervangen, en daar wint niemand iets mee.
+ */
 export function livePath(): string {
   return join(process.env.LOCALAPPDATA ?? '', 'OMSI Career', 'live.json')
 }

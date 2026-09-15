@@ -1302,3 +1302,161 @@ input[type='range'] {
 .verdict li.missed {
   color: #e2604a;
 }
+
+/* ---------- instellingen en toetsen van OMSI ---------- */
+
+.settings {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px 24px;
+}
+
+.setting {
+  border-left: 2px solid transparent;
+  padding-left: 10px;
+}
+
+/* Wat je hebt aangeraakt maar nog niet hebt opgeslagen. */
+.setting.dirty {
+  border-left-color: var(--accent);
+}
+
+.setting-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+}
+
+.setting-name {
+  flex: 1;
+  font-size: 14px;
+}
+
+.setting-value {
+  font-family: var(--mono);
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.setting-hint {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.setting input[type='range'] {
+  width: 100%;
+}
+
+/* Een schakelaar die laat zien of hij aan of uit staat. */
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  border-radius: 999px;
+  padding: 3px 10px 3px 4px;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.switch-knob {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.switch[aria-checked='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.switch[aria-checked='true'] .switch-knob {
+  background: var(--accent);
+}
+
+/* De knoppen blijven in beeld terwijl je door de lijst scrolt. */
+.sticky-actions {
+  position: sticky;
+  bottom: 0;
+  background: linear-gradient(to top, var(--bg) 60%, transparent);
+  padding: 12px 0;
+}
+
+.key-search {
+  width: 260px;
+  flex: none;
+}
+
+.keys {
+  display: grid;
+  gap: 2px;
+}
+
+.key-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.key-name {
+  flex: 1;
+  font-size: 13.5px;
+}
+
+.key-hold,
+.key-clash {
+  margin-left: 8px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.key-clash {
+  color: #e2a04a;
+}
+
+.key-combo {
+  min-width: 150px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  border-radius: 6px;
+  padding: 5px 10px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.key-combo:hover {
+  border-color: var(--accent);
+}
+
+/* Terwijl hij op je toets wacht. */
+.key-combo.capturing {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* Een scherm zonder zijbalk krijgt de volle breedte; de kolom ervoor vervalt. */
+.app.solo {
+  grid-template-columns: 1fr;
+}
+
+.app.solo .main {
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+  /* Ruimte onder de laatste kaart: de opslaanknop blijft onderin staan. */
+  padding-bottom: 90px;
+}

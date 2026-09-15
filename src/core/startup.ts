@@ -25,7 +25,10 @@ export interface StartupResult {
   backup?: string
 }
 
-const BACKUP_SUFFIX = '.voor-omsi-career'
+const BACKUP_SUFFIX = '.voor-omsi-enhancer'
+
+/** Zoals de kopie heette toen de app nog OMSI Career was. */
+const OLD_BACKUP_SUFFIX = '.voor-omsi-career'
 
 /**
  * Zet de geschreven situatie klaar als "Last Situation" van zijn kaart en laat
@@ -45,7 +48,11 @@ export function presetStartup(
      * bestand bij elke afsluiter opnieuw, dus veel is het niet waard -- maar wie
      * midden in een eigen rit stond, mag dat kunnen terughalen.
      */
-    if (existsSync(target) && !existsSync(target + BACKUP_SUFFIX)) {
+    if (
+      existsSync(target) &&
+      !existsSync(target + BACKUP_SUFFIX) &&
+      !existsSync(target + OLD_BACKUP_SUFFIX)
+    ) {
       copyFileSync(target, target + BACKUP_SUFFIX)
       result.backup = target + BACKUP_SUFFIX
     }
