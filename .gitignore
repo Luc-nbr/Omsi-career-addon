@@ -7,3 +7,6 @@ release-new/
 # Bouwen buiten het project gaat via de omgevingsvariabele; in bash blijft
 # %TEMP% letterlijk staan en komt de hele build hier terecht.
 %TEMP%/
+
+# Werkmappen van Claude Code zelf; die horen niet in de geschiedenis.
+.claude/worktrees/

@@ -1,0 +1,157 @@
+{
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "Kleur en letter"
+    },
+    {
+      "id": "page-2",
+      "name": "F zoals hij was"
+    }
+  ],
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "page": "page-1",
+      "x": 0,
+      "y": 0,
+      "w": 880,
+      "h": 560,
+      "title": "1 · Nachtblauw — Instrument Sans + DM Mono"
+    },
+    {
+      "file": "NachtblauwOverlay.dc.html",
+      "page": "page-1",
+      "x": 980,
+      "y": 0,
+      "w": 400,
+      "h": 620,
+      "title": "1 · Nachtblauw — overlay"
+    },
+    {
+      "file": "Warmgrafiet.dc.html",
+      "page": "page-1",
+      "x": 0,
+      "y": 760,
+      "w": 880,
+      "h": 560,
+      "title": "2 · Warm grafiet — Schibsted Grotesk + Fragment Mono"
+    },
+    {
+      "file": "Daglicht.dc.html",
+      "page": "page-1",
+      "x": 0,
+      "y": 1440,
+      "w": 880,
+      "h": 560,
+      "title": "3 · Daglicht — Chivo + Chivo Mono"
+    },
+    {
+      "file": "Inkt.dc.html",
+      "page": "page-1",
+      "x": 0,
+      "y": 2120,
+      "w": 880,
+      "h": 560,
+      "title": "4 · Inkt — Gabarito + Space Mono"
+    },
+    {
+      "file": "CockpitRijden.dc.html",
+      "page": "page-2",
+      "x": 0,
+      "y": 0,
+      "w": 880,
+      "h": 560,
+      "title": "F · zoals je hem koos — Outfit + IBM Plex Mono"
+    },
+    {
+      "file": "CockpitOverlay.dc.html",
+      "page": "page-2",
+      "x": 980,
+      "y": 0,
+      "w": 400,
+      "h": 620,
+      "title": "F · overlay, oorspronkelijk"
+    },
+    {
+      "file": "SkillLetterlijk.dc.html",
+      "page": "page-1",
+      "x": 0,
+      "y": 2800,
+      "w": 880,
+      "h": 560,
+      "title": "5 · Volgens de skill — Orbitron + JetBrains Mono"
+    },
+    {
+      "file": "SkillToegepast.dc.html",
+      "page": "page-1",
+      "x": 0,
+      "y": 3480,
+      "w": 880,
+      "h": 560,
+      "title": "6 · Skill toegepast — Fira Sans + Fira Mono"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "hoe-te-lezen",
+      "page": "page-1",
+      "x": -430,
+      "y": 0,
+      "w": 350,
+      "text": "DEZELFDE INDELING, VIER STELLEN\n\nAan de opbouw van F is niets veranderd: dezelfde vlakken, dezelfde maten, dezelfde volgorde. Alleen de kleuren en de letters verschillen, zodat je precies dat kunt beoordelen.\n\nKleur en letter zijn los te kiezen. \"De letters van 4 met de kleuren van 2\" is een prima antwoord."
+    },
+    {
+      "id": "stel-1",
+      "page": "page-1",
+      "x": -430,
+      "y": 230,
+      "w": 350,
+      "text": "1 · NACHTBLAUW\n\nDiep marineblauw in plaats van neutraal grijs, met hemelsblauw als accent en koraal voor de vertraging. Instrument Sans: een grotesk met karakter in de a en de g, geen systeemletter. DM Mono voor de tijden.\n\nKoeler en minder \"technisch grijs\" dan F nu is."
+    },
+    {
+      "id": "stel-2",
+      "page": "page-1",
+      "x": -430,
+      "y": 760,
+      "w": 350,
+      "text": "2 · WARM GRAFIET\n\nWarme donkere tinten -- bruin-zwart in plaats van blauw-zwart -- met goud als accent en baksteen voor de vertraging. Schibsted Grotesk is iets smaller en scherper; Fragment Mono heeft een eigenwijze nul.\n\nHet enige stel dat 's avonds warm aanvoelt in plaats van klinisch."
+    },
+    {
+      "id": "stel-3",
+      "page": "page-1",
+      "x": -430,
+      "y": 1440,
+      "w": 350,
+      "text": "3 · DAGLICHT\n\nDezelfde indeling, maar licht: gebroken wit, diepgroen accent, oranjerood voor de vertraging. Chivo en Chivo Mono zijn een echt paar, getekend voor schermen met veel cijfers.\n\nRustig overdag; de overlay wordt dan wel een licht vlak over een donker spel."
+    },
+    {
+      "id": "stel-4",
+      "page": "page-1",
+      "x": -430,
+      "y": 2120,
+      "w": 350,
+      "text": "4 · INKT\n\nGeen kleur, op een na. Alles grijs tot wit, en elektrisch blauw komt precies een keer voor: op de +2:14. De afrondknop is wit, het lijnnummer grijs.\n\nGabarito is ronder en vriendelijker, Space Mono heeft echt een gezicht. Dit is het strengste stel en tegelijk het meest eigen."
+    },
+    {
+      "id": "stel-5",
+      "page": "page-1",
+      "x": -430,
+      "y": 2800,
+      "w": 350,
+      "text": "5 · VOLGENS DE SKILL\n\nLetterlijk wat ui-ux-pro-max voorschreef voor \"desktop companion, chauffeur, dichte operationele data, donker\": stijl Dark Mode (OLED), kleuren #0F172A / #16A34A / #DC2626, letters Orbitron + JetBrains Mono.\n\nEerlijk: die kleuren zijn het standaardpalet van Tailwind, en dat is precies de look die je AI-slopperig noemde. Orbitron is een sciencefictionletter -- de cijfers lezen traag, en dat is het enige wat een chauffeur doet."
+    },
+    {
+      "id": "stel-6",
+      "page": "page-1",
+      "x": -430,
+      "y": 3480,
+      "w": 350,
+      "text": "6 · SKILL TOEGEPAST\n\nWel de regels van de skill, niet zijn kant-en-klare waarden.\n\nOvergenomen: statuskleuren met betekenis (groen = de dienst loopt, amber = te laat, rood blijft over voor storing), dichtheid 8, ingehouden beweging, contrast 4.5:1, geen emoji als icoon. En Fira Sans + Fira Mono uit zijn eigen typografiedata -- één familie, getekend voor leesbaarheid, met cijfers van vaste breedte.\n\nNiet overgenomen: het Tailwind-palet en Orbitron."
+    }
+  ],
+  "launch": {
+    "view": "canvas",
+    "page": "page-1"
+  }
+}
