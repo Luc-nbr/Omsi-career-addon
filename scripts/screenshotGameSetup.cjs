@@ -94,6 +94,31 @@ app.whenReady().then(async () => {
   )
   await shoot('2-toetsen')
 
+  // En het tabblad met de gamecontrollers.
+  await clickText(main, 'Controllers')
+  await waitFor(main, `document.querySelector('.devices')`)
+  await wait(1200)
+  console.log(`apparaten: ${await js(main, `document.querySelectorAll('.device').length`)}`)
+  console.log(
+    `namen: ${await js(main, `[...document.querySelectorAll('.device-name')].map((d) => d.textContent.trim()).join(' | ')`)}`
+  )
+  console.log(`assen: ${await js(main, `document.querySelectorAll('.axis-row').length`)}`)
+  console.log(`knoppen: ${await js(main, `document.querySelectorAll('.key-row').length`)}`)
+  await shoot('4-controllers')
+
+  // De wizard openen en meteen weer sluiten; hij hoort niet verplicht te zijn.
+  await clickText(main, 'Stap voor stap instellen')
+  await waitFor(main, `document.querySelector('.wizard-card')`)
+  await wait(500)
+  console.log(`wizard vraagt: ${await js(main, `document.querySelector('.wizard-card h2')?.textContent`)}`)
+  await shoot('5-wizard')
+  await clickText(main, 'Wizard stoppen')
+  await wait(400)
+  console.log(`wizard weg: ${await js(main, `!document.querySelector('.wizard-card')`)}`)
+
+  await clickText(main, 'Toetsen')
+  await waitFor(main, `document.querySelector('.key-search')`)
+
   // Zoeken op een handeling die iedereen kent.
   await js(
     main,

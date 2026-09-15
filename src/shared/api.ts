@@ -1,6 +1,7 @@
 import type { ActiveDuty, CareerState, CareerSummary, GameMode } from '../core/career'
 import type { LineSummary } from '../core/duty'
 import type { ExamMeasurement } from '../core/exam'
+import type { ControllerConfig } from './controllers'
 import type { KeyBinding } from '../core/omsiKeys'
 import type { WeatherKind } from './weather'
 import type { ProfileSummary } from '../core/profiles'
@@ -195,6 +196,14 @@ export interface GameKeysPayload {
   omsiRunning: boolean
 }
 
+/** De gamecontrollers zoals OMSI ze kent, met de namen van de handelingen. */
+export interface GameControllersPayload {
+  controllers: ControllerConfig[]
+  /** Handeling -> leesbare naam, dezelfde lijst als bij het toetsenbord. */
+  labels: Array<[string, string]>
+  omsiRunning: boolean
+}
+
 /** Wat de renderer via `window.career` kan aanroepen. */
 export interface CareerApi {
   status(): Promise<OmsiStatus>
@@ -264,6 +273,9 @@ export interface CareerApi {
   saveGameSettings(changes: Record<string, string>): Promise<Record<string, string>>
   /** De toetsindeling van OMSI, met de namen uit zijn eigen bestanden. */
   gameKeys(): Promise<GameKeysPayload>
+  /** De gamecontrollers uit Inputs\gamectrler.cfg. */
+  gameControllers(): Promise<GameControllersPayload>
+  saveGameControllers(controllers: ControllerConfig[]): Promise<ControllerConfig[]>
   saveGameKeys(bindings: KeyBinding[]): Promise<KeyBinding[]>
   /** Zet de toetsen terug op de indeling waarmee OMSI geleverd wordt. */
   resetGameKeys(): Promise<KeyBinding[]>

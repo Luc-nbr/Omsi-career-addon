@@ -346,6 +346,15 @@ const TEXT = {
   'cfg.group.sound': { en: 'Sound', de: 'Ton', fr: 'Son', nl: 'Geluid' },
   'cfg.group.game': { en: 'Game', de: 'Spiel', fr: 'Jeu', nl: 'Spel' },
   'cfg.group.traffic': { en: 'Traffic', de: 'Verkehr', fr: 'Circulation', nl: 'Verkeer' },
+  'cfg.preset': {
+    en: 'Start from:',
+    de: 'Ausgangspunkt:',
+    fr: 'Point de départ :',
+    nl: 'Beginnen bij:'
+  },
+  'cfg.preset.low': { en: 'Smooth', de: 'Flüssig', fr: 'Fluide', nl: 'Vlot' },
+  'cfg.preset.medium': { en: 'Balanced', de: 'Ausgewogen', fr: 'Équilibré', nl: 'Gemiddeld' },
+  'cfg.preset.high': { en: 'Pretty', de: 'Schön', fr: 'Beau', nl: 'Mooi' },
   'cfg.running': {
     en: 'OMSI is running. It writes these files again when it closes, so change them with the game shut down.',
     de: 'OMSI läuft. Das Spiel schreibt diese Dateien beim Beenden neu -- ändere sie also bei geschlossenem Spiel.',
@@ -553,6 +562,85 @@ const TEXT = {
     fr: 'OMSI ne connaît pas cette touche.',
     nl: 'Deze toets kent OMSI niet.'
   },
+
+  // ---------- gamecontrollers ----------
+  'cfg.tabControllers': { en: 'Controllers', de: 'Controller', fr: 'Contrôleurs', nl: 'Controllers' },
+  'ctrl.intro': {
+    en: 'Wheel, pedals, shifter, button box. The bars move while you steer or press, so you can see which axis is which.',
+    de: 'Lenkrad, Pedale, Schalthebel, Tastenbox. Die Balken bewegen sich mit, während du lenkst oder trittst -- so siehst du, welche Achse welche ist.',
+    fr: 'Volant, pédales, levier, boîtier de boutons. Les barres bougent pendant que vous tournez ou appuyez : vous voyez quel axe est lequel.',
+    nl: 'Stuur, pedalen, pook, knoppenkastje. De balken bewegen mee terwijl je stuurt of trapt, dus je ziet welke as welke is.'
+  },
+  'ctrl.devices': { en: 'Devices', de: 'Geräte', fr: 'Périphériques', nl: 'Apparaten' },
+  'ctrl.connected': { en: 'connected', de: 'angeschlossen', fr: 'connecté', nl: 'aangesloten' },
+  'ctrl.offline': { en: 'not connected', de: 'nicht angeschlossen', fr: 'non connecté', nl: 'niet aangesloten' },
+  'ctrl.inUse': { en: 'used by OMSI', de: 'von OMSI genutzt', fr: 'utilisé par OMSI', nl: 'in gebruik door OMSI' },
+  'ctrl.unknown': {
+    en: 'Also connected, but not in the OMSI file yet: {names}. OMSI adds a device once you select it in the game.',
+    de: 'Ebenfalls angeschlossen, aber noch nicht in der OMSI-Datei: {names}. OMSI trägt ein Gerät ein, sobald du es im Spiel auswählst.',
+    fr: 'Également connecté mais absent du fichier OMSI : {names}. OMSI ajoute un périphérique dès que vous le sélectionnez dans le jeu.',
+    nl: 'Ook aangesloten, maar nog niet in het bestand van OMSI: {names}. OMSI zet een apparaat erin zodra je het in het spel kiest.'
+  },
+  'ctrl.axes': { en: 'Axes', de: 'Achsen', fr: 'Axes', nl: 'Assen' },
+  'ctrl.axesIntro': {
+    en: 'Move a pedal or the wheel: the bar that jumps is that axis. Then say what it should do.',
+    de: 'Bewege ein Pedal oder das Lenkrad: der Balken, der ausschlägt, ist diese Achse. Dann sagst du, was sie tun soll.',
+    fr: 'Bougez une pédale ou le volant : la barre qui saute correspond à cet axe. Dites ensuite ce qu’il doit faire.',
+    nl: 'Beweeg een pedaal of het stuur: de balk die uitslaat is die as. Daarna zeg je wat hij moet doen.'
+  },
+  'ctrl.axis': { en: 'Axis {number}', de: 'Achse {number}', fr: 'Axe {number}', nl: 'As {number}' },
+  'ctrl.axisNone': { en: 'nothing', de: 'nichts', fr: 'rien', nl: 'niets' },
+  'ctrl.fn.steering': { en: 'Steering', de: 'Lenkung', fr: 'Direction', nl: 'Sturen' },
+  'ctrl.fn.throttle': { en: 'Throttle', de: 'Gas', fr: 'Accélérateur', nl: 'Gas' },
+  'ctrl.fn.brake': { en: 'Brake', de: 'Bremse', fr: 'Frein', nl: 'Rem' },
+  'ctrl.fn.clutch': { en: 'Clutch', de: 'Kupplung', fr: 'Embrayage', nl: 'Koppeling' },
+  'ctrl.fn.throttleBrake': { en: 'Throttle and brake on one axis', de: 'Gas und Bremse auf einer Achse', fr: 'Accélérateur et frein sur un axe', nl: 'Gas en rem op één as' },
+  'ctrl.buttons': { en: 'Buttons', de: 'Tasten', fr: 'Boutons', nl: 'Knoppen' },
+  'ctrl.button': { en: 'Button {number}', de: 'Taste {number}', fr: 'Bouton {number}', nl: 'Knop {number}' },
+  'ctrl.pressed': { en: 'pressed', de: 'gedrückt', fr: 'enfoncé', nl: 'ingedrukt' },
+  'ctrl.noButtons': {
+    en: 'No buttons found for this device.',
+    de: 'Für dieses Gerät sind keine Tasten gefunden.',
+    fr: 'Aucun bouton trouvé pour ce périphérique.',
+    nl: 'Geen knoppen gevonden voor dit apparaat.'
+  },
+  'ctrl.clearAll': { en: 'Clear all buttons', de: 'Alle Tasten leeren', fr: 'Vider tous les boutons', nl: 'Alle knoppen leegmaken' },
+  'ctrl.wizard': { en: 'Set up step by step', de: 'Schritt für Schritt einrichten', fr: 'Configurer pas à pas', nl: 'Stap voor stap instellen' },
+  'ctrl.step': { en: 'Step {number} of {total}', de: 'Schritt {number} von {total}', fr: 'Étape {number} sur {total}', nl: 'Stap {number} van {total}' },
+  'ctrl.moveAxis': {
+    en: 'Move it now — the app watches which axis changes.',
+    de: 'Jetzt bewegen — die App achtet darauf, welche Achse sich ändert.',
+    fr: 'Bougez maintenant : l’application repère l’axe qui change.',
+    nl: 'Beweeg hem nu — de app kijkt welke as verandert.'
+  },
+  'ctrl.pressButton': {
+    en: 'Press it now — the app watches which button goes down.',
+    de: 'Jetzt drücken — die App achtet darauf, welche Taste kommt.',
+    fr: 'Appuyez maintenant : l’application repère le bouton pressé.',
+    nl: 'Druk hem nu in — de app kijkt welke knop er komt.'
+  },
+  'ctrl.noDevice': {
+    en: 'This device is not connected right now, so there is nothing to read. Plug it in, or skip.',
+    de: 'Dieses Gerät ist gerade nicht angeschlossen, also gibt es nichts zu lesen. Anschließen oder überspringen.',
+    fr: 'Ce périphérique n’est pas connecté : rien à lire. Branchez-le ou passez.',
+    nl: 'Dit apparaat is nu niet aangesloten, dus er valt niets af te lezen. Sluit hem aan, of sla over.'
+  },
+  'ctrl.skipStep': { en: 'Skip this one', de: 'Diesen überspringen', fr: 'Passer celui-ci', nl: 'Deze overslaan' },
+  'ctrl.skipAll': { en: 'Stop the wizard', de: 'Assistent beenden', fr: 'Arrêter l’assistant', nl: 'Wizard stoppen' },
+
+  // ---------- wat de wizard vraagt ----------
+  'ctrl.ask.steering': { en: 'Turn the wheel to the left', de: 'Dreh das Lenkrad nach links', fr: 'Tournez le volant à gauche', nl: 'Draai het stuur naar links' },
+  'ctrl.ask.throttle': { en: 'Press the throttle', de: 'Gib Gas', fr: 'Appuyez sur l’accélérateur', nl: 'Geef gas' },
+  'ctrl.ask.brake': { en: 'Press the brake', de: 'Tritt auf die Bremse', fr: 'Appuyez sur le frein', nl: 'Trap op de rem' },
+  'ctrl.ask.clutch': { en: 'Press the clutch', de: 'Tritt die Kupplung', fr: 'Appuyez sur l’embrayage', nl: 'Trap de koppeling in' },
+  'ctrl.ask.horn': { en: 'Press the button for the horn', de: 'Drücke die Taste für die Hupe', fr: 'Appuyez sur le bouton du klaxon', nl: 'Druk op de knop voor de claxon' },
+  'ctrl.ask.blinkerLeft': { en: 'Indicator left', de: 'Blinker links', fr: 'Clignotant gauche', nl: 'Richtingaanwijzer links' },
+  'ctrl.ask.blinkerRight': { en: 'Indicator right', de: 'Blinker rechts', fr: 'Clignotant droit', nl: 'Richtingaanwijzer rechts' },
+  'ctrl.ask.blinkerOff': { en: 'Indicator off', de: 'Blinker aus', fr: 'Clignotant éteint', nl: 'Richtingaanwijzer uit' },
+  'ctrl.ask.doorFront': { en: 'Front doors open and close', de: 'Vordere Türen auf und zu', fr: 'Portes avant ouvrir et fermer', nl: 'Deuren voor open en dicht' },
+  'ctrl.ask.doorAft': { en: 'Rear doors open and close', de: 'Hintere Türen auf und zu', fr: 'Portes arrière ouvrir et fermer', nl: 'Deuren achter open en dicht' },
+  'ctrl.ask.handbrake': { en: 'Parking brake', de: 'Feststellbremse', fr: 'Frein de stationnement', nl: 'Handrem' },
+  'ctrl.ask.engine': { en: 'Start the engine', de: 'Motor starten', fr: 'Démarrer le moteur', nl: 'Motor starten' },
 
   // ---------- hoofdscherm ----------
   'app.loading': {

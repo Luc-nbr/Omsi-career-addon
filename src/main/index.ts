@@ -31,6 +31,11 @@ import {
 import { judgeExam, type ExamMeasurement } from '../core/exam'
 import { readGameSettings, writeGameSettings } from '../core/gameSettings'
 import {
+  readControllers,
+  writeControllers,
+  type ControllerConfig
+} from '../core/omsiControllers'
+import {
   readActionLabels,
   readKeyNames,
   readKeyboard,
@@ -671,6 +676,22 @@ function registerHandlers(): void {
       labels: [...readActionLabels(omsi(), language)],
       omsiRunning: await isOmsiRunning()
     }
+  })
+
+  /**
+   * De gamecontrollers. De namen van de handelingen zijn dezelfde als bij het
+   * toetsenbord, dus die gaan mee: een knop op je stuur doet hetzelfde als een
+   * toets.
+   */
+  ipcMain.handle('game:controllers', async () => ({
+    controllers: readControllers(omsi()),
+    labels: [...readActionLabels(omsi(), omsiLanguage())],
+    omsiRunning: await isOmsiRunning()
+  }))
+
+  ipcMain.handle('game:controllers:save', (_event, controllers: ControllerConfig[]) => {
+    writeControllers(omsi(), controllers)
+    return readControllers(omsi())
   })
 
   ipcMain.handle('game:keys:save', (_event, bindings: KeyBinding[]) => {

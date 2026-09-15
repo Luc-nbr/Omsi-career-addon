@@ -1460,3 +1460,153 @@ input[type='range'] {
   /* Ruimte onder de laatste kaart: de opslaanknop blijft onderin staan. */
   padding-bottom: 90px;
 }
+
+/* ---------- gamecontrollers ---------- */
+
+.devices {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.device {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.device.picked {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.device-name {
+  font-size: 14px;
+}
+
+.device-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.axes {
+  display: grid;
+  gap: 6px;
+}
+
+.axis-row {
+  display: grid;
+  grid-template-columns: 90px 260px 1fr;
+  align-items: center;
+  gap: 12px;
+}
+
+.axis-name {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* De stand van de as, live uit het apparaat. */
+.axis-bar {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.axis-fill {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  width: 3px;
+  margin-left: -1px;
+  background: var(--accent);
+}
+
+/* Een knop die op dit moment wordt ingedrukt. */
+.key-row.pressed .key-name {
+  color: var(--accent);
+}
+
+.picker {
+  position: relative;
+  width: 260px;
+}
+
+.picker input {
+  width: 100%;
+}
+
+.picker-list {
+  position: absolute;
+  z-index: 5;
+  right: 0;
+  max-height: 260px;
+  width: 300px;
+  overflow-y: auto;
+  margin-top: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5);
+}
+
+.picker-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.picker-item:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* De wizard legt zich over het scherm; niets anders vraagt dan aandacht. */
+.wizard {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 9, 14, 0.75);
+}
+
+.wizard-card {
+  width: min(480px, 90vw);
+  padding: 26px 28px;
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  background: var(--panel);
+}
+
+.wizard-step {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.wizard-card h2 {
+  margin: 10px 0 8px;
+  font-size: 22px;
+}

@@ -92,6 +92,59 @@ export const SETTINGS: SettingSpec[] = [
 
 export const SETTING_GROUPS: SettingGroup[] = ['graphics', 'sound', 'game', 'traffic']
 
+export type PresetName = 'low' | 'medium' | 'high'
+
+export const PRESET_NAMES: PresetName[] = ['low', 'medium', 'high']
+
+/**
+ * Drie startpunten voor het beeld.
+ *
+ * Wie niet weet wat "anisotropisch filteren" is, hoort toch een vlot lopende
+ * OMSI te kunnen krijgen. Deze knoppen vullen de schuiven in; daarna kun je nog
+ * alles zelf verzetten, en er wordt pas geschreven als je opslaat.
+ *
+ * Twee instellingen blijven met opzet buiten de drie: de beeldsnelheid hangt van
+ * je scherm af en het textuurgeheugen van je videokaart. Die weten wij niet.
+ */
+export const PRESETS: Record<PresetName, Record<string, string>> = {
+  low: {
+    performance_maxObjDist: '400.000',
+    performance_tiledistmax: '1',
+    maxcomplexity: '0',
+    maxcomplexity_map: '0',
+    'texFilter.1': '4',
+    performance_reflTexSize: '5',
+    texture_uselow: '1',
+    shadow_stencil: 'off',
+    no_humans_on_rain_refl: '1',
+    smokesystems: '0'
+  },
+  medium: {
+    performance_maxObjDist: '800.000',
+    performance_tiledistmax: '2',
+    maxcomplexity: '1',
+    maxcomplexity_map: '1',
+    'texFilter.1': '8',
+    performance_reflTexSize: '7',
+    texture_uselow: '',
+    shadow_stencil: 'off',
+    no_humans_on_rain_refl: '',
+    smokesystems: '1'
+  },
+  high: {
+    performance_maxObjDist: '1600.000',
+    performance_tiledistmax: '3',
+    maxcomplexity: '2',
+    maxcomplexity_map: '2',
+    'texFilter.1': '16',
+    performance_reflTexSize: '9',
+    texture_uselow: '',
+    shadow_stencil: 'on',
+    no_humans_on_rain_refl: '',
+    smokesystems: '1'
+  }
+}
+
 /** Wat de app aan de interface geeft: de stand van elke instelling. */
 export interface SettingState {
   /** De sleutel uit `settingKey`. */

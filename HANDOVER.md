@@ -33,11 +33,15 @@ je rijden**. Die tweede vraag kent drie antwoorden:
 - **Vrij rijden** — niets wordt geboekt of beoordeeld. Je kiest lijn, bus, plek,
   weer, datum en tijd; de app zet het klaar en biedt de overlay aan.
 
-Daarnaast beheert de app de **instellingen en toetsen van OMSI zelf**: 33 van de
-47 blokken uit `options.cfg` met uitleg erbij in vier talen, en alle 128
-toetsbindingen uit `Inputs\keyboard.cfg` met de namen die OMSI er zelf aan geeft.
-Er wordt alleen geschreven wat je verandert; de rest van het bestand blijft byte
-voor byte staan (`probe-gamecfg.ts`).
+Daarnaast beheert de app de **instellingen, toetsen en gamecontrollers van OMSI
+zelf**: 33 van de 47 blokken uit `options.cfg` met uitleg erbij in vier talen,
+alle 128 toetsbindingen uit `Inputs\keyboard.cfg`, en de apparaten uit
+`Inputs\gamectrler.cfg` met hun assen en knoppen -- met de namen die OMSI er zelf
+aan geeft. Bij de controllers beweegt de balk mee terwijl je stuurt of trapt (de
+Gamepad-API van de browser), en een wizard vraagt de belangrijkste twaalf dingen
+na; elke stap mag worden overgeslagen en de wizard ook. Er wordt alleen
+geschreven wat je verandert; de rest van elk bestand blijft byte voor byte staan
+(`probe-gamecfg.ts`, `probe-controllers.ts`).
 
 Electron 33 + electron-vite + React 19 + TypeScript. `npm run dev` voor
 ontwikkelen, `npm run typecheck`, `npm run build`, `npm run dist` voor de
@@ -98,6 +102,7 @@ blijft eenmalig een kopie staan als `laststn.osn.voor-omsi-career`. Verder niets
 | `omsiOptions.ts` | `options.cfg` regel voor regel lezen en terugschrijven |
 | `gameSettings.ts` | De brug tussen die blokken en de schuiven in het scherm |
 | `omsiKeys.ts` | `keyboard.cfg`, de toetsnamen (`.kyb`) en de handelingen (`.olf`) |
+| `omsiControllers.ts` | `gamectrler.cfg`: apparaten, assen en knoppen |
 | `weather.ts` | Schrijft het `.owt`-bestand bij een situatie |
 | `profiles.ts` | Profielen in `%APPDATA%\omsi-career\profiles\` |
 | `settings.ts` | Taal, in `settings.json` |
@@ -125,7 +130,9 @@ blijft eenmalig een kopie staan als `laststn.osn.voor-omsi-career`. Verder niets
 - `CareerPanel.tsx` — rijexamen, lijnexamens en de vergunningen.
 - `FreePlay.tsx` — lijn, bus, plek, weer, datum en tijd zelf samenstellen.
 - `LinePicker.tsx` — een lijn kiezen; wat OMSI een lijn noemt is een bestand.
-- `GameSetup.tsx` — de instellingen en de toetsen van OMSI, in twee tabbladen.
+- `GameSetup.tsx` — de instellingen, de toetsen en de controllers van OMSI.
+- `Controllers.tsx` — apparaten, assen met een meebewegende balk, knoppen met
+  zoeken, en de wizard voor een nieuw apparaat.
 - `Welcome.tsx` — eerste start: taal kiezen en een account aanmaken.
 - `DutyCard.tsx` — de dienstkaart met alle deelpanelen.
 - `RouteMap.tsx` — de kaart (halteborden, routes, zoomen, slepen), in SVG.
@@ -236,6 +243,22 @@ aan `geo.ts`, `roads.ts`, `track.ts` of `routing.ts` komt.
 - De namen komen uit OMSI zelf: `Inputs\ENG.kyb` (130 toetsen) en
   `Languages\<taal>_key_game.olf` en `_key_veh_gen.olf` (samen 178 handelingen,
   genoeg voor 127 van de 128 bindingen).
+- `gamectrler.cfg` heeft per apparaat `[ctrl]` (naam, en of OMSI het gebruikt),
+  `[axis]`, `[buttons]` en `[FFScale]`. **`[axis]` is altijd zestien getallen**:
+  acht paren, één per as in de volgorde waarin Windows ze aanlevert. Het eerste
+  getal is wat de as doet: -1 niets, 0 sturen, 1 gas, 2 rem, 3 koppeling, 4 gas
+  en rem samen. Dat is af te lezen aan de keuzelijst die OMSI er zelf bij zet
+  ("<none>@Steering@Throttle@Brake@Clutch@Throttle/Brake") en bevestigd door de
+  bestanden van de gebruiker: zijn pedalenset heeft 1, 2 en 3 op drie assen en
+  zijn stuurbase 0 op de eerste. Het tweede getal hoort bij de kromme, de
+  omkeerknop en "narrowed" uit OMSI's eigen scherm; welk bit wat is, is niet
+  nagemeten, dus dat getal blijft staan.
+- `[buttons]` is een aantal gevolgd door dat aantal paren (handeling, getal); de
+  plaats in de lijst is het knopnummer. De handelingen zijn dezelfde namen als in
+  `keyboard.cfg`.
+- **Namen niet bijsnijden.** Eén apparaat heet "CH FLIGHT SIM YOKE USB " met een
+  spatie, een ander eindigt op byte 0x90. Daarmee herkent OMSI ze; op het scherm
+  halen we die tekens weg, in het bestand niet.
 
 **Routes (`track.ts`, `routing.ts`)**
 
@@ -371,7 +394,12 @@ Er staan probes in `scripts/`:
 - `probe-exam.ts` — hoe lang een examenrit per lijn duurt.
 - `probe-gamecfg.ts` — of `options.cfg` en `keyboard.cfg` byte-identiek heen en
   weer gaan, en of een vlag aan- en uitzetten het bestand ongemoeid laat.
-- `screenshotGameSetup.cjs` — het scherm met de instellingen en de toetsen.
+- `probe-controllers.ts` — of `gamectrler.cfg` byte-identiek heen en weer gaat,
+  en wat er per apparaat aan assen en knoppen staat.
+- `probe-rebind.cjs` — een toets opnieuw toewijzen via het scherm, en kijken of
+  het in keyboard.cfg landt. Zet zijn kopie daarna terug.
+- `screenshotGameSetup.cjs` — de schermen met de instellingen, de toetsen en de
+  controllers, plus de wizard.
 - `prepare-real.ts` — zet één dienst klaar in de échte spelmap, om in OMSI zelf
   te kijken of het startscherm klopt.
 - `screenshotModes.cjs` — loopt de schermen langs: chauffeur, modus, en de drie

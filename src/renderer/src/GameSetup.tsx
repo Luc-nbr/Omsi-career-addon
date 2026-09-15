@@ -2,12 +2,15 @@ import { useCallback, useEffect, useMemo, useState, type JSX } from 'react'
 import type { KeyBinding } from '../../core/omsiKeys'
 import { loose, t, type Language } from '../../shared/i18n'
 import {
+  PRESETS,
+  PRESET_NAMES,
   SETTINGS,
   SETTING_GROUPS,
   settingKey,
   type SettingSpec
 } from '../../shared/omsiSettings'
 import { MODIFIER_CODES, SCANCODES } from '../../shared/scancodes'
+import { ControllersTab } from './Controllers'
 
 interface Props {
   language: Language
@@ -29,7 +32,7 @@ const MOD_CTRL = 4
  * aangeraakt gaat het bestand in.
  */
 export function GameSetup({ language, onBack }: Props): JSX.Element {
-  const [tab, setTab] = useState<'settings' | 'keys'>('settings')
+  const [tab, setTab] = useState<'settings' | 'keys' | 'controllers'>('settings')
   return (
     <div className="app solo">
       <main className="main">
@@ -60,9 +63,19 @@ export function GameSetup({ language, onBack }: Props): JSX.Element {
           >
             {t(language, 'cfg.tabKeys')}
           </button>
+          <button
+            type="button"
+            className="chip"
+            aria-pressed={tab === 'controllers'}
+            onClick={() => setTab('controllers')}
+          >
+            {t(language, 'cfg.tabControllers')}
+          </button>
         </div>
 
-        {tab === 'settings' ? <SettingsTab language={language} /> : <KeysTab language={language} />}
+        {tab === 'settings' && <SettingsTab language={language} />}
+        {tab === 'keys' && <KeysTab language={language} />}
+        {tab === 'controllers' && <ControllersTab language={language} />}
       </main>
     </div>
   )
@@ -129,6 +142,27 @@ function SettingsTab({ language }: { language: Language }): JSX.Element {
       {SETTING_GROUPS.map((group) => (
         <section className="card" key={group}>
           <h2 className="section-title">{t(language, `cfg.group.${group}` as const)}</h2>
+          {/*
+            Drie startpunten voor wie niet weet waar hij moet beginnen. Ze zetten
+            alleen de schuiven; opslaan doe je daarna zelf.
+          */}
+          {group === 'graphics' && (
+            <div className="chips" style={{ marginBottom: 14 }}>
+              <span className="note" style={{ marginRight: 4 }}>
+                {t(language, 'cfg.preset')}
+              </span>
+              {PRESET_NAMES.map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  className="chip"
+                  onClick={() => setDraft((old) => ({ ...old, ...PRESETS[preset] }))}
+                >
+                  {t(language, `cfg.preset.${preset}` as const)}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="settings">
             {SETTINGS.filter((spec) => spec.group === group).map((spec) => (
               <SettingRow
