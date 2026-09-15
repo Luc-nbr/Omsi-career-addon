@@ -166,6 +166,12 @@ export interface LiveStatus {
   leg?: DutyLeg
   /** Eerstvolgende halte volgens de IBIS; leeg op bussen zonder IBIS. */
   nextStop: string
+  /**
+   * Hoeveel meter er nog tot die halte ligt. Komt uit het geheugen van OMSI en
+   * is er dus alleen als het spel zich laat lezen; zonder dat weet niemand waar
+   * de bus precies staat.
+   */
+  metresToStop?: number
   /** Kilometerstand van de bus; hiermee schatten we hoe ver hij gevorderd is. */
   odometerKm: number
   /** Hoeveelste halte van deze rit, als de bus dat doorgeeft. */
@@ -495,6 +501,10 @@ export function describeLive(
     exitRequest: data.exitRequest > 0.5,
     doorsOpen: data.entryOpen > 0.5 || data.exitOpen > 0.5,
     legIndex,
+    metresToStop:
+      fromMenu && data.mem && data.mem.nextDist >= 0 && data.mem.nextDist < 20000
+        ? Math.round(data.mem.nextDist)
+        : undefined,
     leg,
     nextStop: fromMenu && data.mem ? data.mem.nextStop.trim() : data.busstop.trim(),
     odometerKm: data.km + data.metres / 1000,

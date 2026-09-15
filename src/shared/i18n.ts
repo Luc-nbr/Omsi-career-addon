@@ -1465,6 +1465,8 @@ const TEXT = {
     fr: 'glissez la barre, tirez le coin — Ctrl+Alt+O ferme ceci',
     nl: 'sleep aan de balk, trek aan de hoek — Ctrl+Alt+O sluit dit'
   },
+  'ovl.stopOf': { en: 'stop {at} / {total}', de: 'Halt {at} / {total}', fr: 'arrêt {at} / {total}', nl: 'halte {at} / {total}' },
+  'ovl.thenStop': { en: 'then {stop}', de: 'danach {stop}', fr: 'ensuite {stop}', nl: 'daarna {stop}' },
   'ovl.rate': { en: 'Refresh', de: 'Auffrischen', fr: 'Rafraîchissement', nl: 'Verversing' },
   'ovl.rate.vloeiend': { en: 'Smooth', de: 'Flüssig', fr: 'Fluide', nl: 'Vloeiend' },
   'ovl.rate.rustig': { en: 'Steady', de: 'Ruhig', fr: 'Modéré', nl: 'Rustig' },

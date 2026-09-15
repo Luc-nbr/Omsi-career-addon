@@ -419,7 +419,9 @@ function Overlay(): JSX.Element | null {
           onChange={(patch) => move('navigatie', patch)}
         >
           {duty && geometry ? (
-            <RouteMap
+            <div className="nav-wrap">
+              <NavBar status={status} leg={leg} passed={passed} language={language} />
+              <RouteMap
               duty={duty}
               geometry={geometry}
               nextStopId={leg && passed !== undefined ? leg.stopIds[Math.min(passed, leg.stopIds.length - 1)] : undefined}
@@ -443,8 +445,10 @@ function Overlay(): JSX.Element | null {
                 busNote: t(language, 'ovl.busHere'),
                 centre: t(language, 'ovl.centre')
               }}
-              variant="panel"
-            />
+                variant="panel"
+              />
+              <NavFoot leg={leg} passed={passed} language={language} />
+            </div>
           ) : (
             <div className="empty">{t(language, 'ovl.mapLoading')}</div>
           )}
@@ -464,6 +468,90 @@ function Overlay(): JSX.Element | null {
           onReset={() => void window.career.resetOverlayLayout().then(setLayout)}
         />
       )}
+    </div>
+  )
+}
+
+/**
+ * De manoeuvrebalk boven de kaart.
+ *
+ * Wat een chauffeur op dat moment wil weten, in de volgorde waarin hij het wil
+ * weten: hoeveel meter nog, naar welke halte, en hoe laat hij daar hoort te
+ * zijn. Die tijd draagt de kleur van het verschil met de dienstregeling -- de
+ * enige kleur op dit paneel die iets betekent.
+ *
+ * De afstand komt uit het geheugen van OMSI. Laat het spel zich niet lezen, dan
+ * staat er geen meterstand; een verzonnen getal is erger dan geen getal.
+ */
+function NavBar({
+  status,
+  leg,
+  passed,
+  language
+}: {
+  status?: LiveStatus
+  leg?: DutyLeg
+  passed?: number
+  language: Language
+}): JSX.Element | null {
+  if (!status || !leg || passed === undefined) return null
+  const at = Math.min(passed, leg.stops.length - 1)
+  const naam = leg.stops[at]
+  if (!naam) return null
+
+  const meters = status.metresToStop
+  const afstand =
+    meters === undefined
+      ? undefined
+      : meters >= 1000
+        ? `${(meters / 1000).toFixed(1).replace('.', ',')} km`
+        : `${meters} m`
+
+  const stand = punctuality(status.deltaSeconds)
+  const klasse = stand === 'laat' ? 'late' : stand === 'vroeg' ? 'early' : 'ontime'
+  const wanneer = leg.stopTimes[at]
+
+  return (
+    <div className="navbar">
+      <svg className="navbar-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 21V9" />
+        <path d="M12 9c0-2.6 2.1-4.7 4.7-4.7H19" />
+        <path d="M16.5 1.6 19.3 4.4 16.5 7.2" />
+      </svg>
+      <div className="navbar-what">
+        {afstand && <b>{afstand}</b>}
+        <span>{naam}</span>
+      </div>
+      <div className="navbar-when">
+        {wanneer !== undefined && <b className={klasse}>{formatTime(wanneer)}</b>}
+        <span>
+          {t(language, 'ovl.stopOf', { at: at + 1, total: leg.stops.length })}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/** En wat er daarna komt; één regel, want verder kijkt niemand tijdens het rijden. */
+function NavFoot({
+  leg,
+  passed,
+  language
+}: {
+  leg?: DutyLeg
+  passed?: number
+  language: Language
+}): JSX.Element | null {
+  if (!leg || passed === undefined) return null
+  const next = Math.min(passed + 1, leg.stops.length - 1)
+  if (next <= passed || !leg.stops[next]) return null
+  return (
+    <div className="navfoot">
+      <span className="navfoot-dot" />
+      <span className="navfoot-name">
+        {t(language, 'ovl.thenStop', { stop: leg.stops[next] })}
+      </span>
+      <span className="navfoot-time">{formatTime(leg.stopTimes[next] ?? leg.arrival)}</span>
     </div>
   )
 }

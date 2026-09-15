@@ -53,6 +53,124 @@
   padding: 9px 13px 11px;
 }
 
+/*
+ * De navigatie: een balk met wat je nu moet doen, de kaart eronder, en één regel
+ * met wat erna komt. Die volgorde is niet willekeurig -- tijdens het rijden kijk
+ * je naar boven, niet naar beneden.
+ */
+.nav-wrap {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.navbar {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 12px 9px;
+  flex-shrink: 0;
+}
+
+.navbar-arrow {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  color: #ffd23f;
+}
+
+.navbar-what {
+  min-width: 0;
+  flex: 1;
+}
+
+.navbar-what b {
+  display: block;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.navbar-what span {
+  display: block;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.78);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.navbar-when {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.navbar-when b {
+  display: block;
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* De tijd draagt de kleur van het verschil; zie `src/shared/status.ts`. */
+.navbar-when b.late {
+  color: #ff5f57;
+}
+
+.navbar-when b.ontime {
+  color: #37d67a;
+}
+
+.navbar-when b.early {
+  color: #4da3ff;
+}
+
+.navbar-when span {
+  display: block;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.nav-wrap .map-box,
+.nav-wrap .route-map {
+  flex: 1;
+  min-height: 0;
+}
+
+.navfoot {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 12px;
+  flex-shrink: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.navfoot-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+  flex-shrink: 0;
+}
+
+.navfoot-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.navfoot-time {
+  color: rgba(255, 255, 255, 0.62);
+  font-variant-numeric: tabular-nums;
+}
+
 /* De kaart vult zijn element helemaal; opvulling zou er alleen ruimte afsnoepen. */
 .panel-navigatie .panel-body {
   padding: 0;

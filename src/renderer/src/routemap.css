@@ -193,39 +193,49 @@
   font-weight: 600;
 }
 
+/* De schaalbalk leest ook op een lichte ondergrond; vandaar de schaduw. */
 .map-scale line {
-  stroke: var(--muted, rgba(255, 255, 255, 0.6));
+  stroke: rgba(255, 255, 255, 0.8);
   stroke-width: 1.5;
 }
 
 .map-scale text {
-  fill: var(--muted, #8d9bad);
-  font-size: 10px;
-  font-family: "Segoe UI", system-ui, sans-serif;
+  fill: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: Manrope, "Segoe UI", system-ui, sans-serif;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.55);
+  stroke-width: 2.5px;
+  stroke-linejoin: round;
 }
 
 .map-tools {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 10px;
+  right: 10px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
+/* Glas, net als de panelen: dezelfde taal tot in de knopjes op de kaart. */
 .map-tools button {
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
-  border: 1px solid var(--line, #2a3441);
-  background: rgba(23, 29, 39, 0.9);
-  color: var(--text, #e8edf4);
-  font-size: 15px;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(16, 20, 26, 0.62);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #ffffff;
+  font-size: 19px;
+  font-weight: 600;
   line-height: 1;
 }
 
 .map-tools button:hover {
-  border-color: var(--muted, #8d9bad);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
 /*
