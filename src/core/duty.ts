@@ -39,6 +39,43 @@ function pick<T>(items: T[], random: () => number): T {
   return items[Math.floor(random() * items.length)]
 }
 
+/** De lijn zoals de reiziger hem ziet; het bestand kan er meerdere bevatten. */
+function lineOf(run: TripRun): string {
+  return run.trip.lineNumber || run.trip.ident || run.lineFile
+}
+
+/**
+ * Hoe graag we dit vervolg willen.
+ *
+ * Een dienst waarin je drie uur dezelfde lus rijdt is saai; een chauffeur die op
+ * een knooppunt eindigt, stapt in het echt ook geregeld op een andere lijn over.
+ * Waar dat kan gaat de voorkeur daarnaar uit, en het sterkst naar een lijn die
+ * deze dienst nog niet voorbijkwam. Het blijft een voorkeur en geen regel: is er
+ * alleen dezelfde lijn, dan rijdt hij die gewoon door.
+ */
+function appetite(run: TripRun, current: string, driven: Set<string>): number {
+  const line = lineOf(run)
+  if (line === current) return 1
+  return driven.has(line) ? 3 : 6
+}
+
+/** Kiest een vervolg, met die voorkeur meegewogen. */
+function pickNext(
+  options: TripRun[],
+  current: string,
+  driven: Set<string>,
+  random: () => number
+): TripRun {
+  let total = 0
+  for (const run of options) total += appetite(run, current, driven)
+  let ticket = random() * total
+  for (const run of options) {
+    ticket -= appetite(run, current, driven)
+    if (ticket <= 0) return run
+  }
+  return options[options.length - 1]
+}
+
 /**
  * Loopt vanaf een beginrit door het net tot de gevraagde lengte gehaald is. Op
  * elk eindpunt wordt willekeurig gekozen uit wat daar vertrekt: terug waar je
@@ -55,6 +92,8 @@ function walk(
 ): TripRun[] {
   const legs = [start]
   let last = start
+  // Welke lijnen deze dienst al langskwamen; een nieuwe weegt zwaarder.
+  const driven = new Set<string>([lineOf(start)])
   // Doorsnede van de dagen waarop alle gekozen ritten rijden.
   let days = start.days
   /*
@@ -76,7 +115,8 @@ function walk(
     )
     if (options.length === 0) break
 
-    last = pick(options, random)
+    last = pickNext(options, lineOf(last), driven, random)
+    driven.add(lineOf(last))
     days &= last.days
     period = period === 0 || last.period === 0 ? period | last.period : period & last.period
     legs.push(last)
@@ -90,12 +130,20 @@ function toDuty(map: OmsiMap, legs: TripRun[]): Duty {
 
   const dutyLegs: DutyLeg[] = legs.map((run, index) => ({
     tripFile: run.tripFile,
+    lineFile: run.lineFile,
     lineNumber: run.trip.lineNumber || run.trip.ident || run.lineFile,
     terminus: run.trip.terminus,
     departure: run.departure,
     arrival: run.arrival,
     minutes: run.minutes,
     tourNumber: run.tourNumber,
+    /*
+     * Een andere lijn of omloop dan de vorige rit: dan moet de chauffeur in
+     * OMSI opnieuw kiezen, want Set Time Table kent er één tegelijk.
+     */
+    switchInOmsi:
+      index > 0 &&
+      (legs[index - 1].lineFile !== run.lineFile || legs[index - 1].tourNumber !== run.tourNumber),
     layoverBefore: index === 0 ? 0 : run.departure - legs[index - 1].arrival,
     stops: run.trip.stops.map(
       (stop) => stop.name ?? map.stops.get(stop.id)?.name ?? `halte ${stop.id}`

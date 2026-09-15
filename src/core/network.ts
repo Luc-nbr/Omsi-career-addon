@@ -137,6 +137,33 @@ export function buildNetwork(map: OmsiMap): Network {
     }
   }
 
+  /*
+   * En dan nog de knooppunten. Wat hierboven is samengevoegd komt uit de
+   * omlopen: wat één voertuig achter elkaar rijdt, staat op dezelfde plek. Dat
+   * is waterdicht, maar het ziet een station niet als de lijnen daar van
+   * verschillende voertuigen zijn -- en juist daar wil een chauffeur overstappen.
+   *
+   * Eindigt een rit bij dezelfde haltepaal als waar een andere begint, dan staat
+   * de bus er al. Het id is dat van het object in de tegel, dus twee ritten met
+   * hetzelfde id staan werkelijk bij dezelfde paal; namen vergelijken zou dat
+   * niet doen (op Thüringer Wald klopt de naam maar in 78% van de gevallen).
+   */
+  const endsAt = new Map<string, string[]>()
+  const startsAt = new Map<string, string[]>()
+  for (const run of runs) {
+    const stops = run.trip.stops
+    if (stops.length < 2) continue
+    const first = stops[0].id
+    const last = stops[stops.length - 1].id
+    if (last) endsAt.set(last, [...(endsAt.get(last) ?? []), `end:${run.tripFile}`])
+    if (first) startsAt.set(first, [...(startsAt.get(first) ?? []), `start:${run.tripFile}`])
+  }
+  for (const [stop, ends] of endsAt) {
+    const starts = startsAt.get(stop)
+    if (!starts) continue
+    for (const end of ends) for (const start of starts) places.union(end, start)
+  }
+
   const endPlace = new Map<string, string>()
   const departingFrom = new Map<string, TripRun[]>()
 
@@ -165,14 +192,25 @@ export function tourKey(run: TripRun): string {
 }
 
 /**
+ * Zoveel minuten moet er tussen zitten om in OMSI een andere omloop te kiezen.
+ *
+ * Binnen dezelfde omloop rijdt de bus gewoon door; stap je over naar een andere,
+ * dan moet je Set Time Table opnieuw in. Dat kost geen kwartier, maar met een
+ * minuut ben je te laat weg.
+ */
+const SWITCH_LAYOVER_MINUTES = 4
+
+/**
  * Alle ritten die na aankomst van `run` kunnen volgen.
  *
- * Blijft binnen dezelfde omloop. In OMSI stel je een dienst in via Set Time
- * Table, en daar kies je één Line en daarbinnen één Tour; een dienst die
- * halverwege naar een andere omloop springt kun je daar niet selecteren.
+ * In de eerste plaats de rest van dezelfde omloop: dat is wat één voertuig
+ * achter elkaar rijdt, en in OMSI staat het al klaar. Maar een chauffeur die op
+ * een knooppunt eindigt waar een andere lijn vertrekt, stapt in het echt ook
+ * over -- en dat is leuker dan drie uur dezelfde lus. Zulke vervolgen staan er
+ * dus ook bij, mits er tijd tussen zit om het in OMSI opnieuw te kiezen.
  *
- * De dagtoets is daarnaast geen franje: zonder haar zou een zaterdagomloop naast
- * een doordeweekse belanden, en die ritten bestaan op geen enkele dag samen.
+ * De dagtoets is geen franje: zonder haar zou een zaterdagomloop naast een
+ * doordeweekse belanden, en die ritten bestaan op geen enkele dag samen.
  */
 export function continuationsOf(network: Network, run: TripRun, days: number): TripRun[] {
   const place = network.endPlace.get(run.tripFile)
@@ -180,11 +218,13 @@ export function continuationsOf(network: Network, run: TripRun, days: number): T
   const options = network.departingFrom.get(place)
   if (!options) return []
   const key = tourKey(run)
-  return options.filter(
-    (next) =>
-      tourKey(next) === key &&
-      next.departure >= run.arrival &&
-      next.departure - run.arrival <= MAX_LAYOVER_MINUTES &&
-      (next.days & days) !== 0
-  )
+  return options.filter((next) => {
+    if (next.departure < run.arrival) return false
+    if (next.departure - run.arrival > MAX_LAYOVER_MINUTES) return false
+    if ((next.days & days) === 0) return false
+    if (tourKey(next) === key) return true
+    // Een andere omloop: alleen met tijd om over te stappen, en niet halverwege
+    // de rit van een ander voertuig instappen.
+    return next.departure - run.arrival >= SWITCH_LAYOVER_MINUTES
+  })
 }

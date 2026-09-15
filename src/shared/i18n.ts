@@ -869,6 +869,20 @@ const TEXT = {
   },
   'list.now': { en: 'now', de: 'jetzt', fr: 'maintenant', nl: 'nu' },
 
+  // ---------- overstappen op een andere lijn ----------
+  'duty.switch': {
+    en: 'Change of line here',
+    de: 'Hier Linienwechsel',
+    fr: 'Changement de ligne ici',
+    nl: 'Hier wissel je van lijn'
+  },
+  'duty.switchHow': {
+    en: 'Open Set Time Table in OMSI and pick Line {line}, Tour {tour}, the trip leaving at {time}. There are {minutes} minutes to do it.',
+    de: 'Öffne in OMSI Set Time Table und wähle Line {line}, Tour {tour}, die Fahrt um {time}. Dafür sind {minutes} Minuten Zeit.',
+    fr: 'Ouvrez Set Time Table dans OMSI et choisissez Line {line}, Tour {tour}, le trajet de {time}. Vous avez {minutes} minutes.',
+    nl: 'Open in OMSI Set Time Table en kies Line {line}, Tour {tour}, de rit die om {time} vertrekt. Daar is {minutes} minuten voor.'
+  },
+
   // ---------- dienstkaart ----------
   'duty.head': {
     en: '{days} · {trips} trips · {stops} stops · {depot}',

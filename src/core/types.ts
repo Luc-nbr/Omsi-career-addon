@@ -90,6 +90,8 @@ export interface OmsiMap {
 /** Een rit binnen een toegewezen dienst, met uitgerekende tijden en haltenamen. */
 export interface DutyLeg {
   tripFile: string
+  /** Het lijnbestand, zoals OMSI's dienstregelingsmenu de lijn noemt. */
+  lineFile: string
   lineNumber: string
   terminus: string
   departure: number
@@ -97,6 +99,12 @@ export interface DutyLeg {
   minutes: number
   /** Omloop waar deze rit uit komt; een dienst kan er meerdere raken. */
   tourNumber: string
+  /**
+   * Hier stap je over op een andere lijn of omloop, en dat betekent dat je het
+   * in OMSI opnieuw moet kiezen: Set Time Table kent één lijn met één omloop
+   * tegelijk.
+   */
+  switchInOmsi?: boolean
   /** Wachttijd op het eindpunt sinds de vorige rit. Nul bij de eerste. */
   layoverBefore: number
   stops: string[]

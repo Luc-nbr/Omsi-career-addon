@@ -248,7 +248,13 @@ function readSchedule(data: LiveData, duty: Duty | undefined, clockMinutes: numb
       }
     })
   }
-  const tourMatches = !duty || !mem.tourName.trim() || mem.tourName.trim() === duty.tourNumber.trim()
+  /*
+   * De omloop van de rit die erbij hoort, niet die van de hele dienst: een
+   * dienst kan onderweg overstappen, en dan staat er in OMSI een andere omloop
+   * dan waarmee hij begon.
+   */
+  const leg = duty && legIndex !== undefined ? duty.legs[legIndex] : undefined
+  const tourMatches = !leg || !mem.tourName.trim() || mem.tourName.trim() === leg.tourNumber.trim()
   return {
     lineName: mem.lineName.trim(),
     tourName: mem.tourName.trim(),

@@ -139,6 +139,23 @@ export function DutyCard({
               })}
             </span>
           </button>
+          {/*
+            Een dienst kan op een knooppunt overstappen op een andere lijn. In
+            OMSI kies je in Set Time Table één lijn met één omloop tegelijk, dus
+            daar moet de chauffeur het zelf omzetten -- en dan hoort hier te
+            staan wat hij kiest en hoeveel tijd hij heeft.
+          */}
+          {leg.switchInOmsi && (
+            <p className="leg-switch">
+              <b>{tr('duty.switch')}</b>{' '}
+              {tr('duty.switchHow', {
+                line: leg.lineFile,
+                tour: leg.tourNumber,
+                time: formatTime(leg.departure),
+                minutes: Math.max(0, Math.round(leg.layoverBefore))
+              })}
+            </p>
+          )}
           {openLeg === index && (
             <LegDetail leg={leg} index={index} ibis={ibis} />
           )}

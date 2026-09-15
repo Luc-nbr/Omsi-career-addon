@@ -113,6 +113,19 @@ app.whenReady().then(async () => {
     console.log('   (zelfde tijden; kan toeval zijn op een kleine kaart)')
   }
 
+  // Een dienst met een lijnwissel erin, als de kaart die kan leveren.
+  for (let attempt = 0; attempt < 10; attempt++) {
+    if (await js(main, `Boolean(document.querySelector('.leg-switch'))`)) {
+      console.log(
+        `lijnwissel: ${await js(main, `document.querySelector('.leg-switch')?.textContent.trim().slice(0, 120)`)}`
+      )
+      await shoot('3-lijnwissel')
+      break
+    }
+    await clickText(main, 'Opnieuw genereren')
+    await wait(2200)
+  }
+
   // Aannemen: het venster blijft staan en biedt starten aan.
   await clickText(main, 'Dienst bevestigen')
   await wait(1500)
