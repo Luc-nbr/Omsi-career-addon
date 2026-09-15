@@ -12,21 +12,22 @@ De inrichting van de server staat in `server.json`, het script dat hem neerzet i
    Application* → *Bot*. Kopieer het token; laat het verder nergens rondslingeren.
 3. **Nodig de bot uit** met alleen wat hij nodig heeft: *OAuth2 → URL Generator*,
    scope `bot`, rechten *Manage Roles* en *Manage Channels*.
-4. **Draai het script.** Het server-id krijg je door met rechtermuisknop op de
-   server te klikken → *Server-ID kopiëren* (ontwikkelaarsmodus moet aan staan
-   onder Instellingen → Geavanceerd).
+4. **Draai het script.** Het id van de server staat al in `server.json`; alleen
+   het token komt uit je eigen omgeving.
 
    ```bash
    node discord/setup.mjs --droog
    ```
 
-   Dat laat zien wat er zou gebeuren zonder iets aan te maken. Klopt het, dan:
+   Dat laat zien wat er zou gebeuren zonder iets aan te maken — daar is geen
+   token voor nodig. Klopt het, dan:
 
    ```bash
    set DISCORD_TOKEN=...
-   set DISCORD_GUILD=...
    node discord/setup.mjs
    ```
+
+   Een andere server aanwijzen kan met `--guild <id>`.
 
    Het script laat staan wat er al is, dus twee keer draaien levert geen dubbele
    kanalen op.

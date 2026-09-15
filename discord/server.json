@@ -1,5 +1,6 @@
 {
   "naam": "OMSI Enhancer",
+  "server-id": "1549504050955948142",
   "beschrijving": "De inrichting van de Discord-server, als gegevens. Het script leest dit bestand; wie iets wil veranderen, verandert het hier en niet in de code.",
 
   "rollen": [

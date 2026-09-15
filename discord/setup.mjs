@@ -2,8 +2,10 @@
  * Zet de kanalen en rollen van de Discord-server neer.
  *
  *   set DISCORD_TOKEN=...        (het token van je eigen bot)
- *   set DISCORD_GUILD=...        (het id van je server)
- *   node discord/setup.mjs [--droog]
+ *   node discord/setup.mjs [--droog] [--guild <id>]
+ *
+ * Het id van de server staat in `server.json`; met `--guild` of DISCORD_GUILD
+ * wijs je een andere aan.
  *
  * Wat het doet: de rollen en kanalen uit `server.json` aanmaken in een server
  * die al bestaat. Wat het niet doet: een server aanmaken, want dan zou de bot de
@@ -25,16 +27,31 @@ import { fileURLToPath } from 'node:url'
 const HIER = dirname(fileURLToPath(import.meta.url))
 const API = 'https://discord.com/api/v10'
 
-const token = process.env.DISCORD_TOKEN
-const guild = process.env.DISCORD_GUILD
-const droog = process.argv.includes('--droog')
+const plan = JSON.parse(readFileSync(join(HIER, 'server.json'), 'utf8'))
 
-if (!droog && (!token || !guild)) {
-  console.error('Zet DISCORD_TOKEN en DISCORD_GUILD in je omgeving, of draai met --droog.')
+const droog = process.argv.includes('--droog')
+const token = process.env.DISCORD_TOKEN
+
+/*
+ * Welke server. Het id hoort bij de inrichting en staat dus in `server.json`;
+ * een omgevingsvariabele of `--guild` gaat er nog overheen, voor wie de opzet op
+ * een tweede server wil uitproberen. Het token staat er met opzet niet bij: dat
+ * hoort bij degene die het draait, niet bij het project.
+ */
+const uitArgument = process.argv.indexOf('--guild')
+const guild =
+  (uitArgument >= 0 ? process.argv[uitArgument + 1] : undefined) ??
+  process.env.DISCORD_GUILD ??
+  plan['server-id']
+
+if (!droog && !token) {
+  console.error('Zet DISCORD_TOKEN in je omgeving, of draai met --droog.')
   process.exit(1)
 }
-
-const plan = JSON.parse(readFileSync(join(HIER, 'server.json'), 'utf8'))
+if (!droog && !guild) {
+  console.error('Geen server-id: zet het in server.json, in DISCORD_GUILD, of achter --guild.')
+  process.exit(1)
+}
 
 /** Eén verzoek aan Discord, met een pauze want er geldt een limiet. */
 async function api(pad, methode = 'GET', inhoud) {
