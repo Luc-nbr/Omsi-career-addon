@@ -29,16 +29,39 @@ const CACHE_PAD_M = 40
  * springt een doorgaande weg eruit tussen de zijstraten, zoals op elke
  * navigatiekaart.
  */
-const CASING = '#232a34'
-const ROAD = '#3a434f'
+const CASING = '#212833'
+/*
+ * Drie breedtes, en de brede iets lichter dan de smalle. Dat laatste doet meer
+ * dan het lijkt: een doorgaande weg valt dan op tussen de zijstraten zonder dat
+ * er ook maar iets bij staat geschreven.
+ */
+const ROAD = ['#333b47', '#3c4552', '#495261']
 const RAIL = '#2b323c'
+
+/** Ondergrens per klasse, zodat een straat uitgezoomd niet wegvalt. */
+const MIN_PX = [4, 6, 8.5]
+
+/**
+ * Welke van de drie een baan is, naar zijn breedte in meters.
+ *
+ * Een rijstrook van drie meter is een woonstraat, drieënhalf is de gewone maat,
+ * en wat breder is hoort bij een weg waar je doorheen rijdt. Zegt het
+ * splinebestand niets, dan is het de gewone maat.
+ */
+export function roadClass(width: number | undefined): number {
+  if (!width || !(width > 0)) return 1
+  if (width <= 3.1) return 0
+  if (width <= 4.2) return 1
+  return 2
+}
 
 interface Chunk {
   minX: number
   minY: number
   maxX: number
   maxY: number
-  road?: Path2D
+  /** Eén pad per breedteklasse; ze worden apart gestreken. */
+  road?: (Path2D | undefined)[]
   rail?: Path2D
 }
 
@@ -108,7 +131,14 @@ export class RoadLayer {
       chunk.maxX = Math.max(chunk.maxX, maxX)
       chunk.maxY = Math.max(chunk.maxY, maxY)
 
-      const path = line.kind === 'rail' ? (chunk.rail ??= new Path2D()) : (chunk.road ??= new Path2D())
+      let path: Path2D
+      if (line.kind === 'rail') {
+        path = chunk.rail ??= new Path2D()
+      } else {
+        const klasse = roadClass(line.w)
+        const wegen = (chunk.road ??= [])
+        path = wegen[klasse] ??= new Path2D()
+      }
       path.moveTo(p[0], p[1])
       for (let i = 2; i < p.length; i += 2) path.lineTo(p[i], p[i + 1])
 
@@ -189,11 +219,18 @@ export class RoadLayer {
   }
 }
 
-/** Spoor onderop, dan alle stoepranden, dan alle wegen: zo lopen kruisingen door. */
+/**
+ * Spoor onderop, dan alle stoepranden, dan alle wegdekken.
+ *
+ * Die volgorde is het hele trucje: alle omrandingen eerst, daarna alle dekken
+ * eroverheen. Zo loopt een kruising door in plaats van dat er een randje dwars
+ * over de straat ligt. Binnen elke ronde het breedst eerst, zodat een zijstraat
+ * netjes op een doorgaande weg uitkomt.
+ */
 function stroke(ctx: CanvasRenderingContext2D, chunks: Chunk[], mpp: number): void {
-  // Breedtes in meters, maar nooit zo dun dat de lijn verdwijnt.
-  const roadWidth = Math.max(7, mpp * 1.1)
   const railWidth = Math.max(3, mpp * 0.7)
+  // De baan is in meters bekend; een strook van 3,5 m hoort 3,5 m breed te zijn.
+  const breedte = (klasse: number): number => Math.max(MIN_PX[klasse], (3 + klasse) / mpp)
 
   ctx.lineCap = 'butt'
   ctx.lineJoin = 'miter'
@@ -206,9 +243,19 @@ function stroke(ctx: CanvasRenderingContext2D, chunks: Chunk[], mpp: number): vo
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
   ctx.strokeStyle = CASING
-  ctx.lineWidth = roadWidth + 2.5
-  for (const chunk of chunks) if (chunk.road) ctx.stroke(chunk.road)
-  ctx.strokeStyle = ROAD
-  ctx.lineWidth = roadWidth
-  for (const chunk of chunks) if (chunk.road) ctx.stroke(chunk.road)
+  for (let klasse = 2; klasse >= 0; klasse--) {
+    ctx.lineWidth = breedte(klasse) + 2.5
+    for (const chunk of chunks) {
+      const path = chunk.road?.[klasse]
+      if (path) ctx.stroke(path)
+    }
+  }
+  for (let klasse = 2; klasse >= 0; klasse--) {
+    ctx.strokeStyle = ROAD[klasse]
+    ctx.lineWidth = breedte(klasse)
+    for (const chunk of chunks) {
+      const path = chunk.road?.[klasse]
+      if (path) ctx.stroke(path)
+    }
+  }
 }

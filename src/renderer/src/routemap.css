@@ -10,7 +10,12 @@
   border: 1px solid var(--line, #2a3441);
   border-radius: 10px;
   overflow: hidden;
-  background: var(--bg, #10141b);
+  /*
+    De ondergrond van een navigatiekaart is niet zwart maar blauwgrijs: daardoor
+    liggen de wegen erop in plaats van erin, en kan de gele route eroverheen
+    zonder te gaan gloeien.
+  */
+  background: #171d26;
 }
 
 .route-map-full {
@@ -132,9 +137,13 @@
   pointer-events: none;
 }
 
+/*
+  De bus is wit in een lichte hof, niet geel: geel is van de lijn en de route.
+  Een eigen kleur voor de bus maakt van elke kaart een kerstboom.
+*/
 .bus-halo {
-  fill: rgba(255, 210, 63, 0.18);
-  stroke: rgba(255, 210, 63, 0.4);
+  fill: rgba(233, 240, 250, 0.22);
+  stroke: rgba(233, 240, 250, 0.45);
   stroke-width: 1.5;
 }
 

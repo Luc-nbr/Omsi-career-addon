@@ -42,6 +42,14 @@ export interface RoadLine {
   kind: SplineKind
   /** Afwisselend x en y, om het geheel klein te houden. */
   points: number[]
+  /**
+   * Breedte van deze baan in meters, zoals het splinebestand hem opgeeft.
+   *
+   * Daarmee tekent de kaart een doorgaande weg breder dan een woonstraat, zoals
+   * elke navigatiekaart doet. Ontbreekt hij, dan is drieënhalve meter een
+   * gewone rijstrook.
+   */
+  w?: number
 }
 
 export interface MapGeometry {
@@ -231,7 +239,7 @@ export function readMapData(
             const points = placeObjectPath(ox, oy, rot, path)
             if (points.length < 4) continue
             shift(points)
-            roads.push({ kind, points })
+            roads.push({ kind, points, w: path.width > 0 ? path.width : undefined })
             if (kind === 'road') lanes.push({ points, direction: path.direction, source })
           }
           continue
@@ -293,7 +301,7 @@ export function readMapData(
         if (!points) {
           points = place(lane.offset)
           drawn.set(key, points)
-          roads.push({ kind: 'road', points })
+          roads.push({ kind: 'road', points, w: path.width > 0 ? path.width : undefined })
         }
         lanes.push({ points, direction: lane.direction, source })
       }

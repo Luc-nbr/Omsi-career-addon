@@ -31,6 +31,8 @@ export interface SplinePath {
   type: number
   /** Zijwaartse afstand tot de spline, rechts positief. */
   offset: number
+  /** Breedte van de baan in meters; waarmee een landweg van een stadsweg verschilt. */
+  width: number
   /** 0 met de spline mee, 1 ertegenin, 2 beide kanten op. */
   direction: number
 }
@@ -74,7 +76,12 @@ export function splineInfo(omsiPath: string, relative: string): SplineInfo {
       // velden: soort verkeer, zijwaartse afstand, hoogte, breedte, richting
       const type = Number.parseInt(lines[i + 1] ?? '', 10)
       const offset = num(lines[i + 2])
-      paths.push({ type, offset, direction: Number.parseInt(lines[i + 5] ?? '', 10) })
+      paths.push({
+        type,
+        offset,
+        width: num(lines[i + 4]),
+        direction: Number.parseInt(lines[i + 5] ?? '', 10)
+      })
       if (type === PATH_ROAD) road.push(offset)
       else if (type === PATH_RAIL) rail.push(offset)
     }
@@ -107,6 +114,8 @@ function distinct(offsets: number[]): number[] {
 /** Een baan die in een scenery-object ligt, in de maten van dat object. */
 export interface ObjectPath {
   type: number
+  /** Breedte van de baan in meters. */
+  width: number
   /** 0 met de baan mee, 1 ertegenin, 2 beide kanten op. */
   direction: number
   x: number
@@ -174,6 +183,7 @@ export function objectPaths(omsiPath: string, relative: string): ObjectPath[] {
         if (blockTag(lines[i]) !== '[path]') continue
         paths.push({
           type: Number.parseInt(lines[i + 9] ?? '', 10),
+          width: num(lines[i + 10]),
           // Na de breedte; daarna volgt nog het knipperlicht.
           direction: Number.parseInt(lines[i + 11] ?? '', 10),
           x: num(lines[i + 1]),
