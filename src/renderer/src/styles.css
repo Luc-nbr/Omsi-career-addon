@@ -1998,6 +1998,15 @@ input[type='range'] {
   margin-left: auto;
 }
 
+/* Het versienummer onderin de zijbalk: aanwezig, niet aanwezig genoeg om af te leiden. */
+.side-version {
+  margin-top: auto;
+  padding-top: 12px;
+  color: var(--zacht);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- smalle vensters ---------- */
 
 /*

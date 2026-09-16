@@ -315,6 +315,8 @@ export interface CareerApi {
   beginDuty(request: BeginRequest): Promise<BeginResult>
   /** Geeft de plugin gegevens door? Zo ja, dan draait OMSI en is de kaart geladen. */
   liveConnected(): Promise<boolean>
+  /** Het versienummer van de app zelf, zoals het in de installer staat. */
+  version(): Promise<string>
   /** De instellingen van OMSI zelf. */
   gameSettings(): Promise<GameSettingsPayload>
   /** Schrijft alleen de instellingen die veranderd zijn terug naar options.cfg. */

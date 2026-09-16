@@ -7,6 +7,7 @@ import type { CareerApi, DutyRequest } from '../shared/api'
  */
 const api: CareerApi = {
   status: () => ipcRenderer.invoke('omsi:status'),
+  version: () => ipcRenderer.invoke('app:version'),
   maps: () => ipcRenderer.invoke('omsi:maps'),
   checkInstalled: () => ipcRenderer.invoke('omsi:check'),
   vehicles: () => ipcRenderer.invoke('omsi:vehicles'),

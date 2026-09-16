@@ -958,6 +958,21 @@ function Delta({
  * Hij draagt `data-hit`, want buiten de bewerkstand laat het venster klikken
  * door naar het spel; alleen boven zo'n knop pakt het de muis even op.
  */
+/** Het versienummer in de bewerkbalk; gevraagd bij elke foutmelding. */
+function OverlayVersie(): JSX.Element | null {
+  const [versie, setVersie] = useState<string>()
+  useEffect(() => {
+    let staat = true
+    void window.career.version().then((waarde) => {
+      if (staat) setVersie(waarde)
+    })
+    return () => {
+      staat = false
+    }
+  }, [])
+  return versie ? <span className="editbar-version">v{versie}</span> : null
+}
+
 function LayoutButton({ language }: { language: Language }): JSX.Element {
   return (
     <button
@@ -1192,6 +1207,8 @@ function EditBar({
     <div className="editbar" data-hit>
       <b>{t(language, 'ovl.editTitle')}</b>
       <span className="editbar-hint">{t(language, 'ovl.editHint')}</span>
+      {/* Wie hier staat is aan het instellen; dan is het versienummer ook te vinden. */}
+      <OverlayVersie />
 
       {hidden.length > 0 && (
         <div className="editbar-add">

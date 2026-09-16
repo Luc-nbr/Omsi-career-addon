@@ -662,6 +662,13 @@ function prepareSituation(
 }
 
 function registerHandlers(): void {
+  /*
+    * Welke versie dit is. Het meldsjabloon in Discord vraagt er als eerste
+    * regel om, en tot nu toe kon je hem alleen in de programmalijst van Windows
+    * vinden -- dus stond er in de meeste meldingen niets.
+    */
+  ipcMain.handle('app:version', () => app.getVersion())
+
   ipcMain.handle('omsi:status', () => {
     const found = findOmsiInstall()
     omsiPath = found

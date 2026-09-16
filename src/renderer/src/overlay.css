@@ -905,3 +905,10 @@
 .ovl-btn:hover {
   background: #ffc746;
 }
+
+/* Het versienummer in de bewerkbalk: klein, grijs, en alleen daar. */
+.editbar-version {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}

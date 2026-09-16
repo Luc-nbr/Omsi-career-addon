@@ -1,4 +1,4 @@
-import { useState, type JSX } from 'react'
+import { useEffect, useState, type JSX } from 'react'
 import type { CareerPayload } from '../../shared/api'
 import { formatDuration, formatMoney } from '../../shared/format'
 import { LANGUAGES, rankName, t, type Language } from '../../shared/i18n'
@@ -11,6 +11,27 @@ interface Props {
   onRename(name: string): void
   onSelectProfile(id: string): void
   onNewProfile(name: string): void
+}
+
+/**
+ * Het versienummer, onderin de zijbalk.
+ *
+ * Klein en grijs, want je kijkt er nooit naar -- behalve als je een fout gaat
+ * melden, en dan is het de eerste regel die gevraagd wordt.
+ */
+function Versie(): JSX.Element | null {
+  const [versie, setVersie] = useState<string>()
+  useEffect(() => {
+    let staat = true
+    void window.career.version().then((waarde) => {
+      if (staat) setVersie(waarde)
+    })
+    return () => {
+      staat = false
+    }
+  }, [])
+  if (!versie) return null
+  return <div className="side-version">OMSI Enhancer {versie}</div>
 }
 
 /** Chauffeursprofiel, cijfers en logboek. */
@@ -164,6 +185,8 @@ export function Sidebar({
           ))
         )}
       </div>
+
+      <Versie />
     </aside>
   )
 }
