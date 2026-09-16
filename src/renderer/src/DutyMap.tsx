@@ -1,4 +1,5 @@
 import { useEffect, useState, type JSX } from 'react'
+import { createPortal } from 'react-dom'
 import type { MapGeometry } from '../../core/geo'
 import type { IbisPlan } from '../../core/ibis'
 import type { Duty } from '../../core/types'
@@ -149,7 +150,17 @@ function RouteWindow({
   const startName = duty.legs[0]?.stops[0] ?? tr('duty.unknown')
   const firstRoute = ibis?.legs.find((trip) => trip.route)
 
-  return (
+  /*
+   * Rechtstreeks aan de body, en niet waar hij in de boom staat.
+   *
+   * `position: fixed` rekent vanaf het venster -- behalve wanneer er ergens
+   * boven je een element staat met `backdrop-filter`, en dat is bij ons elke
+   * kaart. Dan wordt die kaart het kader, en hangt het routevenster aan de
+   * breedte van de kaart in plaats van aan die van het scherm. In een venster
+   * dat al breed was viel dat nauwelijks op; ging je van klein naar volledig
+   * scherm, dan bleef het venster links hangen op de plek van de kaart.
+   */
+  return createPortal(
     <div className="map-window" role="dialog" aria-modal="true" aria-label="Route bekijken">
       <div className="map-window-inner">
         <header className="map-window-head">
@@ -242,6 +253,7 @@ function RouteWindow({
           </aside>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
