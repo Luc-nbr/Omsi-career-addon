@@ -108,6 +108,15 @@ const TEXT = {
     nl: 'Nog geen diensten gereden'
   },
   'pick.onDuty': { en: 'Duty in progress', de: 'Dienst läuft', fr: 'Service en cours', nl: 'Dienst loopt' },
+  'pick.remove': { en: 'Remove', de: 'Entfernen', fr: 'Supprimer', nl: 'Verwijderen' },
+  'pick.removeAsk': {
+    en: 'Remove {name}? The duties driven and the hours behind the wheel go with them.',
+    de: '{name} entfernen? Die gefahrenen Dienste und die Stunden am Steuer gehen mit.',
+    fr: 'Supprimer {name} ? Les services effectués et les heures au volant disparaissent aussi.',
+    nl: '{name} verwijderen? De gereden diensten en de uren achter het stuur gaan mee.'
+  },
+  'pick.removeYes': { en: 'Remove', de: 'Entfernen', fr: 'Supprimer', nl: 'Verwijderen' },
+  'pick.removeNo': { en: 'Keep', de: 'Behalten', fr: 'Garder', nl: 'Behouden' },
 
   // ---------- modus kiezen ----------
   'mode.title': {

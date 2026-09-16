@@ -1221,6 +1221,67 @@ input[type='range'] {
   border-color: var(--accent);
 }
 
+/*
+ * De kaart van een chauffeur is de knop plus het kruisje ernaast. Het kruisje
+ * staat opzij en niet in de knop: anders verwijder je iemand terwijl je wilde
+ * gaan rijden.
+ */
+.driver-card {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.driver-card .driver-pick {
+  flex: 1;
+  min-width: 0;
+}
+
+.driver-remove {
+  flex-shrink: 0;
+  width: 40px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--zacht, #8d9bad);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.driver-remove:hover {
+  border-color: var(--laat);
+  color: var(--laat);
+}
+
+/* De vraag komt in de plaats van de kaart, zodat je ziet wie het betreft. */
+.driver-pick-ask {
+  display: grid;
+  gap: 10px;
+  cursor: default;
+}
+
+.driver-pick-ask:hover {
+  border-color: var(--line);
+}
+
+.driver-ask-row {
+  display: flex;
+  gap: 8px;
+}
+
+/* Rood is hier geen sier: het is het enige onomkeerbare in dit scherm. */
+.btn.danger {
+  background: var(--laat);
+  border-color: var(--laat);
+  color: #2a0b09;
+}
+
+.btn.danger:hover {
+  filter: brightness(1.08);
+}
+
 .driver-pick-name {
   font-size: 16px;
   font-weight: 600;

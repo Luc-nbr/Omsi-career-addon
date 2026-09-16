@@ -514,6 +514,7 @@ export function App(): JSX.Element {
         profiles={career?.profiles ?? []}
         onChoose={chooseProfile}
         onCreate={createProfile}
+        onDelete={async (id) => setCareer(await window.career.deleteProfile(id))}
       />
     )
   }

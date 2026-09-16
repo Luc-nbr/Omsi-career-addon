@@ -10,6 +10,7 @@ interface Props {
   profiles: ProfileSummary[]
   onChoose(id: string): void
   onCreate(name: string): void
+  onDelete(id: string): void
 }
 
 /**
@@ -19,9 +20,22 @@ interface Props {
  * chauffeur, dus je begint met kiezen wie je bent; daarna pas waar je zin in
  * hebt. Wie nog een dienst open heeft staan, ziet dat hier meteen.
  */
-export function Profiles({ language, onLanguage, profiles, onChoose, onCreate }: Props): JSX.Element {
+export function Profiles({
+  language,
+  onLanguage,
+  profiles,
+  onChoose,
+  onCreate,
+  onDelete
+}: Props): JSX.Element {
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState('')
+  /*
+   * Welke chauffeur op het punt staat te verdwijnen. Een kruisje dat meteen
+   * wist, wist een keer te veel: hier hangt een heel logboek aan. Dus eerst de
+   * vraag, in de kaart zelf, zodat je ziet wie je weggooit.
+   */
+  const [removing, setRemoving] = useState<string>()
 
   const create = (): void => {
     if (!name.trim()) return
@@ -41,27 +55,58 @@ export function Profiles({ language, onLanguage, profiles, onChoose, onCreate }:
 
         <section className="welcome-card">
           <div className="driver-grid">
-            {profiles.map((profile) => (
-              <button
-                key={profile.id}
-                type="button"
-                className="driver-pick"
-                onClick={() => onChoose(profile.id)}
-              >
-                <span className="driver-pick-name">{profile.driver}</span>
-                <span className="driver-pick-meta">
-                  {profile.duties === 0
-                    ? t(language, 'pick.fresh')
-                    : t(language, 'pick.record', {
-                        count: profile.duties,
-                        duration: formatDuration(profile.minutes, language)
-                      })}
-                </span>
-                {/* Een open dienst is het eerste wat je wilt weten. */}
-                {profile.onDuty && <span className="driver-pick-duty">{t(language, 'pick.onDuty')}</span>}
-                <span className="driver-pick-go">{t(language, 'pick.continue')}</span>
-              </button>
-            ))}
+            {profiles.map((profile) =>
+              removing === profile.id ? (
+                <div key={profile.id} className="driver-pick driver-pick-ask">
+                  <span className="driver-pick-meta">
+                    {t(language, 'pick.removeAsk', { name: profile.driver })}
+                  </span>
+                  <div className="driver-ask-row">
+                    <button
+                      type="button"
+                      className="btn danger"
+                      onClick={() => {
+                        onDelete(profile.id)
+                        setRemoving(undefined)
+                      }}
+                    >
+                      {t(language, 'pick.removeYes')}
+                    </button>
+                    <button type="button" className="btn secondary" onClick={() => setRemoving(undefined)}>
+                      {t(language, 'pick.removeNo')}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div key={profile.id} className="driver-card">
+                  <button type="button" className="driver-pick" onClick={() => onChoose(profile.id)}>
+                    <span className="driver-pick-name">{profile.driver}</span>
+                    <span className="driver-pick-meta">
+                      {profile.duties === 0
+                        ? t(language, 'pick.fresh')
+                        : t(language, 'pick.record', {
+                            count: profile.duties,
+                            duration: formatDuration(profile.minutes, language)
+                          })}
+                    </span>
+                    {/* Een open dienst is het eerste wat je wilt weten. */}
+                    {profile.onDuty && (
+                      <span className="driver-pick-duty">{t(language, 'pick.onDuty')}</span>
+                    )}
+                    <span className="driver-pick-go">{t(language, 'pick.continue')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="driver-remove"
+                    title={t(language, 'pick.remove')}
+                    aria-label={t(language, 'pick.remove')}
+                    onClick={() => setRemoving(profile.id)}
+                  >
+                    ×
+                  </button>
+                </div>
+              )
+            )}
           </div>
 
           {adding ? (
