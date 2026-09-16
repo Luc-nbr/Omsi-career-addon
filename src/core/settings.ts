@@ -15,6 +15,20 @@ export interface Settings {
    * een machine die het al krap heeft kost dat merkbaar vloeiendheid in OMSI.
    */
   overlayRate: OverlayRate
+  /**
+   * OMSI in een venster starten in plaats van op volledig scherm.
+   *
+   * Staat standaard aan, en dat is een keuze. De overlay is een venster dat
+   * altijd bovenop ligt; boven een spel dat het scherm exclusief opeist is dat
+   * de klassieke aanleiding voor een verloren Direct3D-apparaat, en dan blijft
+   * het beeld zwart terwijl de menu's er gewoon overheen staan. Een gebruiker
+   * meldde precies dat. In een venster speelt OMSI net zo goed, en de overlay
+   * doet wat hij hoort te doen.
+   *
+   * Wie liever volledig scherm rijdt zet hem uit; dan start de app OMSI zoals
+   * het spel het zelf zou doen.
+   */
+  windowedOmsi: boolean
 }
 
 function settingsPath(userDataPath: string): string {
@@ -26,10 +40,11 @@ export function readSettings(userDataPath: string): Settings {
     const raw = JSON.parse(readFileSync(settingsPath(userDataPath), 'utf8')) as Partial<Settings>
     return {
       language: isLanguage(raw.language) ? raw.language : DEFAULT_LANGUAGE,
-      overlayRate: isOverlayRate(raw.overlayRate) ? raw.overlayRate : 'rustig'
+      overlayRate: isOverlayRate(raw.overlayRate) ? raw.overlayRate : 'rustig',
+      windowedOmsi: raw.windowedOmsi !== false
     }
   } catch {
-    return { language: DEFAULT_LANGUAGE, overlayRate: 'rustig' }
+    return { language: DEFAULT_LANGUAGE, overlayRate: 'rustig', windowedOmsi: true }
   }
 }
 
@@ -42,7 +57,9 @@ export function writeSettings(userDataPath: string, settings: Partial<Settings>)
   const current = readSettings(userDataPath)
   const clean: Settings = {
     language: isLanguage(settings.language) ? settings.language : current.language,
-    overlayRate: isOverlayRate(settings.overlayRate) ? settings.overlayRate : current.overlayRate
+    overlayRate: isOverlayRate(settings.overlayRate) ? settings.overlayRate : current.overlayRate,
+    windowedOmsi:
+      typeof settings.windowedOmsi === 'boolean' ? settings.windowedOmsi : current.windowedOmsi
   }
   const path = settingsPath(userDataPath)
   mkdirSync(dirname(path), { recursive: true })

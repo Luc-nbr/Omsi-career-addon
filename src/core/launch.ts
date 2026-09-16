@@ -30,29 +30,40 @@ export type LaunchResult = 'gestart' | 'geweigerd' | 'mislukt'
 export async function launchOmsi(
   omsiPath: string,
   /*
+   * In een venster starten. OMSI kent daar een schakelaar voor -- `-windowed`,
+   * te vinden in het programma zelf naast `-editor` en `-debug` -- en die is
+   * precies wat de overlay nodig heeft: boven een spel dat het scherm exclusief
+   * opeist raakt Direct3D zijn apparaat kwijt en blijft het beeld zwart.
+   */
+  windowed = false,
+  /*
    * Alleen om de rechtenvraag na te kunnen doen. Een spel dat om rechten vraagt
    * valt niet na te bootsen met een bestandje, en juist die tak moet werken.
    */
-  starten: (executable: string, cwd: string) => Promise<void> = gewoon,
+  starten: (executable: string, cwd: string, windowed?: boolean) => Promise<void> = gewoon,
   /** En de weg langs Windows, om dezelfde reden apart te kunnen zetten. */
-  vragen: (executable: string, cwd: string) => Promise<LaunchResult> = metRechten
+  vragen: (executable: string, cwd: string, windowed?: boolean) => Promise<LaunchResult> = metRechten
 ): Promise<LaunchResult> {
   const executable = join(omsiPath, 'Omsi.exe')
   if (!existsSync(executable)) throw new Error(`Omsi.exe niet gevonden in ${omsiPath}`)
 
   try {
-    await starten(executable, omsiPath)
+    await starten(executable, omsiPath, windowed)
     return 'gestart'
   } catch (reden) {
     if (!rechtenProbleem(reden)) throw reden
   }
-  return vragen(executable, omsiPath)
+  return vragen(executable, omsiPath, windowed)
 }
 
 /** De gewone weg: rechtstreeks starten, losgekoppeld van de app. */
-function gewoon(executable: string, cwd: string): Promise<void> {
+function gewoon(executable: string, cwd: string, windowed = false): Promise<void> {
   return new Promise((klaar, mislukt) => {
-    const kind = spawn(executable, [], { cwd, detached: true, stdio: 'ignore' })
+    const kind = spawn(executable, windowed ? ['-windowed'] : [], {
+      cwd,
+      detached: true,
+      stdio: 'ignore'
+    })
     kind.once('error', mislukt)
     kind.once('spawn', () => {
       kind.unref()
@@ -68,7 +79,7 @@ function gewoon(executable: string, cwd: string): Promise<void> {
  * de verkenner neemt, dus het vlaggetje "als administrator" wordt netjes
  * opgevolgd. Het venster zelf blijft verborgen en is meteen weer weg.
  */
-function metRechten(executable: string, cwd: string): Promise<LaunchResult> {
+function metRechten(executable: string, cwd: string, windowed = false): Promise<LaunchResult> {
   const quote = (waarde: string): string => `'${waarde.replace(/'/g, "''")}'`
   /*
    * Met -ErrorAction Stop en een eigen afsluitcode, anders meldt PowerShell de
@@ -77,6 +88,7 @@ function metRechten(executable: string, cwd: string): Promise<LaunchResult> {
    */
   const opdracht =
     `try { Start-Process -FilePath ${quote(executable)} ` +
+    (windowed ? `-ArgumentList '-windowed' ` : '') +
     `-WorkingDirectory ${quote(cwd)} -Verb RunAs -ErrorAction Stop } catch { exit 1 }`
   return new Promise((klaar) => {
     const kind = spawn(

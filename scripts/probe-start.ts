@@ -68,6 +68,7 @@ async function main(): Promise<void> {
   let gevraagd = false
   const uitkomst = await launchOmsi(
     dicht,
+    false,
     () => {
       const fout = new Error('spawn Omsi.exe EACCES') as Error & { code: string }
       fout.code = 'EACCES'

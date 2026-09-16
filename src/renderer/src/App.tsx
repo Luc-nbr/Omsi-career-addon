@@ -89,10 +89,15 @@ export function App(): JSX.Element {
    * en dat kan op een zwart beeld uitlopen.
    */
   const [schermmodus, setSchermmodus] = useState<'volledig' | 'venster'>()
+  /** Start de app OMSI in een venster? Standaard ja; zie settings.ts waarom. */
+  const [inVenster, setInVenster] = useState(true)
   useEffect(() => {
     let staat = true
     void window.career.screenMode().then((modus) => {
       if (staat) setSchermmodus(modus)
+    })
+    void window.career.settings().then((settings) => {
+      if (staat) setInVenster(settings.windowedOmsi)
     })
     return () => {
       staat = false
@@ -647,7 +652,21 @@ export function App(): JSX.Element {
         </div>
 
         {schermmodus === 'volledig' && (
-          <p className="note warn fullscreen-note">{t(language, 'app.fullscreen')}</p>
+          <div className="note warn fullscreen-note">
+            <p>{t(language, inVenster ? 'app.fullscreenFixed' : 'app.fullscreen')}</p>
+            <label className="fullscreen-keuze">
+              <input
+                type="checkbox"
+                checked={inVenster}
+                onChange={(event) => {
+                  const aan = event.target.checked
+                  setInVenster(aan)
+                  void window.career.saveSettings({ windowedOmsi: aan })
+                }}
+              />
+              {t(language, 'app.windowed')}
+            </label>
+          </div>
         )}
 
         {/*

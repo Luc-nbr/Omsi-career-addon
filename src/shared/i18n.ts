@@ -1161,6 +1161,18 @@ const TEXT = {
     Een waarschuwing die pas verschijnt als hij ergens op slaat: OMSI draaide de
     vorige keer op volledig scherm, en daar gaat de overlay slecht mee samen.
   */
+  'app.fullscreenFixed': {
+    en: 'OMSI ran in fullscreen last time. The app will start it in a window from now on, so the overlay does not take the picture down with it.',
+    de: 'OMSI lief zuletzt im Vollbild. Die App startet es ab jetzt im Fenster, damit das Overlay nicht das Bild mitnimmt.',
+    fr: 'OMSI a tourné en plein écran la dernière fois. L’application le lancera désormais en fenêtre, pour que la superposition n’emporte pas l’image.',
+    nl: 'OMSI draaide de vorige keer op volledig scherm. De app start hem voortaan in een venster, zodat de overlay het beeld niet meeneemt.'
+  },
+  'app.windowed': {
+    en: 'Start OMSI in a window',
+    de: 'OMSI im Fenster starten',
+    fr: 'Lancer OMSI en fenêtre',
+    nl: 'OMSI in een venster starten'
+  },
   'app.fullscreen': {
     en: 'OMSI ran in fullscreen last time. The overlay then sits on top of a game that claims the screen exclusively, which can leave the picture black. Switch OMSI to windowed or borderless.',
     de: 'OMSI lief zuletzt im Vollbild. Das Overlay liegt dann über einem Spiel, das den Bildschirm exklusiv beansprucht -- das kann ein schwarzes Bild geben. Stell OMSI auf Fenster oder randloses Fenster.',

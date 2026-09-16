@@ -116,6 +116,19 @@ input {
   width: 100%;
 }
 
+/*
+ * Een vinkje is geen invulveld. De regel hierboven geeft elk `input` de volle
+ * breedte en een binnenmarge -- bij een tekstveld precies goed, bij een vinkje
+ * een vierkant van tien centimeter met het bijschrift ergens rechts.
+ */
+input[type='checkbox'],
+input[type='radio'] {
+  width: auto;
+  padding: 0;
+  margin: 0;
+  accent-color: var(--lijn);
+}
+
 /* En de regels in die lijst ook, want ze erven niet altijd van het veld. */
 select option,
 select optgroup {
@@ -2014,6 +2027,22 @@ input[type='range'] {
  * De waarschuwing over volledig scherm. Hij staat boven de kaart en niet erin:
  * het gaat over hoe OMSI draait, niet over deze dienst.
  */
+.fullscreen-note p {
+  margin: 0 0 8px;
+}
+
+.fullscreen-keuze {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
 .fullscreen-note {
   margin: 0 0 14px;
   padding: 10px 14px;

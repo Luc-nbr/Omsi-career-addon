@@ -1190,7 +1190,7 @@ function registerHandlers(): void {
       try {
         // Wachten tot het echt gelukt is: de fout komt anders pas later binnen,
         // en dan is er niemand meer die hem opvangt.
-        launched = (await launchOmsi(omsi())) === 'gestart'
+        launched = (await launchOmsi(omsi(), readSettings(userData()).windowedOmsi)) === 'gestart'
       } catch {
         // Lukt starten niet, dan doet de speler het zelf.
       }
@@ -1283,7 +1283,7 @@ function registerHandlers(): void {
     const running = await isOmsiRunning()
     if (!running) {
       try {
-        launched = (await launchOmsi(omsi())) === 'gestart'
+        launched = (await launchOmsi(omsi(), readSettings(userData()).windowedOmsi)) === 'gestart'
       } catch {
         // Lukt starten niet, dan doet de speler het zelf; de overlay staat klaar.
       }
