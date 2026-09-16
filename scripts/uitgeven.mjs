@@ -32,7 +32,8 @@ const GH = 'C:/Program Files/GitHub CLI/gh.exe'
 const argumenten = process.argv.slice(2)
 const versie = argumenten.find((arg) => !arg.startsWith('--'))
 const publiceren = argumenten.includes('--publiceer')
-const notitiesUit = argumenten[argumenten.indexOf('--notities') + 1]
+const notitieVlag = argumenten.indexOf('--notities')
+const notitiesUit = notitieVlag >= 0 ? argumenten[notitieVlag + 1] : undefined
 
 if (!versie || !/^\d+\.\d+\.\d+(-[a-z]+\.\d+)?$/.test(versie)) {
   console.error('Gebruik: node scripts/uitgeven.mjs <versie> [--publiceer] [--notities <bestand>]')
@@ -70,9 +71,17 @@ console.log(`${tag}${vooraf ? ' (pre-release)' : ''}, vorige was ${vorige || 'ge
 const pakketPad = join(WORTEL, 'package.json')
 const pakket = JSON.parse(readFileSync(pakketPad, 'utf8'))
 const oudeVersie = pakket.version
-pakket.version = versie
-writeFileSync(pakketPad, `${JSON.stringify(pakket, null, 2)}\n`, 'utf8')
-console.log(`versie: ${oudeVersie} -> ${versie}`)
+/*
+ * Opnieuw draaien mag. Een uitgave kan halverwege stranden -- een virusscanner
+ * die een bestand vasthoudt, een build die faalt -- en dan moet je hem gewoon
+ * nog eens kunnen starten zonder eerst met de hand op te ruimen.
+ */
+const alGezet = oudeVersie === versie
+if (!alGezet) {
+  pakket.version = versie
+  writeFileSync(pakketPad, `${JSON.stringify(pakket, null, 2)}\n`, 'utf8')
+}
+console.log(alGezet ? `versie stond al op ${versie}` : `versie: ${oudeVersie} -> ${versie}`)
 
 // ---- 3. bouwen, buiten het project om ----
 const uit = mkdtempSync(join(tmpdir(), 'omsi-uitgave-'))
@@ -126,10 +135,22 @@ const assets = [
 for (const asset of assets) copyFileSync(join(uit, asset.van), join(uit, asset.naar))
 
 // ---- 6. vastleggen en van een tag voorzien ----
-git('add', 'package.json')
-git('commit', '-m', `Versie ${versie}`)
-git('tag', '-a', tag, '-m', `OMSI Enhancer ${versie}`)
-console.log(`vastgelegd en getagd: ${tag}`)
+if (git('status', '--porcelain')) {
+  git('add', 'package.json')
+  git('commit', '-m', `Versie ${versie}`)
+  console.log(`vastgelegd: Versie ${versie}`)
+}
+if (!git('tag', '--list', tag)) {
+  git('tag', '-a', tag, '-m', `OMSI Enhancer ${versie}`)
+  console.log(`getagd: ${tag}`)
+} else {
+  const waar = git('rev-list', '-n', '1', tag)
+  console.log(
+    waar === git('rev-parse', 'HEAD')
+      ? `${tag} stond er al, op deze commit`
+      : `LET OP: ${tag} wijst naar een andere commit`
+  )
+}
 
 // ---- 7. de tekst bij de release ----
 const notities =
@@ -143,9 +164,9 @@ const notities =
         '### Wat er veranderd is',
         '',
         ...(vorige
-          ? git('log', `${vorige}..HEAD^`, '--pretty=- %s')
+          ? git('log', `${vorige}..HEAD`, '--pretty=- %s')
               .split('\n')
-              .filter(Boolean)
+              .filter((regel) => regel && !regel.startsWith(`- Versie ${versie}`))
           : ['- Eerste versie.']),
         '',
         '**Download:** `OMSI-Enhancer-Setup.exe` (installer) of `OMSI-Enhancer-draagbaar.exe` (zonder installatie).',
