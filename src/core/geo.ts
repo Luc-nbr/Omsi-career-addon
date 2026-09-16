@@ -37,6 +37,21 @@ interface FoundStop extends StopPoint {
   real: boolean
 }
 
+/**
+ * Een snelheidsbord langs de weg.
+ *
+ * OMSI schrijft nergens op hoe hard je ergens mag; die kennis staat alleen op de
+ * borden zelf, en die zijn gewone objecten met hun snelheid in de bestandsnaam:
+ * `vz_30kmh_mast.sco`. Hohenkirchen zet er tweehonderdvijftig neer, van 30 tot
+ * 80. Een kaart die ze niet gebruikt levert niets op, en dan staat er ook niets
+ * in beeld.
+ */
+export interface SpeedSign {
+  x: number
+  y: number
+  kmh: number
+}
+
 /** Een stuk weg of spoor, als aaneengesloten punten in meters. */
 export interface RoadLine {
   kind: SplineKind
@@ -59,6 +74,8 @@ export interface MapGeometry {
   roads: RoadLine[]
   /** Rivieren en kanalen; `w` is hun breedte in meters. */
   water?: RoadLine[]
+  /** De snelheidsborden die langs de wegen staan. */
+  limits?: SpeedSign[]
 }
 
 /**
@@ -174,6 +191,8 @@ const EMPTY: MapGeometry = { widthM: 0, heightM: 0, stops: [], roads: [] }
  * kaartmaker die zich daar niet aan houdt krijgt de standaardbreedte.
  */
 const WATER = /wasser|water|fluss|bach|kanal|teich/i
+/** Een snelheidsbord: `vz_30kmh_mast.sco`, `Vz-50kmh.sco`, en wat daarop lijkt. */
+const BORD = /vz[_-]?(\d{2,3})\s*kmh/i
 const WATER_BREEDTE = /[_-](\d+)\s*m/i
 const WATER_STANDAARD = 20
 
@@ -206,6 +225,7 @@ export function readMapData(
   const stops: FoundStop[] = []
   const roads: RoadLine[] = []
   const water: RoadLine[] = []
+  const limits: SpeedSign[] = []
   const lanes: Lane[] = []
   let widthM = 0
   let heightM = 0
@@ -240,6 +260,15 @@ export function readMapData(
         const id = str(lines[i + 3])
         const source = str(lines[i + 2])
         if (!wantedIds.has(id)) {
+          // Een snelheidsbord draagt zijn snelheid in zijn naam.
+          const bord = BORD.exec(source)
+          if (bord) {
+            const kmh = Number.parseInt(bord[1], 10)
+            if (kmh >= 5 && kmh <= 130) {
+              limits.push({ x: dx + num(lines[i + 4]), y: dy + num(lines[i + 5]), kmh })
+            }
+          }
+
           // Geen halte, maar misschien wel een kruising of een stuk straat.
           const paths = objectPaths(omsiPath, source)
           if (paths.length === 0) continue
@@ -352,7 +381,8 @@ export function readMapData(
       heightM,
       stops: [...best.values()].map(({ real: _real, ...stop }) => stop),
       roads,
-      water
+      water,
+      limits
     },
     lanes
   }

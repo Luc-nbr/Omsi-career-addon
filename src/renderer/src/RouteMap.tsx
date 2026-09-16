@@ -89,6 +89,10 @@ interface Props {
   vehicle?: LiveVehicle
   /** Teksten van de overlay, die zijn eigen taalkeuze heeft. */
   texts?: { waiting?: string; busNote?: string; centre?: string }
+  /** Wat er aan manoeuvre voor je ligt; de navigatiebalk tekent hem. */
+  onManoeuvre?(manoeuvre: Manoeuvre | undefined): void
+  /** De snelheid van het laatste bord dat je voorbij bent; niets als er geen staat. */
+  onSpeedLimit?(kmh: number | undefined): void
   /**
    * Vergroting van het venster waar de kaart in hangt. Het wegennet staat op een
    * canvas; zonder deze factor wordt dat bij vergroten uitgerekt en dus wazig.
@@ -111,6 +115,29 @@ const FOLLOW_PAD_M = 130
 /** Namen van andere haltes verschijnen pas als je dicht genoeg bent. */
 const OTHER_LABEL_MPP = 2.5
 const ROUTE_LABEL_MPP = 14
+
+/**
+ * De manoeuvre die eraan komt: rechtdoor, of een bocht met de afstand erbij.
+ *
+ * Een navigatie die altijd een afslagpijl laat zien, zegt niets. Deze kijkt
+ * tweehonderd meter vooruit langs de route en telt de bocht op; pas als de weg
+ * echt draait staat er een pijl die die kant op wijst.
+ */
+export interface Manoeuvre {
+  kind: 'rechtdoor' | 'links' | 'rechts'
+  /** Meters tot het begin van de bocht; alleen bij een bocht. */
+  metres?: number
+}
+
+/** Zo dicht moet een snelheidsbord bij de route staan om erbij te horen. */
+const SIGN_NEAR_M = 12
+
+/** Zover kijkt de navigatie vooruit voor de volgende manoeuvre. */
+const LOOKAHEAD_M = 200
+/** Minder dan zoveel graden verschil is een slinger in de weg, geen afslag. */
+const TURN_DEG = 32
+/** Over hoeveel meter die draai gemaakt moet zijn om als afslag te tellen. */
+const TURN_SPAN_M = 60
 
 /** Zoveel meter voorbij een halte telt hij pas als gehad. */
 const STOP_PASSED_M = 12
@@ -174,6 +201,8 @@ export function RouteMap({
   bus,
   vehicle,
   texts,
+  onManoeuvre,
+  onSpeedLimit,
   pixelScale = 1
 }: Props): JSX.Element {
   const tr = useT()
@@ -439,6 +468,142 @@ export function RouteMap({
     const along = previous + Math.max(0, bus.metresSinceStop ?? 0)
     return upcoming !== undefined && upcoming >= previous ? Math.min(along, upcoming) : along
   }, [activeLeg, legTracks, liveBus, bus, duty])
+  /*
+   * Waar de weg voor je draait.
+   *
+   * We lopen de route vooruit en tellen per stuk hoeveel graden hij van koers
+   * verandert. Draait hij binnen zestig meter meer dan tweeëndertig graden, dan
+   * is dat een afslag en niet een slinger; het teken zegt of het naar links of
+   * naar rechts gaat. Gebeurt dat niet binnen tweehonderd meter, dan is het
+   * rechtdoor.
+   */
+  const manoeuvre = useMemo<Manoeuvre | undefined>(() => {
+    if (activeLeg === undefined || progressAlong === undefined) return undefined
+    const track = legTracks[activeLeg]
+    if (!track || track.points.length < 8) return undefined
+    const { points, cumulative } = track
+    const einde = cumulative[cumulative.length - 1]
+    const at = clamp(progressAlong, 0, einde)
+
+    // De punten staan plat achter elkaar: x, y, x, y. De afstanden in
+    // `cumulative` horen bij die punten, dus per twee getallen een.
+    const koers = (i: number): number => {
+      const dx = points[(i + 1) * 2] - points[i * 2]
+      const dy = points[(i + 1) * 2 + 1] - points[i * 2 + 1]
+      return (Math.atan2(dx, dy) * 180) / Math.PI
+    }
+    const verschil = (a: number, b: number): number => {
+      let d = a - b
+      while (d > 180) d -= 360
+      while (d < -180) d += 360
+      return d
+    }
+
+    let i = 0
+    while (i < cumulative.length - 2 && cumulative[i + 1] < at) i++
+
+    let som = 0
+    let begin: number | undefined
+    const aantal = Math.min(cumulative.length, Math.floor(points.length / 2))
+    for (let k = i; k < aantal - 2; k++) {
+      const afstand = cumulative[k] - at
+      if (afstand > LOOKAHEAD_M) break
+      const draai = verschil(koers(k + 1), koers(k))
+      if (Math.abs(draai) < 1) {
+        // Recht stuk: wat er tot nu toe gedraaid is telt niet meer mee.
+        if (begin !== undefined && cumulative[k] - begin > TURN_SPAN_M) {
+          som = 0
+          begin = undefined
+        }
+        continue
+      }
+      if (begin === undefined || Math.sign(draai) !== Math.sign(som)) {
+        begin = cumulative[k]
+        som = 0
+      }
+      som += draai
+      if (Math.abs(som) >= TURN_DEG) {
+        return {
+          kind: som > 0 ? 'rechts' : 'links',
+          metres: Math.max(0, Math.round((begin - at) / 10) * 10)
+        }
+      }
+    }
+    return { kind: 'rechtdoor' }
+  }, [activeLeg, legTracks, progressAlong])
+
+  /*
+   * Naar boven doorgeven, en alleen als hij verandert: anders krijgt de balk bij
+   * elk beeld een nieuw voorwerp en tekent hij zichzelf tien keer per seconde
+   * opnieuw.
+   */
+  const laatsteManoeuvre = useRef('')
+  useEffect(() => {
+    const sleutel = manoeuvre ? `${manoeuvre.kind}|${manoeuvre.metres ?? ''}` : ''
+    if (sleutel === laatsteManoeuvre.current) return
+    laatsteManoeuvre.current = sleutel
+    onManoeuvre?.(manoeuvre)
+  }, [manoeuvre, onManoeuvre])
+
+  /*
+   * De snelheidsborden langs deze rit, op volgorde van hoe ver ze langs de
+   * route liggen.
+   *
+   * Ze staan in paren, links en rechts van de weg -- het linker bord is voor het
+   * verkeer dat de andere kant op komt. We houden alleen de rechter, want dat is
+   * het bord dat over jou gaat.
+   */
+  const signsAlong = useMemo(() => {
+    const track = activeLeg !== undefined ? legTracks[activeLeg] : undefined
+    const borden = geometry.limits
+    if (!track || !borden || borden.length === 0) return []
+    const { points, cumulative } = track
+    const aantal = Math.min(cumulative.length, Math.floor(points.length / 2))
+    const gevonden: Array<{ along: number; kmh: number }> = []
+
+    for (const bord of borden) {
+      let beste = Infinity
+      let waar = 0
+      let kant = 0
+      for (let i = 1; i < aantal; i++) {
+        const ax = points[(i - 1) * 2]
+        const ay = points[(i - 1) * 2 + 1]
+        const vx = points[i * 2] - ax
+        const vy = points[i * 2 + 1] - ay
+        const len2 = vx * vx + vy * vy
+        const t = len2 > 0 ? clamp(((bord.x - ax) * vx + (bord.y - ay) * vy) / len2, 0, 1) : 0
+        const d = Math.hypot(bord.x - (ax + vx * t), bord.y - (ay + vy * t))
+        if (d < beste) {
+          beste = d
+          waar = cumulative[i - 1] + Math.sqrt(len2) * t
+          kant = Math.sign(vx * (bord.y - ay) - vy * (bord.x - ax))
+        }
+        if (beste <= 0.5) break
+      }
+      // Rechts van de rijrichting, en dicht genoeg bij de weg.
+      if (beste <= SIGN_NEAR_M && kant < 0) gevonden.push({ along: waar, kmh: bord.kmh })
+    }
+    return gevonden.sort((a, b) => a.along - b.along)
+  }, [activeLeg, legTracks, geometry.limits])
+
+  /** Het laatste bord dat je voorbij bent; daarvoor geldt geen bord. */
+  const speedLimit = useMemo(() => {
+    if (progressAlong === undefined || signsAlong.length === 0) return undefined
+    let kmh: number | undefined
+    for (const bord of signsAlong) {
+      if (bord.along > progressAlong) break
+      kmh = bord.kmh
+    }
+    return kmh
+  }, [signsAlong, progressAlong])
+
+  const laatsteLimiet = useRef<number | undefined>(undefined)
+  useEffect(() => {
+    if (laatsteLimiet.current === speedLimit) return
+    laatsteLimiet.current = speedLimit
+    onSpeedLimit?.(speedLimit)
+  }, [speedLimit, onSpeedLimit])
+
   const hasVehicle = Boolean(vehicle)
   useEffect(() => {
     if (!hasVehicle) {

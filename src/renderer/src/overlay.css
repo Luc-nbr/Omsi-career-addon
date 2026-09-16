@@ -173,9 +173,17 @@
   border-radius: 0;
 }
 
-/* De knoppen schuiven onder de zwevende balk door. */
+/*
+ * De knoppen staan onderin.
+ *
+ * Ze stonden onder de zwevende balk, op een vaste afstand van de bovenkant --
+ * en die balk groeit mee met wat erin staat. Een lange haltenaam duwde hem over
+ * de plusknop heen. Onderin kan dat niet gebeuren: daar staat alleen de
+ * schaalbalk, en die staat links.
+ */
 .nav-wrap .map-tools {
-  top: 66px;
+  top: auto;
+  bottom: 10px;
   right: 9px;
 }
 
@@ -910,5 +918,62 @@
 .editbar-version {
   color: rgba(255, 255, 255, 0.4);
   font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * De snelheidsmeter, linksonder op de kaart en boven de schaalbalk.
+ *
+ * Klein, want je hebt er ook een op je dashboard; hij staat er voor het moment
+ * dat je met een half oog naar de kaart kijkt en wilt weten of je te hard gaat.
+ */
+.nav-speed {
+  position: absolute;
+  z-index: 2;
+  left: 10px;
+  bottom: 62px;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: 13px;
+  background: rgba(18, 22, 29, 0.74);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.nav-speed b {
+  font-size: 19px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.nav-speed span {
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* Te hard voor het laatste bord: het getal kleurt, de rest blijft zoals het was. */
+.nav-speed b.tehard {
+  color: var(--laat, #ff5f57);
+}
+
+/* Het bord zelf, zoals het langs de weg staat. */
+.nav-limit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-left: 2px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 3px solid #d7291f;
+  color: #16181c;
+  font-size: 12px;
+  font-weight: 800;
+  font-style: normal;
   font-variant-numeric: tabular-nums;
 }

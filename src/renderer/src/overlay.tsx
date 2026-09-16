@@ -31,7 +31,7 @@ import {
   type PanelId,
   type PanelInfo
 } from '../../shared/overlay'
-import { RouteMap } from './RouteMap'
+import { RouteMap, type Manoeuvre } from './RouteMap'
 import '@fontsource/manrope/400.css'
 import '@fontsource/manrope/500.css'
 import '@fontsource/manrope/600.css'
@@ -145,6 +145,10 @@ function Overlay(): JSX.Element | null {
    */
   const [ibisReady, setIbisReady] = useState<string>()
   const [geometry, setGeometry] = useState<MapGeometry>()
+  /** Wat er aan bocht voor je ligt; de kaart rekent het uit, de balk tekent het. */
+  const [manoeuvre, setManoeuvre] = useState<Manoeuvre>()
+  /** Wat het laatste bord langs de route zei; niets als er geen bord stond. */
+  const [limit, setLimit] = useState<number>()
   const [language, setLanguage] = useState<Language>(DEFAULT_LANGUAGE)
   /** Hoe vaak de overlay wordt bijgewerkt; in de sleepbalk te kiezen. */
   const [rate, setRate] = useState<OverlayRate>('rustig')
@@ -452,7 +456,13 @@ function Overlay(): JSX.Element | null {
         >
           {duty && geometry ? (
             <div className="nav-wrap">
-              <NavBar status={status} leg={leg} passed={passed} language={language} />
+              <NavBar
+                status={status}
+                leg={leg}
+                passed={passed}
+                manoeuvre={manoeuvre}
+                language={language}
+              />
               <RouteMap
               duty={duty}
               geometry={geometry}
@@ -478,7 +488,23 @@ function Overlay(): JSX.Element | null {
                 centre: t(language, 'ovl.centre')
               }}
                 variant="panel"
+                onManoeuvre={setManoeuvre}
+                onSpeedLimit={setLimit}
               />
+              {status && (
+                <div className="nav-speed">
+                  <b className={limit !== undefined && status.speedKmh > limit + 3 ? 'tehard' : undefined}>
+                    {Math.max(0, Math.round(status.speedKmh))}
+                  </b>
+                  <span>km/u</span>
+                  {/*
+                    Het bord zoals het langs de weg staat: wit met een rode ring.
+                    Alleen als er eentje voorbij is gekomen -- verzinnen wat er
+                    mag is erger dan niets zeggen.
+                  */}
+                  {limit !== undefined && <i className="nav-limit">{limit}</i>}
+                </div>
+              )}
               <NavFoot leg={leg} passed={passed} language={language} />
             </div>
           ) : (
@@ -519,11 +545,13 @@ function NavBar({
   status,
   leg,
   passed,
+  manoeuvre,
   language
 }: {
   status?: LiveStatus
   leg?: DutyLeg
   passed?: number
+  manoeuvre?: Manoeuvre
   language: Language
 }): JSX.Element | null {
   if (!status || !leg || passed === undefined) return null
@@ -545,10 +573,38 @@ function NavBar({
 
   return (
     <div className="navbar">
-      <svg className="navbar-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 21V9" />
-        <path d="M12 9c0-2.6 2.1-4.7 4.7-4.7H19" />
-        <path d="M16.5 1.6 19.3 4.4 16.5 7.2" />
+      {/*
+        De pijl hoort te zeggen wat je doet, niet wat de app kan tekenen. Hij
+        stond altijd op afslaan; nu wijst hij rechtdoor tenzij de weg binnen
+        tweehonderd meter echt draait.
+      */}
+      <svg
+        className="navbar-arrow"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2.2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {manoeuvre?.kind === 'rechts' ? (
+          <>
+            <path d="M12 21V9" />
+            <path d="M12 9c0-2.6 2.1-4.7 4.7-4.7H19" />
+            <path d="M16.5 1.6 19.3 4.4 16.5 7.2" />
+          </>
+        ) : manoeuvre?.kind === 'links' ? (
+          <>
+            <path d="M12 21V9" />
+            <path d="M12 9c0-2.6-2.1-4.7-4.7-4.7H5" />
+            <path d="M7.5 1.6 4.7 4.4 7.5 7.2" />
+          </>
+        ) : (
+          <>
+            <path d="M12 21V4" />
+            <path d="M5.8 10.2 12 4l6.2 6.2" />
+          </>
+        )}
       </svg>
       <div className="navbar-what">
         {afstand && <b>{afstand}</b>}

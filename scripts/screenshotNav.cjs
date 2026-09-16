@@ -105,7 +105,9 @@ app.whenReady().then(async () => {
 
   const overlay = new BrowserWindow({
     width: 1280,
-    height: 860,
+    // Hoog genoeg voor het staande navigatiepaneel; anders valt de onderkant
+    // met de schaalbalk en de snelheidsmeter buiten beeld.
+    height: 1060,
     show: true,
     backgroundColor: '#0b0e13',
     webPreferences: { preload: join(__dirname, '../out/preload/index.js'), sandbox: false, contextIsolation: true }
