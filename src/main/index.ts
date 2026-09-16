@@ -72,6 +72,7 @@ import {
   type DutyRequest,
   type InstalledCheck,
   type MapSummary,
+  type SessionResult,
   type YardOption
 } from '../shared/api'
 import { defaultLayout, OVERLAY_RATES, type OverlayLayout } from '../shared/overlay'
@@ -270,6 +271,69 @@ function baseline(): NonNullable<CareerState['activeDuty']>['baseline'] {
 /** De lopende dienst: die van de overlay, of anders die uit het profiel (na een herstart). */
 function currentDuty(): Duty | undefined {
   return overlayDuty ?? (career?.activeDuty?.assignment as Assignment | undefined)?.duty
+}
+
+/**
+ * Wat er van deze dienst gereden is.
+ *
+ * De plugin laat bij het afsluiten een laatste stand achter met alive=false.
+ * Die telt gewoon mee: wie het spel sluit voordat hij afrondt, hoort zijn
+ * kilometers niet kwijt te zijn.
+ */
+function sessieGegevens(): SessionResult {
+  captureBaseline()
+  const live = readLive()
+  const start = baseline()
+  if (!live) return { drivenKm: 0, elapsedMinutes: 0, dutyComplete: false, finished: false }
+  if (!start) return { drivenKm: 0, elapsedMinutes: 0, dutyComplete: false, finished: true }
+
+  const elapsed = live.time / 60 - start.clockMinutes
+  const status = describeLive(live, currentDuty(), start)
+  return {
+    drivenKm: Math.max(0, live.km + live.metres / 1000 - start.odometerKm),
+    elapsedMinutes: elapsed >= 0 ? elapsed : elapsed + 1440,
+    delayMinutes: status.delayMinutes,
+    harshBrakes: status.harshBrakes,
+    harshAccels: status.harshAccels,
+    topSpeed: live.topSpeed,
+    dutyComplete: status.dutyComplete,
+    finished: true
+  }
+}
+
+/**
+ * De lopende dienst afsluiten als de app dichtgaat.
+ *
+ * Een dienst die blijft hangen is verwarrend: je start de app weer op, er staat
+ * een rit open, en niemand weet meer waar die was. Dus bij het afsluiten gaat
+ * hij dicht -- met wat er gereden is mee naar het logboek.
+ *
+ * Twee gevallen gaan niet naar het logboek. Een dienst die wel is aangenomen
+ * maar nooit begon heeft niets om op te schrijven. En een examenrit die je
+ * afbreekt is geen gezakt examen: hij is niet gereden, en dat is iets anders.
+ * Allebei vervallen ze gewoon.
+ */
+function sluitLopendeDienstAf(): void {
+  const lopend = career?.activeDuty
+  if (!career || !lopend) return
+
+  const duty = currentDuty()
+  if (!duty || !baseline() || lopend.exam) {
+    career = { ...career, activeDuty: undefined }
+    writeProfile(userData(), career)
+    return
+  }
+
+  const bus = (lopend.assignment as Assignment | undefined)?.vehicle
+  const naam = bus ? `${bus.manufacturer} ${bus.type}` : lopend.vehicleOverride
+  const gemeten = sessieGegevens()
+  career = completeDuty(career, duty, naam, {
+    drivenKm: gemeten.drivenKm,
+    delayMinutes: gemeten.delayMinutes,
+    harshBrakes: gemeten.harshBrakes,
+    harshAccels: gemeten.harshAccels
+  })
+  writeProfile(userData(), career)
 }
 
 /** Verse gegevens van een draaiend OMSI, of niets. */
@@ -1198,31 +1262,7 @@ function registerHandlers(): void {
   })
 
   /** Wat er sinds het begin van de dienst gereden is, volgens de plugin. */
-  ipcMain.handle('duty:session', () => {
-    /*
-     * De plugin laat bij het afsluiten een laatste stand achter met alive=false.
-     * Die telt gewoon mee: wie het spel sluit voordat hij afrondt, hoort zijn
-     * kilometers niet kwijt te zijn.
-     */
-    captureBaseline()
-    const live = readLive()
-    const start = baseline()
-    if (!live) return { drivenKm: 0, elapsedMinutes: 0, dutyComplete: false, finished: false }
-    if (!start) return { drivenKm: 0, elapsedMinutes: 0, dutyComplete: false, finished: true }
-
-    const elapsed = live.time / 60 - start.clockMinutes
-    const status = describeLive(live, currentDuty(), start)
-    return {
-      drivenKm: Math.max(0, live.km + live.metres / 1000 - start.odometerKm),
-      elapsedMinutes: elapsed >= 0 ? elapsed : elapsed + 1440,
-      delayMinutes: status.delayMinutes,
-      harshBrakes: status.harshBrakes,
-      harshAccels: status.harshAccels,
-      topSpeed: live.topSpeed,
-      dutyComplete: status.dutyComplete,
-      finished: true
-    }
-  })
+  ipcMain.handle('duty:session', () => sessieGegevens())
 
   /**
    * Open of dicht, zoals gevraagd, en niet omgekeerd: een knop die "wisselt"
@@ -1425,7 +1465,10 @@ if (!app.requestSingleInstanceLock()) {
     })
   })
 
-  app.on('before-quit', closeOverlay)
+  app.on('before-quit', () => {
+    closeOverlay()
+    sluitLopendeDienstAf()
+  })
 
   app.on('will-quit', () => {
     globalShortcut.unregisterAll()
