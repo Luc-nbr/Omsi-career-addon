@@ -1157,6 +1157,16 @@ const TEXT = {
   'bus.other': { en: 'Another bus', de: 'Anderer Bus', fr: 'Autre bus', nl: 'Andere bus' },
   'bus.auto': { en: 'Automatic', de: 'Automatisch', fr: 'Automatique', nl: 'Automatisch' },
   'bus.yardPick': { en: 'Fleet file', de: 'Hofdatei', fr: 'Fichier de dépôt', nl: 'Wagenpark' },
+  /*
+    Een waarschuwing die pas verschijnt als hij ergens op slaat: OMSI draaide de
+    vorige keer op volledig scherm, en daar gaat de overlay slecht mee samen.
+  */
+  'app.fullscreen': {
+    en: 'OMSI ran in fullscreen last time. The overlay then sits on top of a game that claims the screen exclusively, which can leave the picture black. Switch OMSI to windowed or borderless.',
+    de: 'OMSI lief zuletzt im Vollbild. Das Overlay liegt dann über einem Spiel, das den Bildschirm exklusiv beansprucht -- das kann ein schwarzes Bild geben. Stell OMSI auf Fenster oder randloses Fenster.',
+    fr: 'OMSI a tourné en plein écran la dernière fois. La superposition se place alors au-dessus d un jeu qui monopolise l écran, ce qui peut donner une image noire. Passez OMSI en fenêtre ou fenêtre sans bordure.',
+    nl: 'OMSI draaide de vorige keer op volledig scherm. De overlay ligt dan over een spel dat het scherm exclusief opeist, en dat kan een zwart beeld geven. Zet OMSI op venster of randloos venster.'
+  },
   'bus.yardAuto': {
     en: 'Automatic (best match)',
     de: 'Automatisch (beste Übereinstimmung)',

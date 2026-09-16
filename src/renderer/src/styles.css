@@ -2010,6 +2010,19 @@ input[type='range'] {
   color: var(--laat);
 }
 
+/*
+ * De waarschuwing over volledig scherm. Hij staat boven de kaart en niet erin:
+ * het gaat over hoe OMSI draait, niet over deze dienst.
+ */
+.fullscreen-note {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 95, 87, 0.35);
+  border-radius: 14px;
+  background: rgba(255, 95, 87, 0.08);
+  max-width: 900px;
+}
+
 /* Het versienummer onderin de zijbalk: aanwezig, niet aanwezig genoeg om af te leiden. */
 .side-version {
   margin-top: auto;

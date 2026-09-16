@@ -323,6 +323,8 @@ export interface CareerApi {
   liveConnected(): Promise<boolean>
   /** Het versienummer van de app zelf, zoals het in de installer staat. */
   version(): Promise<string>
+  /** Hoe OMSI de vorige keer draaide: op volledig scherm of in een venster. */
+  screenMode(): Promise<'volledig' | 'venster' | undefined>
   /** De instellingen van OMSI zelf. */
   gameSettings(): Promise<GameSettingsPayload>
   /** Schrijft alleen de instellingen die veranderd zijn terug naar options.cfg. */

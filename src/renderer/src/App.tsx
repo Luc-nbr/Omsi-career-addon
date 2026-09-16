@@ -83,6 +83,21 @@ export function App(): JSX.Element {
    */
   const [yardOverride, setYardOverride] = useState('')
   const [yards, setYards] = useState<YardOption[]>([])
+  /*
+   * Hoe OMSI de vorige keer draaide. Alleen volledig scherm is een bericht
+   * waard: dan ligt de overlay over een spel dat het scherm exclusief opeist,
+   * en dat kan op een zwart beeld uitlopen.
+   */
+  const [schermmodus, setSchermmodus] = useState<'volledig' | 'venster'>()
+  useEffect(() => {
+    let staat = true
+    void window.career.screenMode().then((modus) => {
+      if (staat) setSchermmodus(modus)
+    })
+    return () => {
+      staat = false
+    }
+  }, [])
   const [ibis, setIbis] = useState<IbisPlan>()
   const [busy, setBusy] = useState(false)
   /** Staat het voorstelvenster open? Daar kies je de dienst aan of opnieuw. */
@@ -630,6 +645,10 @@ export function App(): JSX.Element {
           </button>
           {checked && <span className="note mode-note">{checked}</span>}
         </div>
+
+        {schermmodus === 'volledig' && (
+          <p className="note warn fullscreen-note">{t(language, 'app.fullscreen')}</p>
+        )}
 
         {/*
           De kop zegt in welke modus je bent; alleen bij dienst is dat "dienst

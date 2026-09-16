@@ -63,6 +63,7 @@ import { listMaps, loadMap } from '../core/timetable'
 import { listVehicles } from '../core/vehicles'
 import type { Duty, DutyLeg, OmsiMap } from '../core/types'
 import { listHofs, matchHof, pickHof } from '../core/hof'
+import { readScreenMode } from '../core/schermmodus'
 import {
   TIME_WINDOWS,
   type Assignment,
@@ -754,6 +755,19 @@ function registerHandlers(): void {
    * foutmelding hoort te plakken.
    */
   ipcMain.handle('app:version', () => __APP_VERSION__)
+
+  /*
+   * Hoe OMSI de vorige keer draaide. Alleen interessant als het volledig scherm
+   * was: de overlay ligt dan over een spel dat het scherm exclusief opeist, en
+   * dat eindigt in een zwart beeld.
+   */
+  ipcMain.handle('omsi:screen', () => {
+    try {
+      return readScreenMode(omsi())
+    } catch {
+      return undefined
+    }
+  })
 
   ipcMain.handle('omsi:status', () => {
     const found = findOmsiInstall()
