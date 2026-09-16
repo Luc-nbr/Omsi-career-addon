@@ -336,8 +336,29 @@ function Overlay(): JSX.Element | null {
    * dienst die dezelfde rit later nog eens rijdt opnieuw om de IBIS vraagt.
    */
   const tripKey = upcoming ? `${upcomingIndex}|${upcoming.tripFile}` : ''
-  /** De rit loopt pas als de chauffeur de IBIS heeft afgemeld. */
-  const started = ibisLoaded && (!ibisCapable || ibisReady === tripKey)
+
+  /*
+   * Staat het al op de IBIS?
+   *
+   * De bus geeft door wat er op zijn film staat: het lijnnummer en de
+   * bestemming. Klopt het lijnnummer met deze rit en staat er een bestemming,
+   * dan heeft de chauffeur zijn lijn en route ingetoetst en hoeft hij dat niet
+   * ook nog te melden. Dat scheelt een knop waarvan mensen niet begrepen wat
+   * hij van hen wilde.
+   *
+   * Niet elke bus geeft die velden door. Blijven ze leeg, dan verandert er
+   * niets en blijft de knop staan.
+   */
+  const ibisTyped = Boolean(
+    status &&
+      upcoming &&
+      status.ibisLine &&
+      status.ibisTerminus &&
+      status.ibisLine.replace(/\s+/g, '') === upcoming.lineNumber.replace(/\s+/g, '')
+  )
+
+  /** De rit loopt zodra de IBIS klopt -- of zodra de chauffeur zelf zegt dat het zo is. */
+  const started = ibisLoaded && (!ibisCapable || ibisTyped || ibisReady === tripKey)
   // Alleen schatten waar de bus is als OMSI zijn plek niet laat lezen.
   const bus =
     !frame.vehicle && status && ibisLoaded && passed !== undefined && stopOdometer.current?.key === stopKey
@@ -392,7 +413,7 @@ function Overlay(): JSX.Element | null {
                 language={language}
               />
             )
-          ) : duty && ibisCapable && ibisReady !== tripKey ? (
+          ) : duty && ibisCapable && !ibisTyped && ibisReady !== tripKey ? (
             <IbisStep
               leg={upcoming}
               ibis={ibis}

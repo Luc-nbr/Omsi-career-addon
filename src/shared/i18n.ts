@@ -1542,16 +1542,21 @@ const TEXT = {
     nl: 'Toets de IBIS in'
   },
   'ovl.ibisStepHow': {
-    en: 'The duty is selected in OMSI. Now key line {line} and route {route} into the IBIS — the route says which direction, so it differs on the way back.',
-    de: 'Der Dienst ist in OMSI gewählt. Jetzt Linie {line} und Route {route} ins IBIS tippen -- die Route sagt die Richtung, zurück ist sie anders.',
-    fr: 'Le service est sélectionné dans OMSI. Saisissez la ligne {line} et la route {route} sur l’IBIS — la route indique le sens, elle diffère au retour.',
-    nl: 'De dienst staat gekozen in OMSI. Toets nu lijn {line} en route {route} in op de IBIS — de route zegt de richting, dus terug is hij anders.'
+    en: 'The duty is selected in OMSI. Now key line {line} and route {route} into the IBIS — the route says which direction, so it differs on the way back. This screen disappears by itself once it is in.',
+    de: 'Der Dienst ist in OMSI gewählt. Jetzt Linie {line} und Route {route} ins IBIS tippen -- die Route sagt die Richtung, zurück ist sie anders. Dieses Fenster verschwindet von allein, sobald es steht.',
+    fr: 'Le service est sélectionné dans OMSI. Saisissez la ligne {line} et la route {route} sur l’IBIS — la route indique le sens, elle diffère au retour. Cet écran disparaît tout seul une fois saisi.',
+    nl: 'De dienst staat gekozen in OMSI. Toets nu lijn {line} en route {route} in op de IBIS — de route zegt de richting, dus terug is hij anders. Dit scherm gaat vanzelf weg zodra het erin staat.'
   },
+  /*
+    Was "IBIS ingevoerd -- start de rit", en dat las als een opdracht: mensen
+    dachten dat de app wachtte tot zij op die knop drukten. Sinds de app het
+    zelf ziet is hij alleen nog de uitweg voor bussen die het niet doorgeven.
+  */
   'ovl.ibisDone': {
-    en: 'IBIS is in — start the trip',
-    de: 'IBIS steht — Fahrt beginnen',
-    fr: 'IBIS saisi — commencer le trajet',
-    nl: 'IBIS ingevoerd — start de rit'
+    en: 'Not happening by itself? Start anyway',
+    de: 'Geht nicht von allein? Trotzdem beginnen',
+    fr: 'Rien ne se passe ? Commencer quand même',
+    nl: 'Gaat het niet vanzelf? Begin toch'
   },
   'ovl.selectWrong': {
     en: 'Selected in OMSI: line {line}, tour {tour}. That is not your accepted duty.',

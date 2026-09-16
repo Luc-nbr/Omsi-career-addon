@@ -184,6 +184,16 @@ export interface LiveStatus {
   reportsStops: boolean
   /** Biedt deze bus halte-informatie uberhaupt aan? */
   offersStops: boolean
+  /**
+   * Wat er op de IBIS staat, zoals de bus het zelf doorgeeft: het lijnnummer en
+   * de bestemming op de film. Daarmee is te zien of de chauffeur zijn lijn en
+   * route heeft ingetoetst, zonder dat hij dat hoeft te melden.
+   *
+   * Niet elke bus geeft ze door -- oude modellen en bussen zonder IBIS laten ze
+   * leeg. Dan blijft de knop over.
+   */
+  ibisLine: string
+  ibisTerminus: string
   delayMinutes: number
   delayFromIbis: boolean
   /**
@@ -511,6 +521,8 @@ export function describeLive(
     stopIndex,
     stopsTotal: leg?.stops.length ?? 0,
     reportsStops: fromMenu || data.busstop.trim() !== '',
+    ibisLine: data.line.trim(),
+    ibisTerminus: data.terminus.trim(),
     offersStops: fromMenu || ((data.seenStr >>> 0) & 1) === 1,
     delayMinutes,
     delayFromIbis: fromMenu || fromIbis !== undefined,
