@@ -57,9 +57,13 @@ if (git('status', '--porcelain')) {
   console.error('Er staan nog wijzigingen open. Eerst vastleggen, dan uitgeven.')
   process.exit(1)
 }
+/*
+ * De vorige tag, en met opzet niet die van deze uitgave: bij een tweede poging
+ * hangt die er al, en dan zou de lijst met wijzigingen leeg zijn.
+ */
 const vorige = (() => {
   try {
-    return git('describe', '--tags', '--abbrev=0')
+    return git('describe', '--tags', '--abbrev=0', `--exclude=${tag}`)
   } catch {
     return ''
   }
