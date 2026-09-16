@@ -666,20 +666,39 @@ function registerHandlers(): void {
     return { found: Boolean(found), path: found }
   })
 
-  ipcMain.handle('omsi:maps', (): MapSummary[] =>
-    listMaps(omsi()).map((folder) => {
-      const loaded = map(folder)
-      const time = era(folder)
-      return {
-        folder,
-        name: loaded.name,
-        tours: loaded.tours.length,
-        hasTemplate: Boolean(findTemplate(omsi(), folder)),
-        year: time.year,
-        dayOfYear: time.dayOfYear
+  /*
+   * Elke kaart die er staat, maar niet ten koste van alles.
+   *
+   * Een map in `maps` hoeft nog geen kaart te zijn: hij kan halverwege een
+   * installatie staan, of zijn dienstregeling nog missen. Zo'n map wierp een
+   * fout, en omdat de hele lijst in een keer werd opgebouwd nam die fout het
+   * hele scherm mee -- "Something went wrong", en geen enkele kaart meer te
+   * kiezen. Een gebruiker meldde precies dat, en de kaart deed het even later
+   * gewoon: de map was nog niet klaar.
+   *
+   * Daarom nu per kaart. Wat niet te lezen is blijft uit de lijst en staat in
+   * het logboek; de rest kun je gewoon rijden.
+   */
+  ipcMain.handle('omsi:maps', (): MapSummary[] => {
+    const summaries: MapSummary[] = []
+    for (const folder of listMaps(omsi())) {
+      try {
+        const loaded = map(folder)
+        const time = era(folder)
+        summaries.push({
+          folder,
+          name: loaded.name,
+          tours: loaded.tours.length,
+          hasTemplate: Boolean(findTemplate(omsi(), folder)),
+          year: time.year,
+          dayOfYear: time.dayOfYear
+        })
+      } catch (reden) {
+        console.warn(`kaart "${folder}" overgeslagen: ${(reden as Error).message}`)
       }
-    })
-  )
+    }
+    return summaries
+  })
 
   ipcMain.handle('omsi:vehicles', () => listVehicles(omsi()))
 
