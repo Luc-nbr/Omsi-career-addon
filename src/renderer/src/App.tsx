@@ -161,7 +161,18 @@ export function App(): JSX.Element {
   const exam = active?.exam
   const activeKey = active ? `${career?.state?.id}|${active.confirmedAt}` : ''
   useEffect(() => {
-    if (!active) return
+    /*
+     * Geen lopende dienst -- een verse chauffeur, of net geannuleerd -- dan
+     * hoort er ook niets meer op het scherm te staan. Zonder dit bleef de dienst
+     * van de vorige chauffeur gewoon staan, met knoppen en al.
+     */
+    if (!active) {
+      setDuties([])
+      setSelected(undefined)
+      setStarted(false)
+      setVehicleOverride('')
+      return
+    }
     const held = active.assignment as Assignment
     setMapFolder(held.duty.mapFolder)
     setDuties([held])

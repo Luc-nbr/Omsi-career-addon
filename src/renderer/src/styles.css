@@ -1993,9 +1993,21 @@ input[type='range'] {
   font-size: 13.5px;
 }
 
-/* Annuleren staat apart: dat is de knop die je niet per ongeluk wilt raken. */
+/*
+ * Annuleren hoort bij de rij en niet ernaast. Hij stond rechts geduwd, en zodra
+ * de rij omviel bleef hij alleen op een tweede regel achter -- dat leest als een
+ * fout, niet als nadruk. Nu staat hij gewoon achteraan, maar zachter dan de
+ * rest: het is de knop die je niet per ongeluk wilt raken.
+ */
 .running-cancel {
-  margin-left: auto;
+  background: none;
+  border-color: rgba(255, 255, 255, 0.16);
+  color: var(--zacht);
+}
+
+.running-cancel:hover {
+  border-color: var(--laat);
+  color: var(--laat);
 }
 
 /* Het versienummer onderin de zijbalk: aanwezig, niet aanwezig genoeg om af te leiden. */

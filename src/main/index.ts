@@ -1337,17 +1337,36 @@ function registerHandlers(): void {
 
   ipcMain.handle('career:load', () => careerPayload())
 
-  ipcMain.handle('career:create', (_event, name: string) => persist(createProfile(userData(), name)))
+  /*
+   * Bij het wisselen van chauffeur moet alles van de vorige los.
+   *
+   * De lopende dienst hangt niet alleen in het profiel maar ook hier in het
+   * geheugen, voor de overlay. Bleef die staan, dan kreeg een gloednieuwe
+   * chauffeur de dienst van zijn voorganger te zien -- inclusief de overlay die
+   * nog over het spel hing.
+   */
+  const wisselVanChauffeur = (): void => {
+    closeOverlay()
+    overlayDuty = undefined
+    overlayIbis = undefined
+  }
+
+  ipcMain.handle('career:create', (_event, name: string) => {
+    wisselVanChauffeur()
+    return persist(createProfile(userData(), name))
+  })
 
   ipcMain.handle('career:select', (_event, id: string) => {
     const chosen = readProfile(userData(), id)
     if (!chosen) return careerPayload()
+    wisselVanChauffeur()
     setActive(userData(), id)
     career = chosen
     return careerPayload()
   })
 
   ipcMain.handle('career:delete', (_event, id: string) => {
+    wisselVanChauffeur()
     deleteProfile(userData(), id)
     career = resolveActive(userData())
     return careerPayload()
