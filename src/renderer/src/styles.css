@@ -137,9 +137,19 @@ button:focus-visible {
 
 /* ---------- geraamte ---------- */
 
+/*
+ * Meeschalen, allebei de kanten op.
+ *
+ * De zijbalk had een vaste breedte en de inhoud een vaste maximumbreedte: in
+ * een klein venster paste het niet en kwam er een schuifbalk onderaan, in een
+ * groot venster bleef alles in een smalle kolom links hangen met een half
+ * scherm leegte ernaast. Nu loopt de zijbalk mee met het venster en vult de
+ * inhoud de ruimte -- tot een grens, want een regel van twee meter lang leest
+ * niemand meer.
+ */
 .app {
   display: grid;
-  grid-template-columns: 300px 1fr;
+  grid-template-columns: clamp(230px, 19vw, 320px) 1fr;
   height: 100vh;
 }
 
@@ -155,7 +165,12 @@ button:focus-visible {
 
 .main {
   overflow-y: auto;
-  padding: 24px 28px 40px;
+  padding: clamp(14px, 1.8vw, 24px) clamp(14px, 2.2vw, 28px) 40px;
+}
+
+/* De inhoud mag breed worden, maar niet eindeloos. */
+.main > * {
+  max-width: 1500px;
 }
 
 /* ---------- chauffeurskaart ---------- */
@@ -341,7 +356,8 @@ input[type='range'] {
 .actions {
   display: flex;
   gap: 10px;
-  align-items: center;
+  /* Even hoog, ook als de een een rand heeft en de ander niet. */
+  align-items: stretch;
   margin-top: 20px;
   flex-wrap: wrap;
 }
@@ -353,6 +369,17 @@ input[type='range'] {
   font-weight: 800;
   border-radius: var(--radius-knop);
   padding: 13px 24px;
+  /*
+   * Een doorzichtige rand van dezelfde dikte als die van de tweede knop. Zonder
+   * dat is de een twee punten hoger dan de ander, en dan staan twee knoppen
+   * naast elkaar nooit op één lijn.
+   */
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
+  min-height: 46px;
 }
 
 /*
@@ -1384,6 +1411,25 @@ input[type='range'] {
   flex-wrap: wrap;
 }
 
+/*
+ * De knoppen in die balk zagen eruit als tekst tussen tekst. Nu dragen ze
+ * dezelfde tint als de tweede knoppen elders: je ziet dat er iets te klikken
+ * valt, zonder dat ze het geel van de hoofdknop komen afpakken.
+ */
+.mode-bar .link-button {
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: var(--tint);
+  border: 1px solid var(--tint-rand);
+  color: var(--tint-tekst);
+  font-size: 13px;
+}
+
+.mode-bar .link-button:hover {
+  border-color: rgba(147, 170, 255, 0.55);
+  color: #e6ecff;
+}
+
 /* De uitkomst van "opnieuw kijken", naast de knop die erom vroeg. */
 .mode-note {
   flex: 1 1 260px;
@@ -1567,7 +1613,7 @@ input[type='range'] {
 }
 
 .key-search {
-  width: 260px;
+  width: min(260px, 100%);
   flex: none;
 }
 
@@ -1631,7 +1677,7 @@ input[type='range'] {
 }
 
 .app.solo .main {
-  max-width: 1100px;
+  max-width: min(1500px, 100%);
   width: 100%;
   margin: 0 auto;
   /* Ruimte onder de laatste kaart: de opslaanknop blijft onderin staan. */
@@ -1728,7 +1774,7 @@ input[type='range'] {
 
 .picker {
   position: relative;
-  width: 260px;
+  width: min(260px, 100%);
 }
 
 .picker input {
@@ -1740,7 +1786,7 @@ input[type='range'] {
   z-index: 5;
   right: 0;
   max-height: 260px;
-  width: 300px;
+  width: min(300px, calc(100vw - 32px));
   overflow-y: auto;
   margin-top: 4px;
   border: 1px solid var(--line);
@@ -1807,7 +1853,7 @@ input[type='range'] {
  * blijven staan.
  */
 .dialog.proposal {
-  width: min(980px, calc(100vw - 48px));
+  width: min(1200px, calc(100vw - 32px));
   max-height: calc(100vh - 48px);
   display: flex;
   flex-direction: column;
@@ -1950,4 +1996,65 @@ input[type='range'] {
 /* Annuleren staat apart: dat is de knop die je niet per ongeluk wilt raken. */
 .running-cancel {
   margin-left: auto;
+}
+
+/* ---------- smalle vensters ---------- */
+
+/*
+ * Onder de negenhonderd punten past een zijbalk naast de inhoud niet meer: dan
+ * gaat hij erboven staan in plaats van de inhoud weg te duwen. Dat is het
+ * verschil tussen een venster dat meeschaalt en een venster met een schuifbalk
+ * onderaan.
+ */
+@media (max-width: 900px) {
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .sidebar {
+    border-right: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    max-height: 34vh;
+    padding: 14px 16px;
+    gap: 12px;
+  }
+
+  /* Boven elkaar is er breedte zat: de vier cijfers passen op één regel. */
+  .stats {
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  }
+
+  /* De kaart naast de lijst wordt de kaart onder de lijst. */
+  .map-window-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+/*
+ * En onder de zevenhonderd: de ritregels hebben vier kolommen die elk hun eigen
+ * maat willen. Samen zijn ze breder dan het venster, dus gaan tijd en lijn op
+ * de eerste regel staan en de rest eronder.
+ */
+@media (max-width: 700px) {
+  .leg {
+    grid-template-columns: auto auto 1fr;
+    gap: 4px 10px;
+  }
+
+  .axis-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}
+
+/* Twee knoppen onder elkaar horen even breed te zijn. */
+@media (max-width: 520px) {
+  .actions {
+    flex-direction: column;
+  }
+
+  .actions .btn {
+    width: 100%;
+  }
 }

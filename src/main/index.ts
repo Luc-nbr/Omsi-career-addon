@@ -1303,8 +1303,15 @@ function createWindow(): void {
   const window = new BrowserWindow({
     width: 1240,
     height: 860,
-    minWidth: 940,
-    minHeight: 640,
+    /*
+     * De ondergrens lag op 940 bij 640, en dat was ook meteen de reden dat er
+     * bij een klein venster een schuifbalk onderaan verscheen: kleiner kon niet,
+     * dus was er nooit reden om de opmaak te laten meegeven. Nu kan het venster
+     * wel kleiner, en gaat de zijbalk onder de negenhonderd punten boven de
+     * inhoud staan in plaats van ernaast.
+     */
+    minWidth: 720,
+    minHeight: 560,
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#11151c',
