@@ -37,8 +37,16 @@ export const EXAM_LIMITS = {
   delayMinutes: 3,
   /** Hard remmen en hard optrekken bij elkaar opgeteld. */
   harsh: 2,
-  /** Topsnelheid in km/u. Geen enkele stadslijn heeft dit nodig. */
-  topSpeed: 80
+  /**
+   * Topsnelheid in km/u.
+   *
+   * Stond op tachtig, met als gedachte dat geen stadslijn harder hoeft. Dat
+   * klopt voor een stadslijn, maar niet voor de kaarten waar je overland rijdt:
+   * daar mag een bus honderd, en dan zakte je voor het examen terwijl je je
+   * netjes aan de borden hield. Honderd dus -- wie daar overheen gaat, gaat
+   * overal te hard.
+   */
+  topSpeed: 100
 } as const
 
 /** Wat er van de examenrit gemeten is. */
