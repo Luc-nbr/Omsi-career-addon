@@ -667,7 +667,13 @@ function registerHandlers(): void {
     * regel om, en tot nu toe kon je hem alleen in de programmalijst van Windows
     * vinden -- dus stond er in de meeste meldingen niets.
     */
-  ipcMain.handle('app:version', () => app.getVersion())
+  /*
+   * Het nummer komt uit package.json en wordt bij het bouwen ingebakken; zie
+   * electron.vite.config.ts. Vragen aan Electron geeft buiten een gebouwde app
+   * de versie van Electron zelf terug, en dat is niet wat iemand in een
+   * foutmelding hoort te plakken.
+   */
+  ipcMain.handle('app:version', () => __APP_VERSION__)
 
   ipcMain.handle('omsi:status', () => {
     const found = findOmsiInstall()
