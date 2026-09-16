@@ -112,9 +112,6 @@ const FOLLOW_PAD_M = 130
 const OTHER_LABEL_MPP = 2.5
 const ROUTE_LABEL_MPP = 14
 
-/** Afstand tussen de rijrichtingspijltjes op de route. */
-const ARROW_GAP_PX = 110
-
 /** Zoveel meter voorbij een halte telt hij pas als gehad. */
 const STOP_PASSED_M = 12
 
@@ -760,34 +757,11 @@ export function RouteMap({
     return { done, ahead, at }
   }, [activeLeg, progressAlong, legTracks, toScreen])
 
-  /** Pijltjes langs de lijn die laten zien welke kant je op rijdt, alleen op de huidige rit. */
-  const arrows = useMemo(() => {
-    const found: Array<{ key: string; x: number; y: number; angle: number }> = []
-    legLines.forEach((line, legIndex) => {
-      if (activeLeg !== undefined && legIndex !== activeLeg) return
-      // Om de zoveel beeldpunten langs de lijn, waar hij ook buigt. Achter de bus
-      // hoeven ze niet: dat stuk heb je gehad.
-      const source = trail && legIndex === activeLeg ? trail.ahead : line
-      let next = ARROW_GAP_PX / 2
-      let walked = 0
-      for (let i = 1; i < source.length && found.length < 200; i++) {
-        const [ax, ay] = source[i - 1]
-        const [bx, by] = source[i]
-        const span = Math.hypot(bx - ax, by - ay)
-        while (span > 0 && next <= walked + span) {
-          const t = (next - walked) / span
-          const x = ax + (bx - ax) * t
-          const y = ay + (by - ay) * t
-          if (x > -20 && y > -20 && x < size.w + 20 && y < size.h + 20) {
-            found.push({ key: `${legIndex}-${i}-${next}`, x, y, angle: (Math.atan2(by - ay, bx - ax) * 180) / Math.PI })
-          }
-          next += ARROW_GAP_PX
-        }
-        walked += span
-      }
-    })
-    return found
-  }, [legLines, activeLeg, size, trail])
+/*
+ * Hier stonden pijltjes langs de lijn die de rijrichting aangaven. Ze zijn eruit:
+ * op een kaart die met je meedraait wijst de bus zelf al vooruit, en de lijn
+ * achter je verdwijnt, dus de richting stond er twee keer te veel bij.
+ */
 
   const hoveredStop = hovered ? byId.get(hovered) : undefined
   const scaleBar = niceScale(view.mpp, big ? 140 : 90)
@@ -848,15 +822,6 @@ export function RouteMap({
         {/* De stukken zonder gevonden weg: gestreept, zodat ze niet als route lezen. */}
         {pieces.guessed.map((piece) => (
           <polyline key={`gok-${piece.key}`} className="route-guess" points={asPoints(piece.line)} />
-        ))}
-
-        {arrows.map((arrow) => (
-          <path
-            key={arrow.key}
-            className="route-arrow"
-            d="M-3.5 -3.6 L4.5 0 L-3.5 3.6 Z"
-            transform={`translate(${arrow.x.toFixed(1)} ${arrow.y.toFixed(1)}) rotate(${arrow.angle.toFixed(1)})`}
-          />
         ))}
 
         {otherStops.map((stop) => {

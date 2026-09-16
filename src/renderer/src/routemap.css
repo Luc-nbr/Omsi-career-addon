@@ -47,11 +47,15 @@
   cursor: grabbing;
 }
 
-/* de route van de dienst */
-
+/*
+ * De route van de dienst.
+ *
+ * Blauw, zoals elke navigatie die je kent. Dat maakt het geel weer vrij voor
+ * waar het thuishoort: het lijnnummer en de knop die de dienst afmaakt.
+ */
 .route-casing {
   fill: none;
-  stroke: #8a6a12;
+  stroke: #123a6b;
   stroke-width: 9;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -59,7 +63,7 @@
 
 .route-line {
   fill: none;
-  stroke: #ffd23f;
+  stroke: #4a90ff;
   stroke-width: 5;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -73,10 +77,6 @@
 .route-done .route-casing,
 .route-done .route-line {
   stroke: transparent;
-}
-
-.route-arrow {
-  fill: rgba(233, 240, 250, 0.85);
 }
 
 /* haltes */
