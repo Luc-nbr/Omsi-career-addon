@@ -105,5 +105,104 @@ app.whenReady().then(async () => {
     )
   }
 
+  /*
+   * En dan de overgang zelf: van een venster naar volledig scherm. Beginnen in
+   * volledig scherm ging goed, maar overschakelen niet -- dus er is iets dat
+   * bij het openen wordt uitgerekend en daarna blijft staan.
+   */
+  main.unmaximize()
+  main.setContentSize(1000, 760)
+  await wait(900)
+  const voor = await js(
+    main,
+    `(() => {
+      const d = document.documentElement;
+      return { scrollLeft: d.scrollLeft, scroll: d.scrollWidth, zicht: d.clientWidth,
+               zijbalk: Math.round(document.querySelector('.sidebar')?.getBoundingClientRect().left ?? -1) }
+    })()`
+  )
+  console.log(`   venster 1000: links ${voor.zijbalk}, schuif ${voor.scrollLeft}, ${voor.scroll}/${voor.zicht}`)
+
+  main.maximize()
+  await wait(1400)
+  const na = await js(
+    main,
+    `(() => {
+      const d = document.documentElement;
+      const kaart = document.querySelector('.card');
+      return { scrollLeft: d.scrollLeft, scroll: d.scrollWidth, zicht: d.clientWidth,
+               zijbalk: Math.round(document.querySelector('.sidebar')?.getBoundingClientRect().left ?? -1),
+               kaart: kaart ? Math.round(kaart.getBoundingClientRect().width) : 0 }
+    })()`
+  )
+  const image = await main.capturePage()
+  writeFileSync(join(outputDir, 'schaal-naar-volledig.png'), image.toPNG())
+  console.log(
+    `   na maximaliseren: links ${na.zijbalk}, schuif ${na.scrollLeft}, ${na.scroll}/${na.zicht}, kaart ${na.kaart}`
+  )
+  console.log(
+    na.zijbalk === 0 && na.scrollLeft === 0 && na.scroll <= na.zicht + 1
+      ? 'de overgang staat recht'
+      : 'MISLUKT: er blijft iets scheef staan'
+  )
+
+  /*
+   * En het geval waar het misging: het routevenster staat open terwijl je naar
+   * volledig scherm gaat. De kaart daarin meet zichzelf, dus als die meting
+   * blijft staan klopt er daarna niets meer van.
+   */
+  main.unmaximize()
+  main.setContentSize(1000, 760)
+  await wait(700)
+  await js(
+    main,
+    `[...document.querySelectorAll('button')].find((b) => b.textContent.trim().startsWith('Genereer'))?.click()`
+  )
+  const gelukt = await waitFor(
+    main,
+    `[...document.querySelectorAll('button')].some((b) => b.textContent.trim().startsWith('Bekijk route'))`,
+    // Een grote kaart doorlezen duurt; Ahlheim heeft 224 km2 aan tegels.
+    360
+  )
+  if (!gelukt) {
+    console.log('   geen dienst gekregen; het routevenster blijft ongetest')
+    app.exit(0)
+    return
+  }
+  await js(
+    main,
+    `[...document.querySelectorAll('button')].find((b) => b.textContent.trim().startsWith('Bekijk route'))?.click()`
+  )
+  await waitFor(main, `document.querySelector('.map-window-inner')`)
+  await wait(900)
+
+  const meetVenster = () =>
+    js(
+      main,
+      `(() => {
+        const binnen = document.querySelector('.map-window-inner');
+        const doek = document.querySelector('.map-window-inner canvas');
+        const svg = document.querySelector('.map-window-inner svg');
+        const r = binnen?.getBoundingClientRect();
+        const c = doek?.getBoundingClientRect();
+        return {
+          zicht: document.documentElement.clientWidth,
+          venster: r ? Math.round(r.width) + 'x' + Math.round(r.height) : '-',
+          links: r ? Math.round(r.left) : -1,
+          doekCss: c ? Math.round(c.width) + 'x' + Math.round(c.height) : '-',
+          doekPixels: doek ? doek.width + 'x' + doek.height : '-',
+          svgBreed: svg ? Math.round(svg.getBoundingClientRect().width) : -1
+        }
+      })()`
+    )
+
+  console.log(`   routevenster in een venster van 1000: ${JSON.stringify(await meetVenster())}`)
+  main.maximize()
+  await wait(1600)
+  const na2 = await meetVenster()
+  console.log(`   na maximaliseren: ${JSON.stringify(na2)}`)
+  const image2 = await main.capturePage()
+  writeFileSync(join(outputDir, 'schaal-route-volledig.png'), image2.toPNG())
+
   app.exit(0)
 })

@@ -55,6 +55,13 @@ function status(duty, legIndex, { ibis, stopIndex, odometerKm, speedKmh = 32 }) 
     stopIndex: ibis ? stopIndex : undefined,
     stopsTotal: leg.stops.length,
     reportsStops: ibis,
+    /*
+     * Wat de bus van zijn eigen IBIS doorgeeft. Staat het lijnnummer erop, dan
+     * hoort de app zelf te zien dat de chauffeur heeft ingetoetst -- zonder dat
+     * er iemand op een knop drukt.
+     */
+    ibisLine: ibis ? leg.lineNumber : '',
+    ibisTerminus: ibis ? leg.terminus : '',
     offersStops: true,
     delayMinutes: 0,
     delayFromIbis: ibis,

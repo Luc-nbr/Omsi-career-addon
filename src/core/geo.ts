@@ -37,22 +37,6 @@ interface FoundStop extends StopPoint {
   real: boolean
 }
 
-/**
- * Groen op de kaart, als een rooster.
- *
- * Een kaart heeft geen parken, alleen tienduizenden losse grasjes en boompjes:
- * Hohenkirchen zet er vijfennegentigduizend neer. Die een voor een tekenen is
- * zinloos en traag. Maar waar ze dicht op elkaar staan, is groen -- dus tellen
- * we ze per vakje en onthouden we welke vakjes vol zitten. Dat is precies wat
- * een navigatiekaart laat zien: geen grassprieten, maar een groen vlak.
- */
-export interface GreenGrid {
-  /** Ribbe van een vakje in meters. */
-  cellM: number
-  /** Afwisselend x en y van de linkeronderhoek van elk vol vakje. */
-  cells: number[]
-}
-
 /** Een stuk weg of spoor, als aaneengesloten punten in meters. */
 export interface RoadLine {
   kind: SplineKind
@@ -75,7 +59,6 @@ export interface MapGeometry {
   roads: RoadLine[]
   /** Rivieren en kanalen; `w` is hun breedte in meters. */
   water?: RoadLine[]
-  green?: GreenGrid
 }
 
 /**
@@ -194,11 +177,6 @@ const WATER = /wasser|water|fluss|bach|kanal|teich/i
 const WATER_BREEDTE = /[_-](\d+)\s*m/i
 const WATER_STANDAARD = 20
 
-/** Wat als groen telt: gras, struiken, bomen, hagen. */
-const GROEN = /gras|wiese|busch|hecke|baum|baeume|tree|strauch|wald/i
-/** Ribbe van een vakje, en hoeveel er in moeten staan voordat het groen heet. */
-const GROEN_CEL = 25
-const GROEN_DREMPEL = 3
 
 /**
  * Leest de haltes en het wegennet van een kaart uit de tegels.
@@ -228,7 +206,6 @@ export function readMapData(
   const stops: FoundStop[] = []
   const roads: RoadLine[] = []
   const water: RoadLine[] = []
-  const groen = new Map<number, number>()
   const lanes: Lane[] = []
   let widthM = 0
   let heightM = 0
@@ -263,18 +240,6 @@ export function readMapData(
         const id = str(lines[i + 3])
         const source = str(lines[i + 2])
         if (!wantedIds.has(id)) {
-          /*
-           * Vegetatie draagt geen rijbaan en valt hieronder weg, dus eerst
-           * tellen. Alleen waar het vakje vol staat wordt er straks iets
-           * getekend.
-           */
-          if (GROEN.test(source)) {
-            const gx = Math.floor((dx + num(lines[i + 4])) / GROEN_CEL)
-            const gy = Math.floor((dy + num(lines[i + 5])) / GROEN_CEL)
-            const key = gx * 100000 + gy
-            groen.set(key, (groen.get(key) ?? 0) + 1)
-          }
-
           // Geen halte, maar misschien wel een kruising of een stuk straat.
           const paths = objectPaths(omsiPath, source)
           if (paths.length === 0) continue
@@ -387,20 +352,7 @@ export function readMapData(
       heightM,
       stops: [...best.values()].map(({ real: _real, ...stop }) => stop),
       roads,
-      water,
-      /*
-       * Alleen de vakjes die vol genoeg staan. Een enkele boom langs de weg is
-       * geen park, en zou de kaart vol spikkels zetten.
-       */
-      green: {
-        cellM: GROEN_CEL,
-        cells: [...groen]
-          .filter(([, aantal]) => aantal >= GROEN_DREMPEL)
-          .flatMap(([sleutel]) => [
-            Math.floor(sleutel / 100000) * GROEN_CEL,
-            (sleutel % 100000) * GROEN_CEL
-          ])
-      }
+      water
     },
     lanes
   }

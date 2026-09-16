@@ -1,15 +1,16 @@
 /**
- * Hoeveel water en groen een kaart oplevert.
+ * Hoeveel water een kaart oplevert.
  *
- *   npx tsx scripts/probe-groen.ts [kaartmap...]
+ *   npx tsx scripts/probe-water.ts [kaartmap...]
  *
- * Water is bij OMSI een spline met zijn breedte in de naam; groen bestaat niet
- * als vlak, alleen als tienduizenden losse grassprieten en boompjes. Van die
- * laatste maken we een rooster: waar ze dicht op elkaar staan, is groen.
+ * Water is bij OMSI een spline met zijn breedte in de naam: `wasser_50m.sli` is
+ * vijftig meter breed. De vraag is niet of het tot op de meter klopt, maar of
+ * er genoeg uitkomt om te tekenen, en of het op de ene kaart net zo goed gaat
+ * als op de andere.
  *
- * Beide zijn dus een benadering van iets dat de kaart niet opschrijft. De vraag
- * is niet of het tot op de meter klopt, maar of er genoeg uitkomt om te tekenen
- * -- en of het op de ene kaart net zo goed gaat als op de andere.
+ * Hier stond ook een telling van gras en bomen, om er groene vlakken van te
+ * maken. Dat werkte, maar het zag eruit als blokjes en niet als een park; het
+ * is er weer uit.
  */
 import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -38,16 +39,12 @@ for (const kaart of kaarten) {
 
   const km2 = (geometry.widthM * geometry.heightM) / 1e6
   const water = geometry.water ?? []
-  const vakjes = (geometry.green?.cells.length ?? 0) / 2
-  const cel = geometry.green?.cellM ?? 0
-  const groenKm2 = (vakjes * cel * cel) / 1e6
-  const deel = km2 > 0 ? (groenKm2 / km2) * 100 : 0
 
   console.log(
     `${kaart.padEnd(26)} ${km2.toFixed(1).padStart(6)} km2  ` +
       `wegen ${String(geometry.roads.length).padStart(6)}  ` +
-      `water ${String(water.length).padStart(4)}  ` +
-      `groen ${String(vakjes).padStart(6)} vakjes = ${groenKm2.toFixed(1).padStart(5)} km2 ` +
-      `(${deel.toFixed(0).padStart(2)}%)  ${String(duur).padStart(5)} ms`
+      `water ${String(water.length).padStart(4)} lijnen, ` +
+      `${water.length > 0 ? Math.round(water.reduce((n, w) => n + (w.w ?? 0), 0) / water.length) : 0} m breed ` +
+      `gemiddeld  ${String(duur).padStart(5)} ms`
   )
 }
