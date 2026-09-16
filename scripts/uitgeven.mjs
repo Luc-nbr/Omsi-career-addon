@@ -4,6 +4,7 @@
  *   node scripts/uitgeven.mjs 0.2.0-beta.1
  *   node scripts/uitgeven.mjs 0.2.0-beta.1 --publiceer
  *   node scripts/uitgeven.mjs 0.2.0 --publiceer --notities pad/naar/tekst.md
+ *   node scripts/uitgeven.mjs 0.2.0-beta.1 --publiceer --gewoon
  *
  * Zonder `--publiceer` blijft alles hier: het versienummer gaat in
  * `package.json`, beide installers worden gebouwd en in `release/` gezet, er
@@ -32,6 +33,15 @@ const GH = 'C:/Program Files/GitHub CLI/gh.exe'
 const argumenten = process.argv.slice(2)
 const versie = argumenten.find((arg) => !arg.startsWith('--'))
 const publiceren = argumenten.includes('--publiceer')
+/*
+ * Een beta gaat standaard als pre-release de deur uit, zodat de downloadlink in
+ * Discord op de laatste stabiele versie blijft staan. Met --gewoon geef je hem
+ * uit als gewone release: dan is hij de nieuwste en krijgt iedereen die op die
+ * link klikt deze versie. Dat kan een bewuste keuze zijn -- een beta die
+ * crashes repareert is voor iedereen beter dan een stabiele versie die ze nog
+ * heeft.
+ */
+const gewoon = argumenten.includes('--gewoon')
 const notitieVlag = argumenten.indexOf('--notities')
 const notitiesUit = notitieVlag >= 0 ? argumenten[notitieVlag + 1] : undefined
 
@@ -40,7 +50,7 @@ if (!versie || !/^\d+\.\d+\.\d+(-[a-z]+\.\d+)?$/.test(versie)) {
   console.error('Bijvoorbeeld 0.2.0-beta.1 of 0.2.0.')
   process.exit(1)
 }
-const vooraf = versie.includes('-')
+const vooraf = versie.includes('-') && !gewoon
 const tag = `v${versie}`
 
 /** Een opdracht, met zijn uitvoer op het scherm. */
