@@ -182,6 +182,12 @@ export interface SessionResult {
   harshBrakes?: number
   harshAccels?: number
   topSpeed?: number
+  /**
+   * Hoeveel haltes van de hele dienst er gehaald zijn. Hiermee wordt betaald:
+   * een halve dienst levert een halve dag op. Niets als het spel zich niet laat
+   * lezen -- dan valt er niets te meten en telt de dienst gewoon voor vol.
+   */
+  stopsDone?: number
   /** De eindtijd is voorbij en de bus staat stil. */
   dutyComplete: boolean
   /** Onwaar zolang OMSI niet draait; dan valt er niets te meten. */
@@ -350,6 +356,8 @@ export interface CareerApi {
       delayMinutes?: number
       harshBrakes?: number
       harshAccels?: number
+      /** Hoeveel haltes er gehaald zijn; bepaalt wat de dienst oplevert. */
+      stopsDone?: number
     }
   ): Promise<CareerPayload>
   renameDriver(name: string): Promise<CareerPayload>

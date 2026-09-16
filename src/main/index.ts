@@ -288,8 +288,23 @@ function sessieGegevens(): SessionResult {
   if (!start) return { drivenKm: 0, elapsedMinutes: 0, dutyComplete: false, finished: true }
 
   const elapsed = live.time / 60 - start.clockMinutes
-  const status = describeLive(live, currentDuty(), start)
+  const duty = currentDuty()
+  const status = describeLive(live, duty, start)
+  /*
+   * Hoe ver de dienst is: de haltes van de ritten die al achter je liggen, plus
+   * hoever je in deze rit bent. Is de dienst uitgereden, dan zijn het er per
+   * definitie alle -- anders zou een afronding op de laatste meter je nog een
+   * halte kosten.
+   */
+  const stopsDone =
+    duty && status.dutyComplete
+      ? duty.totalStops
+      : duty && status.legIndex !== undefined
+        ? duty.legs.slice(0, status.legIndex).reduce((som, leg) => som + leg.stops.length, 0) +
+          (status.stopIndex ?? 0)
+        : undefined
   return {
+    stopsDone,
     drivenKm: Math.max(0, live.km + live.metres / 1000 - start.odometerKm),
     elapsedMinutes: elapsed >= 0 ? elapsed : elapsed + 1440,
     delayMinutes: status.delayMinutes,
@@ -328,6 +343,7 @@ function sluitLopendeDienstAf(): void {
   const naam = bus ? `${bus.manufacturer} ${bus.type}` : lopend.vehicleOverride
   const gemeten = sessieGegevens()
   career = completeDuty(career, duty, naam, {
+    stopsDone: gemeten.stopsDone,
     drivenKm: gemeten.drivenKm,
     delayMinutes: gemeten.delayMinutes,
     harshBrakes: gemeten.harshBrakes,

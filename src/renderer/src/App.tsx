@@ -486,6 +486,7 @@ export function App(): JSX.Element {
       } else {
         setCareer(
           await window.career.completeDuty(duty, `${vehicle.manufacturer} ${vehicle.type}`, {
+            stopsDone: result.stopsDone,
             drivenKm: result.drivenKm,
             delayMinutes: result.delayMinutes,
             harshBrakes: result.harshBrakes,

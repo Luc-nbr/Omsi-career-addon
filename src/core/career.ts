@@ -152,9 +152,26 @@ export function saveCareer(file: string, state: CareerState): void {
   writeFileSync(file, JSON.stringify(state, null, 2), 'utf8')
 }
 
-/** Wat een dienst oplevert. */
+/** Wat een hele dienst oplevert. */
 export function dutyPay(duty: Duty): number {
   return Math.round(((duty.durationMinutes / 60) * HOURLY_PAY + duty.totalStops * PAY_PER_STOP) * 100) / 100
+}
+
+/**
+ * En wat een halve dienst oplevert: de helft.
+ *
+ * Betalen naar het aantal haltes dat je gehaald hebt. Anders levert een dienst
+ * die je na één halte afbreekt evenveel op als een dienst die je uitrijdt, en
+ * dat is niet alleen oneerlijk maar ook een uitnodiging.
+ *
+ * Weten we het niet -- het spel draaide niet, of de bus geeft geen haltes door
+ * -- dan telt de dienst voor vol. Wat niet gemeten kon worden mag niet in het
+ * nadeel van de chauffeur uitvallen.
+ */
+export function partialPay(duty: Duty, stopsDone?: number): number {
+  if (stopsDone === undefined || !(duty.totalStops > 0)) return dutyPay(duty)
+  const deel = Math.min(1, Math.max(0, stopsDone / duty.totalStops))
+  return Math.round(dutyPay(duty) * deel * 100) / 100
 }
 
 /** Schrijft een gereden dienst in het logboek. */
@@ -167,6 +184,8 @@ export function completeDuty(
     delayMinutes?: number
     harshBrakes?: number
     harshAccels?: number
+    /** Hoeveel haltes er gehaald zijn; bepaalt wat de dienst oplevert. */
+    stopsDone?: number
   }
 ): CareerState {
   const entry: CareerEntry = {
@@ -181,7 +200,7 @@ export function completeDuty(
     legCount: duty.legs.length,
     stopCount: duty.totalStops,
     vehicle,
-    pay: dutyPay(duty),
+    pay: partialPay(duty, measured?.stopsDone),
     drivenKm: measured?.drivenKm,
     delayMinutes: measured?.delayMinutes,
     harshBrakes: measured?.harshBrakes,
