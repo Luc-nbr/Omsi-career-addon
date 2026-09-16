@@ -68,7 +68,6 @@ export function Welcome({ language, onLanguage, onCreate }: Props): JSX.Element 
             id="welcome-name"
             value={name}
             autoFocus
-            placeholder={t(language, 'welcome.namePlaceholder')}
             onChange={(event) => setName(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter') void create()

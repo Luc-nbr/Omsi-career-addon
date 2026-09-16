@@ -114,7 +114,6 @@ export function Profiles({
               <input
                 value={name}
                 autoFocus
-                placeholder={t(language, 'welcome.namePlaceholder')}
                 onChange={(event) => setName(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') create()
