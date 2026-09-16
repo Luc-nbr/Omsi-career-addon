@@ -12,7 +12,8 @@ import {
   type DutyRequest,
   type MapSummary,
   type PrinterInfo,
-  type SessionResult
+  type SessionResult,
+  type YardOption
 } from '../../shared/api'
 import { formatDuration } from '../../shared/format'
 import { CareerPanel } from './CareerPanel'
@@ -75,6 +76,13 @@ export function App(): JSX.Element {
   const [selected, setSelected] = useState<number>()
   /** Leeg betekent: de bus gebruiken die de app voorstelt. */
   const [vehicleOverride, setVehicleOverride] = useState('')
+  /*
+   * Het wagenpark dat de chauffeur zelf aanwijst, en wat er te kiezen valt.
+   * Leeg betekent: laat de app kiezen. De keuze gaat mee naar de IBIS, en van
+   * daar naar de situatie -- het is dus één keuze en niet twee.
+   */
+  const [yardOverride, setYardOverride] = useState('')
+  const [yards, setYards] = useState<YardOption[]>([])
   const [ibis, setIbis] = useState<IbisPlan>()
   const [busy, setBusy] = useState(false)
   /** Staat het voorstelvenster open? Daar kies je de dienst aan of opnieuw. */
@@ -211,13 +219,35 @@ export function App(): JSX.Element {
       return
     }
     let current = true
-    void window.career.ibis(duty, vehicle, selectedMap.year).then((plan) => {
+    void window.career.ibis(duty, vehicle, selectedMap.year, yardOverride || undefined).then((plan) => {
       if (current) setIbis(plan)
     })
     return () => {
       current = false
     }
+  }, [duty, vehicle, selectedMap, yardOverride])
+
+  /*
+   * Welke wagenparken er naast deze bus liggen. Wisselt de bus, dan vervalt de
+   * keuze: een wagenpark van het ene busmodel zegt niets over het andere.
+   */
+  useEffect(() => {
+    if (!duty || !vehicle || !selectedMap) {
+      setYards([])
+      return
+    }
+    let current = true
+    void window.career.yards(duty, vehicle, selectedMap.year).then((options) => {
+      if (current) setYards(options)
+    })
+    return () => {
+      current = false
+    }
   }, [duty, vehicle, selectedMap])
+
+  useEffect(() => {
+    setYardOverride('')
+  }, [vehicleOverride, assignment])
 
   /**
    * Genereert een dienst en legt hem voor.
@@ -772,6 +802,9 @@ export function App(): JSX.Element {
                     vehicleGroups={vehicleGroups}
                     vehicleOverride={vehicleOverride}
                     onVehicleChange={setVehicleOverride}
+                    yards={yards}
+                    yardOverride={yardOverride}
+                    onYardChange={setYardOverride}
                     busy={busy}
                     confirmed={confirmed}
                     started={started}

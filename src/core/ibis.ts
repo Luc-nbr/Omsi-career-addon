@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { listHofs, normalise, pickHof, type Route } from './hof'
+import { listHofs, matchHof, normalise, pickHof, type Route } from './hof'
 import type { Duty } from './types'
 
 /** Wat de chauffeur per rit in de IBIS zet. */
@@ -70,10 +70,19 @@ export function buildIbisPlan(
   omsiPath: string,
   vehicleRelativePath: string,
   duty: Duty,
-  year: number
+  year: number,
+  /*
+   * Een wagenpark dat de chauffeur zelf aanwijst. Eén busmodel heeft er soms
+   * tien naast zich liggen -- Spandau 86 tot en met 94, Grundorf, Rheinhausen --
+   * en de app kiest er een die de bestemmingen kent. Wie het beter weet, of een
+   * ander tijdvak wil rijden, zet hier zijn eigen keuze neer.
+   */
+  yardName?: string
 ): IbisPlan {
   const termini = [...new Set(duty.legs.map((leg) => leg.terminus).filter(Boolean))]
-  const match = pickHof(listHofs(join(omsiPath, vehicleRelativePath)), termini, year)
+  const hofs = listHofs(join(omsiPath, vehicleRelativePath))
+  const gekozen = yardName ? hofs.find((hof) => hof.name === yardName) : undefined
+  const match = gekozen ? matchHof(gekozen, termini) : pickHof(hofs, termini, year)
 
   const routes = match?.hof.routes ?? []
   const sameLine = (a: string, b: string) => a.trim() === b.trim()

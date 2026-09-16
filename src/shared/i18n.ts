@@ -64,12 +64,6 @@ const TEXT = {
     fr: 'Nom du conducteur',
     nl: 'Naam van de chauffeur'
   },
-  'welcome.namePlaceholder': {
-    en: 'For example Luc',
-    de: 'Zum Beispiel Luc',
-    fr: 'Par exemple Luc',
-    nl: 'Bijvoorbeeld Luc'
-  },
   'welcome.create': {
     en: 'Create account',
     de: 'Konto anlegen',
@@ -1162,6 +1156,19 @@ const TEXT = {
   'bus.pick': { en: 'Bus', de: 'Bus', fr: 'Bus', nl: 'Bus' },
   'bus.other': { en: 'Another bus', de: 'Anderer Bus', fr: 'Autre bus', nl: 'Andere bus' },
   'bus.auto': { en: 'Automatic', de: 'Automatisch', fr: 'Automatique', nl: 'Automatisch' },
+  'bus.yardPick': { en: 'Fleet file', de: 'Hofdatei', fr: 'Fichier de dépôt', nl: 'Wagenpark' },
+  'bus.yardAuto': {
+    en: 'Automatic (best match)',
+    de: 'Automatisch (beste Übereinstimmung)',
+    fr: 'Automatique (meilleure correspondance)',
+    nl: 'Automatisch (beste overeenkomst)'
+  },
+  'bus.yardKnows': {
+    en: 'knows {known} of {total} destinations',
+    de: 'kennt {known} von {total} Zielen',
+    fr: 'connaît {known} destinations sur {total}',
+    nl: 'kent {known} van {total} bestemmingen'
+  },
 
   // ---------- IBIS ----------
   'ibis.title': {

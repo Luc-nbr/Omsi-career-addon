@@ -61,7 +61,8 @@ import { presetStartup } from '../core/startup'
 import { spawnAtStop } from '../core/spawn'
 import { listMaps, loadMap } from '../core/timetable'
 import { listVehicles } from '../core/vehicles'
-import type { Duty, OmsiMap } from '../core/types'
+import type { Duty, DutyLeg, OmsiMap } from '../core/types'
+import { listHofs, matchHof, pickHof } from '../core/hof'
 import {
   TIME_WINDOWS,
   type Assignment,
@@ -70,7 +71,8 @@ import {
   type DutyDate,
   type DutyRequest,
   type InstalledCheck,
-  type MapSummary
+  type MapSummary,
+  type YardOption
 } from '../shared/api'
 import { defaultLayout, OVERLAY_RATES, type OverlayLayout } from '../shared/overlay'
 
@@ -940,8 +942,35 @@ function registerHandlers(): void {
     })
   })
 
-  ipcMain.handle('duty:ibis', (_event, duty, vehicle, year: number) =>
-    buildIbisPlan(omsi(), vehicle.relativePath, duty, year)
+  ipcMain.handle('duty:ibis', (_event, duty, vehicle, year: number, yard?: string) =>
+    buildIbisPlan(omsi(), vehicle.relativePath, duty, year, yard)
+  )
+
+  /*
+   * De wagenparken die naast een bus liggen. Wat erin staat verschilt per stad
+   * en per tijdvak, en dus ook wat de chauffeur intoetst -- daarom mag hij zelf
+   * kiezen, met erbij hoeveel bestemmingen elk wagenpark van deze dienst kent.
+   */
+  ipcMain.handle(
+    'duty:yards',
+    (_event, duty: Duty, vehicle: { relativePath: string }, year: number): YardOption[] => {
+      const termini: string[] = [
+        ...new Set(duty.legs.map((leg: DutyLeg) => leg.terminus).filter(Boolean))
+      ]
+      const hofs = listHofs(join(omsi(), vehicle.relativePath))
+      const suggested = pickHof(hofs, termini, year)?.hof.name
+      return hofs
+        .map((hof) => {
+          const match = matchHof(hof, termini)
+          return {
+            name: hof.name,
+            known: match.matched,
+            total: termini.length,
+            suggested: hof.name === suggested
+          }
+        })
+        .sort((a, b) => b.known - a.known || a.name.localeCompare(b.name))
+    }
   )
 
   /** De lijnen van een kaart, om er een route mee te kiezen of een examen op te doen. */

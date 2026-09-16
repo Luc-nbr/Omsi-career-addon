@@ -117,6 +117,23 @@ export interface PreparedSituation {
   timetableSet?: boolean
 }
 
+/**
+ * Een wagenparkbestand (.hof) dat naast een busmodel ligt.
+ *
+ * Eén bus heeft er vaak meerdere: per stad en per tijdvak een. Daarin staan de
+ * bestemmingscodes die de chauffeur in de IBIS intoetst, dus welke je kiest
+ * bepaalt wat er op de film verschijnt.
+ */
+export interface YardOption {
+  name: string
+  /** Hoeveel eindbestemmingen van deze dienst dit wagenpark kent. */
+  known: number
+  /** Hoeveel het er in totaal zijn. */
+  total: number
+  /** Of de app deze zelf gekozen zou hebben. */
+  suggested: boolean
+}
+
 /** Alles wat het klaarzetten en starten van een dienst nodig heeft. */
 export interface BeginRequest {
   duty: Duty
@@ -269,7 +286,9 @@ export interface CareerApi {
   finishExam(duty: Duty, measured: ExamMeasurement, basic: boolean): Promise<CareerPayload>
   /** Vrij rijden: alleen klaarzetten en starten, zonder dienst en zonder logboek. */
   startFree(request: FreeRequest): Promise<FreeResult>
-  ibis(duty: Duty, vehicle: Vehicle, year: number): Promise<IbisPlan>
+  ibis(duty: Duty, vehicle: Vehicle, year: number, yard?: string): Promise<IbisPlan>
+  /** De wagenparkbestanden die naast deze bus liggen, met hun kennis van deze dienst. */
+  yards(duty: Duty, vehicle: Vehicle, year: number): Promise<YardOption[]>
   /** Zet de overlay boven het spel open of dicht. Geeft terug of hij nu open is. */
   setOverlay(duty: Duty | undefined, open: boolean, ibis?: IbisPlan): Promise<boolean>
   overlayIsOpen(): Promise<boolean>

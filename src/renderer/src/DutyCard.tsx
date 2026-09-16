@@ -2,7 +2,7 @@ import { useCallback, useState, type JSX } from 'react'
 import type { IbisPlan } from '../../core/ibis'
 import type { Duty, DutyLeg } from '../../core/types'
 import type { Vehicle } from '../../core/vehicles'
-import type { Assignment, DutyDate, PrinterInfo } from '../../shared/api'
+import type { Assignment, DutyDate, PrinterInfo, YardOption } from '../../shared/api'
 import { describeDays, formatDate, formatDuration, formatTime } from '../../shared/format'
 import { useLanguage, useT } from './language'
 import { DutyMap } from './DutyMap'
@@ -14,6 +14,10 @@ interface Props {
   vehicleGroups: Array<[string, Vehicle[]]>
   vehicleOverride: string
   onVehicleChange(path: string): void
+  /** De wagenparken die naast deze bus liggen; leeg als er niets te kiezen valt. */
+  yards: YardOption[]
+  yardOverride: string
+  onYardChange(name: string): void
   busy: boolean
   /** Aangenomen: de dienst staat in het profiel en ligt vast tot afronden of annuleren. */
   confirmed: boolean
@@ -42,6 +46,9 @@ export function DutyCard({
   vehicleGroups,
   vehicleOverride,
   onVehicleChange,
+  yards,
+  yardOverride,
+  onYardChange,
   busy,
   confirmed,
   started,
@@ -102,6 +109,9 @@ export function DutyCard({
         vehicleGroups={vehicleGroups}
         vehicleOverride={vehicleOverride}
         onVehicleChange={onVehicleChange}
+        yards={yards}
+        yardOverride={yardOverride}
+        onYardChange={onYardChange}
         locked={confirmed}
       />
 
@@ -440,6 +450,9 @@ function BusPanel({
   vehicleGroups,
   vehicleOverride,
   onVehicleChange,
+  yards,
+  yardOverride,
+  onYardChange,
   locked
 }: {
   assignment: Assignment
@@ -447,6 +460,9 @@ function BusPanel({
   vehicleGroups: Array<[string, Vehicle[]]>
   vehicleOverride: string
   onVehicleChange(path: string): void
+  yards: YardOption[]
+  yardOverride: string
+  onYardChange(name: string): void
   /** Na het bevestigen hoort de bus bij de dienst en wisselt hij niet meer. */
   locked: boolean
 }): JSX.Element {
@@ -475,6 +491,34 @@ function BusPanel({
         </p>
       </div>
       <div className="bus-picker">
+        {/*
+          Het wagenpark hoort bij de bus: eenzelfde model heeft er soms tien
+          naast zich liggen, per stad en per tijdvak een, en daarin staan de
+          codes die je in de IBIS intoetst. De app kiest er een die de
+          bestemmingen van deze dienst kent; wie een ander tijdvak wil rijden,
+          kiest hier zelf.
+        */}
+        {yards.length > 1 && (
+          <div className="yard-picker">
+            <label htmlFor="yard">{tr('bus.yardPick')}</label>
+            <select
+              id="yard"
+              value={yardOverride}
+              disabled={locked}
+              onChange={(event) => onYardChange(event.target.value)}
+            >
+              <option value="">{tr('bus.yardAuto')}</option>
+              {yards.map((option) => (
+                <option key={option.name} value={option.name}>
+                  {option.name}
+                  {option.total > 0
+                    ? ` — ${tr('bus.yardKnows', { known: option.known, total: option.total })}`
+                    : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <label htmlFor="bus">{tr('bus.other')}</label>
         <select
           id="bus"
