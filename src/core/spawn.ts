@@ -15,6 +15,9 @@ export interface Spawn {
   offsetM: number
 }
 
+/** Zo ver kijken we als er vlak bij de halte geen rijstrook ligt. */
+const FAR_REACH_M = 60
+
 /**
  * De plek bij een halte waar de bus neergezet wordt: op de rijstrook waar een
  * bus daar zou stoppen, met de neus in de rijrichting, en op de hoogte van het
@@ -26,7 +29,12 @@ export function spawnAtStop(
   network: LaneNetwork,
   stop: StopPoint
 ): Spawn | undefined {
-  const place = network.spawnAt(stop)
+  /*
+   * Eerst dichtbij zoeken, en pas als daar niets ligt verder kijken. Zo blijft
+   * een gewone halte staan waar hij stond, en krijgt een stationsplein alsnog
+   * een plek in plaats van niets.
+   */
+  const place = network.spawnAt(stop) ?? network.spawnAt(stop, FAR_REACH_M)
   if (!place) return undefined
 
   const tile = grid.at(place.x, place.y)

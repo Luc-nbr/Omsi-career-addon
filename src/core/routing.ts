@@ -78,6 +78,7 @@ const GRID_M = 40
 /** Verder dan dit van een halte ligt zijn rijstrook niet. */
 const STOP_REACH_M = 30
 
+
 /**
  * Levert dat bereik niets op, dan mag de halte nog een keer verder kijken.
  *
@@ -277,18 +278,23 @@ export class LaneNetwork {
    * kant op. Dezelfde keuze als bij het plannen: de dichtstbijzijnde rijstrook
    * waarvoor de halte rechts van de rijrichting ligt, want daar stopt een bus.
    */
-  spawnAt(stop: StopPoint): { x: number; y: number; heading: number } | undefined {
+  spawnAt(
+    stop: StopPoint,
+    reach: number = STOP_REACH_M
+  ): { x: number; y: number; heading: number } | undefined {
     let best: { x: number; y: number; heading: number; penalty: number } | undefined
     const gx = Math.floor(stop.x / GRID_M)
     const gy = Math.floor(stop.y / GRID_M)
-    for (let ox = -1; ox <= 1; ox++) {
-      for (let oy = -1; oy <= 1; oy++) {
+    // Zo ver moeten we vakjes aflopen om alles binnen `reach` te zien.
+    const ring = Math.max(1, Math.ceil(reach / GRID_M))
+    for (let ox = -ring; ox <= ring; ox++) {
+      for (let oy = -ring; oy <= ring; oy++) {
         const cell = this.segments.get(`${gx + ox},${gy + oy}`)
         if (!cell) continue
         for (let k = 0; k < cell.length; k += 2) {
           const lane = cell[k]
           const hit = this.project(lane, cell[k + 1], stop.x, stop.y)
-          if (hit.distance > STOP_REACH_M) continue
+          if (hit.distance > reach) continue
           const direction = this.lanes[lane].direction
           for (const forward of [true, false]) {
             if ((forward && direction === 1) || (!forward && direction === 0)) continue
