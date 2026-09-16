@@ -189,11 +189,19 @@ export interface LiveStatus {
    * de bestemming op de film. Daarmee is te zien of de chauffeur zijn lijn en
    * route heeft ingetoetst, zonder dat hij dat hoeft te melden.
    *
-   * Niet elke bus geeft ze door -- oude modellen en bussen zonder IBIS laten ze
-   * leeg. Dan blijft de knop over.
+   * Niet elke bus geeft ze door. Moderne bussen met een eigen scherm laten ze
+   * leeg, ook als de chauffeur alles netjes heeft ingevoerd.
    */
   ibisLine: string
   ibisTerminus: string
+  /**
+   * Komt deze stand uit het dienstregelingsmenu van OMSI zelf?
+   *
+   * Dan weet het spel welke rit er loopt -- lijn, omloop en ritbestand -- en
+   * klopt die met de aangenomen dienst. Dat is een harder bewijs dan wat er op
+   * de film staat, en het werkt bij elke bus.
+   */
+  fromTimetable: boolean
   delayMinutes: number
   delayFromIbis: boolean
   /**
@@ -521,6 +529,7 @@ export function describeLive(
     stopIndex,
     stopsTotal: leg?.stops.length ?? 0,
     reportsStops: fromMenu || data.busstop.trim() !== '',
+    fromTimetable: fromMenu,
     ibisLine: data.line.trim(),
     ibisTerminus: data.terminus.trim(),
     offersStops: fromMenu || ((data.seenStr >>> 0) & 1) === 1,

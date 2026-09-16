@@ -60,8 +60,14 @@ function status(duty, legIndex, { ibis, stopIndex, odometerKm, speedKmh = 32 }) 
      * hoort de app zelf te zien dat de chauffeur heeft ingetoetst -- zonder dat
      * er iemand op een knop drukt.
      */
-    ibisLine: ibis ? leg.lineNumber : '',
-    ibisTerminus: ibis ? leg.terminus : '',
+    /*
+     * Zoals de bus uit de schermafdruk van de melding: een modern model met een
+     * eigen scherm, dat geen van de IBIS-velden invult. Het bewijs moet dan uit
+     * het dienstregelingsmenu van OMSI komen.
+     */
+    ibisLine: '',
+    ibisTerminus: '',
+    fromTimetable: ibis,
     offersStops: true,
     delayMinutes: 0,
     delayFromIbis: ibis,

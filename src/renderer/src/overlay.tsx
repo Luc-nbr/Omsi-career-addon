@@ -351,10 +351,21 @@ function Overlay(): JSX.Element | null {
    */
   const ibisTyped = Boolean(
     status &&
-      upcoming &&
-      status.ibisLine &&
-      status.ibisTerminus &&
-      status.ibisLine.replace(/\s+/g, '') === upcoming.lineNumber.replace(/\s+/g, '')
+      /*
+       * Het sterkste bewijs komt van OMSI zelf: staat de goede rit in het
+       * dienstregelingsmenu, dan weet het spel welke rit er loopt en hoeven wij
+       * het niemand meer te vragen. Dat werkt bij elke bus.
+       */
+      (status.fromTimetable ||
+        /*
+         * En anders wat er op de film staat. Klassieke bussen geven dat door;
+         * moderne bussen met hun eigen scherm laten die velden leeg, ook als de
+         * chauffeur alles netjes heeft ingevoerd -- vandaar de regel hierboven.
+         */
+        (upcoming &&
+          status.ibisLine &&
+          status.ibisTerminus &&
+          status.ibisLine.replace(/\s+/g, '') === upcoming.lineNumber.replace(/\s+/g, '')))
   )
 
   /** De rit loopt zodra de IBIS klopt -- of zodra de chauffeur zelf zegt dat het zo is. */
