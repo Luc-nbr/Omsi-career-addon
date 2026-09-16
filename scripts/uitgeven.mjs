@@ -105,8 +105,17 @@ console.log(`in release/: ${namen.join(', ')}`)
  */
 for (const bestand of readdirSync(release)) {
   if (!/\.exe(\.blockmap)?$/i.test(bestand) || namen.includes(bestand)) continue
-  rmSync(join(release, bestand))
-  console.log(`   ouder weggehaald: ${bestand}`)
+  try {
+    rmSync(join(release, bestand))
+    console.log(`   ouder weggehaald: ${bestand}`)
+  } catch (reden) {
+    /*
+     * Defender houdt een verse installer regelmatig nog even vast. Dat is geen
+     * reden om de uitgave af te breken -- het is een oud bestand dat niemand
+     * meer gebruikt -- maar het hoort wel gezegd te worden.
+     */
+    console.log(`   ouder blijft staan (${(reden).code ?? 'in gebruik'}): ${bestand}`)
+  }
 }
 
 // ---- 5. de twee bestanden met hun vaste naam, voor de link die nooit verandert ----
