@@ -91,6 +91,9 @@ export function App(): JSX.Element {
   const [schermmodus, setSchermmodus] = useState<'volledig' | 'venster'>()
   /** Start de app OMSI in een venster? Standaard ja; zie settings.ts waarom. */
   const [inVenster, setInVenster] = useState(true)
+  /** Geen OMSI gevonden: dan vraagt de app waar het staat. */
+  const [zoekOmsi, setZoekOmsi] = useState(false)
+  const [verkeerdeMap, setVerkeerdeMap] = useState(false)
   useEffect(() => {
     let staat = true
     void window.career.screenMode().then((modus) => {
@@ -142,7 +145,12 @@ export function App(): JSX.Element {
       try {
         const status = await window.career.status()
         if (!status.found) {
-          setError(t(language, 'app.noOmsi'))
+          /*
+           * Niet als fout tonen maar als vraag. De app kan het spel niet vinden
+           * en dat is geen kapotte app -- het staat ergens waar wij niet keken.
+           * Dus vragen we het, in plaats van "Something went wrong".
+           */
+          setZoekOmsi(true)
           return
         }
         const [loadedMaps, loadedVehicles, loadedCareer] = await Promise.all([
@@ -558,6 +566,36 @@ export function App(): JSX.Element {
   useEffect(() => {
     finishRef.current = finish
   }, [finish])
+
+  if (zoekOmsi) {
+    return (
+      <div className="main">
+        <div className="card zoek-omsi">
+          <h1>{t(language, 'omsi.findTitle')}</h1>
+          <p className="subtitle">{t(language, 'omsi.findIntro')}</p>
+          {verkeerdeMap && <p className="note warn">{t(language, 'omsi.findWrong')}</p>}
+          <div className="actions">
+            <button
+              type="button"
+              className="btn"
+              onClick={async () => {
+                const uitkomst = await window.career.chooseOmsi()
+                if (uitkomst.found) {
+                  // Alles hing aan een map die er niet was; opnieuw beginnen is
+                  // eerlijker dan half bijwerken.
+                  window.location.reload()
+                  return
+                }
+                setVerkeerdeMap(Boolean(uitkomst.wrong))
+              }}
+            >
+              {t(language, 'omsi.findButton')}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   if (error && !ready) {
     return (

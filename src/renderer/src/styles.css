@@ -2052,6 +2052,12 @@ input[type='range'] {
   max-width: 900px;
 }
 
+/* Het scherm dat vraagt waar OMSI staat: één kaart, midden in beeld. */
+.zoek-omsi {
+  max-width: 620px;
+  margin: 12vh auto 0;
+}
+
 /* Het versienummer onderin de zijbalk: aanwezig, niet aanwezig genoeg om af te leiden. */
 .side-version {
   margin-top: auto;

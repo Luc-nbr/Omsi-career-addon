@@ -1185,6 +1185,30 @@ const TEXT = {
     fr: 'Service enregistré. OMSI ne tournait pas, il n’y avait rien à mesurer.',
     nl: 'Dienst geboekt. OMSI draaide niet, dus er viel niets te meten.'
   },
+  'omsi.findTitle': {
+    en: 'Where is OMSI 2?',
+    de: 'Wo liegt OMSI 2?',
+    fr: 'Où se trouve OMSI 2 ?',
+    nl: 'Waar staat OMSI 2?'
+  },
+  'omsi.findIntro': {
+    en: 'The app looked in every Steam library and the usual folders on every drive, and did not find the game. Point it at the folder that holds Omsi.exe.',
+    de: 'Die App hat in allen Steam-Bibliotheken und den üblichen Ordnern auf jedem Laufwerk gesucht und das Spiel nicht gefunden. Zeig ihr den Ordner, in dem Omsi.exe liegt.',
+    fr: 'L’application a cherché dans toutes les bibliothèques Steam et les dossiers habituels de chaque disque sans trouver le jeu. Indiquez le dossier qui contient Omsi.exe.',
+    nl: 'De app heeft in alle Steam-bibliotheken en de gebruikelijke mappen op elke schijf gekeken en het spel niet gevonden. Wijs de map aan waar Omsi.exe staat.'
+  },
+  'omsi.findButton': {
+    en: 'Choose the OMSI 2 folder',
+    de: 'OMSI-2-Ordner wählen',
+    fr: 'Choisir le dossier OMSI 2',
+    nl: 'Kies de map van OMSI 2'
+  },
+  'omsi.findWrong': {
+    en: 'No Omsi.exe in that folder. It is usually called "OMSI 2" and holds Omsi.exe next to a "maps" folder.',
+    de: 'In diesem Ordner liegt keine Omsi.exe. Er heißt meist "OMSI 2" und enthält Omsi.exe neben einem Ordner "maps".',
+    fr: 'Pas de Omsi.exe dans ce dossier. Il s’appelle généralement « OMSI 2 » et contient Omsi.exe à côté d’un dossier « maps ».',
+    nl: 'Geen Omsi.exe in die map. Hij heet meestal "OMSI 2" en bevat Omsi.exe naast een map "maps".'
+  },
   'app.windowed': {
     en: 'Start OMSI in a window',
     de: 'OMSI im Fenster starten',

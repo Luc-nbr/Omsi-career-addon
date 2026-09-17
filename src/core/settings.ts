@@ -29,6 +29,14 @@ export interface Settings {
    * het spel het zelf zou doen.
    */
   windowedOmsi: boolean
+  /**
+   * De OMSI-map die de speler zelf heeft aangewezen.
+   *
+   * De app zoekt hem zelf op de gebruikelijke plekken, maar iemand kan het spel
+   * ergens hebben staan waar niemand kijkt. Dan wijst hij hem eenmaal aan en is
+   * het daarna klaar. Leeg betekent: zoek het zelf maar uit.
+   */
+  omsiPath?: string
 }
 
 function settingsPath(userDataPath: string): string {
@@ -41,7 +49,8 @@ export function readSettings(userDataPath: string): Settings {
     return {
       language: isLanguage(raw.language) ? raw.language : DEFAULT_LANGUAGE,
       overlayRate: isOverlayRate(raw.overlayRate) ? raw.overlayRate : 'rustig',
-      windowedOmsi: raw.windowedOmsi !== false
+      windowedOmsi: raw.windowedOmsi !== false,
+      omsiPath: typeof raw.omsiPath === 'string' && raw.omsiPath ? raw.omsiPath : undefined
     }
   } catch {
     return { language: DEFAULT_LANGUAGE, overlayRate: 'rustig', windowedOmsi: true }
@@ -59,7 +68,11 @@ export function writeSettings(userDataPath: string, settings: Partial<Settings>)
     language: isLanguage(settings.language) ? settings.language : current.language,
     overlayRate: isOverlayRate(settings.overlayRate) ? settings.overlayRate : current.overlayRate,
     windowedOmsi:
-      typeof settings.windowedOmsi === 'boolean' ? settings.windowedOmsi : current.windowedOmsi
+      typeof settings.windowedOmsi === 'boolean' ? settings.windowedOmsi : current.windowedOmsi,
+    omsiPath:
+      typeof settings.omsiPath === 'string'
+        ? settings.omsiPath || undefined
+        : current.omsiPath
   }
   const path = settingsPath(userDataPath)
   mkdirSync(dirname(path), { recursive: true })

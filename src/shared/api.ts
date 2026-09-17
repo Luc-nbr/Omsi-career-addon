@@ -325,6 +325,11 @@ export interface CareerApi {
   version(): Promise<string>
   /** Hoe OMSI de vorige keer draaide: op volledig scherm of in een venster. */
   screenMode(): Promise<'volledig' | 'venster' | undefined>
+  /**
+   * Laat de speler zijn OMSI-map aanwijzen. `wrong` betekent: hij koos een map
+   * zonder Omsi.exe erin, en dan blijft alles zoals het was.
+   */
+  chooseOmsi(): Promise<{ found: boolean; path?: string; chosen?: boolean; wrong?: boolean }>
   /** De instellingen van OMSI zelf. */
   gameSettings(): Promise<GameSettingsPayload>
   /** Schrijft alleen de instellingen die veranderd zijn terug naar options.cfg. */

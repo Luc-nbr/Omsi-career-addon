@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, screen } from 'electron'
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, screen } from 'electron'
 import { cpSync, existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import {
@@ -48,7 +48,7 @@ import { LaneNetwork, routeForTrip, type TripRoute } from '../core/routing'
 import { VehicleTracker, type VehiclePosition } from '../core/vehicle'
 import { buildIbisPlan, type IbisPlan } from '../core/ibis'
 import { describeLive, readLive } from '../core/live'
-import { findOmsiInstall } from '../core/install'
+import { findOmsiInstall, isOmsiInstall } from '../core/install'
 import { isOmsiRunning, launchOmsi } from '../core/launch'
 import { ensurePlugin, pluginSourceDir, type PluginStatus } from '../core/pluginInstall'
 import { readOverlayLayout, writeOverlayLayout } from '../core/overlayLayout'
@@ -100,7 +100,8 @@ let pluginStatus: PluginStatus | undefined
 const userData = () => app.getPath('userData')
 
 function omsi(): string {
-  if (!omsiPath) omsiPath = findOmsiInstall()
+  // De map die de speler zelf aanwees telt mee bij het zoeken; zie install.ts.
+  if (!omsiPath) omsiPath = findOmsiInstall(readSettings(userData()).omsiPath)
   if (!omsiPath) throw new Error('Geen OMSI 2-installatie gevonden.')
   return omsiPath
 }
@@ -770,9 +771,36 @@ function registerHandlers(): void {
   })
 
   ipcMain.handle('omsi:status', () => {
-    const found = findOmsiInstall()
+    const found = findOmsiInstall(readSettings(userData()).omsiPath)
     omsiPath = found
     return { found: Boolean(found), path: found }
+  })
+
+  /*
+   * De speler wijst zijn OMSI-map aan.
+   *
+   * De app zoekt zelf op alle plekken die we kennen, maar iemand kan het spel
+   * ergens hebben staan waar niemand kijkt -- en dan stond de app met lege
+   * handen en een foutmelding. Nu vraagt hij het gewoon.
+   */
+  ipcMain.handle('omsi:choose', async () => {
+    const keuze = await dialog.showOpenDialog({
+      title: 'Waar staat OMSI 2?',
+      properties: ['openDirectory'],
+      buttonLabel: 'Deze map'
+    })
+    const gekozen = keuze.filePaths[0]
+    if (keuze.canceled || !gekozen) return { found: Boolean(omsiPath), path: omsiPath, chosen: false }
+    if (!isOmsiInstall(gekozen)) {
+      return { found: Boolean(omsiPath), path: omsiPath, chosen: true, wrong: true }
+    }
+    writeSettings(userData(), { omsiPath: gekozen })
+    omsiPath = gekozen
+    // Alles wat uit de oude map kwam is niet meer van toepassing.
+    mapCache.clear()
+    geometryCache.clear()
+    networkCache.clear()
+    return { found: true, path: gekozen, chosen: true }
   })
 
   /*
