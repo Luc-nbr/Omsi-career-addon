@@ -495,6 +495,12 @@ export function App(): JSX.Element {
     setBusy(true)
     try {
       const result = await window.career.checkSession()
+      /*
+       * Hoeveel stevige stops er bij deze dienst horen voordat het opvalt. Een
+       * op de tien haltes, en minstens twee: op een rit van veertien haltes is
+       * één auto die invoegt geen slecht rijgedrag.
+       */
+      const ruimteVoorRemmen = Math.max(2, Math.round((duty?.totalStops ?? 0) / 10))
       if (exam) {
         const payload = await window.career.finishExam(
           duty,
@@ -526,10 +532,18 @@ export function App(): JSX.Element {
         )
         setNote(
           result.finished && result.drivenKm > 0
-            ? `Dienst geboekt: ${result.drivenKm.toFixed(1)} km` +
-                (result.harshBrakes ? `, ${result.harshBrakes}× hard geremd` : ', vloeiend gereden') +
-                '.'
-            : 'Dienst geboekt. OMSI draaide niet, dus er viel niets te meten.'
+            ? /*
+                Niet alles of niets. Eén stevige stop op veertig haltes is geen
+                slechte rit -- dat is verkeer. Pas als het er meer zijn dan een
+                op de tien haltes staat het er, en anders heet het gewoon
+                vloeiend gereden.
+              */
+              t(
+                language,
+                (result.harshBrakes ?? 0) > ruimteVoorRemmen ? 'done.harsh' : 'done.smooth',
+                { km: result.drivenKm.toFixed(1), count: result.harshBrakes ?? 0 }
+              )
+            : t(language, 'done.nothing')
         )
       }
       setDuties([])

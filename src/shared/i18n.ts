@@ -1167,6 +1167,24 @@ const TEXT = {
     fr: 'OMSI a tourné en plein écran la dernière fois. L’application le lancera désormais en fenêtre, pour que la superposition n’emporte pas l’image.',
     nl: 'OMSI draaide de vorige keer op volledig scherm. De app start hem voortaan in een venster, zodat de overlay het beeld niet meeneemt.'
   },
+  'done.smooth': {
+    en: 'Duty booked: {km} km, driven smoothly.',
+    de: 'Dienst gebucht: {km} km, ruhig gefahren.',
+    fr: 'Service enregistré : {km} km, conduite souple.',
+    nl: 'Dienst geboekt: {km} km, vloeiend gereden.'
+  },
+  'done.harsh': {
+    en: 'Duty booked: {km} km, braking hard {count} times.',
+    de: 'Dienst gebucht: {km} km, {count}× hart gebremst.',
+    fr: 'Service enregistré : {km} km, {count} freinages brusques.',
+    nl: 'Dienst geboekt: {km} km, {count}× hard geremd.'
+  },
+  'done.nothing': {
+    en: 'Duty booked. OMSI was not running, so there was nothing to measure.',
+    de: 'Dienst gebucht. OMSI lief nicht, also gab es nichts zu messen.',
+    fr: 'Service enregistré. OMSI ne tournait pas, il n’y avait rien à mesurer.',
+    nl: 'Dienst geboekt. OMSI draaide niet, dus er viel niets te meten.'
+  },
   'app.windowed': {
     en: 'Start OMSI in a window',
     de: 'OMSI im Fenster starten',

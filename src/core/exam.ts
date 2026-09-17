@@ -35,8 +35,15 @@ export interface ExamJudgement {
 export const EXAM_LIMITS = {
   /** Hoeveel minuten je aan het eind mag afwijken van de dienstregeling. */
   delayMinutes: 3,
-  /** Hard remmen en hard optrekken bij elkaar opgeteld. */
-  harsh: 2,
+  /**
+   * Hard remmen en hard optrekken bij elkaar opgeteld.
+   *
+   * Stond op twee, en dat is voor een hele rit weinig: één kind dat oversteekt
+   * en één auto die invoegt, en je zit eraan. Vijf laat ruimte voor wat er
+   * onderweg gebeurt en houdt nog steeds tegen dat je de hele rit staat te
+   * stampen.
+   */
+  harsh: 5,
   /**
    * Topsnelheid in km/u.
    *

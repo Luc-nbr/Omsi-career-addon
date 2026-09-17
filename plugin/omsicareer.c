@@ -92,17 +92,23 @@ enum {
  * Drempels voor hard remmen en optrekken, in meter per seconde kwadraat.
  *
  * Een bus remt comfortabel op ongeveer 1 tot 1,5; stevig maar normaal rond 2,5.
- * Pas daarboven vliegen staande passagiers naar voren, dus daar ligt de grens.
- * Optrekken haalt een bus zelden boven de 2.
+ * De grens stond op 3,0 en dat bleek te krap: chauffeurs die voor een halte wat
+ * steviger op de rem gingen kregen dat aangerekend, terwijl er in de bus niets
+ * gebeurt. Bij 3,5 grijpt een staande passagier zich vast -- daar begint hard
+ * remmen. Optrekken haalt een bus zelden boven de 2.
+ *
+ * De snelheid komt per beeld uit het spel, en dat getal springt weleens. Daarom
+ * telt niet de piek maar wat blijft staan: gladgestreken, en pas na een derde
+ * seconde boven de drempel.
  */
-#define HARSH_BRAKE 3.0
-#define HARSH_ACCEL 2.0
+#define HARSH_BRAKE 3.5
+#define HARSH_ACCEL 2.2
 
 /* Zakt het weer onder dit deel van de drempel, dan is de gebeurtenis voorbij. */
 #define RELEASE_RATIO 0.6
 
 /* Zo lang moet het aanhouden voordat het telt; korter is een oneffenheid. */
-#define MIN_EVENT_S 0.25
+#define MIN_EVENT_S 0.35
 
 /* Onder deze snelheid niet meten: stilstaand gerammel is geen rijgedrag. */
 #define MIN_SPEED_KMH 5.0
