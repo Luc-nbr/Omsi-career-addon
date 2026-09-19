@@ -75,8 +75,8 @@ export interface BusHofState {
  * Apart van `readHof`, want hiervoor hoeven de honderden bestemmingen niet
  * ontleed te worden en bij 449 bestanden scheelt dat.
  */
-export function readSchema(path: string): HofSchema {
-  const lines = readOmsiLines(path)
+export function readSchema(path: string, gelezen?: string[]): HofSchema {
+  const lines = gelezen ?? readOmsiLines(path)
   let count = 6
   const fields: string[] = []
   for (let i = 0; i < lines.length; i++) {
@@ -136,10 +136,52 @@ export function schemaFits(bus: HofSchema[] | undefined, candidate: HofSchema): 
   return bus.some((own) => fitsOne(own, candidate))
 }
 
+/**
+ * De laatste lezing, met de vingerafdruk waarbij hij gold.
+ *
+ * Het doorlezen van alle wagenparken kost hier 1,0 tot 1,3 seconde: 448
+ * bestanden, en elk gaat er twee keer doorheen -- een keer voor de bestemmingen
+ * en een keer voor de veldindeling. Dat gebeurde bij elke vraag opnieuw, en de
+ * vragen komen uit het hoofdproces: zolang zo'n lezing loopt tekent er geen
+ * venster, beweegt de overlay niet en wacht elke klik. Wie in de dienstenlijst
+ * op en neer klikt gaf daarmee per dienst een seconde weg.
+ *
+ * Wat er ligt verandert zelden -- een bus installeren, of de app die zelf een
+ * bestand neerzet -- dus is het antwoord te bewaren zolang het klopt.
+ */
+let laatsteLezing: { pad: string; vinger: string; hofs: HofFile[] } | undefined
+
+/**
+ * Waaraan te zien is dat er iets veranderd is.
+ *
+ * Windows werkt de tijd van een map bij zodra er een bestand in of uit gaat, dus
+ * de tijden van de voertuigmappen samen dekken precies wat wij hier lezen: een
+ * nieuw geinstalleerde bus, en het bestand dat `placeHof` zelf neerzet. De 154
+ * mappen navragen kost 17 ms, tegen 716 voor een lezing.
+ */
+function vingerafdruk(root: string): string {
+  const delen: string[] = []
+  for (const folder of readdirSync(root)) {
+    try {
+      const stat = statSync(join(root, folder))
+      if (stat.isDirectory()) delen.push(`${folder}:${stat.mtimeMs}`)
+    } catch {
+      // Een map die net weg is telt niet mee; de volgende lezing merkt het.
+    }
+  }
+  return delen.join('|')
+}
+
 /** Alle wagenparken die in de voertuigmappen liggen. */
 export function scanHofs(omsiPath: string): HofFile[] {
   const root = join(omsiPath, 'Vehicles')
   if (!existsSync(root)) return []
+
+  const vinger = vingerafdruk(root)
+  if (laatsteLezing && laatsteLezing.pad === omsiPath && laatsteLezing.vinger === vinger) {
+    return laatsteLezing.hofs
+  }
+
   const found: HofFile[] = []
   for (const folder of readdirSync(root)) {
     const dir = join(root, folder)
@@ -152,12 +194,21 @@ export function scanHofs(omsiPath: string): HofFile[] {
       if (extname(entry).toLowerCase() !== '.hof') continue
       const path = join(dir, entry)
       try {
-        found.push({ path, file: entry, owner: folder, hof: readHof(path), schema: readSchema(path) })
+        // Een keer van schijf, twee lezingen eruit.
+        const regels = readOmsiLines(path)
+        found.push({
+          path,
+          file: entry,
+          owner: folder,
+          hof: readHof(path, regels),
+          schema: readSchema(path, regels)
+        })
       } catch {
         // Een onleesbaar wagenpark slaan we over; de rest kan gewoon door.
       }
     }
   }
+  laatsteLezing = { pad: omsiPath, vinger, hofs: found }
   return found
 }
 

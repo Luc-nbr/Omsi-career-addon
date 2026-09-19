@@ -53,9 +53,14 @@ export interface Hof {
  *
  * Let op: OMSI herkent sleutelwoorden aan het regelbegin, met of zonder blokhaken.
  * `stringcount_terminus` staat er zonder.
+ *
+ * `gelezen` is er voor wie het bestand toch al voor zich heeft. `scanHofs` haalt
+ * uit elk wagenpark twee dingen -- de bestemmingen en de veldindeling -- en
+ * haalde het daarvoor twee keer van schijf; over 448 bestanden is dat de helft
+ * van de tijd, en die tijd gaat af van het hoofdproces.
  */
-export function readHof(path: string): Hof {
-  const lines = readOmsiLines(path)
+export function readHof(path: string, gelezen?: string[]): Hof {
+  const lines = gelezen ?? readOmsiLines(path)
   const hof: Hof = { file: path, name: basename(path, extname(path)), termini: [], routes: [] }
 
   let stringCount = 6

@@ -53,8 +53,19 @@ export interface Resolved {
  *
  * Er wordt drie mappen diep gezocht en niet dieper. Drie is nodig omdat een
  * Steam-bibliotheek aanwijzen `steamapps`, `common` en dan pas `OMSI 2`
- * betekent. Dieper duurt merkbaar lang en levert zelden nog iets op; een hele
- * schijf doorlopen omdat iemand `D:\` aanwees kost minuten.
+ * betekent. Dieper duurt merkbaar lang en levert zelden nog iets op.
+ *
+ * WAAROM ER EEN KLOK BIJ STAAT
+ * Wie `C:\` aanwijst -- en dat doet iemand, want het is de schijf waar het spel
+ * op staat -- kreeg hier een app die twaalf en een halve seconde niets deed en
+ * daarna zei dat er niets gevonden was. Gemeten, op deze machine. Dit loopt in
+ * het hoofdproces: zolang het loopt tekent het venster niet en doet geen knop
+ * iets, dus het ziet eruit als vastlopen. Vandaar twee grenzen. De namen die
+ * Windows voor zichzelf houdt slaan we over -- `Windows` alleen is al het
+ * leeuwendeel van die twaalf seconden -- en na anderhalve seconde houdt het op.
+ * Dat kost geen vondsten: de waarschijnlijke namen gaan voor, en een
+ * installatie die binnen drie lagen ligt is er ruim binnen die tijd. `C:\` doet
+ * er nu 485 ms over.
  */
 export function resolveOmsiFolder(picked: string): Resolved {
   if (!picked || !existsSync(picked)) return {}
@@ -80,10 +91,12 @@ export function resolveOmsiFolder(picked: string): Resolved {
    * aanwijzen zet hem twee lagen lager.
    */
   const gezien = new Set<string>()
+  const stop = Date.now() + ZOEKTIJD_MS
   let laag = [picked]
   for (let diepte = 0; diepte < 3; diepte++) {
     const volgende: string[] = []
     for (const map of laag) {
+      if (Date.now() > stop) return {}
       let kinderen: string[]
       try {
         kinderen = readdirSync(map)
@@ -93,6 +106,7 @@ export function resolveOmsiFolder(picked: string): Resolved {
       // De waarschijnlijke namen eerst, dan pas de rest van de map.
       kinderen.sort((a, b) => Number(waarschijnlijk(b)) - Number(waarschijnlijk(a)))
       for (const naam of kinderen) {
+        if (overslaan(naam)) continue
         const kind = join(map, naam)
         if (gezien.has(kind.toLowerCase())) continue
         gezien.add(kind.toLowerCase())
@@ -109,6 +123,33 @@ export function resolveOmsiFolder(picked: string): Resolved {
     if (laag.length > 400) break
   }
   return {}
+}
+
+/** Hoe lang het zoeken hoogstens mag duren. */
+const ZOEKTIJD_MS = 1500
+
+/**
+ * Mappen waar OMSI niet in staat en die groot genoeg zijn om het zoeken op te
+ * eten. `Windows` is de grootste van allemaal; de rest houdt Windows voor
+ * zichzelf en laat ons er half niet in.
+ */
+const NOOIT = new Set([
+  'windows',
+  'windows.old',
+  '$recycle.bin',
+  'system volume information',
+  'programdata',
+  'appdata',
+  'perflogs',
+  'recovery',
+  'msocache',
+  'config.msi',
+  'node_modules',
+  '.git'
+])
+
+function overslaan(naam: string): boolean {
+  return NOOIT.has(naam.toLowerCase())
 }
 
 /** Namen waar OMSI achter pleegt te zitten; die kijken we het eerst na. */

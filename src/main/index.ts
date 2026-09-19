@@ -1059,7 +1059,7 @@ function registerHandlers(): void {
       geometryCache.clear()
       networkCache.clear()
       mapFleetCache.clear()
-    mapDepotCache.clear()
+      mapDepotCache.clear()
       fleetIndex = undefined
     }
     omsiPath = uit.path
