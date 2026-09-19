@@ -97,6 +97,39 @@ if (!alGezet) {
 }
 console.log(alGezet ? `versie stond al op ${versie}` : `versie: ${oudeVersie} -> ${versie}`)
 
+/*
+ * ---- 2b. eerst kijken of GitHub ons kent ----
+ *
+ * Alleen als er ook werkelijk gepubliceerd gaat worden, en voor het bouwen: dat
+ * duurt twee minuten, en het is zonde om die te draaien om daarna te horen dat
+ * gh niet ingelogd is. Dat overkwam ons twee versies lang.
+ *
+ * gh bewaart zijn token in de Windows-sleutelring, en die is van de sessie waarin
+ * je bent ingelogd. Een venster dat als administrator draait is een andere
+ * sessie en ziet die token niet -- dan zegt gh dat je moet inloggen terwijl je
+ * dat gewoon bent.
+ */
+if (publiceren) {
+  try {
+    draai(GH, ['auth', 'status'], { stdio: ['inherit', 'pipe', 'pipe'] })
+  } catch (reden) {
+    const bericht = `${String(reden.stdout ?? '')}${String(reden.stderr ?? '')}`.trim()
+    console.error('GitHub kent dit venster niet:')
+    console.error(bericht || '(gh zei niets)')
+    console.error('')
+    console.error('Drie dingen om na te gaan, in deze volgorde:')
+    console.error('  1. Draait dit venster als administrator? Dan ziet gh de sleutelring')
+    console.error('     niet. Open een gewoon venster en probeer het daar.')
+    console.error('  2. Staat GH_TOKEN of GITHUB_TOKEN gezet maar leeg? Dan pakt gh die')
+    console.error('     en negeert hij de sleutelring.')
+    console.error('  3. Anders: gh auth login')
+    console.error('')
+    console.error('Er is nog niets gebouwd, dus dit kost je niets.')
+    process.exit(1)
+  }
+  console.log('GitHub kent ons')
+}
+
 // ---- 3. bouwen, buiten het project om ----
 const uit = mkdtempSync(join(tmpdir(), 'omsi-uitgave-'))
 console.log('bouwen...')
