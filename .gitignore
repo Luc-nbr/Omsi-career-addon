@@ -10,3 +10,15 @@ release-new/
 
 # Werkmappen van Claude Code zelf; die horen niet in de geschiedenis.
 .claude/worktrees/
+
+# Gereedschap dat naast de app staat, geen app.
+#
+# De uitgeefscript eist een schone werkmap voordat het een versie bouwt -- terecht,
+# want anders weet niemand wat er in die build zit. Deze mappen bleven daar
+# hangen: instellingen, agents en skills van Claude Code, en de tussenstand van
+# het ontwerpgereedschap. Ze horen bij deze computer en niet bij de app.
+.claude/agents/
+.claude/skills/
+.claude/settings.local.json
+.impeccable/
+skills/
