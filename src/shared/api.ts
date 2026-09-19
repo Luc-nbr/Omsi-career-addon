@@ -306,6 +306,13 @@ export interface CareerApi {
   /** Opnieuw in de OMSI-map kijken en melden wat erbij is gekomen. */
   checkInstalled(): Promise<InstalledCheck>
   vehicles(): Promise<Vehicle[]>
+  /**
+   * De bus die de app op deze kaart zou voorstellen als er geen dienst is.
+   *
+   * Voor vrij rijden: daar valt niets te matchen op eindbestemmingen, dus komt
+   * het antwoord uit de remiselijst van de kaart zelf.
+   */
+  suggestVehicle(mapFolder: string): Promise<Vehicle | undefined>
   /** Halteposities van een kaart, om te tonen waar je de bus neerzet. */
   geometry(mapFolder: string): Promise<MapGeometry>
   /**

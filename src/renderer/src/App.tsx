@@ -4,9 +4,11 @@ import type { Duty } from '../../core/types'
 import type { LiveStatus } from '../../core/live'
 import type { VehiclePosition } from '../../core/vehicle'
 import type { LineSummary } from '../../core/duty'
+import { EXAM_LIMITS } from '../../core/exam'
 import type { IbisPlan } from '../../core/ibis'
 import type { PluginStatus } from '../../core/pluginInstall'
 import type { Vehicle } from '../../core/vehicles'
+import { WEATHER_KINDS, type WeatherKind } from '../../shared/weather'
 import {
   TIME_WINDOWS,
   type Assignment,
@@ -21,13 +23,9 @@ import {
   type YardOption
 } from '../../shared/api'
 import { formatDuration, formatTime } from '../../shared/format'
-import { CareerPanel } from './CareerPanel'
 import { DutyCard } from './DutyCard'
-import { DutyProposal } from './DutyProposal'
 import { Flag } from './Flag'
-import { FreePlay } from './FreePlay'
 import { GameSetup } from './GameSetup'
-import { LinePicker } from './LinePicker'
 import { RunningDuty } from './RunningDuty'
 import {
   Setup,
@@ -38,7 +36,6 @@ import {
   type Stap,
   type Tegel
 } from './Setup'
-import { Sidebar } from './Sidebar'
 import { StartingDialog } from './StartingDialog'
 import { LiveDienst } from './LiveDienst'
 import { HofDialog } from './HofDialog'
@@ -100,14 +97,45 @@ function busvorm(tekst: string): Busvorm {
   return 'solo'
 }
 
+/*
+ * OMSI telt de dag van het jaar, een datumveld wil een jaartal-maand-dag. Twee
+ * kleine omrekeningen, hier bij elkaar omdat ze elkaars omgekeerde zijn.
+ */
+function isoVanDag(year: number, dayOfYear: number): string {
+  const datum = new Date(Date.UTC(year, 0, 1))
+  datum.setUTCDate(dayOfYear)
+  return datum.toISOString().slice(0, 10)
+}
+
+function dagVanIso(iso: string): { year: number; dayOfYear: number } {
+  const datum = new Date(`${iso}T00:00:00Z`)
+  const begin = Date.UTC(datum.getUTCFullYear(), 0, 1)
+  return {
+    year: datum.getUTCFullYear(),
+    dayOfYear: Math.round((datum.getTime() - begin) / 86400000) + 1
+  }
+}
+
 /** Dienstlengtes die je kunt kiezen, in minuten. Korter dan een half uur niet. */
 const LENGTHS = [30, 45, 60, 90, 120, 150, 180, 240, 300, 360, 420, 480]
 
 /*
- * De stappenbalk zonder de lijnstap. In dienst en carriere kiest de app de
- * lijnen zelf, dus een stap die daarover gaat hoort er niet te staan.
+ * Welke stappen elke modus langsloopt.
+ *
+ * De reeks is dezelfde en de volgorde ook; wat verschilt is de vraag tussen de
+ * kaart en de dienst. In dienst wordt er niets gevraagd -- de app loopt de
+ * lijnen zelf. In carriere staat daar je vergunning: je rijdt niet wat je kiest
+ * maar wat je mag. Bij vrij rijden staat er de lijn, want daar stel je je rit
+ * zelf samen.
+ *
+ * Een stap weglaten is niet hetzelfde als hem uitzetten: wat er niet staat,
+ * belooft ook niets.
  */
-const ZONDER_LIJN: readonly Stap[] = STAPPEN.filter((naam) => naam !== 'line')
+const STAPPEN_DIENST: readonly Stap[] = STAPPEN.filter(
+  (naam) => naam !== 'line' && naam !== 'licence'
+)
+const STAPPEN_CARRIERE: readonly Stap[] = STAPPEN.filter((naam) => naam !== 'line')
+const STAPPEN_VRIJ: readonly Stap[] = STAPPEN.filter((naam) => naam !== 'licence')
 
 /**
  * Welk scherm er staat. De app begint altijd bij de chauffeur en gaat dan naar
@@ -115,14 +143,13 @@ const ZONDER_LIJN: readonly Stap[] = STAPPEN.filter((naam) => naam !== 'line')
  */
 type Screen = 'profiles' | 'modes' | 'drive' | 'game'
 
-/** Staat de overlay-plugin klaar in OMSI? */
-function PluginNote({ status, language }: { status?: PluginStatus; language: Language }): JSX.Element {
-  if (!status) return <span className="note">{t(language, 'app.pluginChecking')}</span>
-  if (status.error)
-    return <span className="note warn">{t(language, 'app.pluginError', { error: status.error })}</span>
-  if (status.changed) return <span className="note">{t(language, 'app.pluginUpdated')}</span>
-  return <span className="note">{t(language, 'app.pluginReady')}</span>
-}
+/*
+ * De stand van de plugin werd hier als los regeltje getoond, in vier smaken --
+ * bezig, fout, bijgewerkt, klaar. Drie daarvan zeggen "er is niets aan de
+ * hand", en dat hoeft niet gezegd te worden. Wat overblijft staat nu in de
+ * waarschuwing op de busstap, waar het er werkelijk toe doet: vlak voordat je
+ * op START drukt.
+ */
 
 export function App(): JSX.Element {
   const [ready, setReady] = useState(false)
@@ -186,8 +213,6 @@ export function App(): JSX.Element {
   }, [])
   const [ibis, setIbis] = useState<IbisPlan>()
   const [busy, setBusy] = useState(false)
-  /** Staat het voorstelvenster open? Daar kies je de dienst aan of opnieuw. */
-  const [proposal, setProposal] = useState(false)
   const [started, setStarted] = useState(false)
   /*
    * Waar de speler in de opzet staat. Begint bij de kaart: profiel koos hij al
@@ -262,6 +287,32 @@ export function App(): JSX.Element {
    * zetten of weghalen is alles wat hier hoeft te gebeuren.
    */
   const [thema, setThema] = useState<Thema>('systeem')
+
+  /*
+   * Vrij rijden: wat er op de ritstap staat.
+   *
+   * Dit hoorde bij het oude vrije-rit-scherm en staat nu hier, want de stap
+   * waar het in thuishoort wordt van hieruit opgebouwd. De datum begint in het
+   * tijdvak van de kaart -- 1988 in Spandau, 2016 in HafenCity -- want een bus
+   * uit het verkeerde decennium is geen vrije keuze maar een vergissing.
+   */
+  const [vrijeHalte, setVrijeHalte] = useState('')
+  const [vrijeDatum, setVrijeDatum] = useState('')
+  const [vrijeTijd, setVrijeTijd] = useState('08:00')
+  const [vrijWeer, setVrijWeer] = useState<WeatherKind>('clear')
+  /** De haltes van de kaart, om te kiezen waar de bus komt te staan. */
+  const [vrijeHaltes, setVrijeHaltes] = useState<Array<{ id: string; name: string }>>([])
+  /** De bus die de app bij deze kaart voorstelt; bij vrij rijden is er geen dienst. */
+  const [vrijeTip, setVrijeTip] = useState<Vehicle>()
+
+  /*
+   * Carriere: de vergunningstap toont wat je mag, of het examen dat daarachter
+   * zit. Twee gezichten van een stap en geen twee stappen: het gaat allebei
+   * over dezelfde vraag -- waar mag ik rijden -- en de tweede is het antwoord
+   * op "nog nergens".
+   */
+  const [examenScherm, setExamenScherm] = useState(false)
+  const [examenLijn, setExamenLijn] = useState('')
 
   // De taalkeuze staat los van de chauffeur; hij hoort bij deze computer.
   useEffect(() => {
@@ -409,11 +460,80 @@ export function App(): JSX.Element {
    * Alleen bij vrij rijden blijft de keuze staan; daar stel je je rit zelf samen.
    */
   const lijnVrij = mode !== 'free'
+
+  /*
+   * Van modus wisselen zet je terug op de kaart.
+   *
+   * De stappen verschillen per modus, en wie in de carriere op de
+   * vergunningstap stond en naar vrij rijden gaat, staat dan op een stap die
+   * daar niet bestaat: de balk wijst nergens naar en de knop doet iets anders
+   * dan er staat. De kaart is de eerste stap die alle drie gemeen hebben.
+   */
+  const vorigeModus = useRef<GameMode | undefined>(undefined)
+  useEffect(() => {
+    /*
+     * Alleen bij een echte wisseling, en niet bij het eerste beeld: de modus
+     * wordt ook gezet als er een dienst wordt teruggehaald uit het profiel, en
+     * die dienst hier weggooien zou precies het tegenovergestelde zijn van
+     * terughalen.
+     */
+    const vorige = vorigeModus.current
+    vorigeModus.current = mode
+    if (vorige === undefined || vorige === mode) return
+    setStap('map')
+    setExamenScherm(false)
+    setDuties([])
+    setSelected(undefined)
+  }, [mode])
   useEffect(() => {
     if (!lijnVrij || stap !== 'duty' || busy || confirmed) return
     if (duties.length > 0 || !mapFolder) return
     void generateRef.current?.()
   }, [lijnVrij, stap, busy, confirmed, duties.length, mapFolder])
+
+  /*
+   * Wat de ritstap van vrij rijden nodig heeft: de haltes van de kaart om uit
+   * te kiezen, een datum in het tijdvak van de kaart, en de bus die de app zou
+   * voorstellen. Alleen in die modus, want alleen daar bestaat die stap.
+   */
+  useEffect(() => {
+    if (mode !== 'free' || !mapFolder) {
+      setVrijeHaltes([])
+      setVrijeTip(undefined)
+      return
+    }
+    let geldig = true
+    void window.career.geometry(mapFolder).then((gevonden) => {
+      if (!geldig) return
+      setVrijeHaltes(
+        (gevonden?.stops ?? [])
+          .filter((halte) => halte.name)
+          .map((halte) => ({ id: halte.id, name: halte.name }))
+          .sort((a, b) => a.name.localeCompare(b.name))
+      )
+    })
+    void window.career
+      .suggestVehicle(mapFolder)
+      .then((bus) => {
+        if (geldig) setVrijeTip(bus)
+      })
+      .catch(() => {
+        // Geen voorstel is geen fout; dan kies je zelf uit alles.
+      })
+    return () => {
+      geldig = false
+    }
+  }, [mode, mapFolder])
+
+  /*
+   * De datum begint in het tijdvak van de kaart, en de halte gaat weg zodra je
+   * een andere kaart kiest: een halte-id van Spandau bestaat niet op Grundorf.
+   */
+  useEffect(() => {
+    if (mode !== 'free' || !selectedMap) return
+    setVrijeDatum(isoVanDag(selectedMap.year, selectedMap.dayOfYear || 180))
+    setVrijeHalte('')
+  }, [mode, selectedMap?.folder])
 
   /*
    * Opnieuw diensten zoeken zodra je de lengte of het dagdeel verzet.
@@ -655,7 +775,6 @@ export function App(): JSX.Element {
         })
         if (found.length === 0) {
           setDuties([])
-          setProposal(false)
           setError(
             t(language, 'app.noDuty', { length: formatDuration(LENGTHS[lengthIndex], language) })
           )
@@ -669,7 +788,6 @@ export function App(): JSX.Element {
         const opTijd = [...found].sort((a, b) => a.duty.start - b.duty.start)
         setDuties(opTijd)
         setSelected(0)
-        setProposal(true)
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause))
       } finally {
@@ -727,7 +845,6 @@ export function App(): JSX.Element {
         yard: ibis?.yard
       })
       setStarted(true)
-      setProposal(false)
       /*
        * De overlay hoort pas in beeld te komen als het spel er is. Draait OMSI
        * al met de plugin, dan is dat nu; anders blijft het venstertje staan tot
@@ -775,6 +892,103 @@ export function App(): JSX.Element {
     if (!confirmed) await confirmDuty()
     await begin(true)
   }, [assignment, busy, confirmed, confirmDuty, begin])
+
+  /**
+   * Vrij rijden: klaarzetten en starten.
+   *
+   * Hier hoort geen dienst bij en er wordt niets geboekt. De app schrijft de
+   * situatie zoals je hem hebt samengesteld, zet hem klaar in het startscherm
+   * van OMSI en biedt de overlay aan. Is er een lijn gekozen, dan staat het
+   * dienstregelingsmenu daar ook meteen op.
+   */
+  const startVrij = useCallback(async () => {
+    if (!selectedMap || !vrijeDatum || busy) return
+    const bus = vehicleOverride || vrijeTip?.relativePath
+    if (!bus) return
+    setBusy(true)
+    setError(undefined)
+    setNote(t(language, 'start.preparing'))
+    try {
+      const [uren, minuten] = vrijeTijd.split(':').map(Number)
+      const wanneer = dagVanIso(vrijeDatum)
+      const result = await window.career.startFree({
+        mapFolder,
+        lineFile: lineFile || undefined,
+        vehiclePath: bus,
+        stopId: vrijeHalte || undefined,
+        year: wanneer.year,
+        dayOfYear: wanneer.dayOfYear,
+        minutes: (uren || 0) * 60 + (minuten || 0),
+        weather: vrijWeer
+      })
+      const regels: string[] = [t(language, 'free.ready', { map: selectedMap.name })]
+      if (result.running) regels.push(t(language, 'start.alreadyRunning'))
+      setNote(regels.join(' '))
+      /*
+       * Hetzelfde venstertje als bij een dienst: het spel wordt gestart en tot
+       * het er is, staat er iets dat dat zegt. Zonder dienst blijft de overlay
+       * dicht -- er valt niets op te tonen.
+       */
+      setStarting(!result.running)
+    } catch (cause) {
+      setNote(undefined)
+      setError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setBusy(false)
+    }
+  }, [
+    selectedMap,
+    vrijeDatum,
+    busy,
+    vehicleOverride,
+    vrijeTip,
+    vrijeTijd,
+    mapFolder,
+    lineFile,
+    vrijeHalte,
+    vrijWeer,
+    language
+  ])
+
+  /**
+   * Carriere: examen afleggen op de aangewezen lijn.
+   *
+   * Een examen is een enkele rit die meteen vastligt -- er valt niets aan te
+   * kiezen, dus wordt hij hier bevestigd en niet pas op de busstap. Daarna ga
+   * je gewoon door de busstap heen, net als bij een dienst.
+   */
+  const doeExamen = useCallback(
+    async (line: LineSummary, basic: boolean) => {
+      setBusy(true)
+      setError(undefined)
+      setNote(undefined)
+      try {
+        const gevonden = await window.career.examDuty(mapFolder, line.lineFile)
+        if (!gevonden) {
+          setError(t(language, 'exam.none'))
+          return
+        }
+        setDuties([gevonden])
+        setSelected(0)
+        setVehicleOverride('')
+        setStarted(false)
+        setCareer(
+          await window.career.confirmDuty(gevonden, '', 'career', {
+            lineFile: line.lineFile,
+            lineNumbers: line.lineNumbers,
+            basic
+          })
+        )
+        setExamenScherm(false)
+        setStap('bus')
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause))
+      } finally {
+        setBusy(false)
+      }
+    },
+    [mapFolder, language]
+  )
 
   /**
    * Opnieuw kijken wat er in de OMSI-map staat.
@@ -1243,13 +1457,22 @@ export function App(): JSX.Element {
     )
   }
 
-  if (
-    eersteStart ||
-    screen === 'profiles' ||
-    screen === 'modes' ||
-    screen === 'game' ||
-    (mode === 'service' && !started)
-  ) {
+  /*
+   * ALLES WAT VOOR HET RIJDEN KOMT.
+   *
+   * Hieronder stond een voorwaarde -- eerste start, of het profielscherm,
+   * of het modusscherm, of de dienstmodus -- en daarachter viel de app terug
+   * op een tweede wereld met een glazen zijbalk. Die tweede wereld is weg.
+   * Carriere en vrij rijden liepen er nog in: je koos je modus in de nieuwe
+   * schermen en stond een klik later in de vorige.
+   *
+   * Er is nu een reeks, voor elke modus dezelfde. Wat per modus verschilt is
+   * de vraag tussen de kaart en de dienst -- niets in dienst, je vergunning
+   * in de carriere, de lijn bij vrij rijden -- en dat is een stap, geen
+   * ander scherm. Wat daarna komt staat hierboven al: het wagenpark
+   * overzetten, en de dienst die loopt.
+   */
+  {
     const gekozen = selected ?? 0
     const gekozenDuty = duties[gekozen]?.duty
     /*
@@ -1280,14 +1503,23 @@ export function App(): JSX.Element {
     }
     const kaartDuty = gekozenDuty ?? leegOpDeKaart
 
-    const bussen = gekozenDuty
-      ? [...vehicles].sort((a, b) => {
-          const beste = vehicle?.relativePath
-          if (a.relativePath === beste) return -1
-          if (b.relativePath === beste) return 1
-          return busnaam(a).localeCompare(busnaam(b))
-        })
-      : []
+    /*
+     * Welke bussen er op de busstap staan.
+     *
+     * Bij een dienst zijn dat alle bussen, met de aanbevolen bus vooraan: die
+     * past het best, en wie iets anders wil scrollt maar. Bij vrij rijden is er
+     * geen dienst om tegen te passen -- daar is de aanbeveling de bus die op
+     * deze kaart het meest rondrijdt, en verder staat alles gewoon open.
+     */
+    const aanbevolenBus = mode === 'free' ? vrijeTip?.relativePath : vehicle?.relativePath
+    const bussen =
+      gekozenDuty || mode === 'free'
+        ? [...vehicles].sort((a, b) => {
+            if (a.relativePath === aanbevolenBus) return -1
+            if (b.relativePath === aanbevolenBus) return 1
+            return busnaam(a).localeCompare(busnaam(b))
+          })
+        : []
 
     /* Welke stap het scherm toont: het profiel- en modusscherm horen erbij. */
     /*
@@ -1325,7 +1557,12 @@ export function App(): JSX.Element {
       index: 0,
       kies: () => {},
       voet: '',
-      verder: () => void startAlles(),
+      /*
+       * Waar START op uitkomt hangt af van de modus. Dienst en carriere nemen
+       * de dienst aan en beginnen hem; vrij rijden heeft geen dienst om aan te
+       * nemen en zet alleen de situatie klaar.
+       */
+      verder: () => void (mode === 'free' ? startVrij() : startAlles()),
       knop: t(language, 'setup.start')
     }
 
@@ -1346,6 +1583,8 @@ export function App(): JSX.Element {
       vullend?: boolean
       keuzeloos?: boolean
       regelaars?: ReactNode
+      /** Een formulier in plaats van een lijst; alleen de ritstap van vrij rijden. */
+      vrij?: ReactNode
     } => {
       if (opzetStap === 'profile') {
         /*
@@ -1461,8 +1700,29 @@ export function App(): JSX.Element {
           })),
           index: Math.max(0, maps.findIndex((item) => item.folder === mapFolder)),
           kies: (index) => setMapFolder(maps[index]?.folder ?? ''),
-          voet: t(language, 'setup.mapFoot', { count: maps.length }),
-          verder: () => setStap(lijnVrij ? 'duty' : 'line'),
+          voet: checked ?? t(language, 'setup.mapFoot', { count: maps.length }),
+          /*
+           * Opnieuw kijken wat er staat.
+           *
+           * Een kaart of een bus installeer je door een map neer te zetten, en
+           * de app leest die mappen alleen bij het starten. Deze knop stond in
+           * de balk van de oude schermen; hij hoort bij de kaartstap, want daar
+           * staat de lijst die eruit komt. Wat het opleverde komt in de voet te
+           * staan, op de plek waar toch al staat hoeveel kaarten er zijn.
+           */
+          tweede: {
+            tekst: t(language, checking ? 'check.busy' : 'check.button'),
+            onDoen: () => {
+              if (checking) return
+              void checkInstalled()
+            }
+          },
+          /*
+           * Waar de kaart op uitkomt verschilt per modus: in dienst meteen op
+           * de dienstenlijst, in carriere op je vergunningen, en bij vrij
+           * rijden op de lijn.
+           */
+          verder: () => setStap(mode === 'free' ? 'line' : mode === 'career' ? 'licence' : 'duty'),
           knop: t(language, 'setup.next')
         }
       }
@@ -1476,31 +1736,56 @@ export function App(): JSX.Element {
             t(language, 'setup.colTrips'),
             t(language, 'setup.colAverage')
           ],
-          rijen: lines.map((item) => ({
-            id: item.lineFile,
-            cellen: [
-              item.lineNumbers.join(', ') || item.lineFile,
-              String(item.trips),
-              formatDuration(item.averageMinutes, language)
-            ] as [string, string, string],
-            klok: true
-          })),
-          index: Math.max(0, lines.findIndex((item) => item.lineFile === lineFile)),
+          /*
+           * Bij vrij rijden hoort "geen lijn" er ook bij, en bovenaan: rijden
+           * zonder dienstregeling is daar geen restje maar het uitgangspunt.
+           * In de andere modi bestaat deze stap niet.
+           */
+          rijen: (mode === 'free'
+            ? [{ lineFile: '', lineNumbers: [t(language, 'setup.noLine')], trips: 0, averageMinutes: 0 } as LineSummary]
+            : []
+          )
+            .concat(lines)
+            .map((item) => ({
+              id: item.lineFile || 'geen',
+              cellen: [
+                item.lineNumbers.join(', ') || item.lineFile,
+                item.lineFile ? String(item.trips) : '—',
+                item.lineFile ? formatDuration(item.averageMinutes, language) : '—'
+              ] as [string, string, string],
+              klok: Boolean(item.lineFile)
+            })),
+          index: Math.max(
+            0,
+            (mode === 'free' ? [{ lineFile: '' } as LineSummary] : [])
+              .concat(lines)
+              .findIndex((item) => item.lineFile === lineFile)
+          ),
           kies: (index) => {
             /*
              * Meteen de diensten ophalen, niet pas bij Verder. Dat is dezelfde
              * ene aanroep, alleen eerder -- en daardoor licht de route van de
              * aangeklikte lijn op de kaart op, wat dit scherm belooft.
              */
-            const gekozenLijn = lines[index]?.lineFile ?? ''
+            const keuze = (mode === 'free' ? [{ lineFile: '' } as LineSummary] : []).concat(lines)
+            const gekozenLijn = keuze[index]?.lineFile ?? ''
             setLineFile(gekozenLijn)
-            if (gekozenLijn) void generate(gekozenLijn)
+            // Bij vrij rijden hoort hier geen dienst gezocht te worden.
+            if (gekozenLijn && mode !== 'free') void generate(gekozenLijn)
           },
           voet: t(language, 'setup.lineFoot', {
             map: selectedMap?.name ?? '',
             count: lines.length
           }),
           verder: () => {
+            /*
+             * Bij vrij rijden valt er niets te zoeken: de volgende stap vraagt
+             * waar en wanneer je wilt rijden, niet welke dienst je neemt.
+             */
+            if (mode === 'free') {
+              setStap('duty')
+              return
+            }
             /*
              * Wie een lijn aanklikt heeft de diensten al; wie meteen op Verder
              * drukt nog niet. Dan halen we ze alsnog op, want een dienststap
@@ -1521,8 +1806,9 @@ export function App(): JSX.Element {
          * aanklikken -- maar hij hoort wel te zien te zijn op elk niveau,
          * anders moet je drie schermen diep zoeken naar wat de app bedoelde.
          */
-        const beste = assignment?.vehicle ? ontleedBus(assignment.vehicle) : undefined
-        const nuGekozen = vehicleOverride || vehicle?.relativePath
+        const tipBus = mode === 'free' ? vrijeTip : assignment?.vehicle
+        const beste = tipBus ? ontleedBus(tipBus) : undefined
+        const nuGekozen = vehicleOverride || (mode === 'free' ? vrijeTip?.relativePath : vehicle?.relativePath)
         const gekozenOntleed = nuGekozen
           ? ontleed.find((item) => item.bus.relativePath === nuGekozen)
           : undefined
@@ -1708,6 +1994,219 @@ export function App(): JSX.Element {
         }
       }
 
+      /*
+       * DE VERGUNNINGSTAP -- alleen in de carriere.
+       *
+       * Hier kies je geen lijn om te rijden: dat doet de remise, en die kijkt
+       * naar waar je een vergunning voor hebt. Wat je hier wel doet is zien wat
+       * je mag, en er een lijn bij halen. Dat laatste is een examen, en dat is
+       * het tweede gezicht van deze stap -- geen apart scherm, want het gaat
+       * over dezelfde vraag.
+       *
+       * Wie nog nergens een vergunning heeft krijgt dat tweede gezicht meteen:
+       * zonder rijexamen valt er niets te rijden, dus is er ook niets te tonen
+       * behalve de weg daarheen.
+       */
+      if (stap === 'licence') {
+        const vergunningen = career?.state?.licences ?? []
+        const hier = vergunningen.filter((item) => item.mapFolder === mapFolder)
+        const teLeren = lines.filter(
+          (lijn) => !hier.some((item) => item.lineFile === lijn.lineFile)
+        )
+        // Een vergunning waar dan ook betekent: het rijexamen is gehaald.
+        const gekwalificeerd = vergunningen.length > 0
+        const examenNu = examenScherm || !gekwalificeerd || hier.length === 0
+        const examenKeuze = teLeren.find((lijn) => lijn.lineFile === examenLijn) ?? teLeren[0]
+
+        if (examenNu) {
+          return {
+            stap: 'licence' as Stap,
+            titel: t(language, gekwalificeerd ? 'exam.lineTitle' : 'exam.title'),
+            onderschrift: t(language, gekwalificeerd ? 'exam.lineIntro' : 'exam.intro'),
+            koppen: [
+              t(language, 'setup.colLine'),
+              t(language, 'setup.colTrips'),
+              t(language, 'setup.colAverage')
+            ],
+            rijen: teLeren.map((lijn) => ({
+              id: lijn.lineFile,
+              cellen: [
+                lijn.lineNumbers.join(', ') || lijn.lineFile,
+                String(lijn.trips),
+                formatDuration(lijn.averageMinutes, language)
+              ] as [string, string, string],
+              klok: true
+            })),
+            index: Math.max(
+              0,
+              teLeren.findIndex((lijn) => lijn.lineFile === examenKeuze?.lineFile)
+            ),
+            kies: (index) => setExamenLijn(teLeren[index]?.lineFile ?? ''),
+            /*
+             * Waar je op beoordeeld wordt, in een regel. De oude wereld zette
+             * daar een lijstje van vier voor; dat is hetzelfde vier keer zo
+             * groot gezegd, en het staat boven een lijst die de aandacht nodig
+             * heeft.
+             */
+            voet:
+              teLeren.length === 0
+                ? t(language, 'setup.examNone', { map: selectedMap?.name ?? '' })
+                : t(language, 'setup.examFoot', { delay: EXAM_LIMITS.delayMinutes }),
+            /*
+             * Terug naar je vergunningen -- maar alleen als je er hier hebt.
+             * Wie nog niets heeft, kan nergens heen terug.
+             */
+            tweede:
+              gekwalificeerd && hier.length > 0
+                ? { tekst: t(language, 'pick.cancel'), onDoen: () => setExamenScherm(false) }
+                : undefined,
+            verder: () => {
+              if (!examenKeuze || busy) return
+              void doeExamen(examenKeuze, !gekwalificeerd)
+            },
+            knop: t(language, busy ? 'exam.searching' : 'exam.start')
+          }
+        }
+
+        return {
+          stap: 'licence' as Stap,
+          titel: t(language, 'setup.licTitle'),
+          onderschrift: t(language, 'setup.licIntro'),
+          koppen: [
+            t(language, 'setup.colLine'),
+            t(language, 'setup.colSince'),
+            t(language, 'setup.colKind')
+          ],
+          /*
+           * Geen keuze maar een overzicht: de dienst loopt over al je lijnen
+           * heen, dus er valt er geen een aan te wijzen. Vandaar `keuzeloos` --
+           * een bolletje zou een keuze beloven die er niet is.
+           */
+          keuzeloos: true,
+          rijen: hier.map((item) => ({
+            id: `${item.mapFolder}|${item.lineFile}`,
+            cellen: [
+              item.lineNumbers.join(', ') || item.lineFile,
+              item.earnedAt.slice(0, 10),
+              t(language, item.basic ? 'setup.licKindBasic' : 'setup.licKindLine')
+            ] as [string, string, string]
+          })),
+          index: 0,
+          kies: () => {},
+          voet: t(
+            language,
+            hier.length === 0
+              ? 'setup.licFootNone'
+              : hier.length === 1
+                ? 'setup.licFootOne'
+                : 'setup.licFoot',
+            { count: hier.length, map: selectedMap?.name ?? '' }
+          ),
+          tweede:
+            teLeren.length > 0
+              ? {
+                  tekst: t(language, 'setup.licLearn'),
+                  onDoen: () => {
+                    setExamenLijn('')
+                    setExamenScherm(true)
+                  }
+                }
+              : undefined,
+          /*
+           * De remise zoekt er een dienst bij, over al je lijnen heen. Dezelfde
+           * aanroep als in dienst; het verschil zit in `generate`, dat in de
+           * carriere alleen de vergunde lijnen meegeeft.
+           */
+          verder: () => {
+            if (duties.length > 0) setStap('duty')
+            else void generate().then(() => setStap('duty'))
+          },
+          knop: t(language, 'setup.next')
+        }
+      }
+
+      /*
+       * DE RITSTAP -- alleen bij vrij rijden.
+       *
+       * Op de plek waar de dienstenlijst staat, staat hier de vraag die er bij
+       * vrij rijden werkelijk toe doet: waar zet ik de bus neer, wanneer, en
+       * met wat voor weer. Er valt geen dienst te halen en dus niets te kiezen
+       * -- dit is een formulier en wordt niet in rijen geperst alsof het een
+       * lijst is.
+       *
+       * De kaart blijft ernaast staan: waar je begint is een plek, en die hoort
+       * te zien te zijn terwijl je hem aanwijst.
+       */
+      if (mode === 'free') {
+        return {
+          stap: 'duty' as Stap,
+          titel: t(language, 'setup.freeTitle'),
+          onderschrift: t(language, 'setup.freeIntro'),
+          koppen: ['', '', ''] as [string, string, string],
+          rijen: [],
+          index: 0,
+          kies: () => {},
+          voet: t(language, 'setup.freeFoot', {
+            map: selectedMap?.name ?? '',
+            time: vrijeTijd
+          }),
+          verder: () => setStap('bus'),
+          knop: t(language, 'setup.next'),
+          vrij: (
+            <div className="vrijerit">
+              <label className="vrijveld">
+                <span>{t(language, 'free.stop')}</span>
+                <select value={vrijeHalte} onChange={(event) => setVrijeHalte(event.target.value)}>
+                  <option value="">{t(language, 'free.stopAuto')}</option>
+                  {vrijeHaltes.map((halte) => (
+                    <option key={halte.id} value={halte.id}>
+                      {halte.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="vrijpaar">
+                <label className="vrijveld">
+                  <span>{t(language, 'free.date')}</span>
+                  <input
+                    type="date"
+                    value={vrijeDatum}
+                    onChange={(event) => setVrijeDatum(event.target.value)}
+                  />
+                </label>
+                <label className="vrijveld">
+                  <span>{t(language, 'free.time')}</span>
+                  <input
+                    type="time"
+                    value={vrijeTijd}
+                    onChange={(event) => setVrijeTijd(event.target.value)}
+                  />
+                </label>
+              </div>
+
+              <div className="vrijveld">
+                <span>{t(language, 'free.weather')}</span>
+                <div className="regelaar-chips">
+                  {WEATHER_KINDS.map((soort) => (
+                    <button
+                      key={soort}
+                      type="button"
+                      aria-pressed={vrijWeer === soort}
+                      onClick={() => setVrijWeer(soort)}
+                    >
+                      {t(language, `weather.${soort}` as const)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {!lineFile && <p className="vrijnoot">{t(language, 'free.noLine')}</p>}
+            </div>
+          )
+        }
+      }
+
       return {
         stap: 'duty',
         titel: `${t(language, 'setup.duties')}${gekozenDuty ? ` · ${gekozenDuty.lineNumbers[0] ?? ''}` : ''}`,
@@ -1809,17 +2308,64 @@ export function App(): JSX.Element {
           rijen={vel.rijen}
           gekozen={vel.index}
           onKies={vel.kies}
-          voet={vel.voet}
+          /*
+           * Wat er misging gaat voor wat er te melden valt, en dat gaat voor de
+           * gewone toelichting. Dit stond in de oude wereld in een kaartje
+           * onderaan het scherm; dat kaartje is weg, en zonder deze regel werd
+           * "geen dienst gevonden van deze lengte" wel uitgerekend maar nergens
+           * gezegd -- je zag een lege lijst en verder niets.
+           */
+          voet={error ?? note ?? vel.voet}
+          voetFout={Boolean(error)}
           duty={kaartDuty}
           onStart={vel.verder}
           startTekst={vel.knop}
           bezig={busy}
-          stappen={lijnVrij ? ZONDER_LIJN : undefined}
+          stappen={
+            mode === 'career' ? STAPPEN_CARRIERE : mode === 'free' ? STAPPEN_VRIJ : STAPPEN_DIENST
+          }
+          /*
+           * Bij vrij rijden staat op de plek van de dienst je eigen rit; dan
+           * hoort de balk dat ook te zeggen.
+           */
+          stapnamen={mode === 'free' ? { duty: t(language, 'setup.step.free') } : undefined}
           tegels={vel.tegels}
           kruimels={vel.kruimels}
           vullend={vel.vullend}
           keuzeloos={vel.keuzeloos}
           regelaars={vel.regelaars}
+          /*
+           * Twee dingen die je moet weten voordat je op START drukt, en dus op
+           * de busstap: dat OMSI op volledig scherm stond -- dan ligt de
+           * overlay over een spel dat het scherm exclusief opeist en kan het
+           * beeld zwart blijven -- en dat er iets met de plugin is. Ze stonden
+           * allebei in de oude wereld en hadden hier geen plek meer.
+           */
+          waarschuwing={
+            stap === 'bus' && (schermmodus === 'volledig' || plugin?.error || plugin?.changed) ? (
+              <>
+                {schermmodus === 'volledig' && (
+                  <>
+                    <p>{t(language, inVenster ? 'app.fullscreenFixed' : 'app.fullscreen')}</p>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={inVenster}
+                        onChange={(event) => {
+                          const aan = event.target.checked
+                          setInVenster(aan)
+                          void window.career.saveSettings({ windowedOmsi: aan })
+                        }}
+                      />
+                      {t(language, 'app.windowed')}
+                    </label>
+                  </>
+                )}
+                {plugin?.error && <p>{t(language, 'app.pluginError', { error: plugin.error })}</p>}
+                {plugin?.changed && !plugin.error && <p>{t(language, 'app.pluginUpdated')}</p>}
+              </>
+            ) : undefined
+          }
           dialoog={
             /*
              * Eerst de vraag over de bus zelf, en pas daarna die over het
@@ -1900,8 +2446,16 @@ export function App(): JSX.Element {
           inhoud={
             screen === 'game' ? (
               <GameSetup language={language} onBack={() => setScreen('modes')} />
-            ) : undefined
+            ) : (
+              vel.vrij
+            )
           }
+          /*
+           * De ritstap van vrij rijden is vrije inhoud, en vrije inhoud maakt
+           * het vel normaal schermvullend. Hier niet: je wijst een halte aan,
+           * en dat is een plek op de kaart.
+           */
+          metKaart={Boolean(vel.vrij)}
           rechtsInBalk={
             <>
               <Versie />
@@ -1935,10 +2489,15 @@ export function App(): JSX.Element {
               return
             }
             setScreen('drive')
-            if (naar === 'map' || naar === 'line') {
+            if (naar === 'map' || naar === 'line' || naar === 'licence') {
               setDuties([])
               setSelected(undefined)
             }
+            // Terug op de vergunningstap begin je bij het overzicht, niet in een examen.
+            if (naar === 'licence') setExamenScherm(false)
+            // Een melding hoort bij de stap waar hij ontstond; verderop zegt hij niets meer.
+            setError(undefined)
+            setNote(undefined)
             setStap(naar)
           }}
         />
@@ -1946,327 +2505,4 @@ export function App(): JSX.Element {
     )
   }
 
-  return (
-    <LanguageProvider language={language}>
-    <div className="app">
-      <Sidebar
-        language={language}
-        onLanguage={chooseLanguage}
-        career={career}
-        onRename={async (name) => setCareer(await window.career.renameDriver(name))}
-        onSelectProfile={async (id) => setCareer(await window.career.selectProfile(id))}
-        onNewProfile={async (name) => setCareer(await window.career.createProfile(name))}
-      />
-
-      {starting && (
-        <StartingDialog
-          onDone={() => {
-            setStarting(false)
-            setNote(t(language, 'app.omsiReady'))
-            // Nu pas: het spel draait, dus de overlay heeft iets om boven te hangen.
-            if (duty) void window.career.setOverlay(duty, true, ibis).then(setOverlayOpen)
-          }}
-          onDismiss={() => setStarting(false)}
-        />
-      )}
-
-      <main className="main">
-        <div className="mode-bar">
-          <span className="mode-tag">{t(language, `mode.${mode}` as const)}</span>
-          <button type="button" className="link-button" onClick={() => setScreen('modes')}>
-            {t(language, 'mode.otherMode')}
-          </button>
-          <button type="button" className="link-button" onClick={() => setScreen('game')}>
-            {t(language, 'cfg.title')}
-          </button>
-          {/*
-            Kaarten en bussen komen als een map de OMSI-map in; niets meldt dat
-            aan ons. Deze knop gaat opnieuw kijken, zonder de app te herstarten.
-          */}
-          <button
-            type="button"
-            className="link-button"
-            disabled={checking}
-            onClick={() => void checkInstalled()}
-          >
-            {t(language, checking ? 'check.busy' : 'check.button')}
-          </button>
-          {/*
-            Ook hier, want de busstap bestaat alleen in de dienstmodus en dit
-            hoort bij de installatie en niet bij een modus.
-          */}
-          {hofAanbod.length > 0 && (
-            <button
-              type="button"
-              className="link-button"
-              onClick={() => setBusScherm('overzetten')}
-            >
-              {t(language, 'setup.hofOffer', { count: hofAanbod.length })}
-            </button>
-          )}
-          {checked && <span className="note mode-note">{checked}</span>}
-        </div>
-
-        {schermmodus === 'volledig' && (
-          <div className="note warn fullscreen-note">
-            <p>{t(language, inVenster ? 'app.fullscreenFixed' : 'app.fullscreen')}</p>
-            <label className="fullscreen-keuze">
-              <input
-                type="checkbox"
-                checked={inVenster}
-                onChange={(event) => {
-                  const aan = event.target.checked
-                  setInVenster(aan)
-                  void window.career.saveSettings({ windowedOmsi: aan })
-                }}
-              />
-              {t(language, 'app.windowed')}
-            </label>
-          </div>
-        )}
-
-        {/*
-          De kop zegt in welke modus je bent; alleen bij dienst is dat "dienst
-          kiezen". Rijdt de dienst, dan valt er niets meer te kiezen en zegt het
-          compacte scherm zelf wel waar je aan toe bent.
-        */}
-        {!started && (
-          <>
-            <h1>
-              {mode === 'service' ? t(language, 'app.title') : t(language, `mode.${mode}` as const)}
-            </h1>
-            <p className="subtitle">
-              {mode === 'service'
-                ? t(language, 'app.subtitle')
-                : t(language, mode === 'career' ? 'mode.careerIntro' : 'mode.freeIntro')}
-            </p>
-          </>
-        )}
-
-        {mode === 'free' ? (
-          <FreePlay
-            language={language}
-            maps={maps}
-            lines={lines}
-            vehicleGroups={vehicleGroups}
-            mapFolder={mapFolder}
-            onMapChange={setMapFolder}
-            lineFile={lineFile}
-            onLineChange={setLineFile}
-          />
-        ) : (
-          <>
-            {mode === 'career' && career?.state && !started && (
-              <CareerPanel
-                language={language}
-                state={career.state}
-                maps={maps}
-                lines={lines}
-                mapFolder={mapFolder}
-                onMapChange={setMapFolder}
-                busy={busy || confirmed}
-                onAssign={(licensedLine) => void generate(licensedLine)}
-                onExam={async (line, basic) => {
-                  setBusy(true)
-                  setError(undefined)
-                  setNote(undefined)
-                  try {
-                    const found = await window.career.examDuty(mapFolder, line.lineFile)
-                    if (!found) {
-                      setError(t(language, 'exam.none'))
-                      return
-                    }
-                    setDuties([found])
-                    setSelected(0)
-                    setVehicleOverride('')
-                    setStarted(false)
-                    // Het examen ligt meteen vast: er valt niets te kiezen.
-                    setCareer(
-                      await window.career.confirmDuty(found, '', 'career', {
-                        lineFile: line.lineFile,
-                        lineNumbers: line.lineNumbers,
-                        basic
-                      })
-                    )
-                  } catch (cause) {
-                    setError(cause instanceof Error ? cause.message : String(cause))
-                  } finally {
-                    setBusy(false)
-                  }
-                }}
-              />
-            )}
-
-            {mode === 'service' && !started && (
-              <section className="card">
-                <div className="field-grid">
-                  <div>
-                    <label htmlFor="map">{t(language, 'app.map')}</label>
-                    <select
-                      id="map"
-                      value={mapFolder}
-                      disabled={confirmed}
-                      onChange={(event) => setMapFolder(event.target.value)}
-                    >
-                      {maps.map((item) => (
-                        <option key={item.folder} value={item.folder}>
-                          {item.name} — {t(language, 'app.mapTours', { count: item.tours })}
-                        </option>
-                      ))}
-                    </select>
-                    {selectedMap && (
-                      <p className="note" style={{ marginTop: 8 }}>
-                        {t(language, 'app.mapEra', { year: selectedMap.year })}
-                      </p>
-                    )}
-                  </div>
-
-                  <div>
-                    <LinePicker
-                      language={language}
-                      lines={lines}
-                      value={lineFile}
-                      disabled={confirmed}
-                      onChange={setLineFile}
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="length">{t(language, 'app.length')}</label>
-                    <div className="length-value">{formatDuration(LENGTHS[lengthIndex], language)}</div>
-                    <input
-                      id="length"
-                      type="range"
-                      min={0}
-                      max={LENGTHS.length - 1}
-                      value={lengthIndex}
-                      onChange={(event) => setLengthIndex(Number(event.target.value))}
-                    />
-                  </div>
-
-                  <div>
-                    <label>{t(language, 'app.daypart')}</label>
-                    <div className="chips">
-                      {(Object.keys(TIME_WINDOWS) as Array<DutyRequest['window']>).map((key) => (
-                        <button
-                          key={key}
-                          type="button"
-                          className="chip"
-                          aria-pressed={timeWindow === key}
-                          onClick={() => setTimeWindow(key)}
-                        >
-                          {t(language, `window.${key}` as const)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="actions">
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => void generate()}
-                    disabled={busy || confirmed}
-                  >
-                    {t(language, 'app.generate')}
-                  </button>
-                  {duties.length > 0 && !proposal && (
-                    <button type="button" className="btn secondary" onClick={() => setProposal(true)}>
-                      {t(language, 'prop.title')}
-                    </button>
-                  )}
-                  <PluginNote status={plugin} language={language} />
-                </div>
-                {confirmed && (
-                  <p className="note" style={{ marginTop: 12 }}>
-                    {t(language, 'app.activeDuty')}
-                  </p>
-                )}
-              </section>
-            )}
-
-            {(error || note) && (
-              <section className="card">
-                {error && <p className="note warn">{error}</p>}
-                {note && <p className="note">{note}</p>}
-              </section>
-            )}
-
-            {/*
-              Dezelfde kaart, twee plekken: in het voorstelvenster zolang dat
-              openstaat, en anders gewoon op het scherm. Eén kaart, want alles
-              wat je moet weten staat erop.
-            */}
-            {assignment &&
-              (() => {
-                const card = (
-                  <DutyCard
-                    assignment={assignment}
-                    ibis={ibis}
-                    vehicle={vehicle}
-                    vehicleGroups={vehicleGroups}
-                    vehicleOverride={vehicleOverride}
-                    onVehicleChange={setVehicleOverride}
-                    yards={yards}
-                    yardOverride={yardOverride}
-                    onYardChange={setYardOverride}
-                    busy={busy}
-                    confirmed={confirmed}
-                    started={started}
-                    overlayOpen={overlayOpen}
-                    exam={Boolean(exam)}
-                    onConfirm={() => void confirmDuty()}
-                    onCancel={cancelDuty}
-                    onBegin={begin}
-                    onToggleOverlay={toggleOverlay}
-                    onFinish={finish}
-                    printers={printers}
-                    printer={printer}
-                    onPrinterChange={setPrinter}
-                  />
-                )
-                if (proposal) {
-                  return (
-                    <DutyProposal
-                      language={language}
-                      confirmed={confirmed}
-                      busy={busy}
-                      onRegenerate={() => void generate()}
-                      onClose={() => setProposal(false)}
-                    >
-                      {card}
-                    </DutyProposal>
-                  )
-                }
-                /*
-                 * Zodra de dienst loopt zit je in de bus. Dan hoort er alleen te
-                 * staan wat je voor de eerste rit nodig hebt; de hele kaart en de
-                 * route gaan achter een knop.
-                 */
-                if (started && duty) {
-                  return (
-                    <RunningDuty
-                      duty={duty}
-                      ibis={ibis}
-                      session={session}
-                      connected={connected}
-                      busy={busy}
-                      exam={Boolean(exam)}
-                      overlayOpen={overlayOpen}
-                      onToggleOverlay={toggleOverlay}
-                      onCancel={cancelDuty}
-                      onFinish={finish}
-                      full={card}
-                    />
-                  )
-                }
-                return card
-              })()}
-          </>
-        )}
-      </main>
-    </div>
-    </LanguageProvider>
-  )
 }

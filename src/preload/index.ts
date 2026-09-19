@@ -13,6 +13,7 @@ const api: CareerApi = {
   maps: () => ipcRenderer.invoke('omsi:maps'),
   checkInstalled: () => ipcRenderer.invoke('omsi:check'),
   vehicles: () => ipcRenderer.invoke('omsi:vehicles'),
+  suggestVehicle: (mapFolder) => ipcRenderer.invoke('fleet:suggest', mapFolder),
   geometry: (mapFolder) => ipcRenderer.invoke('map:geometry', mapFolder),
   routes: (mapFolder, legs) => ipcRenderer.invoke('map:routes', mapFolder, legs),
   pluginStatus: () => ipcRenderer.invoke('plugin:status'),

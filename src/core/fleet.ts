@@ -107,6 +107,36 @@ export function buildFleetIndex(omsiPath: string): FleetIndex {
   return { vehicles, hofsByFolder }
 }
 
+/**
+ * De bus die op deze kaart het gewoonst is, zonder dat er een dienst aan te pas
+ * komt.
+ *
+ * `pickVehicleForDuty` redeneert vanuit de eindbestemmingen van een dienst: hij
+ * zoekt een bus die de kaart kent, want anders rijd je met een lege
+ * bestemmingsfilm. Bij vrij rijden is er geen dienst en dus geen eindbestemming
+ * -- je rijdt wat je wilt -- en blijft er een eenvoudiger vraag over, die de
+ * kaart zelf beantwoordt: welke bus rijdt hier het meest rond? Dat staat in de
+ * remiselijst, door de maker van de kaart aangewezen.
+ *
+ * Geen keuze opdringen: dit is wat de app voorstelt, en elke andere bus blijft
+ * te kiezen.
+ */
+export function suggestFromDepot(
+  vehicles: Vehicle[],
+  depot: Map<string, number>
+): Vehicle | undefined {
+  let beste: Vehicle | undefined
+  let meeste = 0
+  for (const vehicle of vehicles) {
+    const wagens = depot.get(normalisePath(vehicle.relativePath)) ?? 0
+    if (wagens > meeste) {
+      meeste = wagens
+      beste = vehicle
+    }
+  }
+  return beste
+}
+
 export interface VehicleChoice {
   vehicle: Vehicle
   /** Wagenpark waarmee deze bus de dienst kan rijden. */

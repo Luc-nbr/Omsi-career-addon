@@ -1932,7 +1932,10 @@ const TEXT = {
   'setup.step.mode': { en: 'Mode', de: 'Modus', fr: 'Mode', nl: 'Modus' },
   'setup.step.map': { en: 'Map', de: 'Karte', fr: 'Carte', nl: 'Kaart' },
   'setup.step.line': { en: 'Line', de: 'Linie', fr: 'Ligne', nl: 'Lijn' },
+  'setup.step.licence': { en: 'Licence', de: 'Lizenz', fr: 'Permis', nl: 'Vergunning' },
   'setup.step.duty': { en: 'Duty', de: 'Dienst', fr: 'Service', nl: 'Dienst' },
+  /* Bij vrij rijden staat op die plek in de reeks geen dienst maar je eigen rit. */
+  'setup.step.free': { en: 'Drive', de: 'Fahrt', fr: 'Trajet', nl: 'Rit' },
   'setup.step.bus': { en: 'Bus', de: 'Bus', fr: 'Bus', nl: 'Bus' },
   'setup.duties': { en: 'Duties', de: 'Dienste', fr: 'Services', nl: 'Diensten' },
   'setup.pick': {
@@ -2091,6 +2094,72 @@ const TEXT = {
     de: 'Mit welchem Bus fährst du raus?',
     fr: 'Quel bus sortez-vous ?',
     nl: 'Met welke bus ga je rijden?'
+  },
+  /*
+   * De vergunningstap, alleen in de carriere. Hier kies je geen lijn om te
+   * rijden -- dat doet de remise -- maar je ziet waar je mag rijden en je haalt
+   * er een lijn bij.
+   */
+  'setup.licTitle': { en: 'Your licences', de: 'Deine Lizenzen', fr: 'Vos permis', nl: 'Je vergunningen' },
+  'setup.licIntro': {
+    en: 'The depot only puts you on lines you are licensed for.',
+    de: 'Der Betriebshof teilt dich nur auf Linien ein, für die du eine Lizenz hast.',
+    fr: 'Le dépôt ne vous affecte qu’aux lignes pour lesquelles vous avez un permis.',
+    nl: 'De remise zet je alleen op lijnen waar je een vergunning voor hebt.'
+  },
+  'setup.colSince': { en: 'Since', de: 'Seit', fr: 'Depuis', nl: 'Sinds' },
+  'setup.colKind': { en: 'Test', de: 'Prüfung', fr: 'Examen', nl: 'Examen' },
+  'setup.licKindBasic': { en: 'Driving test', de: 'Fahrprüfung', fr: 'Examen de conduite', nl: 'Rijexamen' },
+  'setup.licKindLine': { en: 'Line test', de: 'Linienprüfung', fr: 'Examen de ligne', nl: 'Lijnexamen' },
+  'setup.licFoot': {
+    en: '{count} lines on {map} · the duty runs across all of them',
+    de: '{count} Linien auf {map} · der Dienst läuft über alle',
+    fr: '{count} lignes sur {map} · le service les parcourt toutes',
+    nl: '{count} lijnen op {map} · de dienst loopt er overheen'
+  },
+  'setup.licFootOne': {
+    en: 'One line on {map} · everything you drive here runs on it',
+    de: 'Eine Linie auf {map} · alles, was du hier fährst, läuft darüber',
+    fr: 'Une ligne sur {map} · tout ce que vous conduisez ici y passe',
+    nl: 'Eén lijn op {map} · alles wat je hier rijdt, gaat daarover'
+  },
+  'setup.licFootNone': {
+    en: 'No licence on {map} yet. Take a test to earn one.',
+    de: 'Noch keine Lizenz auf {map}. Lege eine Prüfung ab.',
+    fr: 'Aucun permis sur {map}. Passez un examen pour en obtenir un.',
+    nl: 'Nog geen vergunning op {map}. Leg een examen af om er een te halen.'
+  },
+  'setup.licLearn': { en: 'Learn another line', de: 'Weitere Linie lernen', fr: 'Apprendre une autre ligne', nl: 'Nieuwe lijn leren' },
+  'setup.examFoot': {
+    en: 'Finish the trip, stay within {delay} min, drive smoothly, keep to the limit.',
+    de: 'Fahrt beenden, höchstens {delay} Min Verspätung, ruhig fahren, Tempo halten.',
+    fr: 'Terminez la course, {delay} min de retard au plus, conduisez en douceur, respectez la limite.',
+    nl: 'Rit afmaken, hoogstens {delay} min afwijking, rustig rijden, je aan de limiet houden.'
+  },
+  'setup.examNone': {
+    en: 'Every line here is already yours. Nothing left to learn on {map}.',
+    de: 'Jede Linie hier gehört dir schon. Auf {map} gibt es nichts mehr zu lernen.',
+    fr: 'Toutes les lignes ici sont déjà à vous. Plus rien à apprendre sur {map}.',
+    nl: 'Elke lijn hier is al van jou. Op {map} valt niets meer te leren.'
+  },
+  /*
+   * De ritstap, alleen bij vrij rijden. Daar is geen dienst om te kiezen, dus
+   * staat op die plek in de reeks de vraag die er wel toe doet: waar, wanneer
+   * en met wat voor weer.
+   */
+  'setup.noLine': { en: 'No line', de: 'Keine Linie', fr: 'Aucune ligne', nl: 'Geen lijn' },
+  'setup.freeTitle': { en: 'Your drive', de: 'Deine Fahrt', fr: 'Votre trajet', nl: 'Je rit' },
+  'setup.freeIntro': {
+    en: 'No duty, no timetable to keep. Say where and when, and it is set up.',
+    de: 'Kein Dienst, kein Fahrplan. Sag wo und wann, dann steht es bereit.',
+    fr: 'Pas de service, pas d’horaire. Dites où et quand, et tout est prêt.',
+    nl: 'Geen dienst, geen dienstregeling. Zeg waar en wanneer, dan staat het klaar.'
+  },
+  'setup.freeFoot': {
+    en: 'Pick a bus next; {map} is ready at {time}.',
+    de: 'Wähle als Nächstes einen Bus; {map} steht um {time} bereit.',
+    fr: 'Choisissez ensuite un bus ; {map} est prêt à {time}.',
+    nl: 'Kies hierna een bus; {map} staat klaar om {time}.'
   },
   'setup.colBus': { en: 'Bus', de: 'Bus', fr: 'Bus', nl: 'Bus' },
   'setup.colFleet': { en: 'Fleet', de: 'Fuhrpark', fr: 'Parc', nl: 'Wagenpark' },

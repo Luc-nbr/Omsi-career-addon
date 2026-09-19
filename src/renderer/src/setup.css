@@ -211,7 +211,7 @@
   height: 2px;
   min-width: 24px;
   margin: 0 14px;
-  background: var(--vel-lijn);
+  background-color: var(--vel-lijn);
   /* Een streepje van twee pixels hoog is een staafje: volledig rond dus. */
   border-radius: var(--radius-rond);
 }
@@ -220,9 +220,7 @@
   color: var(--vel-ink);
 }
 
-.stap-streep[data-stand='klaar'] {
-  background: var(--route);
-}
+/* Hoe hij volloopt staat onder "beweging"; hier alleen dat hij dat doet. */
 
 .stap[data-stand='nu'] {
   color: var(--route);
@@ -559,6 +557,48 @@
   flex: none;
 }
 
+/*
+ * De voet zegt normaal iets over de lijst eronder; staat er een fout, dan zegt
+ * hij dat. Dezelfde rode als "te laat" elders in de app -- in deze app betekent
+ * rood dat er iets niet klopt, en dat mag maar een ding tegelijk betekenen.
+ */
+.velvoet.fout {
+  color: var(--laat);
+}
+
+/*
+ * Wat je moet weten voordat je op START drukt. Staat boven de keuze en niet
+ * eronder: het gaat niet over wat je kiest maar over wat er daarna gebeurt.
+ */
+.velwaarschuwing {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--laat);
+  border-radius: var(--radius-klein);
+  color: var(--vel-ink);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.velwaarschuwing p {
+  margin: 0;
+}
+
+.velwaarschuwing label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--vel-zacht);
+  cursor: pointer;
+}
+
+.velwaarschuwing input[type='checkbox'] {
+  accent-color: var(--route);
+}
+
 /* ---- op de kaart ---- */
 
 .kaartknoppen {
@@ -740,10 +780,19 @@
 
 /* ---- beweging ----
  *
- * Eén beweging, niet overal een andere: het vel komt op als je van stap wisselt,
- * en een rij licht op als je erover gaat. Alles binnen een vijfde seconde, want
- * dit scherm is een werktuig en geen etalage. Wie beweging heeft uitgezet in
- * Windows krijgt hem niet.
+ * EEN beweging, niet overal een andere: iets dat binnenkomt schuift een paar
+ * pixels omhoog terwijl het opkomt, en verder verandert er alleen kleur. Dat is
+ * de hele woordenschat. Alles binnen een vijfde seconde, want dit scherm is een
+ * werktuig en geen etalage -- je gaat er twintig keer per avond doorheen, en
+ * wat de eerste keer aardig is, is de twintigste keer oponthoud.
+ *
+ * Waarom het er wel is: de stappen wisselen zonder dat er iets van plaats
+ * verandert -- hetzelfde vel op dezelfde plek met andere inhoud. Zonder
+ * beweging weet je niet of er iets gebeurd is toen je op Verder drukte. De
+ * beweging zegt "dit is nieuw", en dat is het enige wat ze hoeft te zeggen.
+ *
+ * Wie beweging heeft uitgezet in Windows krijgt er niets van te zien; dat staat
+ * onderaan in een blok bij elkaar in plaats van bij elke regel apart.
  */
 
 @keyframes vel-op {
@@ -753,29 +802,86 @@
   }
 }
 
+/*
+ * Bij elke stap opnieuw, niet alleen de eerste keer.
+ *
+ * Dit stond er al, maar het vel blijft tussen de stappen door hetzelfde
+ * element: React wisselt de inhoud en laat de doos staan, en dan speelt een
+ * animatie op die doos precies een keer af -- bij het openen van de app. De
+ * regel hierboven beloofde iets wat je alleen bij de allereerste stap zag. Het
+ * vel draagt nu een sleutel per stap (zie Setup.tsx), waardoor het werkelijk
+ * opnieuw ter wereld komt en de beweging elke keer loopt.
+ */
 .dienstenvel {
   animation: vel-op 180ms ease-out;
 }
 
+/*
+ * De regels komen na het vel, en na elkaar.
+ *
+ * Een lijst van veertig diensten die in een keer verschijnt is een muur; komen
+ * ze kort na elkaar, dan lees je van boven naar beneden omdat het scherm dat
+ * voordoet. Vandaar een oplopende vertraging -- maar met een dak erop: bij
+ * driehonderd bussen zou de onderste anders vijf seconden op zich laten
+ * wachten. Na de twaalfde komt alles tegelijk, en dat merkt niemand, want de
+ * twaalfde staat al onder de vouw.
+ */
+@keyframes rij-op {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.dienstenlijst li,
+.tegels .tegel {
+  animation: rij-op 170ms ease-out backwards;
+  animation-delay: calc(min(var(--i, 0), 12) * 16ms);
+}
+
+/*
+ * Het streepje tussen twee stappen loopt vol in plaats van om te springen. Het
+ * is de enige beweging op het scherm die iets meet in plaats van iets aan te
+ * kondigen: hij laat zien dat je een stap verder bent.
+ */
+.stap-streep {
+  background-image: linear-gradient(to right, var(--route) 0 50%, var(--vel-lijn) 50% 100%);
+  background-size: 200% 100%;
+  background-position: 100% 0;
+  transition: background-position 260ms ease-out;
+}
+
+.stap-streep[data-stand='klaar'] {
+  background-position: 0 0;
+}
+
 .dienstrij,
 .startknop,
+.tweedeknop,
 .kaartknop,
-.stapknop {
+.stapknop,
+.tegel {
   transition:
     background-color 120ms ease-out,
+    border-color 120ms ease-out,
     color 120ms ease-out,
     opacity 120ms ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dienstenvel {
+  .dienstenvel,
+  .dienstenlijst li,
+  .tegels .tegel {
     animation: none;
   }
 
+  .stap-streep,
   .dienstrij,
   .startknop,
+  .tweedeknop,
   .kaartknop,
-  .stapknop {
+  .stapknop,
+  .tegel {
     transition: none;
   }
 }
@@ -1915,4 +2021,90 @@
   color: var(--vel-zacht);
   font-size: 12.5px;
   font-variant-numeric: tabular-nums lining-nums;
+}
+
+/*
+ * DE RITSTAP VAN VRIJ RIJDEN
+ *
+ * Geen lijst maar een formulier: vier vragen, en de kaart ernaast waarop je
+ * ziet wat je aanwijst. Het staat in dezelfde taal als de rest van het vel --
+ * dezelfde randen, dezelfde kapitaaltjes boven een veld, dezelfde chips voor
+ * het weer als op de dienststap voor het dagdeel -- want het is dezelfde reeks
+ * en niet een formulier dat er toevallig in gevallen is.
+ */
+.vrijerit {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 0 8px;
+}
+
+.vrijveld {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vrijveld > span {
+  color: var(--vel-zacht);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.vrijveld select,
+.vrijveld input {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--vel-rand);
+  border-radius: var(--radius-klein);
+  background: var(--vel-hover);
+  color: var(--vel-ink);
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.vrijveld input[type='date'],
+.vrijveld input[type='time'] {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/*
+ * De agenda- en klokknopjes van Chromium zijn zwart, en zwart op een donker
+ * veld is niets. De app is donker tenzij anders gezegd, dus keren we ze om en
+ * zetten dat in de lichte stand weer terug -- dezelfde volgorde als theme.css
+ * aanhoudt.
+ */
+.vrijveld input::-webkit-calendar-picker-indicator {
+  filter: invert(1) opacity(0.65);
+}
+
+:root[data-thema='licht'] .vrijveld input::-webkit-calendar-picker-indicator {
+  filter: opacity(0.65);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-thema]) .vrijveld input::-webkit-calendar-picker-indicator {
+    filter: opacity(0.65);
+  }
+}
+
+.vrijveld select:focus-visible,
+.vrijveld input:focus-visible {
+  border-color: var(--route);
+  outline: none;
+}
+
+/* Datum en tijd horen bij elkaar en passen samen op een regel. */
+.vrijpaar {
+  display: flex;
+  gap: 12px;
+}
+
+.vrijnoot {
+  margin: 0;
+  color: var(--vel-zacht);
+  font-size: 12.5px;
+  line-height: 1.5;
 }

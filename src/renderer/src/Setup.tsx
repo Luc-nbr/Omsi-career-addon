@@ -1,12 +1,21 @@
-import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type JSX, type ReactNode } from 'react'
 import type { MapGeometry } from '../../core/geo'
 import type { Duty } from '../../core/types'
 import { useT } from './language'
 import { RouteMap } from './RouteMap'
 import './setup.css'
 
-/** De stappen die je aflegt voordat OMSI start, in vaste volgorde. */
-export const STAPPEN = ['profile', 'mode', 'map', 'line', 'duty', 'bus'] as const
+/**
+ * De stappen die je aflegt voordat OMSI start, in vaste volgorde.
+ *
+ * Niet elke modus loopt ze allemaal langs -- `stappen` zegt per scherm welke er
+ * in de balk staan. `line` is er alleen bij vrij rijden, waar je je rit zelf
+ * samenstelt; `licence` alleen in de carriere, waar je niet rijdt wat je kiest
+ * maar wat je mag. In beide gevallen zit de stap op dezelfde plek in de reeks:
+ * na de kaart, voor de dienst. Dat is waar de vraag hoort die bepaalt wat er in
+ * de dienstenlijst komt.
+ */
+export const STAPPEN = ['profile', 'mode', 'map', 'line', 'licence', 'duty', 'bus'] as const
 export type Stap = (typeof STAPPEN)[number]
 
 /**
@@ -122,6 +131,18 @@ interface Props {
     routeMode?: 'all' | 'active' | 'none'
     vehicle?: { x: number; y: number; heading: number; speedKmh: number }
   }
+  /**
+   * Iets wat de speler moet weten voordat hij verder gaat.
+   *
+   * Niet hetzelfde als de voet: die vertelt over de lijst die eronder staat.
+   * Dit staat erboven omdat het over het rijden gaat en niet over de keuze --
+   * dat OMSI op volledig scherm stond bijvoorbeeld, wat de overlay een zwart
+   * beeld kan opleveren. Het staat er alleen als er iets is; een lege doos die
+   * altijd meeschuift leert je hem over te slaan.
+   */
+  waarschuwing?: ReactNode
+  /** De voet toont een fout en krijgt daar de kleur van. */
+  voetFout?: boolean
   /** Een venstertje over het scherm heen; het vel blijft eronder staan. */
   dialoog?: ReactNode
   /** Het vel over het hele venster, ook zonder tegels of vrije inhoud. */
@@ -143,6 +164,15 @@ interface Props {
   tegels?: Tegel[]
   /** Het spoor terug door de niveaus heen. */
   kruimels?: Kruimel[]
+  /**
+   * Een andere naam voor een stap in de balk.
+   *
+   * De reeks is per modus dezelfde en de plek in de reeks ook, maar wat er op
+   * die plek gevraagd wordt niet altijd. Bij vrij rijden staat op de plek van
+   * de dienst je rit -- geen dienstenlijst maar waar en wanneer -- en dan hoort
+   * er ook "Rit" te staan en niet "Dienst".
+   */
+  stapnamen?: Partial<Record<Stap, string>>
   /** Wat rechts in de stappenbalk hangt; de taalkeuze hoort daar. */
   rechtsInBalk?: ReactNode
   /**
@@ -162,6 +192,9 @@ const PADEN = {
   line: 'M4 20 10 8l4 6 6-10',
   mode: 'M12 2 4 6v6c0 5 3.4 9.1 8 10 4.6-.9 8-5 8-10V6l-8-4Zm0 2.2 6 3V12c0 3.9-2.5 7.2-6 8-3.5-.8-6-4.1-6-8V7.2l6-3Z',
   duty: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm1 9V7h-2v7h6v-2h-4Z',
+  /* Een pasje met een stempel erop: waar je mee mag rijden, en wie dat zegt. */
+  licence:
+    'M3 5h18v14H3V5Zm2 2v10h14V7H5Zm1.5 2h6v1.6h-6V9Zm0 3h5v1.6h-5V12Zm9.5-2.6a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2Z',
   bus: 'M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2v2h-3v-2H8v2H5v-2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 3v5h14V7H5Zm2 9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm10 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z'
 } as const
 
@@ -294,6 +327,8 @@ export function Setup({
   bezig,
   onStap,
   tweede,
+  waarschuwing,
+  voetFout,
   regelaars,
   metKaart,
   navigatie,
@@ -301,6 +336,7 @@ export function Setup({
   vullend,
   keuzeloos,
   invoer,
+  stapnamen,
   rechtsInBalk,
   inhoud,
   tegels,
@@ -423,7 +459,7 @@ export function Setup({
                   onClick={() => onStap?.(naam)}
                 >
                   <Icoon stap={naam} klasse="stap-icoon" />
-                  {tr(`setup.step.${naam}` as const)}
+                  {stapnamen?.[naam] ?? tr(`setup.step.${naam}` as const)}
                 </button>
                 {index < balk.length - 1 && (
                   <span
@@ -439,7 +475,24 @@ export function Setup({
         {rechtsInBalk && <div className="balk-rechts">{rechtsInBalk}</div>}
       </header>
 
-      <section className="vel dienstenvel" data-stap={stap} data-keuze={keuzeloos ? 'nee' : 'ja'}>
+      {/*
+        De sleutel maakt de beweging waar die in setup.css beloofd wordt. Zonder
+        hem blijft dit tussen de stappen door hetzelfde element -- React wisselt
+        de inhoud en laat de doos staan -- en speelt de animatie precies een
+        keer af, bij het openen van de app.
+
+        De diepte staat erbij voor de busstap: die wisselt drie keer van inhoud
+        (merk, type, uitvoering) zonder dat de stap verandert, en dat zijn
+        evengoed nieuwe schermen. De titel zou ook kunnen, maar die verandert
+        ook als je in de dienstenlijst een andere dienst aanwijst -- dan zou de
+        lijst waar je net in klikte onder je handen opnieuw opkomen.
+      */}
+      <section
+        key={`${stap}-${kruimels?.length ?? 0}`}
+        className="vel dienstenvel"
+        data-stap={stap}
+        data-keuze={keuzeloos ? 'nee' : 'ja'}
+      >
         <div className="velkop">
           {/*
             Het icoontje volgt de stap en is dus niet altijd de bus uit de
@@ -451,6 +504,8 @@ export function Setup({
           <h2 className="veltitel">{titel}</h2>
           <p className="velonderschrift">{onderschrift}</p>
         </div>
+
+        {waarschuwing && <div className="velwaarschuwing">{waarschuwing}</div>}
 
         {inhoud && <div className="velinhoud">{inhoud}</div>}
 
@@ -475,11 +530,12 @@ export function Setup({
 
         {tegels && (
           <div className="tegels">
-            {tegels.map((tegel) => (
+            {tegels.map((tegel, index) => (
               <button
                 key={tegel.id}
                 type="button"
                 className="tegel"
+                style={{ '--i': index } as CSSProperties}
                 aria-pressed={tegel.gekozen}
                 onClick={tegel.onDoen}
               >
@@ -540,7 +596,8 @@ export function Setup({
         ) : (
           <ul className="dienstenlijst">
             {rijen.map((rij, index) => (
-              <li key={rij.id}>
+              /* `--i` is het volgnummer; setup.css maakt er de vertraging van. */
+              <li key={rij.id} style={{ '--i': index } as CSSProperties}>
                 <button
                   type="button"
                   className="dienstrij"
@@ -609,8 +666,16 @@ export function Setup({
           </ul>
         )}
 
-        {!inhoud && !tegels && (
-        <div className="velvoet">
+        {/*
+          De voet hangt aan zijn tekst en niet aan de vorm van het vel. Dat
+          stond eerst op "geen tegels en geen vrije inhoud", en dat klopte
+          zolang die twee nooit iets te melden hadden -- maar de ritstap van
+          vrij rijden is vrije inhoud met wel degelijk een regel eronder. De
+          schermen die niets te zeggen hebben geven een lege voet mee en
+          verdwijnen daar vanzelf mee.
+        */}
+        {voet && (
+        <div className={`velvoet ${voetFout ? 'fout' : ''}`}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path
               d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm-1 4h2v2h-2V7Zm0 4h2v6h-2v-6Z"

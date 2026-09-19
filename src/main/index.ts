@@ -45,6 +45,7 @@ import {
 import {
   buildFleetIndex,
   pickVehicleForDuty,
+  suggestFromDepot,
   readMapDepot,
   readMapFleet,
   type FleetIndex
@@ -68,7 +69,7 @@ import { presetStartup } from '../core/startup'
 import { trailerOf } from '../core/trailer'
 import { spawnAtStop } from '../core/spawn'
 import { listMaps, loadMap } from '../core/timetable'
-import { listVehicles } from '../core/vehicles'
+import { listVehicles, type Vehicle } from '../core/vehicles'
 import type { Duty, DutyLeg, OmsiMap } from '../core/types'
 import { listHofs, matchHof, pickHof } from '../core/hof'
 import { placeHof, planHofs, readPlacements, writePlacements } from '../core/hofTool'
@@ -1145,6 +1146,18 @@ function registerHandlers(): void {
   })
 
   ipcMain.handle('omsi:vehicles', () => listVehicles(omsi()))
+
+  /*
+   * Welke bus de app op deze kaart zou nemen als er geen dienst is.
+   *
+   * Bij dienst en carriere komt de aanbeveling uit de dienst zelf: welke bus
+   * kent de eindbestemmingen die je gaat rijden. Vrij rijden heeft geen dienst,
+   * en daar is de vraag dus eenvoudiger -- welke bus rijdt hier het meest rond.
+   * Dat weet de kaart zelf, in haar remiselijst.
+   */
+  ipcMain.handle('fleet:suggest', (_event, mapFolder: string): Vehicle | undefined =>
+    suggestFromDepot(fleet().vehicles, depotOf(mapFolder))
+  )
 
   /**
    * Opnieuw kijken wat er staat.

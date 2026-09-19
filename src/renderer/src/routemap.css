@@ -291,3 +291,47 @@
   stroke-dasharray: 7 7;
   stroke-linecap: round;
 }
+
+/*
+ * De route tekent zichzelf.
+ *
+ * Alleen op het opzetscherm, en alleen als de route voor het eerst verschijnt
+ * -- zie het commentaar bij `route-intekenen` in RouteMap.tsx waarom niet
+ * tijdens het rijden. Het duurt langer dan de rest van de beweging in deze app,
+ * en met opzet: dit kondigt niet aan dat er iets nieuw is, het vertelt je wat
+ * de dienst is. Je volgt de lijn met je ogen van het begin naar het eind, en
+ * dat is precies wat je van een dienst wilt weten voordat je hem aanneemt.
+ *
+ * `pathLength=1` op de lijnen maakt de maat onafhankelijk van de werkelijke
+ * lengte: een rit van acht kilometer en een van twee tekenen even lang, in
+ * plaats van dat de korte klaar is voordat je gekeken hebt.
+ *
+ * De streping gaat van niets naar alles en niet van een streepafstand naar
+ * nul; daardoor blijft er na afloop geen streping op de lijn staan die de ronde
+ * uiteinden zou afkappen.
+ */
+@keyframes route-tekenen {
+  from {
+    stroke-dasharray: 0 1;
+  }
+  to {
+    stroke-dasharray: 1 0;
+  }
+}
+
+.route-intekenen .route-casing,
+.route-intekenen .route-line {
+  animation: route-tekenen 620ms ease-out backwards;
+}
+
+/* De omranding loopt een tikje voor, zodat de blauwe lijn er niet naast valt. */
+.route-intekenen .route-line {
+  animation-delay: 40ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-intekenen .route-casing,
+  .route-intekenen .route-line {
+    animation: none;
+  }
+}

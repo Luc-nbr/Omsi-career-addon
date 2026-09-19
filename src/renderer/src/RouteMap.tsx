@@ -966,6 +966,32 @@ export function RouteMap({
           * Eerst de ritten die nu niet aan de beurt zijn en daarna de huidige:
           * in SVG bepaalt de volgorde in de DOM wat bovenop ligt.
           */}
+        {/*
+          * De route tekent zichzelf als hij voor het eerst verschijnt.
+          *
+          * Alleen tijdens het klaarzetten. Rijd je, dan wordt deze laag bij elk
+          * beeld opnieuw verdeeld in gereden en nog te gaan, en een route die
+          * zich tien keer per seconde opnieuw tekent is geen navigatie meer.
+          * Vandaar `activeLeg === undefined`: dat is precies het verschil
+          * tussen "kijken wat je gaat doen" en "het doen".
+          *
+          * De sleutel hangt aan de dienst en niet aan de stap: je kiest op de
+          * dienstenlijst de ene dienst na de andere, en dan hoort de kaart elke
+          * keer opnieuw te tekenen wat je net aanwees. Ga je daarna door naar
+          * de bus, dan is het dezelfde route en blijft hij staan.
+          *
+          * Het aantal stukken staat erbij, en dat is geen sierselsel: de wegen
+          * worden opgehaald en zijn er dus niet op het moment dat je klikt.
+          * Hing de sleutel alleen aan de dienst, dan kwam deze groep leeg ter
+          * wereld, liep de animatie op niets, en werden de lijnen daarna in
+          * stilte toegevoegd. Zo komt hij opnieuw zodra de stukken er zijn.
+          */}
+        <g
+          key={`${duty.tourNumber}|${duty.start}|${legs.length}|${pieces.solid.length}`}
+          className={
+            activeLeg === undefined && routeMode === 'all' ? 'route-intekenen' : undefined
+          }
+        >
         {legs
           .map((leg, index) => ({ leg, index }))
           .filter(({ index }) => legLines[index].length >= 2)
@@ -992,13 +1018,14 @@ export function RouteMap({
                   .filter((piece) => piece.key.startsWith(`${index}-`))
                   .map((piece) => (
                     <g key={piece.key}>
-                      <polyline className="route-casing" points={asPoints(piece.line)} />
-                      <polyline className="route-line" points={asPoints(piece.line)} />
+                      <polyline className="route-casing" pathLength={1} points={asPoints(piece.line)} />
+                      <polyline className="route-line" pathLength={1} points={asPoints(piece.line)} />
                     </g>
                   ))}
               </g>
             )
           })}
+        </g>
 
         {/* De stukken zonder gevonden weg: gestreept, zodat ze niet als route lezen. */}
         {pieces.guessed.map((piece) => (
