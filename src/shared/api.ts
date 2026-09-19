@@ -458,19 +458,27 @@ export interface CareerApi {
   confirmOmsi(path: string): Promise<OmsiState>
   /** Een map aanwijzen; legt nog niets vast, zodat het scherm het eerst toont. */
   browseOmsi(): Promise<OmsiState>
-  hofOffers(duty: Duty): Promise<HofOffer[]>
+  /**
+   * Welke bussen deze kaart niet kennen, en wat eraan te doen is.
+   *
+   * Het gaat over de kaart en niet over de dienst: een wagenpark hoort bij een
+   * bus en een kaart. Dat scheelt twee scheve uitkomsten -- een bus die de halve
+   * kaart kent maar net niet de vier haltes van deze ene dienst, en vrij rijden,
+   * waar geen dienst bestaat en dus nooit iets gevraagd werd.
+   */
+  hofOffers(mapFolder: string): Promise<HofOffer[]>
   /**
    * Hetzelfde voor een bus, en dat is waar het om draait: je kiest een bus, elke
    * remise zegt "0 van 2", en dan hoort de app te vragen of hij het bestand
    * erbij zet. Niets als er niets passends te vinden is.
    */
-  hofOfferFor(duty: Duty, folder: string): Promise<HofOffer | undefined>
+  hofOfferFor(mapFolder: string, folder: string): Promise<HofOffer | undefined>
   /**
    * Zet de aangeboden wagenparken neer bij de genoemde bussen. Geeft terug
    * hoeveel er werkelijk bij zijn gekomen -- een bestand dat er al lag telt niet
    * mee en wordt nooit overschreven.
    */
-  placeHofs(duty: Duty, folders: string[]): Promise<{ placed: number; failed: string[] }>
+  placeHofs(mapFolder: string, folders: string[]): Promise<{ placed: number; failed: string[] }>
 }
 
 /** Vertaalt het gekozen dagdeel naar vroegste en laatste vertrektijd in minuten. */

@@ -306,6 +306,30 @@ function fleetOf(folder: string): Set<string> {
   return fleet
 }
 
+/**
+ * Alle eindbestemmingen die op deze kaart voorkomen.
+ *
+ * Een wagenpark hoort bij een bus en een kaart, niet bij een bus en een dienst.
+ * Het lag eerst aan de dienst -- de eindbestemmingen van de ritten die je net
+ * toegewezen kreeg -- en dat gaf twee scheve uitkomsten. Een bus die de halve
+ * kaart kent maar net niet de vier haltes van deze ene dienst kreeg een aanbod
+ * dat hij niet nodig had; en bij vrij rijden, waar geen dienst bestaat, kreeg
+ * niemand ooit iets te horen. De vraag is "kent deze bus deze kaart", dus is
+ * dit het antwoord waar hij tegen gelegd hoort te worden.
+ */
+const mapTerminiCache = new Map<string, string[]>()
+function terminiOf(folder: string): string[] {
+  const cached = mapTerminiCache.get(folder)
+  if (cached) return cached
+  const gevonden = new Set<string>()
+  for (const trip of map(folder).trips.values()) {
+    if (trip.terminus) gevonden.add(trip.terminus)
+  }
+  const lijst = [...gevonden]
+  mapTerminiCache.set(folder, lijst)
+  return lijst
+}
+
 /** De remise van de kaart: welke bus, en hoeveel wagens ervan. */
 const mapDepotCache = new Map<string, Map<string, number>>()
 function depotOf(folder: string): Map<string, number> {
@@ -1061,6 +1085,7 @@ function registerHandlers(): void {
       networkCache.clear()
       mapFleetCache.clear()
       mapDepotCache.clear()
+      mapTerminiCache.clear()
       fleetIndex = undefined
     }
     omsiPath = uit.path
@@ -1475,10 +1500,8 @@ function registerHandlers(): void {
    * Dit is de enige plek waar de app iets in de voertuigmappen van OMSI zet, dus
    * daar moet de chauffeur ja tegen gezegd hebben.
    */
-  ipcMain.handle('hof:offers', (_event, duty: Duty): HofOffer[] => {
-    const termini: string[] = [
-      ...new Set(duty.legs.map((leg: DutyLeg) => leg.terminus).filter(Boolean))
-    ]
+  ipcMain.handle('hof:offers', (_event, mapFolder: string): HofOffer[] => {
+    const termini = terminiOf(mapFolder)
     if (termini.length === 0) return []
     return planHofs(omsi(), termini)
       .filter((bus) => bus.offer && bus.offer.matched > bus.known)
@@ -1495,10 +1518,8 @@ function registerHandlers(): void {
 
   ipcMain.handle(
     'hof:offerFor',
-    (_event, duty: Duty, folder: string): HofOffer | undefined => {
-      const termini: string[] = [
-        ...new Set(duty.legs.map((leg: DutyLeg) => leg.terminus).filter(Boolean))
-      ]
+    (_event, mapFolder: string, folder: string): HofOffer | undefined => {
+      const termini = terminiOf(mapFolder)
       if (termini.length === 0) return undefined
       const bus = planHofs(omsi(), termini).find((item) => item.folder === folder)
       if (!bus?.offer || bus.offer.matched <= bus.known) return undefined
@@ -1515,10 +1536,8 @@ function registerHandlers(): void {
 
   ipcMain.handle(
     'hof:place',
-    (_event, duty: Duty, folders: string[]): { placed: number; failed: string[] } => {
-      const termini: string[] = [
-        ...new Set(duty.legs.map((leg: DutyLeg) => leg.terminus).filter(Boolean))
-      ]
+    (_event, mapFolder: string, folders: string[]): { placed: number; failed: string[] } => {
+      const termini = terminiOf(mapFolder)
       const wanted = new Set(folders)
       const plan = planHofs(omsi(), termini).filter(
         (bus) => wanted.has(bus.folder) && bus.offer

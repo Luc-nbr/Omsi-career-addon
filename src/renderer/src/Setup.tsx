@@ -108,6 +108,18 @@ interface Props {
   /** Een tweede handeling naast de hoofdknop, bijvoorbeeld iets toevoegen. */
   tweede?: { tekst: string; onDoen: () => void }
   /**
+   * Een stap terug.
+   *
+   * De balk bovenaan kan dat al -- een stap die je gehad hebt is een knop -- en
+   * toch hoort deze er te staan. De balk is klein, staat ver van je muis, en op
+   * een smal venster zijn het alleen nog icoontjes. Terug is de handeling die
+   * je het vaakst doet na Verder, en die hoort naast Verder te staan en niet
+   * ergens anders op het scherm.
+   *
+   * Weggelaten op de eerste stap: daar is niets om naar terug te gaan.
+   */
+  onTerug?: () => void
+  /**
    * Knoppen die bepalen wat er in de lijst komt te staan -- hoe lang de dienst
    * mag duren, op welk dagdeel. Ze staan boven de lijst en niet erin: ze zijn
    * geen keuze uit de lijst maar de vraag die de lijst oplevert.
@@ -326,6 +338,7 @@ export function Setup({
   startTekst,
   bezig,
   onStap,
+  onTerug,
   tweede,
   waarschuwing,
   voetFout,
@@ -733,6 +746,20 @@ export function Setup({
         breedte volgt de tekst in plaats van andersom.
       */}
       <div className="knoppenrij">
+        {onTerug && (
+          <button
+            type="button"
+            className="terugknop"
+            onClick={onTerug}
+            aria-label={tr('setup.back')}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            {tr('setup.back')}
+          </button>
+        )}
+
         {/* Een knop om iets toe te voegen terwijl het veld al openstaat, zegt niets. */}
         {tweede && !invoer && (
           <button type="button" className="tweedeknop" onClick={tweede.onDoen}>

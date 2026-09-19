@@ -272,6 +272,39 @@ export class LaneNetwork {
     return points
   }
 
+  /**
+   * De hoogtes van alle rijstroken bij een halte, hoe ver ze ook uit elkaar
+   * liggen in de hoogte.
+   *
+   * `spawnAt` kiest er een en geeft alleen die terug. Deze laat zien wat er
+   * verder ligt, en dat is nodig om te beoordelen of een halte waar de weg hoog
+   * boven het maaiveld ligt onder een viaduct staat of er zelf op. Zie
+   * `scripts/probe-viaduct.ts`: van de zevenenveertig haltes waar dat speelt lag
+   * er geen enkele onder iets -- het maaiveld klopte er niet. Dat is de reden
+   * dat `spawn.ts` geen bovengrens meer heeft, en deze methode is waarmee dat
+   * na te lopen blijft.
+   */
+  heightsNear(stop: StopPoint, reach: number = STOP_REACH_M): number[] {
+    const gevonden: number[] = []
+    const gx = Math.floor(stop.x / GRID_M)
+    const gy = Math.floor(stop.y / GRID_M)
+    const ring = Math.max(1, Math.ceil(reach / GRID_M))
+    for (let ox = -ring; ox <= ring; ox++) {
+      for (let oy = -ring; oy <= ring; oy++) {
+        const cell = this.segments.get(`${gx + ox},${gy + oy}`)
+        if (!cell) continue
+        for (let k = 0; k < cell.length; k += 2) {
+          const lane = cell[k]
+          const hit = this.project(lane, cell[k + 1], stop.x, stop.y)
+          if (hit.distance > reach) continue
+          const hoogte = this.lanes[lane].height
+          if (hoogte !== undefined && Number.isFinite(hoogte)) gevonden.push(hoogte)
+        }
+      }
+    }
+    return gevonden
+  }
+
   /** Afstand tot de dichtstbijzijnde rijstrook binnen 40 m, anders Infinity. */
   /**
    * Waar de bus bij een halte op de weg komt te staan, en met de neus welke

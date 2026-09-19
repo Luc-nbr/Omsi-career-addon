@@ -19,15 +19,6 @@ export interface Spawn {
 const FAR_REACH_M = 60
 
 /**
- * Hoe hoog een weg boven het maaiveld nog een talud kan zijn.
- *
- * Erboven is het geen ophoging meer maar een brug of een viaduct dat over de
- * halte heen loopt, en daar hoort de bus niet op te beginnen. Twee verdiepingen
- * is de grens; een dijk waar een bus op stopt wordt niet hoger.
- */
-const HOOGSTE_TALUD_M = 8
-
-/**
  * De plek bij een halte waar de bus neergezet wordt: op de rijstrook waar een
  * bus daar zou stoppen, met de neus in de rijrichting, en op de hoogte van het
  * terrein -- anders zakt hij erdoorheen of zweeft hij erboven.
@@ -65,23 +56,28 @@ export function spawnAtStop(
    * ramen in de berm, en het spel moet hem eruit duwen. Een gelede bus komt
    * daar niet altijd heel uit -- vandaar de halve bussen.
    *
-   * Het maaiveld blijft de ondergrens en de terugval: een spline zonder hoogte
-   * bestaat, en lager dan de grond kan een weg niet liggen.
+   * Het maaiveld blijft de ondergrens en de terugval: een rijstrook zonder
+   * hoogte bestaat, en lager dan de grond kan een weg niet liggen.
+   *
+   * WAAROM ER GEEN BOVENGRENS MEER STAAT
+   * Hier stond: ligt het wegdek meer dan acht meter boven het maaiveld, dan is
+   * het geen talud maar een viaduct dat over de halte heen loopt, dus terug naar
+   * het maaiveld. Dat was een gok, en hij was verkeerd. Wat de gok voor een
+   * viaduct aanzag is het maaiveld dat niet klopt: op HamburgLi20 staat de
+   * Michaeliskirche met een maaiveld van -11,5 m in de boeken -- dat is de bodem
+   * van de Elbe en geen straat. Van de 47 haltes waar de grens aansloeg lag er
+   * geen enkele onder een viaduct; ze lagen allemaal aan een weg die gewoon
+   * hoger ligt dan de gemeten grond. De bus werd er tot vijftien meter onder
+   * gezet, en dat is precies de klacht "de bus spawnt onder de wegen"
+   * (probe-viaduct.ts).
+   *
+   * Het wegdek is nagemeten en klopt: waar een baan uit een object aansluit op
+   * een baan uit een spline, komen de twee hoogtes in 96 tot 98 procent van de
+   * gevallen binnen een meter overeen (probe-baanhoogte.ts). Het maaiveld is dus
+   * de zwakke van de twee, en die hoort niet te winnen van de sterke.
    */
   const weg = place.height
-  const bruikbaar =
-    weg !== undefined &&
-    Number.isFinite(weg) &&
-    /*
-     * Maar niet als het wegdek metershoog boven de grond zweeft.
-     *
-     * De dichtstbijzijnde rijstrook is niet altijd de weg waar de halte aan
-     * ligt: op HafenCity loopt er een viaduct over de Michaeliskirche heen, en
-     * dat bord staat plat op straat. Een halte ligt op een talud of een dijk,
-     * en die worden geen twee verdiepingen hoog -- daarboven is het een weg die
-     * er alleen overheen gaat, en dan is het maaiveld de betere gok.
-     */
-    (grond === undefined || weg - grond <= HOOGSTE_TALUD_M)
+  const bruikbaar = weg !== undefined && Number.isFinite(weg)
 
   const height = bruikbaar ? Math.max(weg as number, grond ?? (weg as number)) : grond
   if (height === undefined) return undefined

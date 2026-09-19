@@ -93,9 +93,18 @@
   --vel-overlay-schaduw: 0 10px 28px rgba(0, 0, 0, calc(0.45 * var(--fade, 1)));
 }
 
-/* Licht: de kaart is dag, en een wit vel heeft een rand nodig om vel te zijn. */
-:root[data-thema='licht'] .setup,
-:root[data-thema='licht'] .overlay-body {
+/*
+ * Licht: de kaart is dag, en een wit vel heeft een rand nodig om vel te zijn.
+ *
+ * ALLEEN HET OPZETSCHERM, NIET DE OVERLAY.
+ * De overlay hangt over OMSI. Wat daar licht is, is geen vel op een scherm maar
+ * een lamp op je voorruit: je rijdt 's avonds door Spandau en er staat een wit
+ * vlak in je beeld. Bovendien is hij doorzichtig -- de kleuren zijn gerekend op
+ * een donkere ondergrond -- en is dit een toestel in de bus en geen venster in
+ * Windows, dus hij hoort de stand van Windows ook niet te volgen. De overlay is
+ * altijd donker, en dat is geen instelling maar wat hij is.
+ */
+:root[data-thema='licht'] .setup {
   --grond: #eef1f5;
   --op-grond: #0e1117;
   --op-grond-zacht: rgba(14, 17, 23, 0.6);
@@ -122,8 +131,7 @@
  * :root:not([data-thema]) en niet aan :root.
  */
 @media (prefers-color-scheme: light) {
-  :root:not([data-thema]) .setup,
-  :root:not([data-thema]) .overlay-body {
+  :root:not([data-thema]) .setup {
     --grond: #eef1f5;
     --op-grond: #0e1117;
     --op-grond-zacht: rgba(14, 17, 23, 0.6);

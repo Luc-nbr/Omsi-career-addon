@@ -69,9 +69,9 @@ const api: CareerApi = {
   omsiState: () => ipcRenderer.invoke('omsi:state'),
   confirmOmsi: (path) => ipcRenderer.invoke('omsi:confirm', path),
   browseOmsi: () => ipcRenderer.invoke('omsi:browse'),
-  hofOffers: (duty) => ipcRenderer.invoke('hof:offers', duty),
-  hofOfferFor: (duty, folder) => ipcRenderer.invoke('hof:offerFor', duty, folder),
-  placeHofs: (duty, folders) => ipcRenderer.invoke('hof:place', duty, folders)
+  hofOffers: (mapFolder) => ipcRenderer.invoke('hof:offers', mapFolder),
+  hofOfferFor: (mapFolder, folder) => ipcRenderer.invoke('hof:offerFor', mapFolder, folder),
+  placeHofs: (mapFolder, folders) => ipcRenderer.invoke('hof:place', mapFolder, folders)
 }
 
 contextBridge.exposeInMainWorld('career', api)

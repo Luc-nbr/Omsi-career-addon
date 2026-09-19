@@ -399,13 +399,13 @@ export function App(): JSX.Element {
    * komt in plaats van dat het scherm nog even moet nadenken.
    */
   useEffect(() => {
-    if (!duty) {
+    if (!mapFolder) {
       setHofAanbod([])
       return
     }
     let geldig = true
     void window.career
-      .hofOffers(duty)
+      .hofOffers(mapFolder)
       .then((aanbod) => {
         if (geldig) setHofAanbod(aanbod)
       })
@@ -415,7 +415,7 @@ export function App(): JSX.Element {
     return () => {
       geldig = false
     }
-  }, [duty])
+  }, [mapFolder, hofTeller])
 
   /*
    * De aangenomen dienst staat in het profiel. Na het laden, na een herstart of
@@ -700,22 +700,35 @@ export function App(): JSX.Element {
    * erbij mogen zetten. De maat is streng met opzet: kent hij er een van de
    * vier, dan is dat toeval -- een haltenaam die ook in een andere stad
    * voorkomt -- en niet een bus waarmee je deze dienst kunt rijden.
+   *
+   * Hier stond `yards.length === 0` bij de redenen om niets te vragen, en dat
+   * is precies de verkeerde kant op. Een lege lijst wagenparken betekent niet
+   * "deze bus is in orde" maar "deze bus heeft er geen enkele" -- het geval
+   * waarin de vraag het hardst nodig is. Wie zelf een bus uit het menu koos die
+   * de kaart niet kent, kreeg zo niets te horen en reed met lege
+   * bestemmingsfilms weg.
    */
   useEffect(() => {
-    const sleutel = vehicle ? `${duty?.mapFolder}|${vehicle.folder}` : ''
-    if (!duty || !vehicle || yards.length === 0 || sleutel === hofGevraagd) {
+    const sleutel = vehicle ? `${mapFolder}|${vehicle.folder}` : ''
+    if (!mapFolder || !vehicle || sleutel === hofGevraagd) {
       setBusAanbod(undefined)
       return
     }
-    const beste = Math.max(0, ...yards.map((yard) => yard.known))
-    const nodig = Math.max(1, Math.ceil((yards[0]?.total ?? 0) / 2))
-    if (beste >= nodig) {
-      setBusAanbod(undefined)
-      return
+    /*
+     * Alleen overslaan als de bus het werkelijk zelf afkan. Zonder wagenparken
+     * kan hij dat nooit, dus dan gaan we door naar de vraag.
+     */
+    if (yards.length > 0) {
+      const beste = Math.max(0, ...yards.map((yard) => yard.known))
+      const nodig = Math.max(1, Math.ceil((yards[0]?.total ?? 0) / 2))
+      if (beste >= nodig) {
+        setBusAanbod(undefined)
+        return
+      }
     }
     let geldig = true
     void window.career
-      .hofOfferFor(duty, vehicle.folder)
+      .hofOfferFor(mapFolder, vehicle.folder)
       .then((aanbod) => {
         if (geldig) setBusAanbod(aanbod)
       })
@@ -725,7 +738,7 @@ export function App(): JSX.Element {
     return () => {
       geldig = false
     }
-  }, [duty, vehicle, yards, hofGevraagd])
+  }, [mapFolder, vehicle, yards, hofGevraagd, hofTeller])
 
   useEffect(() => {
     setYardOverride('')
@@ -1261,7 +1274,12 @@ export function App(): JSX.Element {
    * iets geschreven. Dit is de enige plek waar de app in de voertuigmappen van
    * OMSI komt.
    */
-  if (busScherm === 'overzetten' && duty) {
+  /*
+   * Het overzicht hangt aan de kaart en niet aan een dienst -- bij vrij rijden
+   * is er geen, en juist daar kies je een bus uit alle 342 en loop je de kans
+   * er een te pakken die de kaart niet kent.
+   */
+  if (busScherm === 'overzetten' && mapFolder) {
     const terug = (): void => {
       setBusScherm('bus')
       setBusMerk(undefined)
@@ -1302,7 +1320,7 @@ export function App(): JSX.Element {
             setHofBezig(true)
             void window.career
               .placeHofs(
-                duty,
+                mapFolder,
                 hofAanbod.map((item) => item.folder)
               )
               .then(async (result) => {
@@ -1311,7 +1329,7 @@ export function App(): JSX.Element {
                  * Opnieuw ophalen: met de nieuwe bestanden erbij staan er bussen
                  * in het menu die er zojuist nog niet waren.
                  */
-                setHofAanbod(await window.career.hofOffers(duty))
+                setHofAanbod(await window.career.hofOffers(mapFolder))
                 terug()
               })
               .finally(() => setHofBezig(false))
@@ -1806,7 +1824,16 @@ export function App(): JSX.Element {
          * aanklikken -- maar hij hoort wel te zien te zijn op elk niveau,
          * anders moet je drie schermen diep zoeken naar wat de app bedoelde.
          */
-        const tipBus = mode === 'free' ? vrijeTip : assignment?.vehicle
+        /*
+     * Wat er voor deze ene bus te halen valt. Uit het kaartbrede overzicht en
+     * niet uit `busAanbod`: dat laatste verdwijnt zodra je het venstertje hebt
+     * weggeklikt, en de tegel hoort te blijven staan.
+     */
+    const busHofAanbod = vehicle
+      ? hofAanbod.find((item) => item.folder === vehicle.folder)
+      : undefined
+
+    const tipBus = mode === 'free' ? vrijeTip : assignment?.vehicle
         const beste = tipBus ? ontleedBus(tipBus) : undefined
         const nuGekozen = vehicleOverride || (mode === 'free' ? vrijeTip?.relativePath : vehicle?.relativePath)
         const gekozenOntleed = nuGekozen
@@ -1858,16 +1885,59 @@ export function App(): JSX.Element {
                 : []),
               { label: t(language, 'setup.yardTitle') }
             ],
-            tegels: yards.map((optie) => ({
-              id: optie.name,
-              titel: optie.name,
-              onder:
-                t(language, 'setup.yardKnows', { known: optie.known, total: optie.total }) +
-                (optie.suggested ? ` · ${t(language, 'setup.yardSuggested')}` : ''),
-              icoon: 'hof' as const,
-              gekozen: (yardOverride || yards.find((y) => y.suggested)?.name) === optie.name,
-              onDoen: () => setYardOverride(optie.name)
-            }))
+            tegels: [
+              ...yards.map((optie) => ({
+                id: optie.name,
+                titel: optie.name,
+                onder:
+                  t(language, 'setup.yardKnows', { known: optie.known, total: optie.total }) +
+                  (optie.suggested ? ` · ${t(language, 'setup.yardSuggested')}` : ''),
+                icoon: 'hof' as const,
+                gekozen: (yardOverride || yards.find((y) => y.suggested)?.name) === optie.name,
+                onDoen: () => setYardOverride(optie.name)
+              })),
+              /*
+               * En er een bij halen.
+               *
+               * Dit zat alleen achter het venstertje dat de app uit zichzelf
+               * toont. Wie dat wegklikte -- of wie later bedenkt dat hij het
+               * toch wil -- kwam er niet meer bij, terwijl het bestand er nog
+               * net zo goed naast gezet kan worden. Het staat er alleen als er
+               * werkelijk iets te halen valt: een tegel die niets doet is erger
+               * dan geen tegel.
+               */
+              ...(busHofAanbod && vehicle
+                ? [
+                    {
+                      id: '__nieuw__',
+                      titel: t(language, 'setup.yardAdd'),
+                      onder: hofBezig
+                        ? t(language, 'setup.hofBusy')
+                        : t(language, 'setup.yardAddFrom', {
+                            file: busHofAanbod.offerFile ?? '',
+                            matched: busHofAanbod.offerMatched ?? 0
+                          }),
+                      icoon: 'hof' as const,
+                      onDoen: () => {
+                        if (hofBezig) return
+                        setHofBezig(true)
+                        void window.career
+                          .placeHofs(mapFolder, [vehicle.folder])
+                          .then((result) => {
+                            setNote(t(language, 'setup.hofDone', { count: result.placed }))
+                            /*
+                             * De lijst wagenparken van deze bus opnieuw ophalen;
+                             * er ligt er nu een bij, en die hoort meteen naast
+                             * de andere te staan.
+                             */
+                            setHofTeller((n) => n + 1)
+                          })
+                          .finally(() => setHofBezig(false))
+                      }
+                    }
+                  ]
+                : [])
+            ]
           }
         }
 
@@ -2402,14 +2472,14 @@ export function App(): JSX.Element {
                   if (hofBezig) return
                   setHofBezig(true)
                   void window.career
-                    .placeHofs(duty, [vehicle.folder])
+                    .placeHofs(mapFolder, [vehicle.folder])
                     .then(async (result) => {
                       setNote(t(language, 'setup.hofDone', { count: result.placed }))
                       setHofGevraagd(`${duty.mapFolder}|${vehicle.folder}`)
                       setBusAanbod(undefined)
                       // De wagenparken opnieuw ophalen; er ligt er nu een bij.
                       setHofTeller((n) => n + 1)
-                      setHofAanbod(await window.career.hofOffers(duty))
+                      setHofAanbod(await window.career.hofOffers(mapFolder))
                     })
                     .finally(() => setHofBezig(false))
                 }}
@@ -2474,6 +2544,53 @@ export function App(): JSX.Element {
               ))}
             </>
           }
+          /*
+           * Een stap terug, en binnen de busstap een niveau terug.
+           *
+           * De busstap is drie schermen diep -- merk, type, uitvoering -- plus
+           * de remise erachter. Terug hoort daar het bovenliggende scherm te
+           * zijn en niet de dienstenlijst: je bent er nog niet klaar, je kijkt
+           * een laag hoger. Pas op het eerste niveau is terug een stap terug.
+           */
+          onTerug={(() => {
+            const balk =
+              mode === 'career'
+                ? STAPPEN_CARRIERE
+                : mode === 'free'
+                  ? STAPPEN_VRIJ
+                  : STAPPEN_DIENST
+
+            if (opzetStap === 'bus') {
+              if (busScherm === 'hof') {
+                return () => setBusScherm('bus')
+              }
+              if (busType) return () => setBusType(undefined)
+              if (busMerk) return () => setBusMerk(undefined)
+            }
+            // In het examen terug naar je vergunningen, als je er hebt.
+            if (opzetStap === 'licence' && examenScherm) {
+              return () => setExamenScherm(false)
+            }
+
+            const hier = balk.indexOf(opzetStap)
+            const vorige = hier > 0 ? balk[hier - 1] : undefined
+            if (!vorige) return undefined
+            return () => {
+              setError(undefined)
+              setNote(undefined)
+              if (vorige === 'profile') {
+                setScreen('profiles')
+                return
+              }
+              if (vorige === 'mode') {
+                setScreen('modes')
+                return
+              }
+              setScreen('drive')
+              if (vorige === 'licence') setExamenScherm(false)
+              setStap(vorige)
+            }
+          })()}
           onStap={(naar) => {
             /*
              * Terug in de balk gooit weg wat van de verlaten stap afhing. Een

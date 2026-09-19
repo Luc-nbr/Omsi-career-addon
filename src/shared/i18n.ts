@@ -2147,6 +2147,19 @@ const TEXT = {
    * staat op die plek in de reeks de vraag die er wel toe doet: waar, wanneer
    * en met wat voor weer.
    */
+  /* De tegel die er een wagenpark bij haalt, naast de wagenparken die er al zijn. */
+  'setup.yardAdd': {
+    en: 'Add a depot file',
+    de: 'Hofdatei hinzufügen',
+    fr: 'Ajouter un fichier de dépôt',
+    nl: 'Wagenpark toevoegen'
+  },
+  'setup.yardAddFrom': {
+    en: '{file} · knows {matched} destinations here',
+    de: '{file} · kennt hier {matched} Ziele',
+    fr: '{file} · connaît {matched} destinations ici',
+    nl: '{file} · kent hier {matched} bestemmingen'
+  },
   'setup.noLine': { en: 'No line', de: 'Keine Linie', fr: 'Aucune ligne', nl: 'Geen lijn' },
   'setup.freeTitle': { en: 'Your drive', de: 'Deine Fahrt', fr: 'Votre trajet', nl: 'Je rit' },
   'setup.freeIntro': {
@@ -2290,11 +2303,16 @@ const TEXT = {
     fr: 'Ce bus ne connaît pas cette carte',
     nl: 'Deze bus kent deze kaart niet'
   },
+  /*
+   * Over de kaart en niet over de dienst: het wagenpark hoort bij een bus en
+   * een kaart, en sinds de vraag daarop gebaseerd is zou "van deze dienst" een
+   * getal noemen dat nergens op slaat.
+   */
   'hofvraag.body': {
-    en: '{bus} recognises {known} of {total} destinations of this duty, so the IBIS will not accept the codes and the destination sign stays blank.',
-    de: '{bus} kennt {known} von {total} Zielen dieses Dienstes; das IBIS nimmt die Codes nicht an und die Zielanzeige bleibt leer.',
-    fr: '{bus} reconnaît {known} des {total} destinations de ce service : l’IBIS refusera les codes et la girouette restera vide.',
-    nl: '{bus} kent {known} van de {total} bestemmingen van deze dienst. De IBIS neemt de codes dus niet aan en de bestemmingsfilm blijft leeg.'
+    en: '{bus} recognises {known} of the {total} destinations on this map, so the IBIS will not accept the codes and the destination sign stays blank.',
+    de: '{bus} kennt {known} der {total} Ziele auf dieser Karte; das IBIS nimmt die Codes nicht an und die Zielanzeige bleibt leer.',
+    fr: '{bus} reconnaît {known} des {total} destinations de cette carte : l’IBIS refusera les codes et la girouette restera vide.',
+    nl: '{bus} kent {known} van de {total} bestemmingen op deze kaart. De IBIS neemt de codes dus niet aan en de bestemmingsfilm blijft leeg.'
   },
   'hofvraag.offer': {
     en: 'Place {file} beside this bus? It knows {matched} of {total}. Nothing is overwritten, and you still pick the depot in OMSI yourself.',

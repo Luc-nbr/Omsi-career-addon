@@ -437,6 +437,39 @@
 }
 
 /* De tweede handeling: naast de hoofdknop, en duidelijk achter hem. */
+/*
+ * Terug staat naast Verder en niet ergens anders op het scherm: het is de
+ * handeling die je na Verder het vaakst doet. Rustiger dan de tweede knop --
+ * geen vel, alleen een rand -- want hij mag nooit lijken op de weg vooruit.
+ */
+.terugknop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 62px;
+  padding: 0 18px;
+  border: 1px solid var(--vel-rand);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--vel-zacht);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  /* Hij staat links; de rest van de rij blijft rechts staan. */
+  margin-right: auto;
+}
+
+.terugknop:hover {
+  border-color: var(--vel-zacht);
+  color: var(--vel-ink);
+}
+
+.terugknop svg {
+  width: 18px;
+  height: 18px;
+}
+
 .tweedeknop {
   height: 62px;
   padding: 0 20px;
@@ -858,6 +891,7 @@
 .dienstrij,
 .startknop,
 .tweedeknop,
+.terugknop,
 .kaartknop,
 .stapknop,
 .tegel {
@@ -879,6 +913,7 @@
   .dienstrij,
   .startknop,
   .tweedeknop,
+  .terugknop,
   .kaartknop,
   .stapknop,
   .tegel {
