@@ -217,20 +217,58 @@ if (lokaal !== opAfstand) {
   process.exit(1)
 }
 
-draai(GH, [
-  'release',
-  'create',
-  tag,
-  '--repo',
-  'Luc-nbr/Omsi-career-addon',
-  '--title',
-  `OMSI Enhancer ${versie}`,
-  '--notes-file',
-  notitiePad,
-  ...(vooraf ? ['--prerelease'] : []),
-  join(uit, 'OMSI-Enhancer-Setup.exe'),
-  join(uit, 'OMSI-Enhancer-draagbaar.exe')
-], { stdio: 'inherit' })
+/*
+ * De tag moet eerst op GitHub staan.
+ *
+ * Hier ging het mis, en niet alleen bij deze versie -- 0.2.0-beta.2 is om
+ * dezelfde reden nooit verschenen. Het script maakte de tag netjes lokaal aan en
+ * riep daarna `gh release create` aan met `--repo`. Met die vlag werkt gh puur op
+ * de server en kent het je lokale git niet: wijst de tag daar nergens naar, dan
+ * heeft het niets om een release aan te hangen en weigert het. De tag pushen
+ * deed niemand, want het script noemde dat alleen in de tak waarin het juist
+ * niet publiceert.
+ */
+const tagOpServer = git('ls-remote', '--tags', 'origin', `refs/tags/${tag}`)
+if (!tagOpServer) {
+  console.log(`${tag} staat nog niet op GitHub; pushen...`)
+  draai('git', ['push', 'origin', tag], { stdio: 'inherit' })
+} else {
+  console.log(`${tag} staat al op GitHub`)
+}
+
+/*
+ * De uitvoer van gh moet leesbaar blijven als het misgaat.
+ *
+ * Met stdio:'inherit' loopt alles rechtstreeks naar het scherm, maar bij een
+ * fout gooit execFileSync er zijn eigen "Command failed:" met de hele opdracht
+ * overheen -- en dan zie je wel het commando maar niet waarom het faalde. Nu
+ * vangen we wat gh zelf te zeggen heeft en zetten dat vooraan.
+ */
+try {
+  draai(GH, [
+    'release',
+    'create',
+    tag,
+    '--repo',
+    'Luc-nbr/Omsi-career-addon',
+    '--title',
+    `OMSI Enhancer ${versie}`,
+    '--notes-file',
+    notitiePad,
+    ...(vooraf ? ['--prerelease'] : []),
+    join(uit, 'OMSI-Enhancer-Setup.exe'),
+    join(uit, 'OMSI-Enhancer-draagbaar.exe')
+  ], { stdio: ['inherit', 'inherit', 'pipe'] })
+} catch (reden) {
+  const bericht = String(reden.stderr ?? '').trim()
+  console.error('')
+  console.error('GitHub weigerde de release:')
+  console.error(bericht || '(gh zei niets; kijk of gh auth status klopt)')
+  console.error('')
+  console.error('De build staat wel in release/ en de tag staat lokaal. Los dit op en')
+  console.error(`draai dezelfde opdracht opnieuw; hij pakt ${tag} dan gewoon weer op.`)
+  process.exit(1)
+}
 
 console.log('')
 console.log(`gepubliceerd: https://github.com/Luc-nbr/Omsi-career-addon/releases/tag/${tag}`)
