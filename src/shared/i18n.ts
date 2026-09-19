@@ -1928,6 +1928,92 @@ const TEXT = {
    * de tekst zelf: Duits kent hoofdletters met betekenis, en een taal die je in
    * de opmaak schreeuwt kun je later niet meer normaal zetten.
    */
+  /*
+   * HET CHAUFFEURSOVERZICHT
+   *
+   * Cijfers die de app al bijhield en nergens teruggaf. De woorden zijn die van
+   * het vak waar het over gaat -- dienst, halte, vertraging -- en niet die van
+   * een spel dat punten uitdeelt.
+   */
+  'prof.title': { en: 'Your record', de: 'Deine Bilanz', fr: 'Votre parcours', nl: 'Jouw staat van dienst' },
+  'prof.intro': {
+    en: 'Everything the logbook kept, from the first duty to the last.',
+    de: 'Alles, was das Fahrtenbuch festgehalten hat, vom ersten Dienst bis zum letzten.',
+    fr: 'Tout ce que le carnet de bord a retenu, du premier service au dernier.',
+    nl: 'Alles wat het logboek heeft bijgehouden, van de eerste dienst tot de laatste.'
+  },
+  'prof.open': { en: 'Your record', de: 'Bilanz', fr: 'Parcours', nl: 'Staat van dienst' },
+  'prof.since': { en: 'Driving since {date}', de: 'Fährt seit {date}', fr: 'Au volant depuis le {date}', nl: 'Chauffeur sinds {date}' },
+  'prof.toNext': { en: 'on the way to {rank}', de: 'unterwegs zu {rank}', fr: 'en route vers {rank}', nl: 'op weg naar {rank}' },
+  'prof.empty': {
+    en: 'Nothing driven yet. Complete a duty and it appears here: hours, kilometres, punctuality, and how you drove.',
+    de: 'Noch nichts gefahren. Schließe einen Dienst ab, dann steht es hier: Stunden, Kilometer, Pünktlichkeit und wie du gefahren bist.',
+    fr: 'Rien de conduit pour l’instant. Terminez un service et tout apparaît ici : heures, kilomètres, ponctualité et votre conduite.',
+    nl: 'Nog niets gereden. Rond een dienst af, dan staat het hier: uren, kilometers, stiptheid en hoe je reed.'
+  },
+  'prof.duties': { en: 'Duties', de: 'Dienste', fr: 'Services', nl: 'Diensten' },
+  'prof.behindWheel': { en: 'At the wheel', de: 'Am Steuer', fr: 'Au volant', nl: 'Achter het stuur' },
+  'prof.driven': { en: 'Driven', de: 'Gefahren', fr: 'Parcourus', nl: 'Gereden' },
+  'prof.stops': { en: 'Stops served', de: 'Haltestellen', fr: 'Arrêts desservis', nl: 'Haltes aangedaan' },
+  'prof.passengers': { en: 'Tickets sold', de: 'Fahrscheine', fr: 'Billets vendus', nl: 'Kaartjes verkocht' },
+  'prof.busloads': {
+    en: 'enough to fill {count} buses',
+    de: 'genug für {count} volle Busse',
+    fr: 'de quoi remplir {count} bus',
+    nl: 'genoeg voor {count} volle bussen'
+  },
+  'prof.noKm': {
+    en: 'The odometer gave nothing usable on these duties',
+    de: 'Der Kilometerzähler gab bei diesen Diensten nichts Brauchbares',
+    fr: 'Le compteur n’a rien donné d’exploitable sur ces services',
+    nl: 'De kilometerteller gaf op deze diensten niets bruikbaars'
+  },
+  'prof.earned': { en: 'Earned', de: 'Verdient', fr: 'Gagné', nl: 'Verdiend' },
+  'prof.perHour': { en: '€ {amount} per hour', de: '{amount} € pro Stunde', fr: '{amount} € de l’heure', nl: '€ {amount} per uur' },
+  'prof.punctual': { en: 'Punctuality', de: 'Pünktlichkeit', fr: 'Ponctualité', nl: 'Stiptheid' },
+  'prof.early': { en: 'Early', de: 'Zu früh', fr: 'En avance', nl: 'Te vroeg' },
+  'prof.onTime': { en: 'On time', de: 'Pünktlich', fr: 'À l’heure', nl: 'Op tijd' },
+  'prof.late': { en: 'Late', de: 'Verspätet', fr: 'En retard', nl: 'Te laat' },
+  'prof.avgDelay': {
+    en: 'On average {minutes} min off the timetable',
+    de: 'Im Schnitt {minutes} Min vom Fahrplan',
+    fr: 'En moyenne {minutes} min d’écart avec l’horaire',
+    nl: 'Gemiddeld {minutes} min van de dienstregeling'
+  },
+  /* Eerlijk zijn over waarover een gemiddelde gaat als niet elke dienst meetelt. */
+  'prof.ofDuties': {
+    en: 'measured on {count} of {total} duties',
+    de: 'gemessen an {count} von {total} Diensten',
+    fr: 'mesuré sur {count} des {total} services',
+    nl: 'gemeten over {count} van de {total} diensten'
+  },
+  'prof.style': { en: 'How you drive', de: 'Wie du fährst', fr: 'Votre conduite', nl: 'Hoe je rijdt' },
+  'prof.harsh': {
+    en: 'Harsh braking and pulling away, per 100 km',
+    de: 'Hartes Bremsen und Anfahren, pro 100 km',
+    fr: 'Freinages et démarrages brusques, par 100 km',
+    nl: 'Hard remmen en optrekken, per 100 km'
+  },
+  'prof.collisions': { en: 'Collisions', de: 'Zusammenstöße', fr: 'Collisions', nl: 'Aanrijdingen' },
+  'prof.clean': { en: 'Since the last one', de: 'Seit dem letzten', fr: 'Depuis la dernière', nl: 'Sinds de laatste' },
+  'prof.fuel': { en: 'Tanks used up', de: 'Verbrauchte Tanks', fr: 'Réservoirs consommés', nl: 'Tankinhouden verbruikt' },
+  'prof.records': { en: 'Records', de: 'Bestwerte', fr: 'Records', nl: 'Records' },
+  'prof.longest': { en: 'Longest duty', de: 'Längster Dienst', fr: 'Service le plus long', nl: 'Langste dienst' },
+  'prof.furthest': { en: 'Furthest', de: 'Weiteste Fahrt', fr: 'Plus longue distance', nl: 'Verste rit' },
+  'prof.busiest': { en: 'Busiest duty', de: 'Vollster Dienst', fr: 'Service le plus chargé', nl: 'Drukste dienst' },
+  'prof.best': { en: 'Closest to the timetable', de: 'Am nächsten am Fahrplan', fr: 'Au plus près de l’horaire', nl: 'Dichtst bij de dienstregeling' },
+  'prof.favMaps': { en: 'Where you drive', de: 'Wo du fährst', fr: 'Où vous conduisez', nl: 'Waar je rijdt' },
+  'prof.favBuses': { en: 'What you drive', de: 'Was du fährst', fr: 'Ce que vous conduisez', nl: 'Waarmee je rijdt' },
+  'prof.when': { en: 'When you finish a duty', de: 'Wann du Dienstschluss machst', fr: 'Quand vous terminez un service', nl: 'Wanneer je een dienst afrondt' },
+  'prof.atHour': {
+    en: '{count} duties around {hour}:00',
+    de: '{count} Dienste gegen {hour}:00 Uhr',
+    fr: '{count} services vers {hour}h00',
+    nl: '{count} diensten rond {hour}:00'
+  },
+  'prof.licences': { en: 'Your licences', de: 'Deine Lizenzen', fr: 'Vos permis', nl: 'Je vergunningen' },
+  'prof.score': { en: 'Scored {score}', de: 'Note {score}', fr: 'Note {score}', nl: 'Cijfer {score}' },
+  'prof.recent': { en: 'Last duties', de: 'Letzte Dienste', fr: 'Derniers services', nl: 'Laatste diensten' },
   'setup.step.profile': { en: 'Profile', de: 'Profil', fr: 'Profil', nl: 'Profiel' },
   'setup.step.mode': { en: 'Mode', de: 'Modus', fr: 'Mode', nl: 'Modus' },
   'setup.step.map': { en: 'Map', de: 'Karte', fr: 'Carte', nl: 'Kaart' },

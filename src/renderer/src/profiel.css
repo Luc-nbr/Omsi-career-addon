@@ -1,0 +1,448 @@
+/*
+ * HET CHAUFFEURSOVERZICHT
+ *
+ * Staat in het vel van het opzetscherm en leent daar alles van: dezelfde
+ * letters, dezelfde randen, dezelfde kleuren. Er is hier bewust geen eigen
+ * vormtaal -- het is een pagina in dezelfde app en geen dashboard dat ergens
+ * anders vandaan komt.
+ *
+ * De staafjes zijn blokjes met een breedte of een hoogte in procenten. Voor iets
+ * wat een verhouding is, hoeft er niets getekend te worden.
+ */
+
+.profiel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-bottom: 8px;
+}
+
+/* ---- kop ---- */
+
+.profiel-kop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--vel-lijn);
+}
+
+.profiel-kop h3 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.profiel-kop p {
+  margin: 4px 0 0;
+  color: var(--vel-zacht);
+  font-size: 13px;
+}
+
+.profiel-rang {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  min-width: 200px;
+}
+
+.profiel-rang b {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--lijn);
+}
+
+.profiel-rang small {
+  color: var(--vel-zacht);
+  font-size: 12px;
+}
+
+/* De weg naar de volgende rang; hij loopt vol, hij springt niet. */
+.profiel-balk {
+  width: 200px;
+  height: 5px;
+  border-radius: var(--radius-rond);
+  background: var(--vel-lijn);
+  overflow: hidden;
+}
+
+.profiel-balk span {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-rond);
+  background: var(--lijn);
+  transition: width 400ms ease-out;
+}
+
+.profiel-leeg {
+  margin: 24px 0;
+  color: var(--vel-zacht);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ---- de grote getallen ---- */
+
+.profiel-tegels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.profiel-tegel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  border: 1px solid var(--vel-lijn);
+  border-radius: var(--radius-klein);
+}
+
+.profiel-tegel b {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.profiel-tegel b small {
+  margin-left: 4px;
+  color: var(--vel-zacht);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.profiel-tegel > span {
+  color: var(--vel-zacht);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.profiel-tegel em {
+  margin-top: 4px;
+  color: var(--vel-zacht);
+  font-size: 12px;
+  font-style: normal;
+}
+
+/* ---- vakken ---- */
+
+.profiel-vak {
+  padding: 16px;
+  border: 1px solid var(--vel-lijn);
+  border-radius: var(--radius-klein);
+}
+
+.profiel-vak h4 {
+  margin: 0 0 12px;
+  color: var(--vel-zacht);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.profiel-kolommen {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.profiel-noot {
+  margin: 10px 0 0;
+  color: var(--vel-zacht);
+  font-size: 12.5px;
+}
+
+/* ---- stiptheid ---- */
+
+/*
+ * Eén balk met drie stukken. Kleur betekent hier hetzelfde als in de overlay en
+ * op het dienstkaartje: alleen tijd, nooit iets anders.
+ */
+.profiel-verdeling {
+  display: flex;
+  height: 12px;
+  border-radius: var(--radius-rond);
+  overflow: hidden;
+  background: var(--vel-lijn);
+}
+
+.profiel-verdeling span {
+  transition: width 400ms ease-out;
+}
+
+.profiel-verdeling .vroeg,
+.profiel-legenda i.vroeg {
+  background: var(--vroeg);
+}
+
+.profiel-verdeling .optijd,
+.profiel-legenda i.optijd {
+  background: var(--optijd);
+}
+
+.profiel-verdeling .laat,
+.profiel-legenda i.laat {
+  background: var(--laat);
+}
+
+.profiel-legenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.profiel-legenda li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--vel-zacht);
+}
+
+.profiel-legenda i {
+  width: 9px;
+  height: 9px;
+  border-radius: var(--radius-rond);
+}
+
+.profiel-legenda b {
+  color: var(--vel-ink);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* ---- naam/waarde-lijstjes ---- */
+
+.profiel-lijst {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+}
+
+.profiel-lijst > div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.profiel-lijst dt {
+  color: var(--vel-zacht);
+  font-size: 13px;
+}
+
+.profiel-lijst dd {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* De plek waar het gebeurde, onder de waarde door over de volle breedte. */
+.profiel-lijst small {
+  grid-column: 1 / -1;
+  margin-top: -2px;
+  color: var(--vel-zacht);
+  font-size: 11.5px;
+}
+
+/* ---- top drie ---- */
+
+.profiel-top {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.profiel-top li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 90px 28px;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.profiel-top .naam {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.profiel-top .staaf {
+  height: 6px;
+  border-radius: var(--radius-rond);
+  background: var(--vel-lijn);
+  overflow: hidden;
+}
+
+.profiel-top .staaf i {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-rond);
+  background: var(--route);
+  transition: width 400ms ease-out;
+}
+
+.profiel-top b {
+  text-align: right;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* ---- wanneer je rijdt ---- */
+
+.profiel-klok {
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+  align-items: end;
+  gap: 3px;
+  height: 90px;
+}
+
+.profiel-klok > span {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 100%;
+  /* Een uur waarin je nooit reed hoort ook aan te wijzen te zijn. */
+  min-height: 1px;
+}
+
+.profiel-klok i {
+  display: block;
+  min-height: 2px;
+  border-radius: 3px 3px 0 0;
+  background: var(--route);
+  transition: height 400ms ease-out;
+}
+
+.profiel-klok small {
+  margin-top: 5px;
+  color: var(--vel-zacht);
+  font-size: 10px;
+  text-align: left;
+}
+
+/* ---- vergunningen ---- */
+
+.profiel-vergunningen {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.profiel-vergunningen li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--vel-lijn);
+  border-radius: var(--radius-klein);
+}
+
+.profiel-vergunningen b {
+  font-size: 15px;
+}
+
+.profiel-vergunningen span {
+  font-size: 12.5px;
+  color: var(--vel-zacht);
+}
+
+.profiel-vergunningen small {
+  color: var(--vel-zacht);
+  font-size: 11.5px;
+}
+
+/* ---- logboek ---- */
+
+.profiel-logboek {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.profiel-logboek li {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.4fr) 70px 80px 56px;
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--vel-lijn);
+  font-size: 13px;
+}
+
+.profiel-logboek li:last-child {
+  border-bottom: 0;
+}
+
+.profiel-logboek .wanneer,
+.profiel-logboek .lijn {
+  color: var(--vel-zacht);
+}
+
+.profiel-logboek .waar,
+.profiel-logboek .wanneer {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.profiel-logboek .duur,
+.profiel-logboek .stipt {
+  text-align: right;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.profiel-logboek .stipt.vroeg {
+  color: var(--vroeg);
+}
+
+.profiel-logboek .stipt.optijd {
+  color: var(--optijd);
+}
+
+.profiel-logboek .stipt.laat {
+  color: var(--laat);
+}
+
+/* Wie beweging heeft uitgezet in Windows, krijgt de staafjes stil. */
+@media (prefers-reduced-motion: reduce) {
+  .profiel-balk span,
+  .profiel-verdeling span,
+  .profiel-top .staaf i,
+  .profiel-klok i {
+    transition: none;
+  }
+}
+
+/* Op een smal venster past het logboek niet meer in vijf kolommen. */
+@media (max-width: 900px) {
+  .profiel-logboek li {
+    grid-template-columns: minmax(0, 1fr) 70px 56px;
+  }
+
+  .profiel-logboek .wanneer,
+  .profiel-logboek .lijn {
+    display: none;
+  }
+}

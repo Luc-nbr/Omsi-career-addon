@@ -26,6 +26,7 @@ import { formatDuration, formatTime } from '../../shared/format'
 import { DutyCard } from './DutyCard'
 import { Flag } from './Flag'
 import { GameSetup } from './GameSetup'
+import { Profiel } from './Profiel'
 import { RunningDuty } from './RunningDuty'
 import {
   Setup,
@@ -141,7 +142,7 @@ const STAPPEN_VRIJ: readonly Stap[] = STAPPEN.filter((naam) => naam !== 'licence
  * Welk scherm er staat. De app begint altijd bij de chauffeur en gaat dan naar
  * de modus; daarna pas komt het rijden in beeld.
  */
-type Screen = 'profiles' | 'modes' | 'drive' | 'game'
+type Screen = 'profiles' | 'modes' | 'drive' | 'game' | 'profiel'
 
 /*
  * De stand van de plugin werd hier als los regeltje getoond, in vier smaken --
@@ -1118,7 +1119,7 @@ export function App(): JSX.Element {
         const payload = await window.career.finishExam(
           duty,
           {
-            finished: result.dutyComplete || result.drivenKm > 0,
+            finished: result.dutyComplete || (result.drivenKm ?? 0) > 0,
             delayMinutes: result.delayMinutes,
             harshBrakes: result.harshBrakes,
             harshAccels: result.harshAccels,
@@ -1147,7 +1148,12 @@ export function App(): JSX.Element {
           })
         )
         setNote(
-          result.finished && result.drivenKm > 0
+          /*
+           * Zonder gemeten kilometers valt er niets over de rit te zeggen. Dat
+           * gebeurt als de kilometerteller van de bus onzin gaf; dan is "je reed
+           * niets" het eerlijkste van wat er te melden valt.
+           */
+          result.finished && (result.drivenKm ?? 0) > 0
             ? /*
                 Niet alles of niets. Eén stevige stop op veertig haltes is geen
                 slechte rit -- dat is verkeer. Pas als het er meer zijn dan een
@@ -1159,13 +1165,13 @@ export function App(): JSX.Element {
               */
               (result.collisions ?? 0) > 0
               ? t(language, 'done.collision', {
-                  km: result.drivenKm.toFixed(1),
+                  km: (result.drivenKm ?? 0).toFixed(1),
                   count: result.collisions ?? 0
                 })
               : t(
                   language,
                   (result.harshBrakes ?? 0) > ruimteVoorRemmen ? 'done.harsh' : 'done.smooth',
-                  { km: result.drivenKm.toFixed(1), count: result.harshBrakes ?? 0 }
+                  { km: (result.drivenKm ?? 0).toFixed(1), count: result.harshBrakes ?? 0 }
                 )
             : t(language, 'done.nothing')
         )
@@ -1545,7 +1551,7 @@ export function App(): JSX.Element {
      * daar hoor je weer terug te komen als je klaar bent.
      */
     const opzetStap: Stap =
-      eersteStart || screen === 'profiles'
+      eersteStart || screen === 'profiles' || screen === 'profiel'
         ? 'profile'
         : screen === 'modes' || screen === 'game'
           ? 'mode'
@@ -1604,6 +1610,26 @@ export function App(): JSX.Element {
       /** Een formulier in plaats van een lijst; alleen de ritstap van vrij rijden. */
       vrij?: ReactNode
     } => {
+      /*
+       * De staat van dienst. Hetzelfde vel als de chauffeursstap waar hij aan
+       * hangt, met de lijst vervangen door de cijfers; de hoofdknop brengt je
+       * terug naar de chauffeurs, want er valt hier niets te kiezen.
+       */
+      if (opzetStap === 'profile' && screen === 'profiel') {
+        return {
+          stap: 'profile' as Stap,
+          titel: t(language, 'prof.title'),
+          onderschrift: t(language, 'prof.intro'),
+          koppen: ['', '', ''] as [string, string, string],
+          rijen: [],
+          index: 0,
+          kies: () => {},
+          voet: '',
+          verder: () => setScreen('profiles'),
+          knop: t(language, 'setup.back')
+        }
+      }
+
       if (opzetStap === 'profile') {
         /*
          * De eerste start is dezelfde stap zonder chauffeurs. Geen apart
@@ -2489,10 +2515,25 @@ export function App(): JSX.Element {
           tweede={
             vel.tweede ??
             (opzetStap === 'profile'
-              ? {
-                  tekst: t(language, 'setup.newDriver'),
-                  onDoen: () => setNieuweChauffeur('')
-                }
+              ? [
+                  {
+                    tekst: t(language, 'setup.newDriver'),
+                    onDoen: () => setNieuweChauffeur('')
+                  },
+                  /*
+                   * Wat de chauffeur die je net aanwees heeft gereden. Hij hoort
+                   * hier omdat je hier een chauffeur kiest, en het antwoord op
+                   * "welke van de twee ben ik ook alweer" staat in zijn cijfers.
+                   */
+                  ...(career?.state && career.summary && screen !== 'profiel'
+                    ? [
+                        {
+                          tekst: t(language, 'prof.open'),
+                          onDoen: () => setScreen('profiel')
+                        }
+                      ]
+                    : [])
+                ]
               : opzetStap === 'mode' && screen !== 'game'
                 ? { tekst: t(language, 'setup.omsiSettings'), onDoen: () => setScreen('game') }
                 : undefined)
@@ -2516,6 +2557,8 @@ export function App(): JSX.Element {
           inhoud={
             screen === 'game' ? (
               <GameSetup language={language} onBack={() => setScreen('modes')} />
+            ) : screen === 'profiel' && career?.state && career.summary ? (
+              <Profiel state={career.state} summary={career.summary} />
             ) : (
               vel.vrij
             )

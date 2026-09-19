@@ -71,6 +71,12 @@ export interface Tegel {
 
 export type Busvorm = 'solo' | 'geleed' | 'dubbel' | 'midi'
 
+/** Een handeling naast de hoofdknop. */
+export interface Nevenknop {
+  tekst: string
+  onDoen: () => void
+}
+
 /** Een kruimel in het spoor terug: merk › type › uitvoering. */
 export interface Kruimel {
   label: string
@@ -105,8 +111,15 @@ interface Props {
   bezig?: boolean
   /** Terug naar een eerdere stap; de balk is ook de navigatie. */
   onStap?: (stap: Stap) => void
-  /** Een tweede handeling naast de hoofdknop, bijvoorbeeld iets toevoegen. */
-  tweede?: { tekst: string; onDoen: () => void }
+  /**
+   * Handelingen naast de hoofdknop, bijvoorbeeld iets toevoegen.
+   *
+   * Meestal is het er een. Er mogen er meer: op de chauffeursstap staat er naast
+   * "nieuwe chauffeur" ook de staat van dienst, en dat zijn twee dingen die
+   * allebei niet de weg vooruit zijn. Ze komen in dezelfde rij, links van de
+   * hoofdknop, in de volgorde waarin ze hier staan.
+   */
+  tweede?: Nevenknop | Nevenknop[]
   /**
    * Een stap terug.
    *
@@ -761,11 +774,12 @@ export function Setup({
         )}
 
         {/* Een knop om iets toe te voegen terwijl het veld al openstaat, zegt niets. */}
-        {tweede && !invoer && (
-          <button type="button" className="tweedeknop" onClick={tweede.onDoen}>
-            {tweede.tekst}
-          </button>
-        )}
+        {!invoer &&
+          (Array.isArray(tweede) ? tweede : tweede ? [tweede] : []).map((knop) => (
+            <button key={knop.tekst} type="button" className="tweedeknop" onClick={knop.onDoen}>
+              {knop.tekst}
+            </button>
+          ))}
 
         <button
           type="button"

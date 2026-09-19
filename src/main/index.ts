@@ -498,7 +498,7 @@ function sessieGegevens(): SessionResult {
 
   return {
     stopsDone,
-    drivenKm: Math.max(0, live.km + live.metres / 1000 - start.odometerKm),
+    drivenKm: gereden(live.km + live.metres / 1000 - start.odometerKm, elapsed),
     elapsedMinutes: elapsed >= 0 ? elapsed : elapsed + 1440,
     delayMinutes: status.delayMinutes,
     harshBrakes: status.harshBrakes,
@@ -606,14 +606,45 @@ function freshLive(): ReturnType<typeof readLive> {
 }
 
 /**
+ * De gereden afstand, of niets als de teller onzin zegt.
+ *
+ * `kmcounter_km` is een variabele van de bus, en niet elke bus vult hem even
+ * netjes. Hier staan standen van twee miljoen in het logboek naast diensten die
+ * precies nul opleveren -- en beide zijn opgeschreven alsof ze klopten, ook in
+ * de rang en het loon.
+ *
+ * Een bus rijdt hoogstens een kilometer of honderd per uur. Komt er meer uit dan
+ * in de verstreken tijd te rijden valt, dan is het geen afstand maar een teller
+ * die niet deugt, en dan is niets opschrijven eerlijker dan een getal dat niet
+ * waar is: een dienst zonder meting telt in het overzicht gewoon niet mee.
+ */
+const HOOGSTE_SNELHEID_KMH = 100
+
+function gereden(verschil: number, minuten: number): number | undefined {
+  if (!Number.isFinite(verschil) || verschil < 0) return undefined
+  // Een korte dienst krijgt wat lucht; anders valt een pauze van vijf minuten af.
+  const plafond = Math.max(10, (Math.max(0, minuten) / 60) * HOOGSTE_SNELHEID_KMH)
+  if (verschil > plafond) return undefined
+  return Math.round(verschil * 100) / 100
+}
+
+/**
  * Leg de nulmeting vast zodra dat kan: bij het starten als OMSI al draait,
  * anders bij de eerste verse gegevens daarna. Een oud live-bestand van een
  * vorige keer telt niet; dat zou kilometers van toen als begin nemen.
+ *
+ * PAS ALS DE BUS ER STAAT
+ * `alive` zegt dat de plugin schrijft, niet dat er een bus is. Tussen het
+ * starten van OMSI en het inladen van de situatie schrijft hij al, met een
+ * kilometerstand van nul. Werd de nulmeting daar genomen, dan was het begin nul
+ * en het eind de hele kilometerstand van die bus: in dit logboek staan diensten
+ * van een uur met 2.094.964 km. `mem.ok` is het signaal dat de plugin
+ * werkelijk bij het voertuig kan -- dezelfde vlag waar de kaartpositie aan hangt.
  */
 function captureBaseline(live = freshLive()): void {
   const active = career?.activeDuty
   if (!career || !active?.startedAt || active.baseline) return
-  if (!live) return
+  if (!live || live.mem?.ok !== 1) return
   persist({
     ...career,
     activeDuty: {

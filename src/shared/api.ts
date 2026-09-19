@@ -219,7 +219,15 @@ export interface OmsiState {
 }
 
 export interface SessionResult {
-  drivenKm: number
+  /**
+   * Gereden kilometers, of niets als de kilometerteller van de bus onzin zegt.
+   *
+   * `kmcounter_km` is een variabele van het voertuig en niet elke bus vult hem
+   * netjes; zie `gereden` in het hoofdproces. Niets is hier een echt antwoord en
+   * geen ontbrekende waarde: het betekent "deze dienst is niet gemeten", en dat
+   * is iets anders dan nul kilometer.
+   */
+  drivenKm?: number
   elapsedMinutes: number
   delayMinutes?: number
   /** Gemeten rijstijl over deze dienst. */
