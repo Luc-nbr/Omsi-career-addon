@@ -1,0 +1,225 @@
+/*
+ * De tokenlaag van het opzetscherm.
+ *
+ * Twee standen van dezelfde wereld, niet twee ontwerpen. Wat verschilt is de
+ * ondergrond -- de kaart -- en wat een wit vel nodig heeft om zich daarvan los
+ * te maken: in het donker een schaduw, in het licht een haarlijn. Alle overige
+ * waarden zijn in beide standen gelijk, want een knop die in het licht anders
+ * aanvoelt dan in het donker is twee knoppen.
+ *
+ * De kleuren zijn niet verzonnen maar afgelezen van de goedgekeurde afbeelding
+ * met `impeccable comp-spec`; ze staan in .impeccable/build/spec.json. Het geel
+ * is de uitzondering: dat ligt vast als merkafspraak in PRODUCT.md.
+ *
+ * WAAROM OP .setup EN NIET OP :root
+ * De oude glaswereld in styles.css gebruikt dezelfde namen -- --grond, --radius,
+ * --lijn, --laat, --optijd, --vroeg -- met andere waarden, en wordt later
+ * ingeladen. Op :root won die dus: de vellen kregen de hoeken van 22 in plaats
+ * van 14 en een ondergrond van #10141a in plaats van de gemeten #090c18. Door
+ * deze laag aan .setup te hangen staan de twee werelden naast elkaar zonder
+ * elkaar te overschrijven, en verandert er niets aan de schermen die nog niet
+ * om zijn.
+ */
+
+.setup,
+.overlay-body {
+  /* Vast in beide standen. */
+  --route: #2a75f7;
+  --route-diep: #1b5fd0;
+  --lijn: #ffd23f;
+  --op-lijn: #1a1400;
+
+  /*
+   * Het vel is geen vaste kleur meer maar volgt de stand.
+   *
+   * Eerst lag er in beide standen een bijna wit vel op de kaart -- de
+   * grammatica van een navigatieapp. In het donker gaf dat een lichtbak op een
+   * nachtkaart, en de gebruiker wil in de donkere stand alles donker. Dus: in
+   * het donker een vel dat lichter is dan de grond maar zelf donker blijft, in
+   * het licht wit. De verhoudingen blijven gelijk, alleen de waarden draaien om.
+   */
+
+  /* De tijd, en alleen de tijd. */
+  --laat: #d93a30;
+  --optijd: #1a8a4f;
+  --vroeg: #2a75f7;
+
+  --radius: 14px;
+  --radius-klein: 10px;
+  --radius-rond: 999px;
+
+  /*
+   * Eén letter voor alles, en cijfers met een vaste breedte. Een vertrektijd
+   * die een pixel opschuift omdat er een 1 in staat, leest als een fout.
+   */
+  --letter: 'Hanken Grotesk', 'Segoe UI', system-ui, sans-serif;
+  --cijfers: 'tnum' 1, 'lnum' 1;
+
+  /* Donker: grond en vellen allebei nacht, het vel een tint lichter. */
+  --grond: #090c18;
+  --op-grond: #e8ebf2;
+  --op-grond-zacht: rgba(232, 235, 242, 0.62);
+  --vel: #141a26;
+  --vel-ink: #e8ebf2;
+  --vel-zacht: #8b94a6;
+  --vel-lijn: rgba(255, 255, 255, 0.09);
+  --vel-rand: rgba(255, 255, 255, 0.08);
+  --vel-schaduw: 0 10px 30px rgba(0, 0, 0, 0.5);
+  /* Waar een rij oplicht zonder gekozen te zijn. */
+  --vel-hover: rgba(255, 255, 255, 0.06);
+  --veld: #1b2231;
+
+  /*
+   * De knoppen op de kaart zijn geen vel maar een paneeltje op de kaart zelf:
+   * donker in het donker, met een wit pijltje. Zo staat het in de goedgekeurde
+   * afbeelding, en zo dekken ze de kaart het minst af.
+   */
+  --kaartknop-grond: rgba(18, 26, 38, 0.86);
+  --kaartknop-ink: #f2f5f8;
+  --kaartknop-lijn: rgba(255, 255, 255, 0.14);
+
+  /*
+   * Het vel van de overlay is hetzelfde vel, maar het moet doorzichtig kunnen
+   * worden: er zit een schuif in de titelbalk waarmee de speler het spel erdoor
+   * kan zien. Daarom hier als rgba met --fade erin verrekend, met dezelfde
+   * kleur als --vel. Het glas dat er eerst zat -- backdrop-filter met een blur
+   * van 22 -- is eruit: dat kostte GPU-tijd boven een draaiend spel, en daar
+   * kwamen de haperingen en het zwarte scherm vandaan.
+   */
+  --vel-overlay: rgba(20, 26, 38, calc(0.94 * var(--fade, 1)));
+  /* Hetzelfde vel, maar doorzichtig genoeg om het spel erdoor te zien. */
+  --glas-overlay: rgba(20, 26, 38, calc(0.62 * var(--fade, 1)));
+  --vel-overlay-rand: rgba(255, 255, 255, calc(0.1 * var(--fade, 1)));
+  --vel-overlay-schaduw: 0 10px 28px rgba(0, 0, 0, calc(0.45 * var(--fade, 1)));
+}
+
+/* Licht: de kaart is dag, en een wit vel heeft een rand nodig om vel te zijn. */
+:root[data-thema='licht'] .setup,
+:root[data-thema='licht'] .overlay-body {
+  --grond: #eef1f5;
+  --op-grond: #0e1117;
+  --op-grond-zacht: rgba(14, 17, 23, 0.6);
+  --vel: #f7f8f8;
+  --vel-ink: #0e1117;
+  --vel-zacht: #6b7280;
+  --vel-lijn: rgba(14, 17, 23, 0.1);
+  --vel-rand: rgba(14, 17, 23, 0.12);
+  --vel-schaduw: 0 6px 20px rgba(14, 17, 23, 0.1);
+  --vel-hover: rgba(14, 17, 23, 0.05);
+  --veld: #ffffff;
+  --kaartknop-grond: rgba(255, 255, 255, 0.94);
+  --kaartknop-ink: #0e1117;
+  --kaartknop-lijn: rgba(14, 17, 23, 0.12);
+  --vel-overlay: rgba(247, 248, 248, calc(0.95 * var(--fade, 1)));
+  --glas-overlay: rgba(247, 248, 248, calc(0.66 * var(--fade, 1)));
+  --vel-overlay-rand: rgba(14, 17, 23, calc(0.14 * var(--fade, 1)));
+  --vel-overlay-schaduw: 0 8px 24px rgba(14, 17, 23, calc(0.22 * var(--fade, 1)));
+}
+
+/*
+ * Volgt het systeem zolang de speler zelf niets koos. Zodra hij kiest staat er
+ * een data-thema op de wortel en wint die; daarom hangt deze regel aan
+ * :root:not([data-thema]) en niet aan :root.
+ */
+@media (prefers-color-scheme: light) {
+  :root:not([data-thema]) .setup,
+  :root:not([data-thema]) .overlay-body {
+    --grond: #eef1f5;
+    --op-grond: #0e1117;
+    --op-grond-zacht: rgba(14, 17, 23, 0.6);
+    --vel: #f7f8f8;
+    --vel-ink: #0e1117;
+    --vel-zacht: #6b7280;
+    --vel-lijn: rgba(14, 17, 23, 0.1);
+    --vel-rand: rgba(14, 17, 23, 0.12);
+    --vel-schaduw: 0 6px 20px rgba(14, 17, 23, 0.1);
+    --vel-hover: rgba(14, 17, 23, 0.05);
+    --veld: #ffffff;
+    --kaartknop-grond: rgba(255, 255, 255, 0.94);
+    --kaartknop-ink: #0e1117;
+    --kaartknop-lijn: rgba(14, 17, 23, 0.12);
+    --vel-overlay: rgba(247, 248, 248, calc(0.95 * var(--fade, 1)));
+    --glas-overlay: rgba(247, 248, 248, calc(0.66 * var(--fade, 1)));
+    --vel-overlay-rand: rgba(14, 17, 23, calc(0.14 * var(--fade, 1)));
+    --vel-overlay-schaduw: 0 8px 24px rgba(14, 17, 23, calc(0.22 * var(--fade, 1)));
+  }
+}
+
+/*
+ * De wegen op het canvas.
+ *
+ * Deze moeten wél op de wortel staan: roadLayer.ts tekent de tegels op een los
+ * canvas buiten de DOM, en leest ze daarom van document.documentElement. Deze
+ * namen botsen met niets, dus dat kan hier zonder bijwerking. De overlay laadt
+ * dit bestand niet en houdt de waarden die in de tekening zelf staan.
+ */
+:root,
+:root[data-thema='donker'] {
+  --weg-rand: #212833;
+  --weg-1: #333b47;
+  --weg-2: #3c4552;
+  --weg-3: #495261;
+  --spoor: #2b323c;
+  --water: #1d3550;
+}
+
+:root[data-thema='licht'] {
+  /*
+   * Eerst stonden hier drie keer wit; dat las als een leeg veld, want het
+   * verschil tussen doorgaande weg en zijstraat verdween. Nu drie echte
+   * waarden, en een omranding die de straat draagt.
+   */
+  --weg-rand: #9fb0c3;
+  --weg-1: #eef2f7;
+  --weg-2: #f7f9fc;
+  --weg-3: #ffffff;
+  --spoor: #b9c4d1;
+  --water: #b3d2ee;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-thema]) {
+    --weg-rand: #9fb0c3;
+    --weg-1: #eef2f7;
+    --weg-2: #f7f9fc;
+    --weg-3: #ffffff;
+    --spoor: #b9c4d1;
+    --water: #b3d2ee;
+  }
+}
+
+/*
+ * Het welkomstscherm draagt de tokens zelf.
+ *
+ * De rest van de nieuwe wereld hangt aan `.setup`, en dit scherm is dat niet:
+ * het staat ervoor. Zonder deze regel viel het terug op de kleuren van de oude
+ * glaswereld uit styles.css.
+ */
+.welkom {
+  --route: #2a75f7;
+  --route-diep: #1b5fd0;
+  --lijn: #ffd23f;
+  --laat: #d93a30;
+  --radius: 14px;
+  --radius-klein: 10px;
+  --radius-rond: 999px;
+  --letter: 'Hanken Grotesk', 'Segoe UI', system-ui, sans-serif;
+  --grond: #090c18;
+  --vel: #141a26;
+  --vel-ink: #e8ebf2;
+  --vel-zacht: #8b94a6;
+  --vel-rand: rgba(255, 255, 255, 0.08);
+  --vel-hover: rgba(255, 255, 255, 0.06);
+  --vel-schaduw: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+:root[data-thema='licht'] .welkom {
+  --laat: #b3261e;
+  --grond: #eef1f6;
+  --vel: #ffffff;
+  --vel-ink: #101623;
+  --vel-zacht: #5d6678;
+  --vel-rand: rgba(16, 22, 35, 0.1);
+  --vel-hover: rgba(16, 22, 35, 0.04);
+  --vel-schaduw: 0 1px 0 rgba(16, 22, 35, 0.06);
+}

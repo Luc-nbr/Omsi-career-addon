@@ -43,6 +43,38 @@ const RAIL = '#2b323c'
  */
 const WATER = '#1d3550'
 
+/**
+ * Dezelfde kaart, twee standen.
+ *
+ * De wegen komen op een canvas en niet in CSS, dus een thema kan er niet bij.
+ * Daarom vraagt de tekening het zelf: staat er een waarde op het canvas, dan
+ * wint die, en anders blijven de kleuren hierboven staan. De overlay zet ze
+ * niet, dus daar verandert er niets.
+ */
+interface Kaartkleuren {
+  casing: string
+  road: string[]
+  rail: string
+  water: string
+}
+
+/*
+ * Van de wortel, niet van het canvas: de tegels worden op een los canvas buiten
+ * de DOM getekend, en daar staan geen eigenschappen op. Het thema staat toch op
+ * de wortel, dus dat is ook de eerlijke bron.
+ */
+function kaartkleuren(): Kaartkleuren {
+  const stijl = getComputedStyle(document.documentElement)
+  const lees = (naam: string, terugval: string): string =>
+    stijl.getPropertyValue(naam).trim() || terugval
+  return {
+    casing: lees('--weg-rand', CASING),
+    road: [lees('--weg-1', ROAD[0]), lees('--weg-2', ROAD[1]), lees('--weg-3', ROAD[2])],
+    rail: lees('--spoor', RAIL),
+    water: lees('--water', WATER)
+  }
+}
+
 /** Ondergrens per klasse, zodat een straat uitgezoomd niet wegvalt. */
 const MIN_PX = [4, 6, 8.5]
 
@@ -254,9 +286,10 @@ function stroke(
   water: { path: Path2D; w: number }[]
 ): void {
   const railWidth = Math.max(3, mpp * 0.7)
+  const kleur = kaartkleuren()
 
   // Eerst het water; de wegen komen eroverheen.
-  ctx.strokeStyle = WATER
+  ctx.strokeStyle = kleur.water
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
   for (const stroom of water) {
@@ -269,14 +302,14 @@ function stroke(
   ctx.lineCap = 'butt'
   ctx.lineJoin = 'miter'
   ctx.setLineDash([7, 6])
-  ctx.strokeStyle = RAIL
+  ctx.strokeStyle = kleur.rail
   ctx.lineWidth = railWidth
   for (const chunk of chunks) if (chunk.rail) ctx.stroke(chunk.rail)
   ctx.setLineDash([])
 
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
-  ctx.strokeStyle = CASING
+  ctx.strokeStyle = kleur.casing
   for (let klasse = 2; klasse >= 0; klasse--) {
     ctx.lineWidth = breedte(klasse) + 2.5
     for (const chunk of chunks) {
@@ -285,7 +318,7 @@ function stroke(
     }
   }
   for (let klasse = 2; klasse >= 0; klasse--) {
-    ctx.strokeStyle = ROAD[klasse]
+    ctx.strokeStyle = kleur.road[klasse]
     ctx.lineWidth = breedte(klasse)
     for (const chunk of chunks) {
       const path = chunk.road?.[klasse]

@@ -356,6 +356,25 @@ const TEXT = {
     fr: 'La ligne et le roulement sont déjà sélectionnés dans le menu horaires.',
     nl: 'De lijn en de omloop staan al gekozen in het dienstregelingsmenu.'
   },
+  // ---------- de meelopende dienstregeling ----------
+  'live.clock': { en: 'In the game', de: 'Im Spiel', fr: 'Dans le jeu', nl: 'In het spel' },
+  'live.delay': { en: 'Delay', de: 'Verspätung', fr: 'Retard', nl: 'Vertraging' },
+  'live.onboard': { en: 'On board', de: 'An Bord', fr: 'À bord', nl: 'Aan boord' },
+  'live.speed': { en: 'Speed', de: 'Tempo', fr: 'Vitesse', nl: 'Snelheid' },
+  'live.line': { en: 'line {line}', de: 'Linie {line}', fr: 'ligne {line}', nl: 'lijn {line}' },
+  'live.route': { en: 'route {route}', de: 'Route {route}', fr: 'route {route}', nl: 'route {route}' },
+  'live.layover': {
+    en: '{minutes} min break before this trip',
+    de: '{minutes} Min Pause vor dieser Fahrt',
+    fr: '{minutes} min de pause avant ce trajet',
+    nl: '{minutes} min pauze voor deze rit'
+  },
+  'start.presetFailed': {
+    en: 'The app could not set up OMSI’s start screen — pick {map} and the situation OMSI Enhancer yourself.',
+    de: 'Der Startbildschirm von OMSI ließ sich nicht vorbereiten — wähle {map} und die Situation OMSI Enhancer selbst.',
+    fr: 'L’écran de démarrage d’OMSI n’a pas pu être préparé — choisissez {map} et la situation OMSI Enhancer vous-même.',
+    nl: 'Het startscherm van OMSI kon niet worden klaargezet — kies zelf {map} en de situatie OMSI Enhancer.'
+  },
   'start.alreadyRunning': {
     en: 'OMSI was already running, so it has not seen this yet. Restart the game, or load the situation OMSI Enhancer yourself.',
     de: 'OMSI lief bereits und kennt das noch nicht. Starte das Spiel neu oder lade die Situation OMSI Enhancer selbst.',
@@ -1179,6 +1198,12 @@ const TEXT = {
     fr: 'Service enregistré : {km} km, {count} freinages brusques.',
     nl: 'Dienst geboekt: {km} km, {count}× hard geremd.'
   },
+  'done.collision': {
+    en: '{km} km driven, with {count} collisions.',
+    de: '{km} km gefahren, mit {count} Zusammenstößen.',
+    fr: '{km} km parcourus, avec {count} collisions.',
+    nl: '{km} km gereden, met {count} aanrijdingen.'
+  },
   'done.nothing': {
     en: 'Duty booked. OMSI was not running, so there was nothing to measure.',
     de: 'Dienst gebucht. OMSI lief nicht, also gab es nichts zu messen.',
@@ -1192,16 +1217,65 @@ const TEXT = {
     nl: 'Waar staat OMSI 2?'
   },
   'omsi.findIntro': {
-    en: 'The app looked in every Steam library and the usual folders on every drive, and did not find the game. Point it at the folder that holds Omsi.exe.',
-    de: 'Die App hat in allen Steam-Bibliotheken und den üblichen Ordnern auf jedem Laufwerk gesucht und das Spiel nicht gefunden. Zeig ihr den Ordner, in dem Omsi.exe liegt.',
-    fr: 'L’application a cherché dans toutes les bibliothèques Steam et les dossiers habituels de chaque disque sans trouver le jeu. Indiquez le dossier qui contient Omsi.exe.',
-    nl: 'De app heeft in alle Steam-bibliotheken en de gebruikelijke mappen op elke schijf gekeken en het spel niet gevonden. Wijs de map aan waar Omsi.exe staat.'
+    en: 'Everything the app does starts here: the maps, the buses, the timetables. Tell it once which OMSI 2 you drive.',
+    de: 'Alles, was die App tut, fängt hier an: Karten, Busse, Fahrpläne. Sag ihr einmal, welches OMSI 2 du fährst.',
+    fr: 'Tout ce que fait l’application part d’ici : les cartes, les bus, les horaires. Dites-lui une fois quel OMSI 2 vous utilisez.',
+    nl: 'Alles wat de app doet begint hier: de kaarten, de bussen, de dienstregelingen. Zeg eenmaal welke OMSI 2 jij rijdt.'
   },
   'omsi.findButton': {
     en: 'Choose the OMSI 2 folder',
     de: 'OMSI-2-Ordner wählen',
     fr: 'Choisir le dossier OMSI 2',
     nl: 'Kies de map van OMSI 2'
+  },
+  'omsi.findConfirm': {
+    en: 'Yes, that is it',
+    de: 'Ja, das ist er',
+    fr: 'Oui, c’est bien lui',
+    nl: 'Ja, dat is hem'
+  },
+  'omsi.findOther': {
+    en: 'Choose another folder',
+    de: 'Anderen Ordner wählen',
+    fr: 'Choisir un autre dossier',
+    nl: 'Andere map kiezen'
+  },
+  'omsi.findFound': {
+    en: 'Found here',
+    de: 'Hier gefunden',
+    fr: 'Trouvé ici',
+    nl: 'Hier gevonden'
+  },
+  'omsi.findNothing': {
+    en: 'The app could not find OMSI 2 by itself. Point at the folder that holds Omsi.exe — anything nearby will do, the app looks around.',
+    de: 'Die App hat OMSI 2 nicht selbst gefunden. Zeig auf den Ordner mit der Omsi.exe — irgendetwas in der Nähe genügt, die App schaut sich um.',
+    fr: 'L’application n’a pas trouvé OMSI 2 toute seule. Indiquez le dossier contenant Omsi.exe — un dossier voisin suffit, l’application cherche autour.',
+    nl: 'De app heeft OMSI 2 niet zelf gevonden. Wijs de map aan waar Omsi.exe in staat — iets in de buurt mag ook, de app kijkt om zich heen.'
+  },
+  /* Wie de kaartenmap aanwijst heeft de installatie gevonden, niet gemist. */
+  'omsi.findInside': {
+    en: 'Found inside the folder you picked.',
+    de: 'Im gewählten Ordner gefunden.',
+    fr: 'Trouvé dans le dossier choisi.',
+    nl: 'Gevonden in de map die je aanwees.'
+  },
+  'omsi.findAbove': {
+    en: 'Found one level up from the folder you picked.',
+    de: 'Eine Ebene über dem gewählten Ordner gefunden.',
+    fr: 'Trouvé un niveau au-dessus du dossier choisi.',
+    nl: 'Gevonden boven de map die je aanwees.'
+  },
+  'omsi.findNoMaps': {
+    en: 'This installation has no maps yet, so there is nothing to drive on. Install a map and press “Check installed folders”.',
+    de: 'In dieser Installation stehen noch keine Karten, also gibt es nichts zu fahren. Installiere eine Karte und drücke „Installierte Ordner prüfen“.',
+    fr: 'Cette installation n’a pas encore de cartes, il n’y a donc rien à conduire. Installez une carte puis appuyez sur « Vérifier les dossiers installés ».',
+    nl: 'In deze installatie staan nog geen kaarten, dus valt er niets te rijden. Zet een kaart neer en druk op "Controleer geïnstalleerde mappen".'
+  },
+  'omsi.findFoot': {
+    en: 'Steam, Aerosoft box, a folder you moved yourself — all fine. The app only needs to know which one you drive.',
+    de: 'Steam, Aerosoft-Box, ein selbst verschobener Ordner — alles recht. Die App muss nur wissen, welche du fährst.',
+    fr: 'Steam, boîte Aerosoft, un dossier déplacé à la main — tout convient. L’application doit seulement savoir lequel vous utilisez.',
+    nl: 'Steam, de doosversie, een map die je zelf hebt verplaatst — allemaal goed. De app hoeft alleen te weten welke jij rijdt.'
   },
   'omsi.findWrong': {
     en: 'No Omsi.exe in that folder. It is usually called "OMSI 2" and holds Omsi.exe next to a "maps" folder.',
@@ -1705,6 +1779,28 @@ const TEXT = {
     fr: 'Le moteur est coupé avec des passagers à bord.',
     nl: 'De motor staat uit met passagiers aan boord.'
   },
+  'advice.aanrijding': {
+    en: '{count} collisions this duty.',
+    de: '{count} Zusammenstöße in diesem Dienst.',
+    fr: '{count} collisions durant ce service.',
+    nl: '{count} aanrijdingen deze dienst.'
+  },
+  'advice.tank': {
+    en: 'The tank is nearly empty.',
+    de: 'Der Tank ist fast leer.',
+    fr: 'Le réservoir est presque vide.',
+    nl: 'De tank is bijna leeg.'
+  },
+  /*
+   * Geen smaakkwestie maar een regel: §20 StVO geeft een bus die de halte
+   * verlaat voorrang, en alleen als hij richting aangeeft.
+   */
+  'advice.knipperen': {
+    en: 'Pulling away from the stop without indicating.',
+    de: 'Ohne Blinker von der Haltestelle angefahren.',
+    fr: 'Départ de l’arrêt sans clignotant.',
+    nl: 'Zonder richting aan te geven van de halte weggereden.'
+  },
 
   // ---------- nieuwe overlay-knoppen ----------
   'ovl.layout': {
@@ -1825,7 +1921,403 @@ const TEXT = {
   'days.thu': { en: 'Thursday', de: 'Donnerstag', fr: 'jeudi', nl: 'donderdag' },
   'days.fri': { en: 'Friday', de: 'Freitag', fr: 'vendredi', nl: 'vrijdag' },
   'days.sat': { en: 'Saturday', de: 'Samstag', fr: 'samedi', nl: 'zaterdag' },
-  'days.sun': { en: 'Sunday', de: 'Sonntag', fr: 'dimanche', nl: 'zondag' }
+  'days.sun': { en: 'Sunday', de: 'Sonntag', fr: 'dimanche', nl: 'zondag' },
+
+  /*
+   * Het opzetscherm. De stappen staan in kapitalen op het scherm, maar niet in
+   * de tekst zelf: Duits kent hoofdletters met betekenis, en een taal die je in
+   * de opmaak schreeuwt kun je later niet meer normaal zetten.
+   */
+  'setup.step.profile': { en: 'Profile', de: 'Profil', fr: 'Profil', nl: 'Profiel' },
+  'setup.step.mode': { en: 'Mode', de: 'Modus', fr: 'Mode', nl: 'Modus' },
+  'setup.step.map': { en: 'Map', de: 'Karte', fr: 'Carte', nl: 'Kaart' },
+  'setup.step.line': { en: 'Line', de: 'Linie', fr: 'Ligne', nl: 'Lijn' },
+  'setup.step.duty': { en: 'Duty', de: 'Dienst', fr: 'Service', nl: 'Dienst' },
+  'setup.step.bus': { en: 'Bus', de: 'Bus', fr: 'Bus', nl: 'Bus' },
+  'setup.duties': { en: 'Duties', de: 'Dienste', fr: 'Services', nl: 'Diensten' },
+  'setup.pick': {
+    en: 'Select a duty to continue',
+    de: 'Wähle einen Dienst, um fortzufahren',
+    fr: 'Choisissez un service pour continuer',
+    nl: 'Kies een dienst om verder te gaan'
+  },
+  'setup.departure': { en: 'Departure', de: 'Abfahrt', fr: 'Départ', nl: 'Vertrek' },
+  'setup.arrival': { en: 'Arrival', de: 'Ankunft', fr: 'Arrivée', nl: 'Aankomst' },
+  'setup.duration': { en: 'Duration', de: 'Dauer', fr: 'Durée', nl: 'Duur' },
+  'setup.available': {
+    en: '{line} · {count} duties available',
+    de: '{line} · {count} Dienste verfügbar',
+    fr: '{line} · {count} services disponibles',
+    nl: '{line} · {count} diensten beschikbaar'
+  },
+  /* Eén dienst is geen "1 duties"; dat leest als een fout in plaats van als een getal. */
+  'setup.availableOne': {
+    en: '{line} · one duty available',
+    de: '{line} · ein Dienst verfügbar',
+    fr: '{line} · un service disponible',
+    nl: '{line} · één dienst beschikbaar'
+  },
+  'setup.start': { en: 'Start', de: 'Start', fr: 'Départ', nl: 'Start' },
+  'setup.centre': {
+    en: 'Centre the map on the route',
+    de: 'Karte auf die Route zentrieren',
+    fr: 'Centrer la carte sur l’itinéraire',
+    nl: 'Kaart op de route centreren'
+  },
+  'setup.zoomIn': { en: 'Zoom in', de: 'Vergrößern', fr: 'Zoom avant', nl: 'Inzoomen' },
+  'setup.zoomOut': { en: 'Zoom out', de: 'Verkleinern', fr: 'Zoom arrière', nl: 'Uitzoomen' },
+  'setup.empty': {
+    en: 'Nothing to choose here yet.',
+    de: 'Hier gibt es noch nichts zu wählen.',
+    fr: 'Rien à choisir ici pour l’instant.',
+    nl: 'Hier valt nog niets te kiezen.'
+  },
+  'setup.mapSoon': {
+    en: 'The map appears here once you have picked a line and a duty.',
+    de: 'Die Karte erscheint hier, sobald du Linie und Dienst gewählt hast.',
+    fr: 'La carte apparaît ici dès que vous avez choisi une ligne et un service.',
+    nl: 'De kaart verschijnt hier zodra je een lijn en een dienst hebt gekozen.'
+  },
+  'setup.next': { en: 'Next', de: 'Weiter', fr: 'Suivant', nl: 'Verder' },
+  'setup.back': { en: 'Back', de: 'Zurück', fr: 'Retour', nl: 'Terug' },
+  'setup.add': { en: 'Add', de: 'Anlegen', fr: 'Ajouter', nl: 'Toevoegen' },
+
+  /* De chauffeurstap: waarmee de app opent. */
+  'setup.driverTitle': { en: 'Drivers', de: 'Fahrer', fr: 'Conducteurs', nl: 'Chauffeurs' },
+  'setup.driverIntro': {
+    en: 'Who is driving today?',
+    de: 'Wer fährt heute?',
+    fr: 'Qui conduit aujourd’hui ?',
+    nl: 'Wie rijdt er vandaag?'
+  },
+  'setup.colDriver': { en: 'Driver', de: 'Fahrer', fr: 'Conducteur', nl: 'Chauffeur' },
+  'setup.colDuties': { en: 'Duties', de: 'Dienste', fr: 'Services', nl: 'Diensten' },
+  'setup.colDriven': { en: 'Driven', de: 'Gefahren', fr: 'Conduit', nl: 'Gereden' },
+  'setup.driverFoot': {
+    en: '{count} drivers on this computer',
+    de: '{count} Fahrer auf diesem Rechner',
+    fr: '{count} conducteurs sur cet ordinateur',
+    nl: '{count} chauffeurs op deze computer'
+  },
+  /* Eén chauffeur is geen "1 drivers"; dat leest als een fout. */
+  'setup.driverFootOne': {
+    en: 'one driver on this computer',
+    de: 'ein Fahrer auf diesem Rechner',
+    fr: 'un conducteur sur cet ordinateur',
+    nl: 'één chauffeur op deze computer'
+  },
+  'setup.newDriver': { en: 'New driver', de: 'Neuer Fahrer', fr: 'Nouveau conducteur', nl: 'Nieuwe chauffeur' },
+  'setup.driverName': { en: 'Name', de: 'Name', fr: 'Nom', nl: 'Naam' },
+  'setup.deleteDriver': {
+    en: 'Delete this driver',
+    de: 'Diesen Fahrer löschen',
+    fr: 'Supprimer ce conducteur',
+    nl: 'Deze chauffeur verwijderen'
+  },
+  'setup.onDuty': { en: 'on duty', de: 'im Dienst', fr: 'en service', nl: 'in dienst' },
+  /* Een chauffeur weggooien wist zijn hele logboek; dat vraag je één keer na. */
+  'setup.deleteAsk': {
+    en: 'Delete {name}? Their duties, licences and logbook go with them.',
+    de: '{name} löschen? Dienste, Lizenzen und Fahrtenbuch gehen mit.',
+    fr: 'Supprimer {name} ? Ses services, licences et carnet de bord partent avec.',
+    nl: '{name} verwijderen? Zijn diensten, vergunningen en logboek gaan mee.'
+  },
+
+  /* De modusstap. */
+  'setup.modeTitle': { en: 'Modes', de: 'Modi', fr: 'Modes', nl: 'Modi' },
+  'setup.modeIntro': {
+    en: 'What are you doing today?',
+    de: 'Was machst du heute?',
+    fr: 'Que faites-vous aujourd’hui ?',
+    nl: 'Wat ga je vandaag doen?'
+  },
+  'setup.colMode': { en: 'Mode', de: 'Modus', fr: 'Mode', nl: 'Modus' },
+  'setup.colLicences': { en: 'Licences', de: 'Lizenzen', fr: 'Licences', nl: 'Vergunningen' },
+  'setup.colStatus': { en: 'Status', de: 'Stand', fr: 'État', nl: 'Stand' },
+  'setup.modeFoot': {
+    en: 'The mode decides what the app asks of you',
+    de: 'Der Modus bestimmt, was die App von dir verlangt',
+    fr: 'Le mode décide de ce que l’application attend de vous',
+    nl: 'De modus bepaalt wat de app van je vraagt'
+  },
+  'setup.modeRunning': { en: 'running', de: 'läuft', fr: 'en cours', nl: 'loopt' },
+  'setup.omsiSettings': {
+    en: 'OMSI settings',
+    de: 'OMSI-Einstellungen',
+    fr: 'Réglages OMSI',
+    nl: 'OMSI-instellingen'
+  },
+
+  /* De kaartstap. */
+  'setup.mapTitle': { en: 'Maps', de: 'Karten', fr: 'Cartes', nl: 'Kaarten' },
+  'setup.mapIntro': {
+    en: 'Where are you driving today?',
+    de: 'Wo fährst du heute?',
+    fr: 'Où conduisez-vous aujourd’hui ?',
+    nl: 'Waar rijd je vandaag?'
+  },
+  'setup.colMap': { en: 'Map', de: 'Karte', fr: 'Carte', nl: 'Kaart' },
+  'setup.colTours': { en: 'Tours', de: 'Umläufe', fr: 'Rotations', nl: 'Omlopen' },
+  'setup.colYear': { en: 'Era', de: 'Zeit', fr: 'Époque', nl: 'Tijdvak' },
+  'setup.mapFoot': {
+    en: '{count} maps installed',
+    de: '{count} Karten installiert',
+    fr: '{count} cartes installées',
+    nl: '{count} kaarten geïnstalleerd'
+  },
+
+  /* De lijnstap. */
+  'setup.lineTitle': { en: 'Lines', de: 'Linien', fr: 'Lignes', nl: 'Lijnen' },
+  'setup.lineIntro': {
+    en: 'Pick the line you want to drive',
+    de: 'Wähle die Linie, die du fahren willst',
+    fr: 'Choisissez la ligne que vous voulez conduire',
+    nl: 'Kies de lijn die je wilt rijden'
+  },
+  'setup.colLine': { en: 'Line', de: 'Linie', fr: 'Ligne', nl: 'Lijn' },
+  'setup.colTrips': { en: 'Trips', de: 'Fahrten', fr: 'Courses', nl: 'Ritten' },
+  'setup.colAverage': { en: 'Average', de: 'Schnitt', fr: 'Moyenne', nl: 'Gemiddeld' },
+  'setup.lineFoot': {
+    en: '{map} · {count} lines',
+    de: '{map} · {count} Linien',
+    fr: '{map} · {count} lignes',
+    nl: '{map} · {count} lijnen'
+  },
+
+  /* De busstap. */
+  'setup.busTitle': { en: 'Buses', de: 'Busse', fr: 'Bus', nl: 'Bussen' },
+  'setup.busIntro': {
+    en: 'Which bus are you taking out?',
+    de: 'Mit welchem Bus fährst du raus?',
+    fr: 'Quel bus sortez-vous ?',
+    nl: 'Met welke bus ga je rijden?'
+  },
+  'setup.colBus': { en: 'Bus', de: 'Bus', fr: 'Bus', nl: 'Bus' },
+  'setup.colFleet': { en: 'Fleet', de: 'Fuhrpark', fr: 'Parc', nl: 'Wagenpark' },
+  'setup.colFit': { en: 'Displays', de: 'Anzeigen', fr: 'Affichage', nl: 'Toont' },
+  /* Het scherm terwijl de dienst loopt; `run.title` staat er al. */
+  'run.intro': {
+    en: 'OMSI is running {map}. Keep this window beside the game, or use the overlay.',
+    de: 'OMSI läuft auf {map}. Lass dieses Fenster neben dem Spiel stehen, oder nutze das Overlay.',
+    fr: 'OMSI tourne sur {map}. Gardez cette fenêtre à côté du jeu, ou utilisez la surimpression.',
+    nl: 'OMSI draait op {map}. Laat dit venster naast het spel staan, of gebruik de overlay.'
+  },
+  /* De apps op de overlay; het balkje onderin de navigatie. */
+  'ovl.appMap': { en: 'Map', de: 'Karte', fr: 'Carte', nl: 'Kaart' },
+  'ovl.appDuty': { en: 'Duty', de: 'Dienst', fr: 'Service', nl: 'Dienst' },
+  'ovl.appBreak': { en: 'Break', de: 'Pause', fr: 'Pause', nl: 'Pauze' },
+  'ovl.appTrip': { en: 'Trip', de: 'Fahrt', fr: 'Course', nl: 'Rit' },
+  'ovl.appNoDuty': {
+    en: 'No duty running.',
+    de: 'Kein Dienst aktiv.',
+    fr: 'Aucun service en cours.',
+    nl: 'Er loopt geen dienst.'
+  },
+  'ovl.appLine': { en: 'line {line}', de: 'Linie {line}', fr: 'ligne {line}', nl: 'lijn {line}' },
+  'ovl.appStops': { en: '{count} stops', de: '{count} Halte', fr: '{count} arrêts', nl: '{count} haltes' },
+  'ovl.appLayover': {
+    en: '{minutes} min break before this trip',
+    de: '{minutes} Min Pause vor dieser Fahrt',
+    fr: '{minutes} min de pause avant cette course',
+    nl: '{minutes} min pauze voor deze rit'
+  },
+  'ovl.appBreakDue': {
+    en: 'Scheduled break at the terminus',
+    de: 'Geplante Pause an der Endhaltestelle',
+    fr: 'Pause prévue au terminus',
+    nl: 'Geplande pauze op het eindpunt'
+  },
+  'ovl.appBreakRunning': { en: 'On break for', de: 'Pause läuft seit', fr: 'En pause depuis', nl: 'Pauze loopt' },
+  'ovl.appBreakLeft': {
+    en: '{minutes} min left',
+    de: 'noch {minutes} Min',
+    fr: 'encore {minutes} min',
+    nl: 'nog {minutes} min'
+  },
+  'ovl.appBreakOver': {
+    en: '{minutes} min over',
+    de: '{minutes} Min drüber',
+    fr: '{minutes} min de trop',
+    nl: '{minutes} min over tijd'
+  },
+  'ovl.appBreakStart': { en: 'Start break', de: 'Pause starten', fr: 'Démarrer la pause', nl: 'Pauze starten' },
+  'ovl.appBreakStop': { en: 'End break', de: 'Pause beenden', fr: 'Terminer la pause', nl: 'Pauze beëindigen' },
+  'ovl.appMinutes': { en: '{minutes} min', de: '{minutes} Min', fr: '{minutes} min', nl: '{minutes} min' },
+  'ovl.appSpeed': { en: 'Speed', de: 'Tempo', fr: 'Vitesse', nl: 'Snelheid' },
+  'ovl.appPassengers': { en: 'On board', de: 'An Bord', fr: 'À bord', nl: 'Aan boord' },
+  'ovl.appStopsDone': { en: 'Stops', de: 'Halte', fr: 'Arrêts', nl: 'Haltes' },
+  'ovl.appOdometer': { en: 'Odometer', de: 'Kilometerstand', fr: 'Compteur', nl: 'Kilometerstand' },
+  'ovl.appDelay': { en: 'Delay', de: 'Verspätung', fr: 'Retard', nl: 'Vertraging' },
+  // ---------- wagenparken overzetten ----------
+  'setup.regenerate': {
+    en: 'Find other duties',
+    de: 'Andere Dienste suchen',
+    fr: 'Chercher d’autres services',
+    nl: 'Andere diensten zoeken'
+  },
+  'setup.searching': {
+    en: 'Searching…',
+    de: 'Wird gesucht…',
+    fr: 'Recherche…',
+    nl: 'Bezig met zoeken…'
+  },
+  'setup.hofTitle': {
+    en: 'Destination files',
+    de: 'Hofdateien',
+    fr: 'Fichiers de destinations',
+    nl: 'Wagenparken'
+  },
+  'setup.hofOffer': {
+    en: '{count} buses do not know this map',
+    de: '{count} Busse kennen diese Karte nicht',
+    fr: '{count} bus ne connaissent pas cette carte',
+    nl: '{count} bussen kennen deze kaart niet'
+  },
+  'setup.hofIntro': {
+    en: 'These {count} buses have no depot file for this map, so their IBIS rejects the codes and the destination sign stays blank. The app can copy a matching file next to each of them.',
+    de: 'Diesen {count} Bussen fehlt die Hofdatei dieser Karte: Das IBIS nimmt die Codes nicht an und die Zielanzeige bleibt leer. Die App kann jeweils eine passende Datei danebenlegen.',
+    fr: 'Ces {count} bus n’ont pas de fichier de dépôt pour cette carte : l’IBIS refuse les codes et la girouette reste vide. L’application peut copier un fichier compatible à côté de chacun.',
+    nl: 'Deze {count} bussen hebben geen wagenpark voor deze kaart: de IBIS neemt de codes niet aan en de bestemmingsfilm blijft leeg. De app kan er bij elk een passend bestand naast leggen.'
+  },
+  'busvraag.title': {
+    en: 'This bus is ready for you',
+    de: 'Dieser Bus steht für dich bereit',
+    fr: 'Ce bus vous attend',
+    nl: 'Deze bus staat voor je klaar'
+  },
+  'busvraag.perfect': {
+    en: 'It knows every destination of this duty. Take it out, or pick one yourself.',
+    de: 'Er kennt alle Ziele dieses Dienstes. Nimm ihn mit, oder wähle selbst.',
+    fr: 'Il connaît toutes les destinations de ce service. Prenez-le, ou choisissez vous-même.',
+    nl: 'Hij kent alle eindbestemmingen van deze dienst. Neem hem mee, of kies er zelf een.'
+  },
+  'busvraag.partly': {
+    en: 'It knows {percent}% of the destinations of this duty — the best of what is installed. Take it out, or pick one yourself.',
+    de: 'Er kennt {percent}% der Ziele dieses Dienstes — das Beste, was installiert ist. Nimm ihn mit, oder wähle selbst.',
+    fr: 'Il connaît {percent}% des destinations de ce service — le meilleur parmi les bus installés. Prenez-le, ou choisissez vous-même.',
+    nl: 'Hij kent {percent}% van de eindbestemmingen van deze dienst — het beste van wat er staat. Neem hem mee, of kies er zelf een.'
+  },
+  'busvraag.plain': {
+    en: 'The app picked it for this duty. Take it out, or pick one yourself.',
+    de: 'Die App hat ihn für diesen Dienst gewählt. Nimm ihn mit, oder wähle selbst.',
+    fr: 'L’application l’a choisi pour ce service. Prenez-le, ou choisissez vous-même.',
+    nl: 'De app koos hem voor deze dienst. Neem hem mee, of kies er zelf een.'
+  },
+  'busvraag.keep': {
+    en: 'Take this one',
+    de: 'Diesen nehmen',
+    fr: 'Prendre celui-ci',
+    nl: 'Deze nemen'
+  },
+  'busvraag.own': {
+    en: 'Pick one myself',
+    de: 'Selbst wählen',
+    fr: 'Choisir moi-même',
+    nl: 'Zelf kiezen'
+  },
+  'hofvraag.title': {
+    en: 'This bus does not know this map',
+    de: 'Dieser Bus kennt diese Karte nicht',
+    fr: 'Ce bus ne connaît pas cette carte',
+    nl: 'Deze bus kent deze kaart niet'
+  },
+  'hofvraag.body': {
+    en: '{bus} recognises {known} of {total} destinations of this duty, so the IBIS will not accept the codes and the destination sign stays blank.',
+    de: '{bus} kennt {known} von {total} Zielen dieses Dienstes; das IBIS nimmt die Codes nicht an und die Zielanzeige bleibt leer.',
+    fr: '{bus} reconnaît {known} des {total} destinations de ce service : l’IBIS refusera les codes et la girouette restera vide.',
+    nl: '{bus} kent {known} van de {total} bestemmingen van deze dienst. De IBIS neemt de codes dus niet aan en de bestemmingsfilm blijft leeg.'
+  },
+  'hofvraag.offer': {
+    en: 'Place {file} beside this bus? It knows {matched} of {total}. Nothing is overwritten, and you still pick the depot in OMSI yourself.',
+    de: '{file} neben diesen Bus legen? Sie kennt {matched} von {total}. Nichts wird überschrieben, und den Betriebshof wählst du in OMSI weiterhin selbst.',
+    fr: 'Placer {file} à côté de ce bus ? Il connaît {matched} sur {total}. Rien n’est écrasé, et vous choisissez toujours le dépôt dans OMSI.',
+    nl: 'Zal ik {file} bij deze bus neerzetten? Dat wagenpark kent er {matched} van {total}. Er wordt niets overschreven, en de remise kies je in OMSI nog steeds zelf.'
+  },
+  'hofvraag.yes': { en: 'Add it', de: 'Hinzufügen', fr: 'Ajouter', nl: 'Toevoegen' },
+  'hofvraag.no': { en: 'Not now', de: 'Jetzt nicht', fr: 'Pas maintenant', nl: 'Niet nu' },
+  'setup.hofBus': { en: 'Bus', de: 'Bus', fr: 'Bus', nl: 'Bus' },
+  'setup.hofNow': { en: 'Knows now', de: 'Kennt jetzt', fr: 'Connaît', nl: 'Kent nu' },
+  'setup.hofAfter': { en: 'Would know', de: 'Würde kennen', fr: 'Connaîtrait', nl: 'Zou kennen' },
+  'setup.hofOf': { en: '{known} of {total}', de: '{known} von {total}', fr: '{known} sur {total}', nl: '{known} van {total}' },
+  'setup.hofDo': { en: 'Copy them', de: 'Kopieren', fr: 'Copier', nl: 'Overzetten' },
+  'setup.hofBusy': { en: 'Copying…', de: 'Wird kopiert…', fr: 'Copie…', nl: 'Bezig…' },
+  'setup.hofDone': {
+    en: '{count} destination files placed.',
+    de: '{count} Hofdateien abgelegt.',
+    fr: '{count} fichiers de destinations placés.',
+    nl: '{count} wagenparken neergezet.'
+  },
+  /* Geen kleine lettertjes maar de afspraak: er wordt niets overschreven. */
+  'setup.hofFoot': {
+    en: 'The file is placed beside the ones already there; nothing is overwritten, and you still pick the depot in OMSI yourself.',
+    de: 'Die Datei wird neben die vorhandenen gelegt; nichts wird überschrieben, und den Betriebshof wählst du in OMSI weiterhin selbst.',
+    fr: 'Le fichier est placé à côté de ceux déjà présents ; rien n’est écrasé, et vous choisissez toujours le dépôt dans OMSI.',
+    nl: 'Het bestand komt naast wat er al ligt; er wordt niets overschreven, en de remise kies je in OMSI nog steeds zelf.'
+  },
+  'ovl.appFuel': { en: 'Fuel', de: 'Tank', fr: 'Carburant', nl: 'Tank' },
+  'ovl.appBattery': { en: 'Battery', de: 'Akku', fr: 'Batterie', nl: 'Accu' },
+  'ovl.appNextTrip': {
+    en: 'Next trip',
+    de: 'Nächste Fahrt',
+    fr: 'Trajet suivant',
+    nl: 'Volgende rit'
+  },
+  'setup.yardTitle': { en: 'Depot', de: 'Betriebshof', fr: 'Dépôt', nl: 'Remise' },
+  'setup.yardIntro': {
+    en: 'The depot file decides which destinations your matrix sign can show.',
+    de: 'Die Hofdatei bestimmt, welche Ziele deine Matrixanzeige zeigen kann.',
+    fr: 'Le fichier de dépôt décide des destinations affichables sur la girouette.',
+    nl: 'Het hof-bestand bepaalt welke bestemmingen je matrixbord kan tonen.'
+  },
+  'setup.yardKnows': {
+    en: '{known} of {total} destinations',
+    de: '{known} von {total} Zielen',
+    fr: '{known} sur {total} destinations',
+    nl: '{known} van {total} bestemmingen'
+  },
+  'setup.yardSuggested': {
+    en: 'best match',
+    de: 'beste Wahl',
+    fr: 'meilleur choix',
+    nl: 'past het best'
+  },
+  'setup.yardButton': { en: 'Depot file', de: 'Hofdatei', fr: 'Fichier de dépôt', nl: 'Hof-bestand' },
+  'setup.busButton': { en: 'Bus', de: 'Bus', fr: 'Bus', nl: 'Bus' },
+  'setup.busCount': {
+    en: '{count} versions',
+    de: '{count} Ausführungen',
+    fr: '{count} versions',
+    nl: '{count} uitvoeringen'
+  },
+  /* Eén uitvoering is geen "1 versions". */
+  'setup.busCountOne': {
+    en: 'one version',
+    de: 'eine Ausführung',
+    fr: 'une version',
+    nl: 'één uitvoering'
+  },
+  'setup.busPickType': {
+    en: 'Which model?',
+    de: 'Welches Modell?',
+    fr: 'Quel modèle ?',
+    nl: 'Welk type?'
+  },
+  'setup.busPickTrim': {
+    en: 'Which version? Gearbox, doors and cab differ.',
+    de: 'Welche Ausführung? Getriebe, Türen und Kabine unterscheiden sich.',
+    fr: 'Quelle version ? Boîte, portes et cabine diffèrent.',
+    nl: 'Welke uitvoering? Bak, deuren en cabine verschillen.'
+  },
+  'setup.busFoot': {
+    en: '{count} buses installed · the first one fits this duty best',
+    de: '{count} Busse installiert · der erste passt am besten zu diesem Dienst',
+    fr: '{count} bus installés · le premier convient le mieux à ce service',
+    nl: '{count} bussen geïnstalleerd · de eerste past het best bij deze dienst'
+  },
+  'setup.theme': { en: 'Appearance', de: 'Darstellung', fr: 'Apparence', nl: 'Weergave' },
+  'setup.themeSystem': { en: 'System', de: 'System', fr: 'Système', nl: 'Systeem' },
+  'setup.themeDark': { en: 'Dark', de: 'Dunkel', fr: 'Sombre', nl: 'Donker' },
+  'setup.themeLight': { en: 'Light', de: 'Hell', fr: 'Clair', nl: 'Licht' }
 } as const
 
 export type TextKey = keyof typeof TEXT

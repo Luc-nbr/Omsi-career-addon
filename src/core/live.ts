@@ -12,6 +12,12 @@ export interface LiveData {
   alive: boolean
   /** Bitmasker van de variabelen die OMSI werkelijk heeft doorgegeven. */
   seen: number
+  /**
+   * Idem voor de systeemvariabelen. Ontbreekt bij een plugin van voor
+   * 19-09-2026; dan weten we niet of een nul "geen aanrijding" betekent of
+   * "niet doorgegeven", en houden we het op het eerste.
+   */
+  seenSys?: number
   /** Idem voor de stringvariabelen. */
   seenStr: number
   /** Hoe de tekst binnenkwam: 0 niets, 1 als bytes, 2 als twee bytes per teken. */
@@ -49,6 +55,23 @@ export interface LiveData {
   topSpeed: number
   harshBrakes: number
   harshAccels: number
+  /**
+   * De accu van een elektrische bus, als deel van 0 tot 1. Komt uit het script
+   * van het busmodel; op een dieselbus staat hij er niet.
+   */
+  battery?: number
+  /** Buiten, in graden. Systeemvariabele, dus overal hetzelfde weer. */
+  temperature?: number
+  /**
+   * Aanrijdingen sinds het spel startte, en hoe hard.
+   *
+   * `coll_energy` is een systeemvariabele en bestaat dus op elke bus, ook op
+   * modellen die zelf geen schade bijhouden. De grens waarboven het een
+   * aanrijding heet komt uit OMSI's eigen busscripts; zie de plugin.
+   */
+  collisions?: number
+  collisionEnergy?: number
+  worstCollision?: number
   /** Alleen gevuld op bussen met een IBIS; anders leeg. */
   busstop: string
   delayMin: string
@@ -112,11 +135,29 @@ const BIT = {
   blinkerRight: 19,
   brakeLight: 20,
   engineOn: 21,
-  busstopIndex: 22
+  busstopIndex: 22,
+  battery: 23
+} as const
+
+/** Bitposities in `seenSys`, gelijk aan de volgorde in de systeemlijst. */
+const SYSBIT = {
+  collEnergy: 6,
+  temperature: 7
 } as const
 
 function has(data: LiveData, bit: number): boolean {
   return ((data.seen >>> bit) & 1) === 1
+}
+
+/**
+ * Of OMSI deze systeemvariabele werkelijk heeft doorgegeven.
+ *
+ * Een oudere plugin stuurt geen `seenSys` mee. Die kende de nieuwe namen ook
+ * niet, dus dan is het antwoord nee -- en niet "we weten het niet", want daar
+ * kan de interface niets mee.
+ */
+function hasSys(data: LiveData, bit: number): boolean {
+  return ((( data.seenSys ?? 0) >>> bit) & 1) === 1
 }
 
 /**
@@ -220,6 +261,25 @@ export interface LiveStatus {
   hasPassengers: boolean
   harshBrakes: number
   harshAccels: number
+  /**
+   * De tank, als deel van 0 tot 1. OMSI houdt dit in elk voertuig bij, dus het
+   * is er altijd -- ook op bussen die zelf geen meter in het dashboard hebben.
+   */
+  fuel: number
+  /** De accu van een elektrische bus, 0 tot 1. Niets op een dieselbus. */
+  battery?: number
+  /** Buiten, in graden. */
+  temperature?: number
+  /** Verkochte kaartjes tijdens deze dienst. */
+  tickets: number
+  /**
+   * Aanrijdingen tijdens deze dienst, en de hardste klap.
+   *
+   * Sinds het begin van de dienst, niet sinds het spel startte: wie vorige week
+   * ergens tegenaan reed, krijgt dat vanavond niet opnieuw voor zijn kiezen.
+   */
+  collisions: number
+  worstCollision: number
   advice: Advice[]
   /** De dienst is uitgereden: eindtijd voorbij en de bus staat stil. */
   dutyComplete: boolean
@@ -393,7 +453,7 @@ function ibisDelay(data: LiveData): number | undefined {
  * lichten niet als variabele aanbiedt staat niet "met het licht uit" — we weten
  * het simpelweg niet, en daar hoort geen waarschuwing bij.
  */
-function buildAdvice(data: LiveData, baseline?: { harshBrakes: number; harshAccels: number }): Advice[] {
+function buildAdvice(data: LiveData, baseline?: { harshBrakes: number; harshAccels: number; tickets?: number; collisions?: number }): Advice[] {
   const advice: Advice[] = []
 
   if (has(data, BIT.lightsLow) && data.brightness < 0.35 && data.lightsLow < 0.5) {
@@ -424,6 +484,40 @@ function buildAdvice(data: LiveData, baseline?: { harshBrakes: number; harshAcce
     advice.push({ id: 'motor', severity: 'info' })
   }
 
+  /*
+   * Een aanrijding is geen tip maar een feit, en hij blijft staan: hij is al
+   * gebeurd en gaat niet meer over. Vandaar de zwaarste soort.
+   */
+  const botsingen = (data.collisions ?? 0) - (baseline?.collisions ?? 0)
+  if (hasSys(data, SYSBIT.collEnergy) && botsingen > 0) {
+    advice.push({ id: 'aanrijding', severity: 'warn', count: botsingen })
+  }
+
+  /*
+   * Bijna leeg. De grens ligt op een tiende: een stadsbus haalt daar nog wel
+   * een rit mee, maar niet een hele dienst, en dit is het moment dat je er nog
+   * iets aan kunt doen.
+   */
+  if (data.tankPercent > 0 && data.tankPercent < 0.1) {
+    advice.push({ id: 'tank', severity: 'warn' })
+  }
+
+  /*
+   * Wegrijden van de halte zonder richting aan te geven. In Duitsland geeft
+   * §20 StVO een bus die de halte verlaat voorrang -- maar alleen als hij
+   * knippert. Wie dat niet doet, heeft die voorrang niet.
+   */
+  if (
+    has(data, BIT.blinkerLeft) &&
+    data.atStation > 0.5 &&
+    data.velocity > 3 &&
+    data.velocity < 20 &&
+    data.blinkerLeft < 0.5 &&
+    data.blinkerRight < 0.5
+  ) {
+    advice.push({ id: 'knipperen', severity: 'info' })
+  }
+
   return advice
 }
 
@@ -437,7 +531,14 @@ function buildAdvice(data: LiveData, baseline?: { harshBrakes: number; harshAcce
 export function describeLive(
   data: LiveData,
   duty?: Duty,
-  baseline?: { harshBrakes: number; harshAccels: number; odometerKm?: number; clockMinutes?: number }
+  baseline?: {
+    harshBrakes: number
+    harshAccels: number
+    odometerKm?: number
+    clockMinutes?: number
+    tickets?: number
+    collisions?: number
+  }
 ): LiveStatus {
   const clockMinutes = data.time / 60
 
@@ -567,6 +668,12 @@ export function describeLive(
     hasPassengers,
     harshBrakes,
     harshAccels,
+    fuel: data.tankPercent,
+    battery: has(data, BIT.battery) ? data.battery : undefined,
+    temperature: hasSys(data, SYSBIT.temperature) ? data.temperature : undefined,
+    tickets: Math.max(0, data.ticket - (baseline?.tickets ?? 0)),
+    collisions: Math.max(0, (data.collisions ?? 0) - (baseline?.collisions ?? 0)),
+    worstCollision: data.worstCollision ?? 0,
     advice: buildAdvice(data, baseline),
     dutyComplete: duty ? isDutyComplete(data, duty, baseline) : false,
     omsiReadable,

@@ -110,3 +110,38 @@ export function dayOfYearForDays(year: number, preferred: number, mask: number):
   }
   return preferred
 }
+
+/**
+ * De route zoals hij op de IBIS hoort te staan, zonder het lijnnummer ervoor.
+ *
+ * Wagenparken schrijven hun routecodes met de lijn erin: lijn 135 heeft route
+ * 13501, 13502, enzovoort. Overal waar dit getal staat, staat het lijnnummer er
+ * al naast; dan is driekwart van de code een herhaling van wat er links van
+ * staat, terwijl juist het staartje zegt welke kant je oprijdt.
+ *
+ * NIET OP DE LETTER VERGELIJKEN
+ * De eerste versie keek of de code letterlijk met het lijnnummer begon, en dat
+ * is te streng. Op Rheinhausen heet lijn 15 in de code 015 -- met een nul
+ * ervoor, zodat alle codes even lang zijn -- en in Wenen draagt lijn 24A een
+ * code die met 24 begint. Daarom: het cijferdeel van de lijn vergelijken met de
+ * kop van de code, nullen aan het begin weggedacht.
+ *
+ * Er blijft altijd een staart van twee cijfers over, of drie als twee niet
+ * uitkomt. Klopt de kop niet met de lijn, dan blijft de code staan zoals hij is:
+ * route 9202 op lijn 76 gaat over iets anders dan lijn 76.
+ */
+export function shortRoute(route?: string, line?: string): string | undefined {
+  if (!route) return route
+  // Alleen cijfercodes; een code met letters erin laten we met rust.
+  if (!/^\d+$/.test(route)) return route
+
+  const kaalLijn = (line ?? '').replace(/\D/g, '').replace(/^0+/, '')
+  if (!kaalLijn) return route
+
+  for (const staart of [2, 3]) {
+    if (route.length <= staart) continue
+    const kop = route.slice(0, route.length - staart).replace(/^0+/, '')
+    if (kop === kaalLijn) return route.slice(route.length - staart)
+  }
+  return route
+}

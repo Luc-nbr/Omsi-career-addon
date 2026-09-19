@@ -120,6 +120,8 @@ export interface ObjectPath {
   direction: number
   x: number
   y: number
+  /** Hoogte van de baan binnen het object; een oprit ligt hoger dan de voet. */
+  height: number
   rotationDeg: number
   length: number
   radius: number
@@ -188,6 +190,8 @@ export function objectPaths(omsiPath: string, relative: string): ObjectPath[] {
           direction: Number.parseInt(lines[i + 11] ?? '', 10),
           x: num(lines[i + 1]),
           y: num(lines[i + 2]),
+          // Veld 3 is de hoogte; daarna pas de richting.
+          height: num(lines[i + 3]),
           rotationDeg: num(lines[i + 4]),
           radius: num(lines[i + 5]),
           length: num(lines[i + 6])
@@ -232,6 +236,8 @@ export function placeObjectPath(
 export interface SplineShape {
   x: number
   y: number
+  /** Hoogte van het beginpunt, in meters boven het nulvlak van de kaart. */
+  height: number
   rotationDeg: number
   length: number
   radius: number
@@ -293,6 +299,7 @@ function readAt(lines: string[], at: number, mirror: boolean): SplineShape | und
   return {
     x: values[0],
     y: values[2],
+    height: values[1],
     rotationDeg: values[3],
     length: values[4],
     radius: values[5],

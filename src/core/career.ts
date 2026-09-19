@@ -64,6 +64,12 @@ export interface CareerEntry {
   /** Gemeten rijstijl: hoe vaak er hard geremd of opgetrokken is. */
   harshBrakes?: number
   harshAccels?: number
+  /** Verkochte kaartjes tijdens deze dienst. */
+  tickets?: number
+  /** Aanrijdingen tijdens deze dienst. */
+  collisions?: number
+  /** Verbruikte brandstof, als deel van de tank. */
+  fuelUsed?: number
 }
 
 /**
@@ -99,6 +105,18 @@ export interface ActiveDuty {
     clockMinutes: number
     harshBrakes: number
     harshAccels: number
+    /**
+     * Kaartjes en aanrijdingen staan ook in de nulmeting, want de plugin telt
+     * ze sinds het spel startte. Zonder dit zou wie twee diensten achter elkaar
+     * rijdt de eerste nog eens meekrijgen.
+     *
+     * Optioneel: profielen van voor 19-09-2026 hebben ze niet, en dan is nul
+     * het beste dat we kunnen doen.
+     */
+    tickets?: number
+    collisions?: number
+    /** Tankstand bij het begin, om het verbruik van deze dienst te kennen. */
+    fuel?: number
   }
 }
 
@@ -186,6 +204,10 @@ export function completeDuty(
     harshAccels?: number
     /** Hoeveel haltes er gehaald zijn; bepaalt wat de dienst oplevert. */
     stopsDone?: number
+    tickets?: number
+    collisions?: number
+    /** Brandstof bij het begin en aan het eind, als deel van 0 tot 1. */
+    fuelUsed?: number
   }
 ): CareerState {
   const entry: CareerEntry = {
@@ -204,7 +226,10 @@ export function completeDuty(
     drivenKm: measured?.drivenKm,
     delayMinutes: measured?.delayMinutes,
     harshBrakes: measured?.harshBrakes,
-    harshAccels: measured?.harshAccels
+    harshAccels: measured?.harshAccels,
+    tickets: measured?.tickets,
+    collisions: measured?.collisions,
+    fuelUsed: measured?.fuelUsed
   }
   // Afgerond is afgerond: de dienst laat het profiel los.
   return { ...state, entries: [entry, ...state.entries], activeDuty: undefined }

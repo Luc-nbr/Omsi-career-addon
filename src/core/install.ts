@@ -1,10 +1,120 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 
-/** Herkent een OMSI-installatie aan het spel zelf plus zijn kaartenmap. */
+/**
+ * Herkent een OMSI-installatie.
+ *
+ * Aan `Omsi.exe`, en aan niets anders. Eerst stond `maps` er ook bij, en dat
+ * klinkt redelijk -- een spel zonder kaarten kun je niet spelen. Maar het is de
+ * app niet die daarover gaat: wie zijn kaartenmap heeft hernoemd, verplaatst of
+ * leeggehaald heeft nog steeds OMSI staan, en kreeg van ons te horen dat dit
+ * geen OMSI was. Dat is geen herkennen meer maar keuren.
+ *
+ * Wat er verder wel of niet in staat, merkt de app vanzelf: zonder kaarten is de
+ * kaartenlijst leeg, en dat vertelt hij dan gewoon.
+ */
 export function isOmsiInstall(path: string): boolean {
-  return existsSync(join(path, 'Omsi.exe')) && existsSync(join(path, 'maps'))
+  return existsSync(join(path, 'Omsi.exe'))
+}
+
+/** Heeft deze installatie ook kaarten? Zonder valt er niets te rijden. */
+export function hasMaps(path: string): boolean {
+  try {
+    const maps = join(path, 'maps')
+    return existsSync(maps) && readdirSync(maps).some((naam) => statSync(join(maps, naam)).isDirectory())
+  } catch {
+    return false
+  }
+}
+
+/** Wat er van een aangewezen map te maken valt. */
+export interface Resolved {
+  /** De installatie, als we er een gevonden hebben. */
+  path?: string
+  /**
+   * Hoe hij gevonden is. `zelf` is de map die is aangewezen, `kind` een map
+   * erin, `ouder` een map erboven. Dat laatste is het geval als iemand
+   * `OMSI 2\maps` aanwijst in plaats van `OMSI 2`.
+   */
+  via?: 'zelf' | 'kind' | 'ouder'
+  /** De installatie staat er, maar zonder kaarten valt er niets te rijden. */
+  zonderKaarten?: boolean
+}
+
+/**
+ * Van een aangewezen map naar de installatie.
+ *
+ * Wie gevraagd wordt "waar staat OMSI 2?" wijst niet altijd precies die map
+ * aan. De een kiest `steamapps\common`, de ander `OMSI 2\maps`, de derde de
+ * snelkoppelingsmap waar het spel in staat. Dat zijn geen fouten van de
+ * gebruiker maar van de vraag, dus lossen we ze hier op in plaats van "dit is
+ * geen OMSI-map" te zeggen tegen iemand die er bovenop staat.
+ *
+ * Er wordt drie mappen diep gezocht en niet dieper. Drie is nodig omdat een
+ * Steam-bibliotheek aanwijzen `steamapps`, `common` en dan pas `OMSI 2`
+ * betekent. Dieper duurt merkbaar lang en levert zelden nog iets op; een hele
+ * schijf doorlopen omdat iemand `D:\` aanwees kost minuten.
+ */
+export function resolveOmsiFolder(picked: string): Resolved {
+  if (!picked || !existsSync(picked)) return {}
+
+  const antwoord = (path: string, via: Resolved['via']): Resolved => ({
+    path,
+    via,
+    zonderKaarten: !hasMaps(path)
+  })
+
+  if (isOmsiInstall(picked)) return antwoord(picked, 'zelf')
+
+  // Een map erboven: `OMSI 2\maps`, `OMSI 2\Vehicles`, `OMSI 2\plugins`.
+  let boven = dirname(picked)
+  for (let stap = 0; stap < 2 && boven && boven !== dirname(boven); stap++) {
+    if (isOmsiInstall(boven)) return antwoord(boven, 'ouder')
+    boven = dirname(boven)
+  }
+
+  /*
+   * En anders erin kijken. Twee lagen diep, want `steamapps\common` is een
+   * gewone keuze en daar staat `OMSI 2` een laag lager; een Steam-bibliotheek
+   * aanwijzen zet hem twee lagen lager.
+   */
+  const gezien = new Set<string>()
+  let laag = [picked]
+  for (let diepte = 0; diepte < 3; diepte++) {
+    const volgende: string[] = []
+    for (const map of laag) {
+      let kinderen: string[]
+      try {
+        kinderen = readdirSync(map)
+      } catch {
+        continue
+      }
+      // De waarschijnlijke namen eerst, dan pas de rest van de map.
+      kinderen.sort((a, b) => Number(waarschijnlijk(b)) - Number(waarschijnlijk(a)))
+      for (const naam of kinderen) {
+        const kind = join(map, naam)
+        if (gezien.has(kind.toLowerCase())) continue
+        gezien.add(kind.toLowerCase())
+        try {
+          if (!statSync(kind).isDirectory()) continue
+        } catch {
+          continue
+        }
+        if (isOmsiInstall(kind)) return antwoord(kind, 'kind')
+        volgende.push(kind)
+      }
+    }
+    laag = volgende
+    if (laag.length > 400) break
+  }
+  return {}
+}
+
+/** Namen waar OMSI achter pleegt te zitten; die kijken we het eerst na. */
+function waarschijnlijk(naam: string): boolean {
+  const kaal = naam.toLowerCase()
+  return kaal.includes('omsi') || kaal === 'steamapps' || kaal === 'common' || kaal === 'steamlibrary'
 }
 
 /**

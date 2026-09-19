@@ -37,6 +37,22 @@ export interface Settings {
    * het daarna klaar. Leeg betekent: zoek het zelf maar uit.
    */
   omsiPath?: string
+  /**
+   * Heeft de speler die map zelf bevestigd?
+   *
+   * Los van `omsiPath`, want de app kan hem ook zelf gevonden hebben. Pas als
+   * dit aanstaat houdt hij op met vragen; tot die tijd legt hij zijn vondst
+   * eenmaal voor. Iemand met twee installaties krijgt anders stil de verkeerde.
+   */
+  omsiConfirmed?: boolean
+  /**
+   * Dag of nacht. `systeem` volgt wat Windows zegt en is de beginstand.
+   *
+   * Los van Windows, want de app wordt 's avonds in een donkere kamer gebruikt
+   * terwijl Windows nog op dag staat -- of andersom. Wie er niets van vindt
+   * merkt er niets van; wie er wel iets van vindt drukt op het knopje.
+   */
+  theme?: 'systeem' | 'licht' | 'donker'
 }
 
 function settingsPath(userDataPath: string): string {
@@ -50,10 +66,15 @@ export function readSettings(userDataPath: string): Settings {
       language: isLanguage(raw.language) ? raw.language : DEFAULT_LANGUAGE,
       overlayRate: isOverlayRate(raw.overlayRate) ? raw.overlayRate : 'rustig',
       windowedOmsi: raw.windowedOmsi !== false,
-      omsiPath: typeof raw.omsiPath === 'string' && raw.omsiPath ? raw.omsiPath : undefined
+      omsiPath: typeof raw.omsiPath === 'string' && raw.omsiPath ? raw.omsiPath : undefined,
+      omsiConfirmed: raw.omsiConfirmed === true,
+      theme:
+        raw.theme === 'licht' || raw.theme === 'donker' || raw.theme === 'systeem'
+          ? raw.theme
+          : 'systeem'
     }
   } catch {
-    return { language: DEFAULT_LANGUAGE, overlayRate: 'rustig', windowedOmsi: true }
+    return { language: DEFAULT_LANGUAGE, overlayRate: 'rustig', windowedOmsi: true, theme: 'systeem' }
   }
 }
 
@@ -72,7 +93,13 @@ export function writeSettings(userDataPath: string, settings: Partial<Settings>)
     omsiPath:
       typeof settings.omsiPath === 'string'
         ? settings.omsiPath || undefined
-        : current.omsiPath
+        : current.omsiPath,
+    omsiConfirmed:
+      typeof settings.omsiConfirmed === 'boolean' ? settings.omsiConfirmed : current.omsiConfirmed,
+    theme:
+      settings.theme === 'licht' || settings.theme === 'donker' || settings.theme === 'systeem'
+        ? settings.theme
+        : current.theme
   }
   const path = settingsPath(userDataPath)
   mkdirSync(dirname(path), { recursive: true })

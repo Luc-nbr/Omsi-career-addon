@@ -19,10 +19,21 @@ export function StartingDialog({ onDone, onDismiss }: Props): JSX.Element {
 
   useEffect(() => {
     const tick = setInterval(() => setSeconds((value) => value + 1), 1000)
+    /*
+     * Weg zodra het spel er is.
+     *
+     * Eerst wachtte dit venstertje tot de plugin gegevens doorgaf, en dat is
+     * pas zo als de situatie geladen is en er een bus staat -- tot dan bleef het
+     * over het scherm hangen terwijl je in OMSI al aan het klikken was. Het
+     * venster zegt "OMSI start op"; staat OMSI er, dan is het uitgepraat, en
+     * eronder ligt de dienstregeling die meeloopt.
+     */
     const poll = setInterval(() => {
-      void window.career.liveConnected().then((connected) => {
-        if (connected) onDone()
-      })
+      void Promise.all([window.career.liveConnected(), window.career.omsiRunning()]).then(
+        ([connected, running]) => {
+          if (connected || running) onDone()
+        }
+      )
     }, 1500)
     return () => {
       clearInterval(tick)

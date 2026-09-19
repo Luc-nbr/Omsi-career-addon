@@ -56,6 +56,11 @@ interface Props {
   /** Halte die de gebruiker elders aanwees; die springt in beeld. */
   focusStopId?: string
   /**
+   * Geeft zoomen en centreren naar buiten door, zodat een scherm er eigen
+   * knoppen op kan zetten. Optioneel: de overlay gebruikt alleen wiel en slepen.
+   */
+  bediening?: (b: { zoomBy: (factor: number) => void; refit: () => void }) => void
+  /**
    * Het stuk weg waar de bus nu op rijdt: van de vorige halte naar de volgende.
    * Staat dit aan, dan houdt de kaart dat stuk in beeld in plaats van de hele
    * dienst -- ingezoomd genoeg om de straat te kunnen volgen.
@@ -203,7 +208,8 @@ export function RouteMap({
   texts,
   onManoeuvre,
   onSpeedLimit,
-  pixelScale = 1
+  pixelScale = 1,
+  bediening
 }: Props): JSX.Element {
   const tr = useT()
   const boxRef = useRef<HTMLDivElement>(null)
@@ -725,6 +731,16 @@ export function RouteMap({
     setSize((old) => ({ ...old }))
   }
 
+  /*
+   * Zoomen en centreren zitten hier al, voor het muiswiel en het slepen. Het
+   * opzetscherm wil er knoppen op zetten, dus geven we ze naar buiten door. Wie
+   * `bediening` niet meegeeft -- de overlay -- merkt hier niets van.
+   */
+  useEffect(() => {
+    bediening?.({ zoomBy, refit })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bediening])
+
   /* Het wegennet gaat op een canvas onder de SVG; zie roadLayer.ts waarom. */
   const roads = useMemo(() => new RoadLayer(geometry), [geometry])
   const drawnMpp = useRef(0)
@@ -1080,8 +1096,12 @@ export function RouteMap({
         </g>
       </svg>
 
-      {/* data-hit: in de overlay laten alleen zulke plekken de muis niet door naar het spel. */}
-      <div className="map-tools" data-hit>
+      {/*
+        Wie de bediening overneemt, tekent zijn eigen knoppen; twee stel naast
+        elkaar is verwarrend. data-hit: in de overlay laten alleen zulke plekken
+        de muis niet door naar het spel.
+      */}
+      <div className="map-tools" data-hit style={bediening ? { display: 'none' } : undefined}>
         <button type="button" onClick={() => zoomBy(1 / 1.6)} aria-label={tr('map.zoomIn')}>
           +
         </button>

@@ -281,8 +281,10 @@ export class LaneNetwork {
   spawnAt(
     stop: StopPoint,
     reach: number = STOP_REACH_M
-  ): { x: number; y: number; heading: number } | undefined {
-    let best: { x: number; y: number; heading: number; penalty: number } | undefined
+  ): { x: number; y: number; heading: number; height?: number } | undefined {
+    let best:
+      | { x: number; y: number; heading: number; height?: number; penalty: number }
+      | undefined
     const gx = Math.floor(stop.x / GRID_M)
     const gy = Math.floor(stop.y / GRID_M)
     // Zo ver moeten we vakjes aflopen om alles binnen `reach` te zien.
@@ -307,13 +309,21 @@ export class LaneNetwork {
               x: hit.x,
               y: hit.y,
               heading: (Math.atan2(dx, dy) * 180) / Math.PI,
+              /*
+               * De hoogte van het wegdek, niet die van het maaiveld. Een weg
+               * ligt zelden op de grond: hij loopt over een talud of een
+               * viaduct, en op een heuvelkaart scheelt dat meters.
+               */
+              height: this.lanes[lane].height,
               penalty
             }
           }
         }
       }
     }
-    return best ? { x: best.x, y: best.y, heading: best.heading } : undefined
+    return best
+      ? { x: best.x, y: best.y, heading: best.heading, height: best.height }
+      : undefined
   }
 
   distanceToLane(x: number, y: number): number {

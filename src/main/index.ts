@@ -42,13 +42,20 @@ import {
   writeKeyboard,
   type KeyBinding
 } from '../core/omsiKeys'
-import { buildFleetIndex, pickVehicleForDuty, readMapFleet, type FleetIndex } from '../core/fleet'
+import {
+  buildFleetIndex,
+  pickVehicleForDuty,
+  readMapDepot,
+  readMapFleet,
+  type FleetIndex
+} from '../core/fleet'
 import { readMapData, readTileGrid, type Lane, type MapGeometry } from '../core/geo'
 import { LaneNetwork, routeForTrip, type TripRoute } from '../core/routing'
 import { VehicleTracker, type VehiclePosition } from '../core/vehicle'
 import { buildIbisPlan, type IbisPlan } from '../core/ibis'
 import { describeLive, readLive } from '../core/live'
-import { findOmsiInstall, isOmsiInstall } from '../core/install'
+import { leesUitCache, schrijfInCache, vingerafdruk } from '../core/kaartcache'
+import { findOmsiInstall, hasMaps, isOmsiInstall, resolveOmsiFolder } from '../core/install'
 import { isOmsiRunning, launchOmsi } from '../core/launch'
 import { ensurePlugin, pluginSourceDir, type PluginStatus } from '../core/pluginInstall'
 import { readOverlayLayout, writeOverlayLayout } from '../core/overlayLayout'
@@ -58,11 +65,13 @@ import { readSettings, writeSettings, type Settings } from '../core/settings'
 import { formatTime } from '../shared/format'
 import { findTemplate, readSituationTime, writeSituation } from '../core/situation'
 import { presetStartup } from '../core/startup'
+import { trailerOf } from '../core/trailer'
 import { spawnAtStop } from '../core/spawn'
 import { listMaps, loadMap } from '../core/timetable'
 import { listVehicles } from '../core/vehicles'
 import type { Duty, DutyLeg, OmsiMap } from '../core/types'
 import { listHofs, matchHof, pickHof } from '../core/hof'
+import { placeHof, planHofs, readPlacements, writePlacements } from '../core/hofTool'
 import { readScreenMode } from '../core/schermmodus'
 import {
   TIME_WINDOWS,
@@ -71,7 +80,9 @@ import {
   type FreeRequest,
   type DutyDate,
   type DutyRequest,
+  type HofOffer,
   type InstalledCheck,
+  type OmsiState,
   type MapSummary,
   type SessionResult,
   type YardOption
@@ -120,9 +131,19 @@ function map(folder: string): OmsiMap {
  * fractie van een seconde tot ruim een seconde, dus eenmaal per kaart. De
  * rijstroken blijven hier; de interface heeft alleen de tekening nodig.
  */
-function mapGeometry(folder: string): MapGeometry {
-  const cached = geometryCache.get(folder)
-  if (cached) return cached
+/** Het pad naar de bronbestanden van een kaart; ook de sleutel voor de cache. */
+function kaartPad(folder: string): string {
+  return join(omsi(), 'maps', folder)
+}
+
+/**
+ * De tegels echt uitlezen, en het resultaat bewaren.
+ *
+ * Dit is het dure stuk: tussen de dertig milliseconden en ruim drie seconden per
+ * kaart, gemeten met `scripts/probe-kaarttijd.ts`. Alles eromheen bestaat om
+ * hier zo min mogelijk te komen.
+ */
+function berekenKaart(folder: string): { geometry: MapGeometry; lanes: Lane[] } {
   const loaded = map(folder)
   const ids = new Set<string>(loaded.stops.keys())
   for (const trip of loaded.trips.values()) for (const stop of trip.stops) ids.add(stop.id)
@@ -135,14 +156,134 @@ function mapGeometry(folder: string): MapGeometry {
   }
   geometryCache.set(folder, geometry)
   laneCache.set(folder, lanes)
-  return geometry
+
+  const afdruk = vingerafdruk(kaartPad(folder))
+  schrijfInCache(userData(), folder, 'tekening', afdruk, geometry)
+  schrijfInCache(userData(), folder, 'stroken', afdruk, lanes)
+  return { geometry, lanes }
+}
+
+/**
+ * De tekening van een kaart: haltes, wegen, water, borden.
+ *
+ * Drie lagen diep: het geheugen van deze sessie, de schijf, en pas daarna de
+ * tegels zelf. De rijstroken blijven hier buiten -- het scherm heeft ze niet
+ * nodig, en ze zijn ruwweg even groot als de tekening.
+ */
+function mapGeometry(folder: string): MapGeometry {
+  const cached = geometryCache.get(folder)
+  if (cached) return cached
+
+  const vanSchijf = leesUitCache<MapGeometry>(
+    userData(),
+    folder,
+    'tekening',
+    vingerafdruk(kaartPad(folder))
+  )
+  if (vanSchijf) {
+    geometryCache.set(folder, vanSchijf)
+    return vanSchijf
+  }
+
+  return berekenKaart(folder).geometry
+}
+
+/**
+ * De rijstroken van een kaart; nodig om de bus ergens neer te zetten.
+ *
+ * Staat de tekening al in het geheugen maar de stroken niet, dan komen ze van
+ * schijf; ontbreken ze daar ook, dan wordt de kaart alsnog uitgelezen. Die
+ * laatste stap moet expliciet, want `mapGeometry` zou hier een tekening uit het
+ * geheugen teruggeven en de stroken leeg laten.
+ */
+function lanesOf(folder: string): Lane[] {
+  const cached = laneCache.get(folder)
+  if (cached) return cached
+
+  const vanSchijf = leesUitCache<Lane[]>(
+    userData(),
+    folder,
+    'stroken',
+    vingerafdruk(kaartPad(folder))
+  )
+  if (vanSchijf) {
+    laneCache.set(folder, vanSchijf)
+    return vanSchijf
+  }
+
+  return berekenKaart(folder).lanes
+}
+
+/**
+ * De kaarten alvast inlezen, op de achtergrond.
+ *
+ * Zonder dit betaalt de speler de rekening op het moment dat hij een kaart
+ * aanklikt: tot ruim drie seconden waarin er niets gebeurt. Met dit loopt de app
+ * na het opstarten één keer alle kaarten langs en zet ze op de schijf, zodat
+ * elke keuze daarna in tientallen milliseconden klaar is.
+ *
+ * Bewust traag: één kaart tegelijk, met een adempauze ertussen. Het gaat om
+ * werk dat niemand heeft gevraagd, dus het mag nooit in de weg lopen van wat
+ * iemand wél vraagt. Wat al in de cache staat wordt overgeslagen, dus de tweede
+ * start kost niets.
+ */
+let warmLoopt = false
+/*
+ * Hoeveel er op dit moment gevraagd wordt door het scherm.
+ *
+ * Het hoofdproces doet één ding tegelijk, dus terwijl het voorwerk een kaart
+ * uitleest kan een vraag van de speler niet tussendoor. Gemeten: een eerste
+ * start waarin het voorwerk vooropliep kostte de speler 16 seconden voor een
+ * kaart die hij zelf opvroeg. Het voorwerk kijkt daarom vóór elke kaart of er
+ * iemand staat te wachten, en gaat dan aan de kant.
+ */
+let voorgrondBezig = 0
+
+async function warmKaarten(): Promise<void> {
+  if (warmLoopt) return
+  warmLoopt = true
+  try {
+    const folders = listMaps(omsi())
+    const melden = (bezig: string | undefined, klaar: number, totaal: number): void => {
+      for (const venster of BrowserWindow.getAllWindows()) {
+        if (!venster.isDestroyed()) venster.webContents.send('kaarten:warm', { bezig, klaar, totaal })
+      }
+    }
+
+    let klaar = 0
+    for (const folder of folders) {
+      // Wachten zolang het scherm iets vraagt; dat gaat altijd voor.
+      while (voorgrondBezig > 0) await new Promise((verder) => setTimeout(verder, 300))
+
+      // Al in het geheugen of al op de schijf: dan valt er niets in te lezen.
+      const afdruk = vingerafdruk(kaartPad(folder))
+      const staatEr =
+        geometryCache.has(folder) ||
+        Boolean(leesUitCache<MapGeometry>(userData(), folder, 'tekening', afdruk))
+      if (!staatEr) {
+        melden(folder, klaar, folders.length)
+        try {
+          berekenKaart(folder)
+        } catch {
+          // Een kaart die niet te lezen is houdt de rest niet tegen.
+        }
+        // Even lucht geven aan het scherm voordat de volgende kaart begint.
+        await new Promise((verder) => setTimeout(verder, 600))
+      }
+      klaar += 1
+    }
+    melden(undefined, folders.length, folders.length)
+  } catch {
+    // Geen OMSI gevonden, of geen leesrechten: dan gewoon geen voorwerk.
+  } finally {
+    warmLoopt = false
+  }
 }
 
 function laneNetwork(folder: string): LaneNetwork {
   const cached = laneNetworkCache.get(folder)
   if (cached) return cached
-  mapGeometry(folder)
-  const built = new LaneNetwork(laneCache.get(folder) ?? [])
+  const built = new LaneNetwork(lanesOf(folder))
   laneNetworkCache.set(folder, built)
   return built
 }
@@ -162,6 +303,16 @@ function fleetOf(folder: string): Set<string> {
   const fleet = readMapFleet(join(omsi(), 'maps', folder))
   mapFleetCache.set(folder, fleet)
   return fleet
+}
+
+/** De remise van de kaart: welke bus, en hoeveel wagens ervan. */
+const mapDepotCache = new Map<string, Map<string, number>>()
+function depotOf(folder: string): Map<string, number> {
+  const cached = mapDepotCache.get(folder)
+  if (cached) return cached
+  const depot = readMapDepot(join(omsi(), 'maps', folder))
+  mapDepotCache.set(folder, depot)
+  return depot
 }
 
 /**
@@ -251,6 +402,12 @@ let overlayIbis: IbisPlan | undefined
  * je hem aanpast niet.
  */
 let overlayEditing = false
+/*
+ * Wordt de overlay op dit moment versleept of geschaald? Dan moet het venster
+ * even het hele scherm beslaan, anders loopt de muis tegen de eigen rand aan.
+ * Dit staat los van de bewerkstand: verslepen kan altijd, zonder knop.
+ */
+let overlayGrabbing = false
 /**
  * Het vak waar de elementen van de overlay in staan, zoals de pagina het meet.
  *
@@ -305,6 +462,15 @@ function sessieGegevens(): SessionResult {
         ? duty.legs.slice(0, status.legIndex).reduce((som, leg) => som + leg.stops.length, 0) +
           (status.stopIndex ?? 0)
         : undefined
+  /*
+   * Brandstof: wat er verbruikt is, niet wat erin zit. Tanken tijdens de dienst
+   * zou een negatief verschil geven, en "min een halve tank verbruikt" is geen
+   * getal om op te schrijven -- dan houden we het bij nul.
+   */
+  const startTank = start.fuel
+  const fuelUsed =
+    startTank !== undefined ? Math.max(0, startTank - live.tankPercent) : undefined
+
   return {
     stopsDone,
     drivenKm: Math.max(0, live.km + live.metres / 1000 - start.odometerKm),
@@ -313,6 +479,12 @@ function sessieGegevens(): SessionResult {
     harshBrakes: status.harshBrakes,
     harshAccels: status.harshAccels,
     topSpeed: live.topSpeed,
+    tickets: status.tickets,
+    collisions: status.collisions,
+    worstCollision: status.worstCollision,
+    fuelUsed,
+    fuel: live.tankPercent,
+    battery: status.battery,
     dutyComplete: status.dutyComplete,
     finished: true
   }
@@ -349,9 +521,57 @@ function sluitLopendeDienstAf(): void {
     drivenKm: gemeten.drivenKm,
     delayMinutes: gemeten.delayMinutes,
     harshBrakes: gemeten.harshBrakes,
-    harshAccels: gemeten.harshAccels
+    harshAccels: gemeten.harshAccels,
+    tickets: gemeten.tickets,
+    collisions: gemeten.collisions,
+    fuelUsed: gemeten.fuelUsed
   })
   writeProfile(userData(), career)
+}
+
+/**
+ * De laatst klaargezette situatie, zodat we hem opnieuw kunnen aanmelden.
+ *
+ * OMSI schrijft `options.cfg` bij het afsluiten opnieuw en zet `[last_map]` op
+ * de kaart die het zelf speelde. Alles wat wij voor het starten hadden
+ * klaargezet is daarmee weg, en de volgende keer opent het spel op de verkeerde
+ * kaart. Daarom onthouden we wat er klaarstond en zetten we het terug zodra het
+ * spel gesloten is.
+ */
+let klaargezet: { mapFolder: string; file: string } | undefined
+
+/** Draaide OMSI de vorige keer dat we keken? */
+let omsiDraaide = false
+
+/**
+ * Kijkt of OMSI net is afgesloten en zet dan de situatie opnieuw klaar.
+ *
+ * Alleen bij de overgang van draaien naar niet draaien: zolang het spel loopt
+ * valt er niets recht te zetten, en zonder die overgang zouden we bij elke tel
+ * in de spelmap schrijven.
+ */
+/** Wanneer we voor het laatst naar de proceslijst keken. */
+let laatsteProcesKijk = 0
+
+async function herstelStartscherm(): Promise<void> {
+  /*
+   * `tasklist` is een proces starten, en dat elke vijf tellen doen terwijl er
+   * een spel draait levert hikjes op. Eens per halve minuut is ruim genoeg: we
+   * wachten hier op iemand die OMSI afsluit, en dat duurt langer dan dat.
+   */
+  const nu = Date.now()
+  if (nu - laatsteProcesKijk < 30000) return
+  laatsteProcesKijk = nu
+
+  const draait = await isOmsiRunning()
+  const netAf = omsiDraaide && !draait
+  omsiDraaide = draait
+  if (!netAf || !klaargezet) return
+  try {
+    presetStartup(omsi(), klaargezet.mapFolder, klaargezet.file)
+  } catch {
+    // Geen schrijfrechten; dan kiest de speler de kaart zelf.
+  }
 }
 
 /** Verse gegevens van een draaiend OMSI, of niets. */
@@ -377,7 +597,10 @@ function captureBaseline(live = freshLive()): void {
         odometerKm: live.km + live.metres / 1000,
         clockMinutes: live.time / 60,
         harshBrakes: live.harshBrakes,
-        harshAccels: live.harshAccels
+        harshAccels: live.harshAccels,
+        tickets: live.ticket,
+        collisions: live.collisions ?? 0,
+        fuel: live.tankPercent
       }
     }
   })
@@ -455,7 +678,7 @@ function overlayArea(): Electron.Rectangle {
 function applyOverlayBounds(): void {
   if (!overlayWindow || overlayWindow.isDestroyed()) return
   const area = overlayArea()
-  if (overlayEditing || !overlayBox) {
+  if (overlayEditing || overlayGrabbing || !overlayBox) {
     overlayWindow.setBounds(area)
     return
   }
@@ -689,8 +912,16 @@ function persist(next: CareerState) {
  * OMSI telt de ritten in de volgorde waarin het lijnbestand ze opsomt, en dat
  * nummer hoort in `[settimetable]`. Alleen op bestandsnaam zoeken is niet
  * genoeg: een omloop rijdt dezelfde rit vaak meerdere keren op een dag.
+ *
+ * NIEMAND ROEPT DIT MEER AAN, EN DAT IS MET OPZET
+ * De situatie zet de omloop niet meer vooraf: de chauffeur kiest hem zelf in
+ * OMSI, en juist daarmee staat hij ook in het spel gezet. Dit blijft staan --
+ * uitgevoerd staat het niet, maar wat erin zit is duur betaald werk
+ * (`scripts/probe-settimetable.ts`), en wie het ooit terug wil zetten heeft het
+ * dan meteen bij de hand. Exporteren houdt het meetbaar en houdt de
+ * typecontrole rustig.
  */
-function tripIndexInTour(duty: Duty): number | undefined {
+export function tripIndexInTour(duty: Duty): number | undefined {
   const first = duty.legs[0]
   if (!first) return undefined
   const tour = map(duty.mapFolder).tours.find(
@@ -723,7 +954,6 @@ function prepareSituation(
 
   const first = duty.legs[0]
   const spawn = vehiclePath ? spawnFor(duty.mapFolder, first?.stopIds[0]) : undefined
-  const trip = tripIndexInTour(duty)
 
   const result = writeSituation(omsi(), {
     mapFolder: duty.mapFolder,
@@ -733,14 +963,34 @@ function prepareSituation(
     dayOfYear: when.dayOfYear,
     // Aanmelden: tien minuten voor vertrek, tijd genoeg voor de IBIS.
     minutes: duty.signOn,
-    vehicle: vehiclePath ? { relativePath: vehiclePath, lineNumber, terminus, yard } : undefined,
-    spawn,
-    timetable: trip !== undefined ? { lineFile: duty.lineFile, tour: duty.tourNumber, trip } : undefined
+    vehicle: vehiclePath
+      ? {
+          relativePath: vehiclePath,
+          lineNumber,
+          terminus,
+          yard,
+          // Een gelede bus is twee voertuigen; zonder dit begin je met een halve.
+          trailer: trailerOf(omsi(), vehiclePath)
+        }
+      : undefined,
+    spawn
+    /*
+     * Geen `timetable` meer.
+     *
+     * Hier stond de omloop vooraf ingevuld, en dat leek winst: je hoefde het
+     * dienstregelingsmenu niet meer in. Maar de app leest uit OMSI welke rit er
+     * gekozen is, en daaraan herkent hij dat de dienst loopt -- een stand die we
+     * er zelf in schrijven is niet dezelfde als een die het spel zelf zet. Wie
+     * de omloop aanklikt bevestigt daarmee de dienst, en dan komt de navigatie
+     * op gang. De dienstkaart zegt welke omloop je moet hebben.
+     */
   })
 
   // En het startscherm van OMSI erop zetten, zodat Start genoeg is.
   const startup = presetStartup(omsi(), duty.mapFolder, result.file)
-  return { ...result, date: when, startup, timetableSet: trip !== undefined }
+  klaargezet = { mapFolder: duty.mapFolder, file: result.file }
+  // `timetableSet` blijft onwaar: de chauffeur kiest de omloop zelf in OMSI.
+  return { ...result, date: when, startup, timetableSet: false }
 }
 
 function registerHandlers(): void {
@@ -774,6 +1024,63 @@ function registerHandlers(): void {
     const found = findOmsiInstall(readSettings(userData()).omsiPath)
     omsiPath = found
     return { found: Boolean(found), path: found }
+  })
+
+  /*
+   * Wat de app van de OMSI-map weet, en of de speler dat bevestigd heeft.
+   *
+   * De app zoekt zelf en heeft het meestal bij het rechte eind, maar er zijn te
+   * veel installaties denkbaar om erop te gokken: Steam op een tweede schijf,
+   * de doosversie van Aerosoft, twee kopieën naast elkaar, een map die iemand
+   * zelf ergens heeft neergezet. Daarom legt hij zijn vondst eenmaal voor.
+   */
+  ipcMain.handle('omsi:state', (): OmsiState => {
+    const settings = readSettings(userData())
+    const found = findOmsiInstall(settings.omsiPath)
+    omsiPath = found
+    return {
+      path: found,
+      confirmed: Boolean(settings.omsiConfirmed && found),
+      zonderKaarten: found ? !hasMaps(found) : undefined
+    }
+  })
+
+  /** De map vastleggen als de juiste; daarna vraagt de app er niet meer om. */
+  ipcMain.handle('omsi:confirm', (_event, path: string): OmsiState => {
+    const uit = resolveOmsiFolder(path)
+    if (!uit.path) {
+      const settings = readSettings(userData())
+      return { path: omsiPath, confirmed: Boolean(settings.omsiConfirmed), wrong: true }
+    }
+    writeSettings(userData(), { omsiPath: uit.path, omsiConfirmed: true })
+    if (uit.path !== omsiPath) {
+      // Alles wat uit de oude map kwam is niet meer van toepassing.
+      mapCache.clear()
+      geometryCache.clear()
+      networkCache.clear()
+      mapFleetCache.clear()
+    mapDepotCache.clear()
+      fleetIndex = undefined
+    }
+    omsiPath = uit.path
+    return { path: uit.path, confirmed: true, via: uit.via, zonderKaarten: uit.zonderKaarten }
+  })
+
+  /*
+   * Een map aanwijzen. Geeft alleen terug wat eruit komt; vastleggen doet
+   * `omsi:confirm`, zodat het scherm eerst kan laten zien wat het gevonden heeft.
+   */
+  ipcMain.handle('omsi:browse', async (): Promise<OmsiState> => {
+    const keuze = await dialog.showOpenDialog({
+      title: 'Waar staat OMSI 2?',
+      properties: ['openDirectory'],
+      buttonLabel: 'Deze map'
+    })
+    const gekozen = keuze.filePaths[0]
+    if (keuze.canceled || !gekozen) return { path: omsiPath, confirmed: false }
+    const uit = resolveOmsiFolder(gekozen)
+    if (!uit.path) return { path: omsiPath, confirmed: false, wrong: true }
+    return { path: uit.path, confirmed: false, via: uit.via, zonderKaarten: uit.zonderKaarten }
   })
 
   /*
@@ -854,6 +1161,7 @@ function registerHandlers(): void {
     mapCache.clear()
     networkCache.clear()
     mapFleetCache.clear()
+    mapDepotCache.clear()
     mapEraCache.clear()
     calendarCache.clear()
     geometryCache.clear()
@@ -913,7 +1221,19 @@ function registerHandlers(): void {
    * Halteposities van een kaart. Het doorlezen van de tegels kost een fractie
    * van een seconde tot ruim een seconde, dus eenmaal per kaart.
    */
-  ipcMain.handle('map:geometry', (_event, folder: string): MapGeometry => mapGeometry(folder))
+  ipcMain.handle('map:geometry', (_event, folder: string): MapGeometry => {
+    /*
+     * Meetellen als voorgrondwerk: het voorwerk op de achtergrond wacht hierop.
+     * De teller gaat omlaag in dezelfde tik, want deze functie is van begin tot
+     * eind synchroon -- er zit geen await in waar iets tussen kan komen.
+     */
+    voorgrondBezig += 1
+    try {
+      return mapGeometry(folder)
+    } finally {
+      voorgrondBezig -= 1
+    }
+  })
 
   /**
    * De route van elke rit van een dienst, als lijn over de kaart. Eenmaal per
@@ -1003,6 +1323,32 @@ function registerHandlers(): void {
    */
   ipcMain.handle('omsi:live', () => Boolean(freshLive()?.alive))
 
+  /** Draait het spel al? Los van de plugin, die zich pas meldt met een bus. */
+  ipcMain.handle('omsi:running', () => isOmsiRunning())
+
+  /*
+   * Wat de bus op dit moment doorgeeft, voor het hoofdvenster.
+   *
+   * De overlay krijgt dit al als beeld toegestuurd, maar het hoofdvenster had
+   * alleen de sessiecijfers -- kilometers en vertraging over de hele dienst.
+   * Voor een dienstregeling die meeloopt is meer nodig: welke rit, welke halte,
+   * en hoeveel je voor of achter ligt op dit punt.
+   */
+  ipcMain.handle('live:status', () => {
+    const live = freshLive()
+    if (!live) return { status: undefined, vehicle: undefined }
+    const duty = currentDuty()
+    return {
+      status: describeLive(live, duty, baseline()),
+      /*
+       * En waar de bus op de kaart staat. De overlay krijgt dit al in zijn
+       * beeld; het hoofdvenster heeft het nodig om dezelfde navigatie te kunnen
+       * tekenen.
+       */
+      vehicle: vehicleOnMap(live, duty)
+    }
+  })
+
   /** Printers die Windows kent, met de standaardprinter vooraan. */
   ipcMain.handle('print:printers', async (event) => {
     const printers = await event.sender.getPrintersAsync()
@@ -1058,13 +1404,14 @@ function registerHandlers(): void {
         toleranceMinutes: tolerance,
         earliestStart: window.from,
         latestStart: window.to,
-        lineFile: request.lineFile
+        lineFile: request.lineFile,
+        lineFiles: request.lineFiles
       })
       if (duties.length > 0) break
     }
 
     return duties.map((duty) => {
-      const choice = pickVehicleForDuty(fleet(), duty, year, mapFleet)
+      const choice = pickVehicleForDuty(fleet(), duty, year, mapFleet, undefined, depotOf(request.mapFolder))
       return {
         duty,
         date: dutyDate(request.mapFolder, duty.days | duty.period),
@@ -1108,6 +1455,86 @@ function registerHandlers(): void {
     }
   )
 
+  /*
+   * De wagenparken van deze kaart naar de bussen die hem niet kennen.
+   *
+   * Twee handelingen, en met opzet gescheiden: eerst kijken, dan pas schrijven.
+   * Dit is de enige plek waar de app iets in de voertuigmappen van OMSI zet, dus
+   * daar moet de chauffeur ja tegen gezegd hebben.
+   */
+  ipcMain.handle('hof:offers', (_event, duty: Duty): HofOffer[] => {
+    const termini: string[] = [
+      ...new Set(duty.legs.map((leg: DutyLeg) => leg.terminus).filter(Boolean))
+    ]
+    if (termini.length === 0) return []
+    return planHofs(omsi(), termini)
+      .filter((bus) => bus.offer && bus.offer.matched > bus.known)
+      .map((bus) => ({
+        folder: bus.folder,
+        known: bus.known,
+        total: termini.length,
+        knownFile: bus.knownFile,
+        offerFile: bus.offer?.file,
+        offerMatched: bus.offer?.matched
+      }))
+      .sort((a, b) => (b.offerMatched ?? 0) - (a.offerMatched ?? 0))
+  })
+
+  ipcMain.handle(
+    'hof:offerFor',
+    (_event, duty: Duty, folder: string): HofOffer | undefined => {
+      const termini: string[] = [
+        ...new Set(duty.legs.map((leg: DutyLeg) => leg.terminus).filter(Boolean))
+      ]
+      if (termini.length === 0) return undefined
+      const bus = planHofs(omsi(), termini).find((item) => item.folder === folder)
+      if (!bus?.offer || bus.offer.matched <= bus.known) return undefined
+      return {
+        folder: bus.folder,
+        known: bus.known,
+        total: termini.length,
+        knownFile: bus.knownFile,
+        offerFile: bus.offer.file,
+        offerMatched: bus.offer.matched
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'hof:place',
+    (_event, duty: Duty, folders: string[]): { placed: number; failed: string[] } => {
+      const termini: string[] = [
+        ...new Set(duty.legs.map((leg: DutyLeg) => leg.terminus).filter(Boolean))
+      ]
+      const wanted = new Set(folders)
+      const plan = planHofs(omsi(), termini).filter(
+        (bus) => wanted.has(bus.folder) && bus.offer
+      )
+
+      const done = readPlacements(userData())
+      const failed: string[] = []
+      let placed = 0
+      for (const bus of plan) {
+        try {
+          const result = placeHof(omsi(), bus.folder, bus.offer!.source)
+          if (result) {
+            done.push(result)
+            placed++
+          }
+        } catch {
+          failed.push(bus.folder)
+        }
+      }
+      if (placed > 0) writePlacements(userData(), done)
+      /*
+       * Het wagenpark van een bus wordt bij het opbouwen van de vloot gelezen;
+       * met een nieuw bestand ernaast klopt die lijst niet meer.
+       */
+      if (placed > 0) fleetIndex = undefined
+      return { placed, failed }
+    }
+  )
+
   /** De lijnen van een kaart, om er een route mee te kiezen of een examen op te doen. */
   ipcMain.handle('map:lines', (_event, mapFolder: string): LineSummary[] =>
     listLines(map(mapFolder), network(mapFolder))
@@ -1120,7 +1547,14 @@ function registerHandlers(): void {
   ipcMain.handle('duty:exam', (_event, mapFolder: string, lineFile: string): Assignment | null => {
     const duty = examTrip(map(mapFolder), network(mapFolder), lineFile)
     if (!duty) return null
-    const choice = pickVehicleForDuty(fleet(), duty, era(mapFolder).year, fleetOf(mapFolder))
+    const choice = pickVehicleForDuty(
+      fleet(),
+      duty,
+      era(mapFolder).year,
+      fleetOf(mapFolder),
+      undefined,
+      depotOf(mapFolder)
+    )
     return {
       duty,
       date: dutyDate(mapFolder, duty.days | duty.period),
@@ -1182,7 +1616,6 @@ function registerHandlers(): void {
     const vehiclePath = request.vehiclePath
     const spawnStop = request.stopId ?? duty?.legs[0]?.stopIds[0]
     const spawn = vehiclePath ? spawnFor(request.mapFolder, spawnStop) : undefined
-    const trip = duty ? tripIndexInTour(duty) : undefined
 
     const result = writeSituation(omsi(), {
       mapFolder: request.mapFolder,
@@ -1198,18 +1631,18 @@ function registerHandlers(): void {
             relativePath: vehiclePath,
             lineNumber: duty?.lineNumbers[0] ?? '',
             terminus: duty?.legs[0]?.terminus ?? '',
-            yard: request.yard
+            yard: request.yard,
+            // Ook bij vrij rijden: een gelede bus is twee voertuigen.
+            trailer: trailerOf(omsi(), vehiclePath)
           }
         : undefined,
       spawn,
-      weather: request.weather,
-      timetable:
-        duty && trip !== undefined
-          ? { lineFile: duty.lineFile, tour: duty.tourNumber, trip }
-          : undefined
+      weather: request.weather
+      // Ook hier geen omloop vooraf; zie de uitleg hierboven.
     })
 
     const startup = presetStartup(omsi(), request.mapFolder, result.file)
+    klaargezet = { mapFolder: request.mapFolder, file: result.file }
     if (duty) openOverlay(duty)
 
     let launched = false
@@ -1316,11 +1749,27 @@ function registerHandlers(): void {
         // Lukt starten niet, dan doet de speler het zelf; de overlay staat klaar.
       }
     }
+    /*
+     * Vanaf hier houden we in de gaten of het spel weer dichtgaat. Doet het dat,
+     * dan heeft het onze `[last_map]` overschreven met de kaart die het speelde,
+     * en zetten we de situatie opnieuw klaar.
+     */
+    omsiDraaide = running || launched
     return { connected: Boolean(live?.alive), launched, running, prepared, prepareError }
   })
 
-  /** Wat er sinds het begin van de dienst gereden is, volgens de plugin. */
-  ipcMain.handle('duty:session', () => sessieGegevens())
+  /**
+   * Wat er sinds het begin van de dienst gereden is, volgens de plugin.
+   *
+   * Meteen ook het moment om te kijken of OMSI net is afgesloten. De interface
+   * vraagt dit elke vijf tellen zolang een dienst loopt, en dat is precies waar
+   * het startscherm rechtgezet moet worden: het spel schrijft `options.cfg` bij
+   * het afsluiten opnieuw en gooit onze kaartkeuze eruit.
+   */
+  ipcMain.handle('duty:session', () => {
+    void herstelStartscherm()
+    return sessieGegevens()
+  })
 
   /**
    * Open of dicht, zoals gevraagd, en niet omgekeerd: een knop die "wisselt"
@@ -1343,8 +1792,23 @@ function registerHandlers(): void {
 
   /** De pagina meldt of de muis boven een knop hangt. */
   ipcMain.handle('overlay:hit', (_event, on: boolean) => {
-    if (overlayEditing) return
+    if (overlayEditing || overlayGrabbing) return
     passMouseThrough(!on)
+  })
+
+  /*
+   * Vastpakken om te slepen of te schalen.
+   *
+   * Zolang dat duurt beslaat het venster het hele scherm en vangt het de muis,
+   * anders stopt het slepen bij de eigen rand. Daarna krimpt het weer om de
+   * inhoud heen -- elke punt die het venster beslaat moet Windows immers over
+   * het spel heen mengen.
+   */
+  ipcMain.handle('overlay:grab', (_event, on: boolean) => {
+    if (overlayEditing) return
+    overlayGrabbing = on
+    passMouseThrough(!on)
+    applyOverlayBounds()
   })
 
   ipcMain.handle('settings:read', () => readSettings(userData()))
@@ -1524,6 +1988,12 @@ if (!app.requestSingleInstanceLock()) {
     career = resolveActive(userData())
     registerHandlers()
     createWindow()
+
+    /*
+     * Pas als het venster er staat. Eerst het scherm, dan het voorwerk: wie de
+     * app opent wil hem zien, niet wachten tot twaalf kaarten zijn ingelezen.
+     */
+    setTimeout(() => void warmKaarten(), 6000)
 
     // Onder het rijden zit je niet met de muis in de app. Deze toets zet de
     // overlay in de bewerkstand en er weer uit; hij botst niet met OMSI, dat

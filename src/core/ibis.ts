@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { listHofs, matchHof, normalise, pickHof, type Route } from './hof'
 import type { Duty } from './types'
+import { shortRoute } from '../shared/format'
 
 /** Wat de chauffeur per rit in de IBIS zet. */
 export interface IbisLeg {
@@ -12,6 +13,19 @@ export interface IbisLeg {
    * route en volgt er vanzelf uit.
    */
   route?: string
+  /**
+   * Hetzelfde nummer zonder het lijnnummer ervoor: lijn 135 met route 13502
+   * wordt hier 02.
+   *
+   * Wagenparken schrijven hun routecodes met de lijn erin, en overal waar dit
+   * getal staat, staat het lijnnummer er al naast. Dan is driekwart van de
+   * code een herhaling van wat er links van staat, terwijl juist het staartje
+   * zegt welke kant je oprijdt.
+   *
+   * De volle code blijft in `route` staan -- daar rekent de rest mee, en wie
+   * hem ergens toch voluit nodig heeft kan erbij.
+   */
+  routeShort?: string
   /** Korte omschrijving van de route, zoals "URUH-NERV". */
   routeName?: string
   /** Bestemmingscode. Alleen ter controle van wat er op de film verschijnt. */
@@ -107,6 +121,7 @@ export function buildIbisPlan(
       lineNumber: leg.lineNumber,
       terminus: leg.terminus,
       route: route?.code,
+      routeShort: shortRoute(route?.code, leg.lineNumber),
       routeName: route?.name,
       code: terminus?.code,
       display: terminus?.display

@@ -6,6 +6,7 @@ import type { Assignment, DutyDate, PrinterInfo, YardOption } from '../../shared
 import { describeDays, formatDate, formatDuration, formatTime } from '../../shared/format'
 import { useLanguage, useT } from './language'
 import { DutyMap } from './DutyMap'
+import { RouteCode } from './RouteCode'
 
 interface Props {
   assignment: Assignment
@@ -130,7 +131,10 @@ export function DutyCard({
             </span>
             <span className="leg-line">{leg.lineNumber}</span>
             <span className="leg-code" title={tr('duty.routeNumber')}>
-              {ibis?.legs[index]?.route ?? '—'}
+              <RouteCode
+                route={ibis?.legs[index]?.route}
+                kort={ibis?.legs[index]?.routeShort}
+              />
             </span>
             <span className="leg-dest">
               <b>{leg.terminus}</b>
@@ -576,7 +580,9 @@ function IbisPanel({ ibis }: { ibis?: IbisPlan }): JSX.Element {
         </div>
         <div className="ibis-field">
           <span>{tr('ibis.routeAtStart')}</span>
-          <b>{first?.route ?? '—'}</b>
+          <b>
+            <RouteCode route={first?.route} kort={first?.routeShort} />
+          </b>
         </div>
       </div>
 
@@ -584,7 +590,9 @@ function IbisPanel({ ibis }: { ibis?: IbisPlan }): JSX.Element {
         <div className="ibis-codes">
           {unique.map((leg) => (
             <div className="ibis-code" key={leg.route}>
-              <b>{leg.route}</b>
+              <b>
+                <RouteCode route={leg.route} kort={leg.routeShort} />
+              </b>
               <span>
                 {leg.routeName || leg.terminus}
                 {leg.display ? ` · ${tr('ibis.film', { text: leg.display })}` : ''}

@@ -89,6 +89,17 @@ export interface Lane {
   direction: number
   /** Het spline- of objectbestand, om een haperend net te kunnen nazoeken. */
   source: string
+  /**
+   * Hoogte van het wegdek hier, in meters.
+   *
+   * Niet die van het maaiveld: een weg ligt zelden op de grond. Hij loopt over
+   * een talud, een dijk of een viaduct, en op een heuvelkaart scheelt dat
+   * meters. Wie een bus op de terreinhoogte neerzet, zet hem daar in de berm of
+   * in de grond.
+   *
+   * Leeg als het bestand er geen droeg; dan blijft alleen het terrein over.
+   */
+  height?: number
 }
 
 /** Een gewone OMSI-tegel is 300 meter in het vierkant. */
@@ -274,6 +285,7 @@ export function readMapData(
           if (paths.length === 0) continue
           const ox = num(lines[i + 4])
           const oy = num(lines[i + 5])
+          const oh = num(lines[i + 6])
           const rot = num(lines[i + 7])
           for (const path of paths) {
             const kind = path.type === PATH_ROAD ? 'road' : path.type === PATH_RAIL ? 'rail' : undefined
@@ -282,7 +294,15 @@ export function readMapData(
             if (points.length < 4) continue
             shift(points)
             roads.push({ kind, points, w: path.width > 0 ? path.width : undefined })
-            if (kind === 'road') lanes.push({ points, direction: path.direction, source })
+            if (kind === 'road') {
+              /*
+               * De baan ligt op de hoogte van het object plus zijn eigen
+               * hoogte binnen dat object -- een oprit van een viaduct ligt
+               * hoger dan de voet ervan.
+               */
+              const hoogte = Number.isFinite(oh) ? oh + (path.height ?? 0) : undefined
+              lanes.push({ points, direction: path.direction, source, height: hoogte })
+            }
           }
           continue
         }
@@ -355,7 +375,7 @@ export function readMapData(
           drawn.set(key, points)
           roads.push({ kind: 'road', points, w: path.width > 0 ? path.width : undefined })
         }
-        lanes.push({ points, direction: lane.direction, source })
+        lanes.push({ points, direction: lane.direction, source, height: shape.height })
       }
     }
   }

@@ -6,6 +6,7 @@ import type { Duty } from '../../core/types'
 import { formatTime } from '../../shared/format'
 import { useT } from './language'
 import { RouteMap } from './RouteMap'
+import { RouteCode } from './RouteCode'
 
 interface Props {
   duty: Duty
@@ -202,7 +203,9 @@ function RouteWindow({
                   </div>
                   <div className="ibis-field">
                     <span>{tr('map.legRoute', { route: '' }).trim()}</span>
-                    <b>{firstRoute.route}</b>
+                    <b>
+                      <RouteCode route={firstRoute.route} kort={firstRoute.routeShort} />
+                    </b>
                   </div>
                 </div>
               )}

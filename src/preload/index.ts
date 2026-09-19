@@ -35,6 +35,7 @@ const api: CareerApi = {
   closeOverlay: () => ipcRenderer.invoke('overlay:close'),
   editOverlay: (on) => ipcRenderer.invoke('overlay:edit', on),
   overlayHit: (on) => ipcRenderer.invoke('overlay:hit', on),
+  overlayGrab: (on) => ipcRenderer.invoke('overlay:grab', on),
   overlayBounds: (box) => ipcRenderer.invoke('overlay:bounds', box),
   overlayLayout: () => ipcRenderer.invoke('overlay:layout'),
   saveOverlayLayout: (layout) => ipcRenderer.invoke('overlay:layout:save', layout),
@@ -44,6 +45,8 @@ const api: CareerApi = {
   cancelDuty: () => ipcRenderer.invoke('duty:cancel'),
   beginDuty: (request) => ipcRenderer.invoke('duty:begin', request),
   liveConnected: () => ipcRenderer.invoke('omsi:live'),
+  liveStatus: () => ipcRenderer.invoke('live:status'),
+  omsiRunning: () => ipcRenderer.invoke('omsi:running'),
   gameSettings: () => ipcRenderer.invoke('game:settings'),
   saveGameSettings: (changes) => ipcRenderer.invoke('game:settings:save', changes),
   gameKeys: () => ipcRenderer.invoke('game:keys'),
@@ -61,7 +64,13 @@ const api: CareerApi = {
   checkSession: () => ipcRenderer.invoke('duty:session'),
   completeDuty: (duty, vehicle, measured) =>
     ipcRenderer.invoke('career:complete', duty, vehicle, measured),
-  renameDriver: (name) => ipcRenderer.invoke('career:rename', name)
+  renameDriver: (name) => ipcRenderer.invoke('career:rename', name),
+  omsiState: () => ipcRenderer.invoke('omsi:state'),
+  confirmOmsi: (path) => ipcRenderer.invoke('omsi:confirm', path),
+  browseOmsi: () => ipcRenderer.invoke('omsi:browse'),
+  hofOffers: (duty) => ipcRenderer.invoke('hof:offers', duty),
+  hofOfferFor: (duty, folder) => ipcRenderer.invoke('hof:offerFor', duty, folder),
+  placeHofs: (duty, folders) => ipcRenderer.invoke('hof:place', duty, folders)
 }
 
 contextBridge.exposeInMainWorld('career', api)

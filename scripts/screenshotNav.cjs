@@ -21,6 +21,12 @@ const { join } = require('node:path')
 const args = process.argv.slice(process.argv.findIndex((arg) => arg.endsWith('screenshotNav.cjs')) + 1)
 const mapFolder = args[0] || 'Grundorf'
 const outputDir = args[1] || __dirname
+/*
+ * Met --app=dienst (of pauze, rit) wordt na het laatste beeld ook die app
+ * aangeklikt en vastgelegd; zo zijn de schermen van het toestel te zien zonder
+ * OMSI te starten.
+ */
+const appVlag = (args.find((a) => a.startsWith('--app=')) || '').slice('--app='.length)
 
 app.setPath('userData', mkdtempSync(join(tmpdir(), 'omsi-career-nav-')))
 setTimeout(() => {
@@ -39,12 +45,17 @@ async function waitFor(window, expression, tries = 120) {
   return false
 }
 
-function status(duty, legIndex, { ibis, stopIndex, odometerKm, speedKmh = 32 }) {
+function status(duty, legIndex, { ibis, stopIndex, odometerKm, speedKmh = 32, klokPlus = 0 }) {
   const leg = duty.legs[legIndex]
   return {
-    clockMinutes: leg.departure + 2,
+    clockMinutes: leg.departure + 2 + klokPlus,
     speedKmh,
     passengers: 7,
+    // Tank, kaartjes en aanrijdingen, zodat de tegels ook in de proef kloppen.
+    fuel: 0.62,
+    tickets: 41,
+    collisions: 0,
+    worstCollision: 0,
     entryRequest: false,
     exitRequest: false,
     doorsOpen: false,
@@ -201,6 +212,52 @@ app.whenReady().then(async () => {
       `${step.name}: routelijnen ${await routeLines()}, route op ${await routeAt()}, ` +
         `bus ${await busOnScreen()}, schaal ${await scale()}, melding "${await note()}" -> ${file}`
     )
+  }
+
+  if (appVlag) {
+    const gelukt = await js(
+      overlay,
+      `(() => {
+        const knoppen = [...document.querySelectorAll('.dock-knop')];
+        const index = { kaart: 0, dienst: 1, pauze: 2, rit: 3 }[${JSON.stringify(appVlag)}];
+        const knop = knoppen[index];
+        if (knop) knop.click();
+        return Boolean(knop);
+      })()`
+    )
+    await wait(600)
+    if (gelukt) {
+      const pad = join(outputDir, `${mapFolder}-app-${appVlag}.png`)
+      writeFileSync(pad, (await overlay.capturePage()).toPNG())
+      console.log(`app ${appVlag}: ${pad}`)
+
+      /*
+       * De pauze in zijn tweede en derde stand: net begonnen loopt de ring vol,
+       * en over de tijd heen slaat hij om. Zonder de klok vooruit te zetten is
+       * daar niets van te zien, want de teller loopt op speltijd.
+       */
+      if (appVlag === 'pauze') {
+        await js(
+          overlay,
+          `(() => { const b = document.querySelector('.app-knop.primair'); if (b) b.click(); return Boolean(b) })()`
+        )
+        for (const [naam, minuten] of [
+          ['pauze-loopt', 4],
+          ['pauze-over', 30]
+        ]) {
+          for (let i = 0; i < 4; i++) {
+            send({ status: status(duty, 0, { ibis: true, stopIndex: 1, odometerKm: km, klokPlus: minuten }) })
+            await wait(200)
+          }
+          await wait(900)
+          const tweede = join(outputDir, `${mapFolder}-app-${naam}.png`)
+          writeFileSync(tweede, (await overlay.capturePage()).toPNG())
+          console.log(`app ${naam}: ${tweede}`)
+        }
+      }
+    } else {
+      console.log(`app ${appVlag}: geen balkje gevonden`)
+    }
   }
 
   app.exit(0)

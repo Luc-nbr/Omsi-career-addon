@@ -36,6 +36,14 @@ enum {
    */
   SYS_PRECIP_RATE,
   SYS_PRECIP_TYPE,
+  /*
+   * Hierachter staat wat niet zeker is. Het wegschrijven hangt aan
+   * SYS_PRECIP_TYPE en niet aan de laatste index: bestaat een naam hieronder
+   * niet, dan roept OMSI hem nooit aan, en met de laatste index als sein zou de
+   * plugin dan niets meer schrijven.
+   */
+  SYS_COLL_ENERGY,
+  SYS_TEMPERATURE,
   SYS_COUNT
 };
 
@@ -71,6 +79,8 @@ enum {
   VAR_BRAKELIGHT,
   VAR_ENGINE_ON,
   VAR_BUSSTOP_INDEX,
+  /* Alleen elektrische bussen; een deel van 0 tot 1, geen percentage. */
+  VAR_BATTERY,
   VAR_COUNT
 };
 
@@ -113,6 +123,15 @@ enum {
 /* Onder deze snelheid niet meten: stilstaand gerammel is geen rijgedrag. */
 #define MIN_SPEED_KMH 5.0
 
+/*
+ * Wanneer een klap een aanrijding is.
+ *
+ * Niet zelf bedacht: de busscripts van OMSI gebruiken dezelfde grens. In
+ * collision.osc staat `(L.S.coll_energy) 10 >` voordat er schade wordt
+ * geboekt. Alles daaronder is een stoeprand of een paaltje.
+ */
+#define COLLISION_ENERGY 10.0
+
 /* Kortere sprongen dan dit zijn ruis of een gepauzeerd spel. */
 #define MIN_STEP_S 0.01
 #define MAX_STEP_S 0.5
@@ -123,6 +142,13 @@ enum {
 static float g_sys[SYS_COUNT];
 static float g_var[VAR_COUNT];
 static unsigned int g_seen; /* bit per varindex die OMSI werkelijk aanriep */
+/*
+ * Idem voor de systeemvariabelen. Die waren altijd aanwezig zolang we er alleen
+ * tijd en weer uit haalden; sinds er namen achteraan staan die niet elke
+ * OMSI-versie hoeft te kennen, moet de app "nul" kunnen onderscheiden van "niet
+ * doorgegeven".
+ */
+static unsigned int g_seenSys;
 static unsigned int g_seenStr; /* idem voor de stringvariabelen */
 static char g_str[STR_COUNT][STR_MAX * 3]; /* al als UTF-8 */
 /* 0 = niets gezien, 1 = bytes (ANSI), 2 = twee bytes per teken (UTF-16). */
@@ -196,6 +222,16 @@ static double g_maxAccel;
 static double g_topSpeed;       /* km/h */
 static int g_harshBrakes;
 static int g_harshAccels;
+/*
+ * Aanrijdingen. `coll_energy` is de klap van dit ene beeld en niet een
+ * optelsom, dus we tellen hier zelf op. Een aanrijding duurt meer dan een
+ * beeld, vandaar dezelfde aanpak als bij hard remmen: hij telt een keer, en pas
+ * als de klap weer voorbij is kan er een volgende komen.
+ */
+static int g_collisions;
+static double g_collisionEnergy; /* alles bij elkaar */
+static double g_worstCollision;  /* de hardste klap */
+static int g_collisionHeld;
 /* Lopende gebeurtenis: hoe lang staan we al boven de drempel, en is hij geteld? */
 static double g_brakeHeld;
 static double g_accelHeld;
@@ -458,6 +494,29 @@ static void track_driving(double speedKmh) {
   }
 }
 
+/*
+ * Een aanrijding boeken.
+ *
+ * Wordt aangeroepen zodra OMSI de klap van dit beeld doorgeeft. Boven de grens
+ * begint een aanrijding en telt hij een keer; pas als de waarde weer op nul
+ * staat kan er een volgende komen. Zonder dat zou een bus die tegen een muur
+ * blijft duwen honderd aanrijdingen per seconde opleveren.
+ */
+static void track_collision(double energy) {
+  if (energy < 0) energy = 0;
+  g_collisionEnergy += energy;
+  if (energy > g_worstCollision) g_worstCollision = energy;
+
+  if (energy >= COLLISION_ENERGY) {
+    if (!g_collisionHeld) {
+      g_collisions++;
+      g_collisionHeld = 1;
+    }
+  } else if (energy <= 0) {
+    g_collisionHeld = 0;
+  }
+}
+
 /* Schrijft de verzamelde waarden weg, via een tijdelijk bestand zodat de lezer
  * nooit een half bestand ziet. */
 static void flush_state(int alive) {
@@ -478,7 +537,7 @@ static void flush_state(int alive) {
 
   int length = _snprintf_s(
       body, sizeof(body), _TRUNCATE,
-      "{\"alive\":%s,\"seen\":%u,\"seenStr\":%u,\"strKind\":%d,"
+      "{\"alive\":%s,\"seen\":%u,\"seenSys\":%u,\"seenStr\":%u,\"strKind\":%d,"
       "\"time\":%.3f,\"day\":%.0f,\"month\":%.0f,\"year\":%.0f,"
       "\"velocity\":%.2f,\"passengers\":%.0f,\"scheduleActive\":%.0f,"
       "\"targetIndex\":%.0f,\"tankPercent\":%.3f,\"km\":%.0f,\"metres\":%.1f,"
@@ -489,9 +548,11 @@ static void flush_state(int alive) {
       "\"brakeLight\":%.0f,\"engineOn\":%.0f,\"busstopIndex\":%.0f,"
       "\"maxBrake\":%.2f,\"maxAccel\":%.2f,\"topSpeed\":%.1f,"
       "\"harshBrakes\":%d,\"harshAccels\":%d,"
+      "\"battery\":%.4f,\"temperature\":%.1f,"
+      "\"collisions\":%d,\"collisionEnergy\":%.1f,\"worstCollision\":%.1f,"
       "\"busstop\":\"%s\",\"delayMin\":\"%s\",\"delaySec\":\"%s\","
       "\"line\":\"%s\",\"terminus\":\"%s\",\"matrix\":\"%s\"%s",
-      alive ? "true" : "false", g_seen, g_seenStr, g_strKind,
+      alive ? "true" : "false", g_seen, g_seenSys, g_seenStr, g_strKind,
       g_sys[SYS_TIME], g_sys[SYS_DAY], g_sys[SYS_MONTH], g_sys[SYS_YEAR],
       g_var[VAR_VELOCITY], g_var[VAR_HUMANS], g_var[VAR_SCHEDULE_ACTIVE],
       g_var[VAR_TARGET_INDEX], g_var[VAR_TANK], g_var[VAR_KM], g_var[VAR_M],
@@ -502,6 +563,8 @@ static void flush_state(int alive) {
       g_var[VAR_BLINKER_R], g_var[VAR_BRAKELIGHT], g_var[VAR_ENGINE_ON],
       g_var[VAR_BUSSTOP_INDEX],
       g_maxBrake, g_maxAccel, g_topSpeed, g_harshBrakes, g_harshAccels,
+      g_var[VAR_BATTERY], g_sys[SYS_TEMPERATURE],
+      g_collisions, g_collisionEnergy, g_worstCollision,
       g_str[STR_BUSSTOP], g_str[STR_DELAY_MIN], g_str[STR_DELAY_SEC],
       g_str[STR_LINE], g_str[STR_TERMINUS], g_str[STR_MATRIX], mem);
   if (length <= 0) return;
@@ -548,6 +611,10 @@ __declspec(dllexport) void __stdcall PluginStart(void *owner) {
   g_accel = 0;
   g_maxBrake = g_maxAccel = g_topSpeed = 0;
   g_harshBrakes = g_harshAccels = 0;
+  g_seenSys = 0;
+  g_collisions = 0;
+  g_collisionEnergy = g_worstCollision = 0;
+  g_collisionHeld = 0;
   g_brakeHeld = g_accelHeld = 0;
   g_brakeCounted = g_accelCounted = 0;
   QueryPerformanceFrequency(&g_freq);
@@ -573,8 +640,16 @@ __declspec(dllexport) void __stdcall AccessSystemVariable(unsigned short index,
   (void)write;
   if (!value || index >= SYS_COUNT) return;
   g_sys[index] = *value;
-  /* Systeemvariabelen bestaan altijd, dus hier is wegschrijven gegarandeerd. */
-  if (index == SYS_COUNT - 1) maybe_flush();
+  g_seenSys |= (1u << index);
+
+  if (index == SYS_COLL_ENERGY) track_collision((double)*value);
+
+  /*
+   * Wegschrijven na de laatste naam waarvan zeker is dat OMSI hem kent. De
+   * namen daarachter komen er misschien niet; met `SYS_COUNT - 1` als sein zou
+   * de plugin dan zwijgen.
+   */
+  if (index == SYS_PRECIP_TYPE) maybe_flush();
 }
 
 __declspec(dllexport) void __stdcall AccessVariable(unsigned short index,

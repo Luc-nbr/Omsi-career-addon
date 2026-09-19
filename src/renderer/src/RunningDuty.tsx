@@ -6,6 +6,7 @@ import { formatTime } from '../../shared/format'
 import { punctuality } from '../../shared/status'
 import { RouteViewer } from './DutyMap'
 import { useT } from './language'
+import { RouteCode } from './RouteCode'
 
 interface Props {
   duty: Duty
@@ -94,7 +95,9 @@ export function RunningDuty({
         </div>
         <div className="ibis-field">
           <span>{tr('run.route')}</span>
-          <b>{entry?.route ?? '—'}</b>
+          <b>
+            <RouteCode route={entry?.route} kort={entry?.routeShort} />
+          </b>
         </div>
         <div className="ibis-field">
           <span>{tr('run.departs')}</span>
