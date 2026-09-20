@@ -2406,6 +2406,18 @@ const TEXT = {
     fr: 'Ajouter un fichier de dépôt',
     nl: 'Wagenpark toevoegen'
   },
+  'setup.yardAddHave': {
+    en: 'This bus already has {file}, the depot file of this map',
+    de: 'Dieser Bus hat {file} schon — die Hofdatei dieser Karte',
+    fr: 'Ce bus a déjà {file}, le fichier de dépôt de cette carte',
+    nl: 'Deze bus heeft {file} al: het wagenpark van deze kaart'
+  },
+  'setup.yardAddOther': {
+    en: '{file} · knows {matched} here, but its layout differs from this bus',
+    de: '{file} · kennt hier {matched}, die Feldaufteilung passt aber nicht zu diesem Bus',
+    fr: '{file} · en connaît {matched} ici, mais sa disposition diffère de ce bus',
+    nl: '{file} · kent er hier {matched}, maar de indeling wijkt af van deze bus'
+  },
   'setup.yardAddNone': {
     en: 'No yard file on this installation covers these destinations',
     de: 'Keine Hofdatei auf diesem Rechner kennt diese Ziele',

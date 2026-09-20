@@ -1666,14 +1666,25 @@ function registerHandlers(): void {
   const kandidaatVoor = async (
     duty: Duty,
     folder: string
-  ): Promise<{ path: string; file: string; matched: number; known: number; total: number } | undefined> => {
+  ): Promise<
+    | {
+        path: string
+        file: string
+        matched: number
+        known: number
+        total: number
+        past: boolean
+        alAanwezig?: boolean
+      }
+    | undefined
+  > => {
     const termini = [...new Set(duty.legs.map((leg: DutyLeg) => leg.terminus).filter(Boolean))]
     if (termini.length === 0) return undefined
     try {
       return await werkerVraag({ soort: 'hofkandidaat', termini, busmap: folder })
     } catch (fout) {
       logFout('wagenparkkandidaat via de werker', fout)
-      return laag().wagenparkKandidaat(termini, folder)
+      return laag().wagenparkKandidaat(termini, folder, duty.mapFolder)
     }
   }
 

@@ -97,8 +97,19 @@ export interface Kaartlaag {
    */
   wagenparkKandidaat(
     termini: string[],
-    busmap: string
-  ): { path: string; file: string; matched: number; known: number; total: number } | undefined
+    busmap: string,
+    kaartFolder?: string
+  ):
+    | {
+        path: string
+        file: string
+        matched: number
+        known: number
+        total: number
+        past: boolean
+        alAanwezig?: boolean
+      }
+    | undefined
   /** Alle .hof-bestanden die er liggen; komt van schijf zolang Vehicles niet wijzigt. */
   wagenparkBestanden(): HofFile[]
   diensten(request: DutyRequest): Assignment[]
@@ -425,10 +436,20 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
      * busmenu een andere bus aanwees. Nu komt het uit hetzelfde plan als de
      * lijst hierboven.
      */
-    wagenparkKandidaat(termini, busmap) {
+    wagenparkKandidaat(termini, busmap, kaartFolder) {
       const schoon = [...new Set(termini.filter(Boolean))]
       if (schoon.length === 0) return undefined
-      return besteKandidaat(omsiPath, schoon, busmap, laag.wagenparkBestanden())
+      /*
+       * De bestemmingen van de hele kaart bepalen welk bestand van déze kaart
+       * is; die van de dienst bepalen daarna wat er voor jou te halen valt.
+       */
+      let kaartTermini: string[] = []
+      try {
+        if (kaartFolder) kaartTermini = laag.eindbestemmingen(kaartFolder)
+      } catch {
+        kaartTermini = []
+      }
+      return besteKandidaat(omsiPath, schoon, busmap, laag.wagenparkBestanden(), kaartTermini)
     },
 
     hofAanbodVoorRit(termini, busmap) {

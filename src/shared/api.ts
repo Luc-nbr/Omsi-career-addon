@@ -528,7 +528,18 @@ export interface CareerApi {
   hofCandidate(
     duty: Duty,
     folder: string
-  ): Promise<{ path: string; file: string; matched: number; known: number; total: number } | undefined>
+  ): Promise<
+    | {
+        path: string
+        file: string
+        matched: number
+        known: number
+        total: number
+        past: boolean
+        alAanwezig?: boolean
+      }
+    | undefined
+  >
   /** En dat bestand er werkelijk neerleggen. */
   placeHofCandidate(duty: Duty, folder: string): Promise<{ placed: number; file?: string }>
   /**

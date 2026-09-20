@@ -400,6 +400,12 @@ app.whenReady().then(async () => {
        })()`
     )
     console.log(`   remise: ${stand}`)
+    /* En de knop in de knoppenrij, die op elk busscherm hoort te staan. */
+    const knoppen = await js(
+      main,
+      `JSON.stringify([...document.querySelectorAll('.tweedeknop')].map((b) => b.textContent.trim()))`
+    )
+    console.log(`   knoppenrij: ${knoppen}`)
     await shoot('remise')
   }
 

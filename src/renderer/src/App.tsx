@@ -282,6 +282,10 @@ export function App(): JSX.Element {
     matched: number
     known: number
     total: number
+    /** Past de veldindeling bij deze bus? Zo niet, dan zegt het scherm dat erbij. */
+    past: boolean
+    /** Het wagenpark van deze kaart ligt er al; dan valt er niets te halen. */
+    alAanwezig?: boolean
   }>()
   /*
    * Of de vraag over de aanbevolen bus al gesteld is voor deze dienst.
@@ -1809,12 +1813,50 @@ export function App(): JSX.Element {
       busGevraagd !== busSleutel
 
     /* Wat elke tegelweergave op de busstap gemeen heeft. */
+    /*
+     * Een wagenpark bij deze bus leggen -- vanaf elk busscherm.
+     *
+     * Dit zat eerst alleen als tegel op de remise, drie schermen diep, en
+     * daar vond Luc hem niet: "de hof knop is nogsteeds niet zichtbaar". Een
+     * handeling die je zoekt hoort in de knoppenrij te staan, waar hij op elk
+     * scherm van de busstap zichtbaar is. Is er een dienst, dan gaat het om de
+     * bestemmingen van die dienst; anders om die van de kaart.
+     */
+    const plaatsWagenpark = (): void => {
+      if (hofBezig || !vehicle) return
+      setHofBezig(true)
+      const gedaan = duty
+        ? window.career.placeHofCandidate(duty, vehicle.folder)
+        : window.career
+            .placeHofs(mapFolder, [vehicle.folder])
+            .then((uit) => ({ placed: uit.placed, file: undefined as string | undefined }))
+      void gedaan
+        .then((uitkomst) => {
+          setNote(
+            uitkomst.placed > 0
+              ? uitkomst.file
+                ? t(language, 'setup.yardAdded', { file: uitkomst.file })
+                : t(language, 'setup.hofDone', { count: uitkomst.placed })
+              : t(language, 'setup.yardAddNone')
+          )
+          setHofTeller((n) => n + 1)
+        })
+        .finally(() => setHofBezig(false))
+    }
+
     const leegBus = {
       koppen: ['', '', ''] as [string, string, string],
       rijen: [] as Rij[],
       index: 0,
       kies: () => {},
       voet: '',
+      /* Zie `plaatsWagenpark`: op elk busscherm bereikbaar, niet alleen op de remise. */
+      tweede: vehicle
+        ? {
+            tekst: hofBezig ? t(language, 'setup.hofBusy') : t(language, 'setup.yardAdd'),
+            onDoen: plaatsWagenpark
+          }
+        : undefined,
       /*
        * Waar START op uitkomt hangt af van de modus. Dienst en carriere nemen
        * de dienst aan en beginnen hem; vrij rijden heeft geen dienst om aan te
@@ -2357,8 +2399,10 @@ export function App(): JSX.Element {
                               })
                             : t(language, 'setup.yardAddNone'),
                       icoon: 'hof' as const,
-                      uit:
-                        ritKandidaat || busHofAanbod
+                      /* Al aanwezig of niets gevonden: dan is er niets te doen. */
+                      uit: ritKandidaat?.alAanwezig
+                        ? t(language, 'setup.yardAddHave', { file: ritKandidaat.file })
+                        : ritKandidaat || busHofAanbod
                           ? undefined
                           : t(language, 'setup.yardAddNone'),
                       onDoen: () => {

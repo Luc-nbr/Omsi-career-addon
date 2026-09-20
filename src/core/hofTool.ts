@@ -368,8 +368,33 @@ export function besteKandidaat(
   omsiPath: string,
   termini: string[],
   folder: string,
-  hofs = scanHofs(omsiPath)
-): { path: string; file: string; matched: number; known: number; total: number } | undefined {
+  hofs = scanHofs(omsiPath),
+  /**
+   * Alle eindbestemmingen van de kaart waarop gereden wordt.
+   *
+   * Dit bepaalt de volgorde, en niet de twee bestemmingen van de dienst. Luc:
+   * "de hof file is gelinkt aan de map die de gebruiker kiest, dus als iemand
+   * hamburg linie 20 kiest moet dat de hoffile zijn die gekopieerd wordt".
+   *
+   * Een wagenpark draagt nergens de naam van zijn kaart, dus dat moet uit de
+   * inhoud komen: het bestand dat de meeste bestemmingen van déze kaart kent,
+   * is het bestand van deze kaart. Op Hamburg109 kennen
+   * `1_HC_HamburgHafenCity.hof` en `1_HH109_HHA.hof` allebei de twee
+   * bestemmingen van de dienst; over de hele kaart gerekend lopen ze uiteen.
+   */
+  kaartTermini: string[] = []
+):
+  | {
+      path: string
+      file: string
+      matched: number
+      known: number
+      total: number
+      past: boolean
+      /** Het wagenpark van deze kaart ligt al naast deze bus; er valt niets te halen. */
+      alAanwezig?: boolean
+    }
+  | undefined {
   const wanted = new Set(termini.map(normalise).filter(Boolean))
   if (wanted.size === 0) return undefined
 
@@ -378,23 +403,80 @@ export function besteKandidaat(
   let known = 0
   for (const entry of eigen) known = Math.max(known, coverage(entry.hof, wanted))
 
-  const beste = hofs
-    .map((entry) => ({ entry, matched: coverage(entry.hof, wanted) }))
-    .filter((item) => item.matched > 0)
-    .sort((a, b) => b.matched - a.matched)
-    .find(
+  const opKaart = new Set(kaartTermini.map(normalise).filter(Boolean))
+  const bruikbaar = hofs
+    .map((entry) => ({
+      entry,
+      matched: coverage(entry.hof, wanted),
+      kaart: opKaart.size > 0 ? coverage(entry.hof, opKaart) : 0
+    }))
+    .filter(
       (item) =>
+        item.matched > 0 &&
         item.entry.owner !== folder &&
-        schemaFits(schemas, item.entry.schema) &&
         !eigen.some((mijn) => mijn.file.toLowerCase() === item.entry.file.toLowerCase())
     )
+    .sort(
+      (a, b) =>
+        b.kaart - a.kaart ||
+        b.matched - a.matched ||
+        a.entry.file.localeCompare(b.entry.file)
+    )
+
+  /*
+   * De indeling is een voorkeur, geen veto.
+   *
+   * `schemaFits` vergelijkt de veldindeling van het wagenpark met wat deze bus
+   * al draagt. Dat is een goede volgorde -- een bestand dat past levert een
+   * matrixbord dat klopt -- maar als vergrendeling is het te streng: op
+   * Hamburg109 met een MAN SL SG kenden 48 bestanden allebei de bestemmingen
+   * van de dienst, en alle 48 vielen af op de indeling. De speler stond dan
+   * voor een knop die zei dat er niets te halen viel, terwijl het bestand er
+   * gewoon lag.
+   *
+   * Dus: eerst een dat past, en anders het beste dat er is, met `past: false`
+   * erbij zodat het scherm kan zeggen dat de indeling afwijkt. Overschreven
+   * wordt er nooit iets, en de remise kiest de speler in OMSI zelf.
+   */
+  /*
+   * Heeft deze bus het wagenpark van déze kaart al?
+   *
+   * Dan valt er niets te halen, en hoort het scherm dat te zeggen in plaats van
+   * het bestand van de buurkaart aan te bieden. Op Hamburg Linie 20 met een bus
+   * die `1_HH20_2022.hof` al draagt, stond er anders "1_HC_2017.hof" -- het
+   * bestand van HafenCity, een andere kaart.
+   */
+  if (opKaart.size > 0) {
+    const vanDeKaart = hofs
+      .map((entry) => ({ entry, kaart: coverage(entry.hof, opKaart) }))
+      .filter((item) => item.kaart > 0)
+      .sort((a, b) => b.kaart - a.kaart)[0]
+    if (
+      vanDeKaart &&
+      eigen.some((mijn) => mijn.file.toLowerCase() === vanDeKaart.entry.file.toLowerCase())
+    ) {
+      return {
+        path: vanDeKaart.entry.path,
+        file: vanDeKaart.entry.file,
+        matched: coverage(vanDeKaart.entry.hof, wanted),
+        known,
+        total: wanted.size,
+        past: true,
+        alAanwezig: true
+      }
+    }
+  }
+
+  const passend = bruikbaar.find((item) => schemaFits(schemas, item.entry.schema))
+  const beste = passend ?? bruikbaar[0]
   if (!beste) return undefined
   return {
     path: beste.entry.path,
     file: beste.entry.file,
     matched: beste.matched,
     known,
-    total: wanted.size
+    total: wanted.size,
+    past: Boolean(passend)
   }
 }
 
