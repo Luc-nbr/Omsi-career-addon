@@ -426,6 +426,30 @@ bottom edge it left half a screen of nothing under the buttons, which reads as
 unfinished. Below 900px wide or 700px tall the tiles lose their minimum height
 and their description clamps to two lines, so all three stay in one view.
 
+### First run (signature)
+Three cards, one question each, in this order: language, driver, where OMSI
+lives. They share the welcome card -- centred, no step bar, nothing else to do
+but answer. The language screen carries no heading in any one language, because
+the visitor has not chosen one yet: four tiles with a 60px flag and the
+language's own name, two by two (four across below 640px tall). The driver
+screen is the same card with one field. Only then does the app ask for the OMSI
+folder, and only then does it read the maps.
+
+The driver step keeps that shape later on: drivers are tiles with their
+initials, name and what they have driven, not rows in a table -- a driver is a
+person, not a record.
+
+### Step transition (signature)
+Pressing the main button drops a full-screen window in the ground colour over
+everything, drives a route-blue bus across it from left to right, and lifts it
+again: 900ms in total, the bus taking 700 of them. It covers rather than
+overlays, so you never see one step half-through the other, and it swallows
+clicks while it stands. Motion-reduced settings skip it entirely.
+
+Hover is the small version of the same idea: two pixels up and a lit border on
+any tile, with a map photo scaling 3% inside its own tile. Enough to say "this
+is a button", not enough to make the row below it dance.
+
 ### Map tiles (signature)
 The map step can be read two ways, and the user picks with a two-button switch
 above the list: rows (name, tours, era) or tiles carrying the picture OMSI ships

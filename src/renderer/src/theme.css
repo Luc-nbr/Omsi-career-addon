@@ -23,6 +23,8 @@
 
 .setup,
 .hub,
+/* Het overgangsvenster staat buiten het vel en heeft dezelfde kleuren nodig. */
+.busvenster,
 .overlay-body {
   /* Vast in beide standen. */
   --route: #2a75f7;
@@ -108,6 +110,7 @@
  * altijd donker, en dat is geen instelling maar wat hij is.
  */
 :root[data-thema='licht'] .setup,
+:root[data-thema='licht'] .busvenster,
 :root[data-thema='licht'] .hub {
   --grond: #eef1f5;
   --op-grond: #0e1117;
@@ -137,6 +140,7 @@
  */
 @media (prefers-color-scheme: light) {
   :root:not([data-thema]) .setup,
+  :root:not([data-thema]) .busvenster,
   :root:not([data-thema]) .hub {
     --grond: #eef1f5;
     --op-grond: #0e1117;

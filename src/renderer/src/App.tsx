@@ -42,6 +42,9 @@ import { StartingDialog } from './StartingDialog'
 import { LiveDienst } from './LiveDienst'
 import { HofDialog } from './HofDialog'
 import { BusDialog } from './BusDialog'
+import { Busrit } from './Busrit'
+import { Chauffeurstart } from './Chauffeurstart'
+import { Taalkeuze } from './Taalkeuze'
 import { Welkom } from './Welkom'
 import { Klaarzetten } from './Klaarzetten'
 import { Starthub } from './Starthub'
@@ -334,14 +337,29 @@ export function App(): JSX.Element {
    * Hoort net als de taal bij deze computer en niet bij de chauffeur, en blijft
    * staan: wie de tegels wil, wil ze morgen weer.
    */
-  const [kaartweergave, setKaartweergave] = useState<'lijst' | 'tegels'>('lijst')
+  const [kaartweergave, setKaartweergave] = useState<'lijst' | 'tegels'>('tegels')
+
+  /*
+   * De taalkeuze van de allereerste start; `undefined` zolang we het niet
+   * weten, want dan hoort er nog niets in beeld te komen.
+   */
+  const [taalGekozen, setTaalGekozen] = useState<boolean>()
+
+  /*
+   * De bus die oversteekt bij Verder. Een teller en geen `true`: twee keer
+   * drukken hoort een tweede bus te laten vertrekken, en met een nieuwe sleutel
+   * begint de animatie werkelijk opnieuw.
+   */
+  const [busrit, setBusrit] = useState(0)
+
 
   // De taalkeuze staat los van de chauffeur; hij hoort bij deze computer.
   useEffect(() => {
     void window.career.settings().then((settings) => {
       setLanguage(settings.language)
       setThema(settings.theme ?? 'systeem')
-      setKaartweergave(settings.mapView ?? 'lijst')
+      setKaartweergave(settings.mapView ?? 'tegels')
+      setTaalGekozen(settings.languageChosen === true)
     })
   }, [])
 
@@ -349,6 +367,7 @@ export function App(): JSX.Element {
     setKaartweergave(next)
     void window.career.saveSettings({ mapView: next })
   }, [])
+
 
   useEffect(() => {
     if (thema === 'systeem') delete document.documentElement.dataset.thema
@@ -379,6 +398,14 @@ export function App(): JSX.Element {
          */
         const staat = await window.career.omsiState()
         setOmsi(staat)
+        /*
+         * De chauffeurs staan in de gebruikersmap en niet in OMSI, dus die
+         * kunnen we altijd lezen. Dat moet ook: de eerste start vraagt eerst om
+         * een taal, dan om een chauffeur, en pas daarna waar OMSI staat -- en
+         * om te weten of er al een chauffeur is, moet dit binnen zijn.
+         */
+        const eersteChauffeurs = await window.career.career()
+        setCareer(eersteChauffeurs)
         if (!staat.confirmed) return
         const [loadedMaps, loadedVehicles, loadedCareer] = await Promise.all([
           window.career.maps(),
@@ -1244,6 +1271,52 @@ export function App(): JSX.Element {
    * de rest -- dit is geen stap in het klaarzetten van een dienst maar de deur
    * ervoor, en er is niets anders te doen dan antwoorden.
    */
+  /*
+   * Nog geen chauffeur? Dan is dit de eerste start.
+   *
+   * Staat hier boven de schermen omdat de volgorde ervan afhangt: eerst de
+   * taal, dan een chauffeur, en pas daarna de vraag waar OMSI staat.
+   */
+  const eersteStart = Boolean(career) && (!career?.state || (career?.profiles.length ?? 0) === 0)
+
+  /*
+   * De allereerste vraag: in welke taal lees je dit? Alles hierna is tekst.
+   */
+  if (taalGekozen === false) {
+    return (
+      <Taalkeuze
+        onKies={(taal) => {
+          setLanguage(taal)
+          setTaalGekozen(true)
+          void window.career.saveSettings({ language: taal, languageChosen: true })
+        }}
+      />
+    )
+  }
+
+  /*
+   * Dan wie er rijdt. Luc: "bij het opstarten voor de eerste keer moeten eerst
+   * grote tegels komen met de taal selectie, daarna door naar profiel maken en
+   * de install wizzard".
+   *
+   * Dit kan niet de chauffeursstap uit het stappenvel zijn: dat vel leunt op de
+   * kaarten en de bussen, en die zijn er nog niet -- de OMSI-map is nog niet
+   * eens aangewezen. Vandaar een eigen scherm in dezelfde vorm als de twee
+   * andere vragen van de eerste start.
+   */
+  if (eersteStart) {
+    return (
+      <Chauffeurstart
+        language={language}
+        bezig={busy}
+        onAanmaken={(naam) => {
+          void window.career.createProfile(naam).then(setCareer)
+        }}
+      />
+    )
+  }
+
+  /* En pas daarna: waar staat OMSI? */
   if (omsi && !omsi.confirmed) {
     const kiezen = async (): Promise<void> => {
       setOmsiBezig(true)
@@ -1368,7 +1441,6 @@ export function App(): JSX.Element {
    * de hoofdknop doet; de indeling blijft staan, zodat je niet elke stap
    * opnieuw hoeft te zoeken waar je moet kijken.
    */
-  const eersteStart = Boolean(career) && (!career?.state || (career?.profiles.length ?? 0) === 0)
 
   /*
    * Wagenparken overzetten.
@@ -1767,6 +1839,35 @@ export function App(): JSX.Element {
               }
             }
           })),
+          /*
+           * Chauffeurs als tegels, net als de kaarten.
+           *
+           * Luc: "ook het menu van de profiel selectie moet met mooie grote
+           * tegels". Een chauffeur is geen rij in een tabel maar een persoon;
+           * de initialen in een eigen plaat, de naam eronder, en wat hij
+           * gereden heeft erbij. Eén klik kiest, Verder gaat door -- dezelfde
+           * afspraak als op de kaartstap, zodat je niet per stap hoeft te leren
+           * wat een klik doet.
+           *
+           * Alleen als er chauffeurs zijn: bij de eerste start staat hier het
+           * invulveld en verder niets.
+           */
+          tegels:
+            profielen.length > 0
+              ? profielen.map((item) => ({
+                  id: item.id,
+                  titel: item.driver,
+                  monogram: item.driver,
+                  onder: t(language, 'setup.driverTile', {
+                    count: item.duties,
+                    time: formatDuration(item.minutes, language)
+                  }),
+                  gekozen: item.driver === huidigProfiel,
+                  onDoen: () => {
+                    void window.career.selectProfile(item.id).then(setCareer)
+                  }
+                }))
+              : undefined,
           index: Math.max(0, profielen.findIndex((item) => item.driver === huidigProfiel)),
           kies: (index) => {
             const id = profielen[index]?.id
@@ -1899,20 +2000,15 @@ export function App(): JSX.Element {
                   onder: t(language, 'setup.mapTile', { count: item.tours, year: item.year }),
                   gekozen: item.folder === mapFolder,
                   /*
-                   * Eerst kiezen, dan door.
+                   * Een tegel kiest de kaart, en verder niets.
                    *
-                   * Een tegel is een foto, en een foto is een belofte: welke
-                   * kaart is dit, hoe groot is hij, hoe ligt het net? Die vraag
-                   * hoort beantwoord te worden voordat je verder gaat. De
-                   * eerste klik zet de keuze, waarna de kop de naam draagt en
-                   * het grote vlak het net tekent; nog een klik op dezelfde
-                   * tegel -- of de knop Verder -- brengt je naar de volgende
-                   * stap, die ongewijzigd blijft.
+                   * Luc: "mensen klikken een map aan en dan op verder, daarna
+                   * pas kaart overzicht en lijnen". Het rooster blijft dus vol
+                   * in beeld -- de foto's zijn het scherm -- en wat die kaart
+                   * is staat bovenin. Het overzicht met het net komt bij de
+                   * stap erna, waar het altijd al stond.
                    */
-                  onDoen: () => {
-                    if (item.folder === mapFolder) naarVolgende()
-                    else setMapFolder(item.folder)
-                  }
+                  onDoen: () => setMapFolder(item.folder)
                 }))
               : undefined,
           koppen: [
@@ -2577,6 +2673,8 @@ export function App(): JSX.Element {
 
     return (
       <LanguageProvider language={language}>
+        {/* Boven het vel, zodat hij een stapwissel overleeft; zie Busrit.tsx. */}
+        {busrit > 0 && <Busrit key={busrit} opKlaar={() => setBusrit(0)} />}
         <Setup
           stap={opzetStap}
           lijn={gekozenDuty?.lineNumbers[0] ?? gekozenDuty?.legs[0]?.lineNumber}
@@ -2601,7 +2699,10 @@ export function App(): JSX.Element {
            * van de kaart die je aanwijst.
            */
           netkaart={opzetStap === 'map' && mapFolder ? mapFolder : undefined}
-          onStart={vel.verder}
+          onStart={() => {
+            setBusrit((nu) => nu + 1)
+            vel.verder()
+          }}
           startTekst={vel.knop}
           bezig={busy}
           stappen={
@@ -2759,7 +2860,7 @@ export function App(): JSX.Element {
            * tegels zouden het vel beeldvullend maken, terwijl juist dán het net
            * van die kaart ernaast hoort te staan.
            */
-          metKaart={Boolean(vel.vrij) || (opzetStap === 'map' && Boolean(mapFolder))}
+          metKaart={Boolean(vel.vrij)}
           rechtsInBalk={
             <>
               <Versie />

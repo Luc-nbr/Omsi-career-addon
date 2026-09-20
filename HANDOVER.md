@@ -359,6 +359,38 @@ Twee dingen die daarbij hoorden:
   in de schijfcache, met de vingerafdruk van `Vehicles` als sleutel: 604 -> 47 ms
   en 565 -> 80 ms, met dezelfde uitkomst (`probe-wagenpark`).
 
+**De eerste start is een wizard van drie kaarten (20-09-2026)**
+
+Taal, chauffeur, waar staat OMSI -- in die volgorde, op wens van Luc. De
+chauffeur kon daarbij niet de chauffeursstap uit het stappenvel zijn: dat vel
+leunt op de kaarten en de bussen, en die zijn er nog niet, dus bleef de app op
+"Dienstregeling inlezen..." staan wachten op iets wat niet kon komen. Vandaar
+`Chauffeurstart.tsx` naast `Taalkeuze.tsx`, allebei in de vorm van het
+welkomstscherm. De taalkeuze wordt onthouden met `languageChosen` en komt
+daarna nooit meer terug.
+
+Let op bij het testen: het bevestigen van de OMSI-map herlaadt de pagina met
+opzet (`window.location.reload()`). `scripts/screenshotModes.cjs` viel daar
+stil tot `js()` een mislukte aanroep opving -- een herladende pagina weigert
+JavaScript, en dat is hier geen fout.
+
+**De overgang tussen twee stappen (20-09-2026)**
+
+Op Verder komt er een dekkend venster over het scherm waar een bus doorheen
+rijdt: 900 ms, waarvan 700 voor de rit. Twee dingen zaten in de weg en staan
+nu in de code:
+
+- Het venster moet in `App.tsx` hangen, niet in het vel. Bij sommige stappen
+  bouwt React het vel opnieuw op, en dan is de bus halverwege weg.
+- `animationend` borrelt door. Het afscheidsbericht van de bus ruimde het
+  venster op voordat hij de overkant haalde -- gemeten kwam hij niet verder dan
+  x=-44, nog buiten beeld. Daarom toetst `Busrit.tsx` op de naam van de
+  animatie.
+- En de kleurtokens hangen aan `.setup`, `.hub` en `.overlay-body`. Het venster
+  staat daarbuiten, dus `var(--route)` loste niet op en de bus kreeg
+  `stroke: none`: onzichtbaar op een dekkend vlak. `.busvenster` staat nu in
+  dezelfde reeks in `theme.css`, ook in de lichte varianten.
+
 **De kaartkeuze in twee vormen (20-09-2026)**
 
 De afbeeldingen komen uit OMSI zelf: elke kaartmap heeft een `picture.jpg` van

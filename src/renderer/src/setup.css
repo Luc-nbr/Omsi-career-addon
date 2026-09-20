@@ -905,6 +905,80 @@
 }
 
 /*
+ * De bus die oversteekt als je een stap verder gaat.
+ *
+ * Hij rijdt onderlangs, van links buiten beeld naar rechts buiten beeld, in
+ * zeven tiende seconde -- lang genoeg om te zien, kort genoeg om niet op te
+ * wachten. Hij vangt geen muis en schuift niets op: het is een laag over het
+ * scherm, geen onderdeel ervan. Wie beweging heeft uitgezet ziet hem niet, zie
+ * onderaan dit bestand.
+ */
+.busvenster {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  overflow: hidden;
+  background: var(--grond);
+  animation: venster-schuift-langs 900ms ease-in-out forwards;
+}
+
+/* De weg waar hij op rijdt: één streep, zodat het geen leeg vlak is. */
+.busvenster-weg {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(50% - 18px);
+  height: 1px;
+  background: var(--vel-lijn);
+  opacity: 0.6;
+}
+
+.busrit {
+  position: absolute;
+  left: 0;
+  top: calc(50% - 46px);
+  animation: bus-steekt-over 700ms cubic-bezier(0.4, 0, 0.35, 1) forwards;
+}
+
+/*
+ * Op en weer af. De bus vertrekt bij 10% en is bij 88% aan de overkant, dus het
+ * venster blijft staan zolang hij rijdt en trekt daarna in twee tienden weg.
+ */
+@keyframes venster-schuift-langs {
+  0% {
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.busrit .busicoon {
+  width: 168px;
+  height: 70px;
+  margin: 0;
+  /* De bus is met lijnen getekend; `stroke` rechtstreeks, niet via de inkt. */
+  stroke: var(--route);
+  stroke-width: 2.5;
+  opacity: 1;
+}
+
+@keyframes bus-steekt-over {
+  from {
+    transform: translateX(-160px);
+  }
+  to {
+    transform: translateX(calc(100vw + 40px));
+  }
+}
+
+/*
  * Het streepje tussen twee stappen loopt vol in plaats van om te springen. Het
  * is de enige beweging op het scherm die iets meet in plaats van iets aan te
  * kondigen: hij laat zien dat je een stap verder bent.
@@ -931,14 +1005,29 @@
     background-color 120ms ease-out,
     border-color 120ms ease-out,
     color 120ms ease-out,
-    opacity 120ms ease-out;
+    opacity 120ms ease-out,
+    transform 140ms ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .dienstenvel,
   .dienstenlijst li,
-  .tegels .tegel {
+  .tegels .tegel,
+  /* De overstekende bus is versiering; wie beweging uitzet, ziet hem niet. */
+  .busvenster,
+  .busrit {
     animation: none;
+  }
+
+  .busvenster {
+    display: none;
+  }
+
+  /* En het zweven tilt niets op. */
+  .tegel:hover,
+  .taaltegel:hover,
+  .tegel:hover .tegel-beeld {
+    transform: none;
   }
 
   .stap-streep,
@@ -1367,9 +1456,30 @@
   cursor: pointer;
 }
 
+/*
+ * Zweven mag je voelen.
+ *
+ * Twee pixels omhoog en de rand die oplicht: genoeg om te weten dat het ding
+ * onder je muis een knop is, te weinig om de regel eronder te laten dansen. De
+ * foto van een kaarttegel schaalt een procent of drie mee, binnen de tegel --
+ * dat is waarom de tegel met een beeld `overflow: hidden` draagt.
+ */
 .tegel:hover {
   background: var(--vel-hover);
   border-color: var(--vel-zacht);
+  transform: translateY(-2px);
+}
+
+.tegel:active {
+  transform: translateY(0);
+}
+
+.tegel-beeld {
+  transition: transform 220ms ease-out;
+}
+
+.tegel:hover .tegel-beeld {
+  transform: scale(1.03);
 }
 
 .tegel[aria-pressed='true'] {
@@ -1799,6 +1909,92 @@
 .welkom-talen button[aria-pressed='true'] {
   border-color: var(--route);
   opacity: 1;
+}
+
+/*
+ * De taalkeuze van de eerste start: vier tegels in plaats van vier vlaggetjes.
+ *
+ * In de balk zijn de vlaggen klein en rechtsboven, want daar zijn ze een
+ * correctie. Hier zijn ze de vraag zelf, en dan horen ze midden op tafel te
+ * liggen: een vlag van zestig pixels en de naam van de taal in die taal
+ * eronder. Twee bij twee -- vier naast elkaar maakt de tegels smal genoeg om
+ * weer een rij knopjes te worden.
+ */
+.taalkeuze /* Het naamveld van de eerste start: net zo breed als de kaart eromheen. */
+.startnaam {
+  width: 100%;
+  margin-top: 20px;
+}
+
+.startnaam .invoerveld {
+  width: 100%;
+}
+
+.welkom-vel {
+  width: min(520px, 100%);
+}
+
+.taaltegels {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  width: 100%;
+  margin-top: 22px;
+}
+
+.taaltegel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 16px;
+  border: 1px solid var(--vel-lijn);
+  border-radius: var(--radius-klein);
+  background: transparent;
+  color: var(--vel-ink);
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease-out,
+    border-color 120ms ease-out,
+    transform 140ms ease-out;
+}
+
+.taaltegel:hover {
+  background: var(--vel-hover);
+  border-color: var(--vel-zacht);
+  transform: translateY(-2px);
+}
+
+.taaltegel:active {
+  transform: translateY(0);
+}
+
+.taaltegel svg {
+  width: 60px;
+  height: 42px;
+  border-radius: 4px;
+}
+
+.taaltegel-naam {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+@media (max-height: 640px) {
+  /* Op een laag venster liever één rij van vier dan wegvallende tegels. */
+  .taaltegels {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .taaltegel {
+    padding: 14px 8px;
+  }
+
+  .taaltegel svg {
+    width: 44px;
+    height: 31px;
+  }
 }
 
 .welkom-vel {

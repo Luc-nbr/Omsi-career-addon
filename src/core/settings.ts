@@ -53,8 +53,21 @@ export interface Settings {
    * van de kaarten". Een lijst leest sneller als je precies weet welke kaart je
    * zoekt; een plaatje herken je zonder de naam te lezen. Allebei goed, dus
    * allebei er, en de keuze blijft staan.
+   *
+   * Tegels staan voor: dat is wat Luc wil dat mensen als eerste zien, en het is
+   * ook de vriendelijkste kennismaking -- twaalf foto's zeggen meer dan twaalf
+   * regels tekst. Wie de lijst wil, klikt hem aan en houdt hem.
    */
   mapView?: 'lijst' | 'tegels'
+  /**
+   * Heeft iemand hier ooit zelf een taal gekozen?
+   *
+   * De app start in het Nederlands omdat er iets moet staan, maar dat is een
+   * gok en geen keuze. Bij de allereerste start vraagt hij het daarom, vóór
+   * alles: een scherm met vier grote tegels. Daarna nooit meer -- de vlaggen in
+   * de balk blijven er voor wie zich bedenkt.
+   */
+  languageChosen?: boolean
   /**
    * Dag of nacht. `systeem` volgt wat Windows zegt en is de beginstand.
    *
@@ -82,7 +95,8 @@ export function readSettings(userDataPath: string): Settings {
         raw.theme === 'licht' || raw.theme === 'donker' || raw.theme === 'systeem'
           ? raw.theme
           : 'systeem',
-      mapView: raw.mapView === 'tegels' ? 'tegels' : 'lijst'
+      mapView: raw.mapView === 'lijst' ? 'lijst' : 'tegels',
+      languageChosen: raw.languageChosen === true
     }
   } catch {
     return {
@@ -90,7 +104,8 @@ export function readSettings(userDataPath: string): Settings {
       overlayRate: 'rustig',
       windowedOmsi: true,
       theme: 'systeem',
-      mapView: 'lijst'
+      mapView: 'tegels',
+      languageChosen: false
     }
   }
 }
@@ -120,7 +135,11 @@ export function writeSettings(userDataPath: string, settings: Partial<Settings>)
     mapView:
       settings.mapView === 'tegels' || settings.mapView === 'lijst'
         ? settings.mapView
-        : current.mapView
+        : current.mapView,
+    languageChosen:
+      typeof settings.languageChosen === 'boolean'
+        ? settings.languageChosen
+        : current.languageChosen
   }
   const path = settingsPath(userDataPath)
   mkdirSync(dirname(path), { recursive: true })

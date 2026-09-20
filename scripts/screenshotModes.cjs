@@ -35,7 +35,19 @@ setTimeout(() => {
 require('../out/main/index.js')
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-const js = (window, code) => window.webContents.executeJavaScript(code)
+/*
+ * Een pagina die herlaadt weigert JavaScript, en dat is hier geen fout maar de
+ * gewone gang van zaken: het bevestigen van de OMSI-map herlaadt de app met
+ * opzet. Zonder deze vangst viel het hele script daar stil, midden in de
+ * eerste start.
+ */
+const js = async (window, code) => {
+  try {
+    return await window.webContents.executeJavaScript(code)
+  } catch {
+    return undefined
+  }
+}
 
 async function waitFor(window, expression, tries = 160) {
   for (let i = 0; i < tries; i++) {
@@ -92,9 +104,44 @@ app.whenReady().then(async () => {
     console.log(`${name}: ${png.length} bytes -> ${file}`)
   }
 
-  // Verse gebruikersmap: eerst de vraag waar OMSI staat.
-  if (await waitFor(main, `document.querySelector('.welkom-vel')`, 60)) {
-    await clickText(main, 'Nederlands')
+  /*
+   * Verse gebruikersmap, en dan in deze volgorde: eerst de taal, dan een
+   * chauffeur, dan de vraag waar OMSI staat, en dan het klaarzetten.
+   */
+  if (await waitFor(main, `document.querySelector('.taaltegel')`, 60)) {
+    await wait(400)
+    await shoot('taalkeuze')
+    const nederlands = await js(
+      main,
+      `(() => {
+         const knop = [...document.querySelectorAll('.taaltegel')].find((b) => b.textContent.includes('Nederlands'))
+         if (knop) knop.click()
+         return Boolean(knop)
+       })()`
+    )
+    if (!nederlands) await js(main, `document.querySelector('.taaltegel')?.click()`)
+    await wait(600)
+  }
+
+  // De chauffeur: bij een verse map is er nog geen, dus die maken we hier.
+  if (await waitFor(main, `document.querySelector('.startnaam .invoerveld')`, 60)) {
+    await wait(600)
+    await shoot('chauffeur')
+    await js(
+      main,
+      `(() => { const i = document.querySelector('.startnaam .invoerveld'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, 'Testchauffeur'); i.dispatchEvent(new Event('input', { bubbles: true })) })()`
+    )
+    await wait(400)
+    await js(main, `document.querySelector('.welkom-knop.primair')?.click()`)
+    await wait(1200)
+  }
+
+  /*
+   * En dan pas: waar staat OMSI? Te herkennen aan het pad of aan de melding dat
+   * er niets gevonden is -- niet aan de knop, want die draagt het scherm
+   * hiervoor ook.
+   */
+  if (await waitFor(main, `document.querySelector('.welkom-pad, .welkom-hint')`, 60)) {
     await wait(500)
     await shoot('welkom')
     await js(main, `document.querySelector('.welkom-knop.primair')?.click()`)
@@ -105,26 +152,19 @@ app.whenReady().then(async () => {
    * eerst de installatiestap. Die leggen we vast en laten we daarna uitlopen:
    * de schermen erna zijn pas eerlijk te beoordelen als de kaarten er zijn.
    */
-  if (await waitFor(main, `document.querySelector('.klaarbalk')`, 20)) {
+  if (await waitFor(main, `document.querySelector('.klaarbalk')`, 120)) {
     await wait(800)
     await shoot('kaarten-klaarzetten')
     await waitFor(main, `!document.querySelector('.klaarbalk')`, 600)
   }
 
-  // Daarna de chauffeur, en als er nog geen is: er een aanmaken.
+  // Staat er al een chauffeur (geen verse map), dan die kiezen.
   if (await waitFor(main, `document.querySelector('.setup')`, 80)) {
     await wait(1200)
-    await shoot('chauffeur')
-    const veld = `document.querySelector('.invoerveld')`
-    if (await js(main, `Boolean(${veld})`)) {
-      await js(
-        main,
-        `(() => { const i = ${veld}; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, 'Testchauffeur'); i.dispatchEvent(new Event('input', { bubbles: true })) })()`
-      )
-      await wait(300)
-      await js(main, `document.querySelector('.invoerknop')?.click()`)
-    } else {
-      await js(main, `document.querySelector('.tegel')?.click()`)
+    if (!(await js(main, `Boolean(document.querySelector('.hub-tegel'))`))) {
+      await js(main, `document.querySelector('.dienstrij, .tegel')?.click()`)
+      await wait(400)
+      await js(main, `document.querySelector('.startknop')?.click()`)
     }
   }
 
@@ -140,6 +180,7 @@ app.whenReady().then(async () => {
   }
 
   // En daarna elke stap: afdruk, eerste keuze, hoofdknop.
+  let overgangGeschoten = false
   let vorige = ''
   for (let i = 0; i < 9; i++) {
     await wait(2500) // de kaart en de lijnen worden erbij gezocht
@@ -203,6 +244,38 @@ app.whenReady().then(async () => {
       break
     }
     await js(main, `document.querySelector('.startknop')?.click()`)
+    /*
+     * Het venster dat bij Verder over het scherm komt, met de bus erin. Eén
+     * afdruk is genoeg -- hij is bij elke stap hetzelfde -- maar de melding
+     * komt bij elke stap, zodat je ziet dat hij overal afgaat.
+     */
+    const monster = `(() => {
+      const venster = document.querySelector('.busvenster')
+      const b = document.querySelector('.busrit svg')
+      if (!venster || !b)
+        return 'weg (vel=' + Boolean(document.querySelector('.setup')) +
+          ', vensters=' + document.querySelectorAll('.busvenster').length +
+          ', laden=' + Boolean(document.querySelector('.main h1')) + ')'
+      const r = b.getBoundingClientRect()
+      const s = getComputedStyle(b)
+      return 'dekking ' + (+getComputedStyle(venster).opacity).toFixed(2) +
+        ', bus x=' + Math.round(r.x) + ' y=' + Math.round(r.y) +
+        ' ' + Math.round(r.width) + 'x' + Math.round(r.height) +
+        ' kleur=' + s.color + ' lijn=' + s.stroke + '/' + s.strokeWidth +
+        ' vul=' + s.fill + ' dek=' + s.opacity + ' zicht=' + s.visibility +
+        ' kinderen=' + b.children.length
+    })()`
+    const metingen = []
+    for (const tel of [120, 200, 200, 200]) {
+      await wait(tel)
+      metingen.push(await js(main, monster))
+      /* Eén afdruk terwijl hij rijdt; hij is bij elke stap dezelfde. */
+      if (!overgangGeschoten && metingen.length === 1 && metingen[0] !== 'weg') {
+        overgangGeschoten = true
+        await shoot('overgang')
+      }
+    }
+    console.log(`   overgang: ${metingen.join(' | ')}`)
   }
 
   // De staat van dienst hangt aan de naam in de stappenbalk.

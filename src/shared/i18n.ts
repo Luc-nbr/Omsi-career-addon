@@ -2196,6 +2196,12 @@ const TEXT = {
     nl: 'één chauffeur op deze computer'
   },
   'setup.newDriver': { en: 'New driver', de: 'Neuer Fahrer', fr: 'Nouveau conducteur', nl: 'Nieuwe chauffeur' },
+  'setup.driverTile': {
+    en: '{count} duties · {time}',
+    de: '{count} Dienste · {time}',
+    fr: '{count} services · {time}',
+    nl: '{count} diensten · {time}'
+  },
   'setup.driverName': { en: 'Name', de: 'Name', fr: 'Nom', nl: 'Naam' },
   'setup.deleteDriver': {
     en: 'Delete this driver',
