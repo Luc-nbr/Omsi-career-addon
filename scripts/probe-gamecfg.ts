@@ -21,7 +21,7 @@ import {
   MOD_CTRL,
   MOD_SHIFT
 } from '../src/core/omsiKeys'
-import { readOptions, writeOptions } from '../src/core/omsiOptions'
+import { optionValues, readOptions, removeOption, writeOptions } from '../src/core/omsiOptions'
 import { SETTINGS, settingKey } from '../src/shared/omsiSettings'
 
 const omsi = findOmsiInstall()
@@ -58,14 +58,42 @@ console.log(
   `en terug: ${readGameSettings(root).maxFPS}, bestand weer gelijk: ${readFileSync(join(root, 'options.cfg')).equals(before)}`
 )
 
-// Een vlag aan en uit: de lastige, want "uit" is een blok zonder regel.
-const flag = '[no_collision]'
-writeGameSettings(root, { no_collision: '1' })
-console.log(`${flag} aan -> ${JSON.stringify(readGameSettings(root).no_collision)}`)
-writeGameSettings(root, { no_collision: '' })
+/*
+ * Vlaggen: aan is het blok staat er, uit is het blok is weg. Elke vlag gaat
+ * naar de andere stand en terug. Terug komt een blok achteraan zijn sectie te
+ * staan in plaats van op de oude plek, dus we vergelijken de blokken en hun
+ * waarden, niet de bytes.
+ */
+function blocks(): string {
+  const file = readOptions(root)
+  return [...file.index.keys()]
+    .sort()
+    .map((tag) => `${tag}=${optionValues(file, tag).join('|')}`)
+    .join('\n')
+}
+const blocksBefore = blocks()
+for (const spec of SETTINGS.filter((s) => s.presence)) {
+  const key = settingKey(spec)
+  const was = readGameSettings(root)[key]
+  const flipped = was === spec.on ? spec.off ?? '' : spec.on ?? '1'
+  writeGameSettings(root, { [key]: flipped })
+  const present = readOptions(root).index.has(spec.tag)
+  const ok = readGameSettings(root)[key] === flipped && present === (flipped === spec.on)
+  writeGameSettings(root, { [key]: was })
+  console.log(`   ${spec.tag.padEnd(28)} ${was ? 'aan' : 'uit'} -> ${flipped ? 'aan' : 'uit'} ${ok ? 'goed' : 'FOUT'}`)
+}
+console.log(`vlaggen heen en terug, blokken gelijk: ${blocks() === blocksBefore}`)
+
+// Een keuze die er nog niet stond, komt in zijn sectie terecht.
+const bare = readOptions(root)
+removeOption(bare, '[performance_realreflexions]')
+writeOptions(root, bare)
+writeGameSettings(root, { performance_realreflexions: 'economy' })
+const added = readOptions(root)
+const at = added.index.get('[performance_realreflexions]') ?? -1
+const heading = added.lines.slice(0, at).reverse().find((line) => line.includes('-----'))
 console.log(
-  `${flag} uit -> ${JSON.stringify(readGameSettings(root).no_collision)}, ` +
-    `bestand weer gelijk: ${readFileSync(join(root, 'options.cfg')).equals(before)}`
+  `ontbrekende keuze toegevoegd: ${JSON.stringify(optionValues(added, '[performance_realreflexions]'))} onder ${JSON.stringify(heading?.trim())}`
 )
 
 // ---------- keyboard.cfg ----------

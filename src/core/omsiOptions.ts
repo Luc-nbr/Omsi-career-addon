@@ -32,14 +32,23 @@ function isHeading(line: string): boolean {
   return line.includes('-----')
 }
 
-export function readOptions(omsiPath: string): OptionsFile {
-  const lines = readFileSync(optionsPath(omsiPath), 'latin1').split('\r\n')
+function indexLines(lines: string[]): Map<string, number> {
   const index = new Map<string, number>()
   lines.forEach((line, at) => {
     const trimmed = line.trim()
     if (trimmed.startsWith('[') && trimmed.endsWith(']')) index.set(trimmed, at)
   })
-  return { lines, index }
+  return index
+}
+
+export function readOptions(omsiPath: string): OptionsFile {
+  const lines = readFileSync(optionsPath(omsiPath), 'latin1').split('\r\n')
+  return { lines, index: indexLines(lines) }
+}
+
+/** Staat het blok in het bestand? Bij de vlaggen van OMSI is dat de hele instelling. */
+export function hasOption(file: OptionsFile, tag: string): boolean {
+  return file.index.has(tag)
 }
 
 /** Hoeveel waarderegels er onder een blok staan. */
@@ -62,12 +71,11 @@ export function optionValues(file: OptionsFile, tag: string): string[] {
 }
 
 /**
- * Zet de waarden van een blok.
+ * Zet de waarden van een blok dat er al staat.
  *
  * Er wordt alleen geschoven waar het moet: staan er al evenveel regels, dan
  * worden ze vervangen. Minder waarden dan er staan haalt regels weg, meer
- * voegt ze toe. Een blok zonder waarden is hoe OMSI "uit" noteert bij de
- * vlaggen, dus een lege lijst hoort erbij te kunnen.
+ * voegt ze toe.
  */
 export function setOptionValues(file: OptionsFile, tag: string, values: string[]): void {
   const at = file.index.get(tag)
@@ -82,6 +90,42 @@ export function setOptionValues(file: OptionsFile, tag: string, values: string[]
       if (line > at) file.index.set(key, line + shift)
     }
   }
+}
+
+/**
+ * Zet een blok erbij dat nog niet in het bestand staat.
+ *
+ * Het komt achteraan in de sectie met de gegeven kop (" GRAPHICS -----"),
+ * zodat het bestand eruit blijft zien zoals OMSI het schrijft: het blok, de
+ * waarden en een lege regel. Zonder die kop gaat het achteraan.
+ */
+export function addOption(file: OptionsFile, tag: string, values: string[], heading?: string): void {
+  if (file.index.has(tag)) return
+  const lines = file.lines
+
+  let at = lines.length
+  const start = heading
+    ? lines.findIndex((line) => isHeading(line) && line.trim().split(' ')[0] === heading)
+    : -1
+  if (start >= 0) {
+    const next = lines.findIndex((line, i) => i > start && isHeading(line))
+    if (next >= 0) at = next
+  }
+  // Aan het eind van het bestand staat soms nog een lege slotregel; daar voor.
+  if (at === lines.length && lines[at - 1] === '') at--
+
+  lines.splice(at, 0, tag, ...values, '')
+  file.index = indexLines(lines)
+}
+
+/** Haalt een blok weg, met zijn waarden en de lege regel erna. */
+export function removeOption(file: OptionsFile, tag: string): void {
+  const at = file.index.get(tag)
+  if (at === undefined) return
+  let count = 1 + valueCount(file, at)
+  if (file.lines[at + count]?.trim() === '') count++
+  file.lines.splice(at, count)
+  file.index = indexLines(file.lines)
 }
 
 export function writeOptions(omsiPath: string, file: OptionsFile): void {

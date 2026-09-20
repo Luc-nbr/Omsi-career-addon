@@ -244,7 +244,7 @@ function SettingRow({
           <select value={value} onChange={(event) => onChange(event.target.value)}>
             {(spec.choices ?? []).map((choice) => (
               <option key={choice} value={choice}>
-                {choice}
+                {loose(language, `set.${key}.${choice}`, choice)}
               </option>
             ))}
           </select>

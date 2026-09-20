@@ -1,16 +1,19 @@
 /**
  * Welke instellingen van OMSI de app laat aanpassen, en hoe.
  *
- * `options.cfg` kent 47 blokken. Hier staan er drieëndertig; de rest raken we niet
- * aan omdat we niet met zekerheid weten wat de waarden betekenen, en een
+ * `options.cfg` kent 47 blokken. Hier staan er zevenendertig; de rest raken we
+ * niet aan omdat we niet met zekerheid weten wat de waarden betekenen, en een
  * verkeerde gok in een spelbestand is duurder dan een ontbrekende schuif.
  *
- * Drie soorten waarden komen voor:
+ * Vier soorten waarden komen voor:
  * - **getal** -- `[maxFPS]` met `76` eronder.
  * - **aan/uit met tekst** -- `[sound_doppler]` met `on` of `off`.
- * - **aan/uit met niets** -- `[no_collision]` met een lege regel eronder als
- *   het uit staat. Dat het leeg is en niet afwezig telt: de blokken staan altijd
- *   in het bestand, ook als de instelling uit staat. "Aan" schrijven we als `1`.
+ * - **keuze** -- `[performance_realreflexions]` met `economy` of `full`.
+ * - **vlag** -- `[no_collision]` met een lege regel eronder. Hier telt alleen
+ *   of het blok er staat: OMSI schrijft een vlag alleen als hij aan staat, en
+ *   laat het blok weg als hij uit staat. Dat is na te gaan aan een bestand dat
+ *   OMSI zelf schreef: `[no_rain_refl]` en `[no_stencilbuffer]` kent het spel
+ *   wel, maar ze staan er alleen in bij wie ze aanzette.
  *
  * Een blok kan meer dan één waarde dragen; `slot` zegt welke we bedoelen.
  */
@@ -29,9 +32,11 @@ export interface SettingSpec {
   step?: number
   /** Hoeveel cijfers achter de komma het bestand verwacht. */
   decimals?: number
-  /** Wat "aan" en "uit" in het bestand zijn. Leeg betekent: de regel weghalen. */
+  /** Wat "aan" en "uit" in het bestand zijn. */
   on?: string
   off?: string
+  /** Een vlag: aan als het blok er staat, uit als het ontbreekt. `on`/`off` zijn dan alleen de waarden in het scherm. */
+  presence?: boolean
   /** Bij een keuze: de waarden zoals ze in het bestand staan. */
   choices?: string[]
   /** Heeft deze instelling een uitleg nodig? Dan staat die onder `set.<sleutel>.hint`. */
@@ -57,29 +62,39 @@ export const SETTINGS: SettingSpec[] = [
   { tag: '[texFilter]', group: 'graphics', kind: 'number', slot: 1, min: 1, max: 16, step: 1, hint: true },
   { tag: '[texmemlimit]', group: 'graphics', kind: 'number', min: 256, max: 8192, step: 64, decimals: 1, hint: true },
   { tag: '[performance_reflTexSize]', group: 'graphics', kind: 'number', min: 1, max: 10, step: 1, hint: true },
+  /*
+   * De spiegelingen wegen in de bus het zwaarst: de binnenspiegels en de ruiten
+   * tekenen de omgeving nog eens, en dat merk je vooral binnen. Alleen de twee
+   * waarden die OMSI zelf schrijft; wat een ontbrekend blok betekent weten we
+   * niet zeker.
+   */
+  { tag: '[performance_realreflexions]', group: 'graphics', kind: 'choice', choices: ['economy', 'full'], hint: true },
+  { tag: '[performance_minObjSizeRefl]', group: 'graphics', kind: 'number', min: 0, max: 1, step: 0.05, decimals: 3, hint: true },
+  { tag: '[performance_dyn_redrefl]', group: 'graphics', kind: 'number', min: 0, max: 100, step: 5, decimals: 3, hint: true },
+  { tag: '[no_rain_refl]', group: 'graphics', kind: 'toggle', presence: true, on: '1', off: '', hint: true },
   { tag: '[shadow_stencil]', group: 'graphics', kind: 'toggle', on: 'on', off: 'off' },
-  { tag: '[sunglow]', group: 'graphics', kind: 'toggle', on: '1', off: '' },
-  { tag: '[no_humans_on_rain_refl]', group: 'graphics', kind: 'toggle', on: '1', off: '' },
+  { tag: '[sunglow]', group: 'graphics', kind: 'toggle', presence: true, on: '1', off: '' },
+  { tag: '[no_humans_on_rain_refl]', group: 'graphics', kind: 'toggle', presence: true, on: '1', off: '' },
   { tag: '[smokesystems]', group: 'graphics', kind: 'toggle', on: '1', off: '0' },
-  { tag: '[texture_uselow]', group: 'graphics', kind: 'toggle', on: '1', off: '', hint: true },
+  { tag: '[texture_uselow]', group: 'graphics', kind: 'toggle', presence: true, on: '1', off: '', hint: true },
 
   // ---------- geluid ----------
   { tag: '[sound_vol_master]', group: 'sound', kind: 'number', min: 0, max: 1, step: 0.05, decimals: 2 },
   { tag: '[sound_maxcount]', group: 'sound', kind: 'number', min: 50, max: 1000, step: 10, hint: true },
   { tag: '[sound_stereo]', group: 'sound', kind: 'number', min: 0, max: 100, step: 5 },
   { tag: '[sound_doppler]', group: 'sound', kind: 'toggle', on: 'on', off: 'off' },
-  { tag: '[sound_scenery]', group: 'sound', kind: 'toggle', on: '1', off: '' },
+  { tag: '[sound_scenery]', group: 'sound', kind: 'toggle', presence: true, on: '1', off: '' },
 
   // ---------- spel ----------
   { tag: '[language]', group: 'game', kind: 'choice', choices: ['ENG', 'DEU', 'FRA', 'HUN', 'POL'], hint: true },
   { tag: '[ticketselling]', group: 'game', kind: 'toggle', on: '1', off: '0', hint: true },
-  { tag: '[see_own_driver]', group: 'game', kind: 'toggle', on: '1', off: '' },
-  { tag: '[driverview_smooth]', group: 'game', kind: 'toggle', on: '1', off: '' },
-  { tag: '[noAutoSave]', group: 'game', kind: 'toggle', on: '1', off: '', hint: true },
-  { tag: '[no_collision]', group: 'game', kind: 'toggle', on: '1', off: '', hint: true },
-  { tag: '[no_collision_terrain]', group: 'game', kind: 'toggle', on: '1', off: '' },
-  { tag: '[no_collision_vehToVeh]', group: 'game', kind: 'toggle', on: '1', off: '' },
-  { tag: '[no_collision_pedastrians]', group: 'game', kind: 'toggle', on: '1', off: '' },
+  { tag: '[see_own_driver]', group: 'game', kind: 'toggle', presence: true, on: '1', off: '' },
+  { tag: '[driverview_smooth]', group: 'game', kind: 'toggle', presence: true, on: '1', off: '' },
+  { tag: '[noAutoSave]', group: 'game', kind: 'toggle', presence: true, on: '1', off: '', hint: true },
+  { tag: '[no_collision]', group: 'game', kind: 'toggle', presence: true, on: '1', off: '', hint: true },
+  { tag: '[no_collision_terrain]', group: 'game', kind: 'toggle', presence: true, on: '1', off: '' },
+  { tag: '[no_collision_vehToVeh]', group: 'game', kind: 'toggle', presence: true, on: '1', off: '' },
+  { tag: '[no_collision_pedastrians]', group: 'game', kind: 'toggle', presence: true, on: '1', off: '' },
 
   // ---------- verkeer ----------
   { tag: '[AIMaxCountRandom]', group: 'traffic', kind: 'number', min: 0, max: 400, step: 5, hint: true },
@@ -114,6 +129,10 @@ export const PRESETS: Record<PresetName, Record<string, string>> = {
     maxcomplexity_map: '0',
     'texFilter.1': '4',
     performance_reflTexSize: '5',
+    performance_realreflexions: 'economy',
+    performance_minObjSizeRefl: '0.500',
+    performance_dyn_redrefl: '50.000',
+    no_rain_refl: '1',
     texture_uselow: '1',
     shadow_stencil: 'off',
     no_humans_on_rain_refl: '1',
@@ -126,6 +145,10 @@ export const PRESETS: Record<PresetName, Record<string, string>> = {
     maxcomplexity_map: '1',
     'texFilter.1': '8',
     performance_reflTexSize: '7',
+    performance_realreflexions: 'economy',
+    performance_minObjSizeRefl: '0.300',
+    performance_dyn_redrefl: '45.000',
+    no_rain_refl: '1',
     texture_uselow: '',
     shadow_stencil: 'off',
     no_humans_on_rain_refl: '',
@@ -138,6 +161,10 @@ export const PRESETS: Record<PresetName, Record<string, string>> = {
     maxcomplexity_map: '2',
     'texFilter.1': '16',
     performance_reflTexSize: '9',
+    performance_realreflexions: 'full',
+    performance_minObjSizeRefl: '0.100',
+    performance_dyn_redrefl: '25.000',
+    no_rain_refl: '',
     texture_uselow: '',
     shadow_stencil: 'on',
     no_humans_on_rain_refl: '',

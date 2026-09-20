@@ -34,7 +34,7 @@ je rijden**. Die tweede vraag kent drie antwoorden:
   weer, datum en tijd; de app zet het klaar en biedt de overlay aan.
 
 Daarnaast beheert de app de **instellingen, toetsen en gamecontrollers van OMSI
-zelf**: 33 van de 47 blokken uit `options.cfg` met uitleg erbij in vier talen,
+zelf**: 37 van de 47 blokken uit `options.cfg` met uitleg erbij in vier talen,
 alle 128 toetsbindingen uit `Inputs\keyboard.cfg`, en de apparaten uit
 `Inputs\gamectrler.cfg` met hun assen en knoppen -- met de namen die OMSI er zelf
 aan geeft. Bij de controllers beweegt de balk mee terwijl je stuurt of trapt (de
@@ -224,12 +224,24 @@ aan `geo.ts`, `roads.ts`, `track.ts` of `routing.ts` komt.
 - `options.cfg` en `Inputs\keyboard.cfg` zijn **gewone tekst in de
   Windows-codering met CRLF**. Lezen en schrijven als losse bytes (`latin1`)
   houdt umlauten heel. Beide gaan byte-identiek heen en weer; zie
-  `probe-gamecfg.ts`, dat ook een vlag aan- en uitzet en controleert dat het
-  bestand daarna weer gelijk is.
-- Een blok in `options.cfg` heeft nul of meer waarderegels. **Nul betekent uit**
-  bij de vlaggen: `[no_collision]` staat altijd in het bestand, met een lege
-  regel eronder als hij uit staat. Zou de aanwezigheid van het blok "aan"
-  betekenen, dan zou niemand ooit botsingen hebben. "Aan" schrijven we als `1`.
+  `probe-gamecfg.ts`, dat ook elke vlag aan- en uitzet en controleert dat de
+  blokken daarna weer gelijk zijn.
+- **Bij een vlag telt alleen of het blok er staat.** `[no_collision]` met een
+  lege regel eronder betekent: botsingen uit. Staat het blok er niet, dan
+  staan ze aan. Tot 15 september dacht de app het omgekeerde (leeg blok = uit),
+  waardoor hij vlaggen verkeerd toonde en ze niet kon uitzetten. Het bewijs zit
+  in de presets die OMSI meelevert (`option_presets\*.oop`): in "PC 2006" t/m
+  "PC 2013" en de Hamburg-presets ontbreekt `[no_collision]`, en
+  `[no_stencilbuffer]` staat alleen in "Best Performance", niet in "Best
+  Quality". De TH-Wald-presets zetten wel alle botsingen uit; wie die laadde,
+  rijdt zonder. Een vlag aanzetten schrijft het blok met een lege regel, zoals
+  OMSI; uitzetten haalt het blok weg.
+- **De spiegelingen wegen in de bus het zwaarst.** `[performance_realreflexions]`
+  (`economy` of `full`) tekent spiegels en ruiten; bij Luc gaf `full` in de bus
+  ongeveer 30 fps tegen bijna 60 erbuiten. Daarom staan ook
+  `[performance_minObjSizeRefl]`, `[performance_dyn_redrefl]` (eerste waarde:
+  onder deze fps kort OMSI de spiegelingen zelf in) en `[no_rain_refl]` in de
+  app en in de drie voorinstellingen.
 - Tussen de blokken staan kopregels (" GRAPHICS -------"). Die horen bij niets;
   de lezer stopt op een regel met `-----`.
 - `keyboard.cfg` heeft twee secties met samen 128 `[entry]`-blokken van drie
@@ -447,7 +459,8 @@ Er staan probes in `scripts/`:
   terug of de situatie, `laststn.osn` en `[last_map]` kloppen.
 - `probe-exam.ts` — hoe lang een examenrit per lijn duurt.
 - `probe-gamecfg.ts` — of `options.cfg` en `keyboard.cfg` byte-identiek heen en
-  weer gaan, en of een vlag aan- en uitzetten het bestand ongemoeid laat.
+  weer gaan, of elke vlag goed aan en uit gaat (aan = het blok staat er), en of
+  een ontbrekend blok onder de juiste kop terechtkomt.
 - `probe-controllers.ts` — of `gamectrler.cfg` byte-identiek heen en weer gaat,
   en wat er per apparaat aan assen en knoppen staat.
 - `probe-rebind.cjs` — een toets opnieuw toewijzen via het scherm, en kijken of

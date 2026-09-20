@@ -1,5 +1,13 @@
-import { SETTINGS, settingKey, type SettingSpec } from '../shared/omsiSettings'
-import { optionValues, readOptions, setOptionValues, writeOptions } from './omsiOptions'
+import { SETTINGS, settingKey, type SettingGroup, type SettingSpec } from '../shared/omsiSettings'
+import {
+  addOption,
+  hasOption,
+  optionValues,
+  readOptions,
+  removeOption,
+  setOptionValues,
+  writeOptions
+} from './omsiOptions'
 
 /**
  * De instellingen van OMSI zoals de app ze toont en terugschrijft.
@@ -10,11 +18,23 @@ import { optionValues, readOptions, setOptionValues, writeOptions } from './omsi
  * bestand staan.
  */
 
+/** Onder welke kop in options.cfg een nieuw blok van een groep hoort. */
+const HEADINGS: Record<SettingGroup, string> = {
+  graphics: 'GRAPHICS',
+  sound: 'SOUND',
+  game: 'GENERAL',
+  traffic: 'AI'
+}
+
 /** De stand van alle instellingen die de app kent: sleutel -> waarde uit het bestand. */
 export function readGameSettings(omsiPath: string): Record<string, string> {
   const file = readOptions(omsiPath)
   const state: Record<string, string> = {}
   for (const spec of SETTINGS) {
+    if (spec.presence) {
+      state[settingKey(spec)] = hasOption(file, spec.tag) ? spec.on ?? '1' : spec.off ?? ''
+      continue
+    }
     const values = optionValues(file, spec.tag)
     state[settingKey(spec)] = values[spec.slot ?? 0] ?? ''
   }
@@ -39,21 +59,24 @@ export function writeGameSettings(omsiPath: string, changes: Record<string, stri
     const spec = specFor(key)
     if (!spec) continue
 
-    const slot = spec.slot ?? 0
-    const values = optionValues(file, spec.tag)
-
     /*
-     * Een lege waarde in de eerste sleuf is hoe OMSI "uit" noteert bij de
-     * vlaggen: het blok staat er, met niets eronder. Dan halen we de regel weg
-     * in plaats van een lege regel te schrijven, anders staat er straks een
-     * lege regel te veel tussen de blokken.
+     * Een vlag is aan als het blok er staat en uit als het er niet staat; zo
+     * schrijft OMSI het zelf. Een leeg blok laten staan zou hem dus aan laten.
      */
-    if (raw === '' && slot === 0 && values.length <= 1) {
-      setOptionValues(file, spec.tag, [])
+    if (spec.presence) {
+      if (raw === (spec.off ?? '')) removeOption(file, spec.tag)
+      else addOption(file, spec.tag, [], HEADINGS[spec.group])
       continue
     }
 
-    const next = [...values]
+    const slot = spec.slot ?? 0
+    if (!hasOption(file, spec.tag)) {
+      // Een blok dat OMSI nog nooit schreef; alleen de eerste waarde weten we.
+      if (slot === 0) addOption(file, spec.tag, [raw], HEADINGS[spec.group])
+      continue
+    }
+
+    const next = [...optionValues(file, spec.tag)]
     while (next.length <= slot) next.push('')
     next[slot] = raw
     setOptionValues(file, spec.tag, next)

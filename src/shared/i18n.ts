@@ -471,6 +471,36 @@ const TEXT = {
     fr: 'Taille de l’image des miroirs. Plus net coûte des images par seconde.',
     nl: 'Grootte van het spiegelbeeld. Scherpere spiegels kosten beeldsnelheid.'
   },
+  'set.performance_realreflexions': { en: 'Real-time reflections', de: 'Echtzeit-Spiegelungen', fr: 'Reflets en temps réel', nl: 'Echte spiegelingen' },
+  'set.performance_realreflexions.hint': {
+    en: 'Mirrors and windows draw the world a second time. Inside the bus this is the heaviest setting of all; "economy" refreshes them less often and often gains a lot.',
+    de: 'Spiegel und Scheiben zeichnen die Umgebung ein zweites Mal. Im Bus ist das die schwerste Einstellung; „sparsam“ aktualisiert seltener und bringt oft viel.',
+    fr: 'Les rétroviseurs et les vitres redessinent le décor. Dans le bus, c’est le réglage le plus lourd ; « économique » les rafraîchit moins souvent et fait souvent gagner beaucoup.',
+    nl: 'Spiegels en ruiten tekenen de omgeving nog een keer. In de bus is dit de zwaarste instelling; "zuinig" ververst ze minder vaak en scheelt vaak veel.'
+  },
+  'set.performance_realreflexions.economy': { en: 'Economy', de: 'Sparsam', fr: 'Économique', nl: 'Zuinig' },
+  'set.performance_realreflexions.full': { en: 'Full', de: 'Voll', fr: 'Complet', nl: 'Volledig' },
+  'set.performance_minObjSizeRefl': { en: 'Smallest object in reflections', de: 'Kleinstes Objekt in Spiegelungen', fr: 'Plus petit objet dans les reflets', nl: 'Kleinste object in spiegelingen' },
+  'set.performance_minObjSizeRefl.hint': {
+    en: 'Objects smaller than this are left out of mirrors and windows. Higher is faster.',
+    de: 'Kleinere Objekte fehlen in Spiegeln und Scheiben. Höher ist schneller.',
+    fr: 'Les objets plus petits sont omis des rétroviseurs et des vitres. Plus haut, plus rapide.',
+    nl: 'Kleinere objecten laat OMSI weg uit spiegels en ruiten. Hoger is sneller.'
+  },
+  'set.performance_dyn_redrefl': { en: 'Cut back reflections below (fps)', de: 'Spiegelungen reduzieren unter (FPS)', fr: 'Réduire les reflets sous (i/s)', nl: 'Spiegelingen inkorten onder (fps)' },
+  'set.performance_dyn_redrefl.hint': {
+    en: 'When the frame rate drops below this, OMSI shortens how far reflections reach, by itself.',
+    de: 'Fällt die Bildrate darunter, verkürzt OMSI selbst die Reichweite der Spiegelungen.',
+    fr: 'Si la fluidité passe en dessous, OMSI réduit de lui-même la portée des reflets.',
+    nl: 'Zakt de beeldsnelheid hieronder, dan kort OMSI zelf in hoe ver spiegelingen reiken.'
+  },
+  'set.no_rain_refl': { en: 'No reflections on wet roads', de: 'Keine Spiegelungen auf nasser Straße', fr: 'Pas de reflets sur route mouillée', nl: 'Geen spiegelingen op natte weg' },
+  'set.no_rain_refl.hint': {
+    en: 'In rain, the road mirrors the world as well. Switching that off saves a lot.',
+    de: 'Bei Regen spiegelt auch die Straße die Umgebung. Das auszuschalten spart viel.',
+    fr: 'Sous la pluie, la route reflète aussi le décor. Le désactiver fait gagner beaucoup.',
+    nl: 'Bij regen spiegelt ook de weg de omgeving. Dat uitzetten scheelt veel.'
+  },
   'set.shadow_stencil': { en: 'Hard shadows', de: 'Harte Schatten', fr: 'Ombres dures', nl: 'Harde schaduwen' },
   'set.sunglow': { en: 'Sun glare', de: 'Sonnenschein-Effekt', fr: 'Éblouissement du soleil', nl: 'Zonnegloed' },
   'set.no_humans_on_rain_refl': { en: 'No people in wet reflections', de: 'Keine Menschen in nassen Spiegelungen', fr: 'Pas de piétons dans les reflets', nl: 'Geen mensen in natte weerspiegeling' },
