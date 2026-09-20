@@ -9,6 +9,7 @@ const api: CareerApi = {
   status: () => ipcRenderer.invoke('omsi:status'),
   chooseOmsi: () => ipcRenderer.invoke('omsi:choose'),
   version: () => ipcRenderer.invoke('app:version'),
+  logboekOpenen: () => ipcRenderer.invoke('logboek:openen'),
   kaartenStand: () => ipcRenderer.invoke('kaarten:stand'),
   kaartenVoorbereiden: () => ipcRenderer.invoke('kaarten:voorbereiden'),
   /** Meeluisteren met het klaarzetten; geeft een opzegfunctie terug. */

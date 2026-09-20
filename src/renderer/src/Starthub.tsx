@@ -23,6 +23,8 @@ interface Props {
   onStaatVanDienst: () => void
   onInstellingen: () => void
   onChauffeur: () => void
+  /** Het logboek van de app in de verkenner tonen. */
+  onLogboek: () => void
 }
 
 const MODI: GameMode[] = ['career', 'service', 'free']
@@ -58,7 +60,8 @@ export function Starthub({
   onModus,
   onStaatVanDienst,
   onInstellingen,
-  onChauffeur
+  onChauffeur,
+  onLogboek
 }: Props): JSX.Element {
   const uren = samenvatting ? formatDuration(samenvatting.minutes, language) : undefined
 
@@ -147,6 +150,11 @@ export function Starthub({
             <button type="button" className="hub-knop" onClick={onChauffeur}>
               <Icoon naam="profile" />
               {t(language, 'hub.driver', { naam: chauffeur })}
+            </button>
+            {/* Voor als er iets misgaat: het logboek, waar het ook staat. */}
+            <button type="button" className="hub-knop" onClick={onLogboek}>
+              <Icoon naam="logboek" />
+              {t(language, 'hub.log')}
             </button>
           </div>
         </div>

@@ -1339,6 +1339,7 @@ export function App(): JSX.Element {
           onStaatVanDienst={() => setScreen('profiel')}
           onInstellingen={() => setScreen('game')}
           onChauffeur={() => setScreen('profiles')}
+          onLogboek={() => void window.career.logboekOpenen()}
         />
       </LanguageProvider>
     )

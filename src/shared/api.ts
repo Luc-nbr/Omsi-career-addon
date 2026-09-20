@@ -328,6 +328,8 @@ export interface GameControllersPayload {
 export interface CareerApi {
   status(): Promise<OmsiStatus>
   maps(): Promise<MapSummary[]>
+  /** Het logboek van de app in de verkenner tonen; geeft het pad terug. */
+  logboekOpenen(): Promise<string | undefined>
   /** Hoe ver de app is met het klaarzetten van de kaarten. */
   kaartenStand(): Promise<KaartenStand>
   /** Begin met klaarzetten (als dat nog niet liep) en geef de stand terug. */

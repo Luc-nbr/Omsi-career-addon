@@ -55,6 +55,12 @@ const TEXT = {
   'hub.hours': { en: 'driven', de: 'gefahren', fr: 'au volant', nl: 'gereden' },
   'hub.km': { en: 'km', de: 'km', fr: 'km', nl: 'km' },
   'hub.licences': { en: 'licences', de: 'Lizenzen', fr: 'licences', nl: 'vergunningen' },
+  'hub.log': {
+    en: 'Open the log file',
+    de: 'Logbuch öffnen',
+    fr: 'Ouvrir le journal',
+    nl: 'Logboek openen'
+  },
   'hub.driver': {
     en: 'Driver: {naam}',
     de: 'Fahrer: {naam}',

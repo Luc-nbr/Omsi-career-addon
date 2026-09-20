@@ -1,8 +1,8 @@
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, screen } from 'electron'
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, screen, shell } from 'electron'
 import { cpSync, existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { Worker } from 'node:worker_threads'
-import { log, logFout, startLogboek, TRAAG_MS } from '../core/logboek'
+import { log, logboekPad, logFout, startLogboek, TRAAG_MS } from '../core/logboek'
 import { maakKaartlaag, type Kaartlaag } from '../core/kaartlaag'
 import {
   completeDuty,
@@ -1190,6 +1190,19 @@ function registerHandlers(): void {
    * wacht tot het klaar is, merkt daarna niets meer van het inlezen -- en dat
    * was de klacht: haperingen op elk scherm, juist in de eerste minuten.
    */
+  /*
+   * Het logboek in de verkenner tonen.
+   *
+   * Zonder deze knop staat het bestand er wel, maar weet niemand waar: bij een
+   * melding is "stuur het logboek mee" dan een zoektocht door AppData. Nu opent
+   * de map met het bestand aangewezen.
+   */
+  handle('logboek:openen', (): string | undefined => {
+    const bestand = logboekPad()
+    if (bestand) shell.showItemInFolder(bestand)
+    return bestand
+  })
+
   handle('kaarten:stand', (): KaartenStand => kaartenStand())
 
   handle('kaarten:voorbereiden', (): KaartenStand => {

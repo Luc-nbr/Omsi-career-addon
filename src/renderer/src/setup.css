@@ -1538,11 +1538,19 @@
  * in het vel en niet in een eigen kader -- het is dezelfde vraag als de lijst
  * eronder, alleen het deel dat jij invult.
  */
+/*
+ * Dezelfde zijmarge als de rest van het vel.
+ *
+ * Hier stond alleen een marge onderaan, en dan begint "DIENSTLÄNGE" op de rand
+ * van het vel en eindigt "2Std 00Min" er tegenaan -- net als de dagdeelchips
+ * eronder. De kop houdt 18/20/10 aan en de voet 14/20; twintig opzij is dus wat
+ * dit blok ook hoort te hebben.
+ */
 .regelaars {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding-bottom: 12px;
+  padding: 0 20px 12px;
   margin-bottom: 4px;
   border-bottom: 1px solid var(--vel-lijn);
 }
