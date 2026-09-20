@@ -234,6 +234,29 @@ app.whenReady().then(async () => {
     if (stap.toLowerCase().includes('mod')) await clickText(main, MODUSKNOP[modus] ?? 'Dienst')
     else await js(main, `document.querySelector('.dienstrij, .tegel')?.click()`)
     await wait(600)
+    /*
+     * De route tekent zichzelf van begin naar eind. Hier staat of de stukken
+     * werkelijk achter elkaar beginnen: de vertraging hoort op te lopen en het
+     * laatste stuk hoort rond de tekentijd te eindigen.
+     */
+    if (await js(main, `Boolean(document.querySelector('.route-intekenen .route-line'))`)) {
+      const plan = await js(
+        main,
+        `(() => {
+           const lijnen = [...document.querySelectorAll('.route-intekenen .route-line')]
+           const uit = lijnen.map((l) => {
+             const s = getComputedStyle(l)
+             return { start: parseFloat(s.animationDelay), duur: parseFloat(s.animationDuration) }
+           })
+           const oplopend = uit.every((v, i) => i === 0 || v.start >= uit[i - 1].start - 0.001)
+           const eind = Math.max(...uit.map((v) => v.start + v.duur))
+           return uit.length + ' stukken, oplopend: ' + oplopend +
+             ', laatste klaar na ' + Math.round(eind * 1000) + ' ms'
+         })()`
+      )
+      console.log(`   route tekenen: ${plan}`)
+    }
+
     // De stappen gaan via de hoofdknop; op de laatste stap drukken we niet.
     const laatste = await js(
       main,

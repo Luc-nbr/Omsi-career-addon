@@ -1,4 +1,5 @@
 import {
+  type CSSProperties,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -926,6 +927,47 @@ export function RouteMap({
   }, [legs, legLines, routes])
 
   /**
+   * Wanneer elk stuk van de route zichzelf tekent.
+   *
+   * De route bestaat uit losse stukken -- een per rit, en meer zodra er een
+   * geraden deel tussen zit -- en die begonnen allemaal tegelijk. Dan groeit de
+   * lijn op vier plekken tegelijk uit het niets, en dat is precies wat je niet
+   * wilt zien: een dienst loopt van begin naar eind, en de tekening hoort dat
+   * te volgen.
+   *
+   * Dus krijgt elk stuk een aandeel in de tijd naar rato van zijn lengte, en
+   * een startmoment gelijk aan alles wat ervoor ligt. De geraden stukken tellen
+   * mee in die rekensom ook al tekenen ze zichzelf niet: anders loopt de pen
+   * sneller over het stuk erna om de verloren tijd in te halen.
+   */
+  const tekenplan = useMemo(() => {
+    const volgorde = (sleutel: string): number => {
+      const [rit, deel] = sleutel.split('-')
+      return Number(rit) * 100000 + (deel === 'heel' ? 0 : Number(deel))
+    }
+    const lengte = (lijn: Array<[number, number]>): number => {
+      let som = 0
+      for (let i = 1; i < lijn.length; i++) {
+        som += Math.hypot(lijn[i][0] - lijn[i - 1][0], lijn[i][1] - lijn[i - 1][1])
+      }
+      return som
+    }
+    const alle = [...pieces.solid, ...pieces.guessed].sort(
+      (a, b) => volgorde(a.key) - volgorde(b.key)
+    )
+    const lengtes = alle.map((stuk) => lengte(stuk.line))
+    const totaal = lengtes.reduce((a, b) => a + b, 0)
+    const plan = new Map<string, { start: number; deel: number }>()
+    if (totaal <= 0) return plan
+    let tot = 0
+    alle.forEach((stuk, i) => {
+      plan.set(stuk.key, { start: tot / totaal, deel: Math.max(lengtes[i] / totaal, 0.02) })
+      tot += lengtes[i]
+    })
+    return plan
+  }, [pieces])
+
+  /**
    * De route van de huidige rit gesneden op de plek van de bus: wat gereden is
    * en wat nog komt. Zo verdwijnt de lijn achter de bus, net als in een
    * navigatiesysteem.
@@ -1030,7 +1072,15 @@ export function RouteMap({
                 {pieces.solid
                   .filter((piece) => piece.key.startsWith(`${index}-`))
                   .map((piece) => (
-                    <g key={piece.key}>
+                    <g
+                      key={piece.key}
+                      style={
+                        {
+                          '--start': tekenplan.get(piece.key)?.start ?? 0,
+                          '--deel': tekenplan.get(piece.key)?.deel ?? 1
+                        } as CSSProperties
+                      }
+                    >
                       <polyline className="route-casing" pathLength={1} points={asPoints(piece.line)} />
                       <polyline className="route-line" pathLength={1} points={asPoints(piece.line)} />
                     </g>

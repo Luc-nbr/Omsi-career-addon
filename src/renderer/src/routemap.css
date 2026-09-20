@@ -309,6 +309,14 @@
  * De streping gaat van niets naar alles en niet van een streepafstand naar
  * nul; daardoor blijft er na afloop geen streping op de lijn staan die de ronde
  * uiteinden zou afkappen.
+ *
+ * En hij tekent van begin naar eind, niet van beide kanten tegelijk. De route
+ * bestaat uit losse stukken -- een per rit, en meer als er een geraden deel
+ * tussen zit -- en die begonnen allemaal op hetzelfde moment. Elk stuk krijgt
+ * nu van `RouteMap.tsx` twee getallen mee: waar het in de tijd begint
+ * (`--start`) en welk deel van de tijd het krijgt (`--deel`), allebei naar rato
+ * van zijn lengte. Daarom ook `linear` en niet `ease-out`: de pen hoort binnen
+ * een stuk niet af te remmen, alleen aan het eind van de hele route.
  */
 @keyframes route-tekenen {
   from {
@@ -319,14 +327,20 @@
   }
 }
 
+.route-intekenen {
+  /* De hele route, hoe lang hij ook is, tekent zich in deze tijd. */
+  --tekentijd: 780ms;
+}
+
 .route-intekenen .route-casing,
 .route-intekenen .route-line {
-  animation: route-tekenen 620ms ease-out backwards;
+  animation: route-tekenen calc(var(--tekentijd) * var(--deel, 1)) linear backwards;
+  animation-delay: calc(var(--tekentijd) * var(--start, 0));
 }
 
 /* De omranding loopt een tikje voor, zodat de blauwe lijn er niet naast valt. */
 .route-intekenen .route-line {
-  animation-delay: 40ms;
+  animation-delay: calc(var(--tekentijd) * var(--start, 0) + 40ms);
 }
 
 @media (prefers-reduced-motion: reduce) {
