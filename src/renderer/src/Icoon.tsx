@@ -56,6 +56,17 @@ const WOLK = (dy: number): string =>
 const DRUPPEL = (x: number, y: number): string =>
   `M${x} ${y}l1.25 2.5a1.4 1.4 0 1 1-2.5 0Z`
 
+/*
+ * Het huis van een fototoestel: een vlak met het zoekertje erop.
+ *
+ * Wat erin komt te staan verschilt -- een lens voor "kies een foto", een
+ * minteken voor "haal hem weg" -- en dat is met `evenodd` een uitsparing in dit
+ * vlak. Vandaar dat het huis apart staat: dezelfde vorm, andere inhoud, zodat
+ * de twee knoppen in de hoek van een tegel als één paar lezen.
+ */
+const CAMERAHUIS =
+  'M9.2 3.8h5.6l1.1 2.1h3.9A1.7 1.7 0 0 1 21.5 7.6v10.9a1.7 1.7 0 0 1-1.7 1.7H4.2a1.7 1.7 0 0 1-1.7-1.7V7.6a1.7 1.7 0 0 1 1.7-1.7h3.9Z'
+
 export const ICONEN = {
   /* ---- de stappen; deze stonden al in Setup.tsx ---- */
   profile: { d: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 2c-4 0-7 2-7 4v2h14v-2c0-2-3-4-7-4Z' },
@@ -192,7 +203,29 @@ export const ICONEN = {
       ' M7.5 8.4h2v2h-2Z M11 8.6h6v1.6h-6Z' +
       ' M7.5 12h2v2h-2Z M11 12.2h6v1.6h-6Z' +
       ' M7.5 15.6h2v2h-2Z M11 15.8h6v1.6h-6Z'
-  }
+  },
+  /*
+   * Een fototoestel: kies een profielfoto.
+   *
+   * De lens is een ring en geen schijf: met `evenodd` snijdt de buitencirkel een
+   * gat in het huis en vult de binnencirkel dat weer deels op. Een dichte schijf
+   * zou bij vijftien pixels -- de maat in de hoek van een tegel -- een vlek zijn
+   * die net zo goed een knoop kon wezen.
+   */
+  foto: {
+    d:
+      CAMERAHUIS +
+      ' M12 9a4.3 4.3 0 1 0 0 8.6 4.3 4.3 0 0 0 0-8.6Z' +
+      ' M12 11.1a2.2 2.2 0 1 0 0 4.4 2.2 2.2 0 0 0 0-4.4Z'
+  },
+  /*
+   * Hetzelfde toestel met een minteken erin: haal de foto weg.
+   *
+   * Geen tweede kruis -- dat staat er al voor "deze chauffeur verwijderen", en
+   * twee kruisjes naast elkaar in dezelfde hoek zeggen niet welk van de twee je
+   * logboek opruimt.
+   */
+  fotoweg: { d: `${CAMERAHUIS} M8.1 12.3h7.8v2.4H8.1Z` }
 } as const
 
 export type Icoonnaam = keyof typeof ICONEN

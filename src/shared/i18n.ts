@@ -2209,6 +2209,25 @@ const TEXT = {
     fr: 'Supprimer ce conducteur',
     nl: 'Deze chauffeur verwijderen'
   },
+  /* De profielfoto: drie knoppen in de hoek van een chauffeurstegel. */
+  'setup.photoAdd': {
+    en: 'Add a photo',
+    de: 'Foto hinzufügen',
+    fr: 'Ajouter une photo',
+    nl: 'Foto toevoegen'
+  },
+  'setup.photoChange': {
+    en: 'Choose another photo',
+    de: 'Anderes Foto wählen',
+    fr: 'Choisir une autre photo',
+    nl: 'Andere foto kiezen'
+  },
+  'setup.photoRemove': {
+    en: 'Remove the photo',
+    de: 'Foto entfernen',
+    fr: 'Retirer la photo',
+    nl: 'Foto weghalen'
+  },
   'setup.onDuty': { en: 'on duty', de: 'im Dienst', fr: 'en service', nl: 'in dienst' },
   /* Een chauffeur weggooien wist zijn hele logboek; dat vraag je één keer na. */
   'setup.deleteAsk': {
@@ -2247,6 +2266,26 @@ const TEXT = {
     de: 'OMSI-Einstellungen',
     fr: 'Réglages OMSI',
     nl: 'OMSI-instellingen'
+  },
+
+  /* Wat je in de aangewezen dienst gaat doen. */
+  'duty.overviewHead': {
+    en: '{trips} trips · {stops} stops · {lines} lines',
+    de: '{trips} Fahrten · {stops} Haltestellen · {lines} Linien',
+    fr: '{trips} courses · {stops} arrêts · {lines} lignes',
+    nl: '{trips} ritten · {stops} haltes · {lines} lijnen'
+  },
+  'duty.overviewBreak': {
+    en: '{time} break',
+    de: '{time} Pause',
+    fr: '{time} de pause',
+    nl: '{time} pauze'
+  },
+  'duty.overviewSwitch': {
+    en: 'Pick this line and tour in OMSI yourself',
+    de: 'Diese Linie und diesen Umlauf in OMSI selbst wählen',
+    fr: 'Choisissez cette ligne et ce service dans OMSI',
+    nl: 'Deze lijn en omloop kies je in OMSI zelf'
   },
 
   /* De kaartstap. */

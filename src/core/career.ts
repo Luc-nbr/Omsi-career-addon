@@ -124,6 +124,26 @@ export interface CareerState {
   /** Id van het profiel; komt overeen met de bestandsnaam. */
   id?: string
   driver: string
+  /**
+   * De bestandsnaam van zijn profielfoto in `<userData>\profielfotos`, of niets.
+   *
+   * Met opzet de naam en niet het volledige pad: de map met gebruikersgegevens
+   * verschilt per machine en per testexemplaar (`--user-data-dir`), en een
+   * profiel dat een absoluut pad draagt wijst na een verhuizing naar niets.
+   */
+  photo?: string
+  /**
+   * Wanneer die foto gekozen is, in milliseconden.
+   *
+   * Dit is het moment waarop de app hem neerzette en niet de tijd van het
+   * bestand: `copyFileSync` gaat op Windows via `CopyFileW`, en die neemt de
+   * tijdstempel van het origineel mee. Gemeten in het proefscript kregen drie
+   * foto's die minuten na elkaar gekozen werden alle drie een tijd uit dezelfde
+   * milliseconde, want ze kwamen uit dezelfde map. Twee foto's uit hetzelfde
+   * zipbestand zouden zo niet van elkaar te onderscheiden zijn, en daar hangt
+   * de pagina haar `?v=` aan (zie `App.tsx`).
+   */
+  photoAt?: number
   startedAt: string
   entries: CareerEntry[]
   activeDuty?: ActiveDuty
@@ -149,6 +169,9 @@ export function loadCareer(file: string): CareerState {
     return {
       id: parsed.id,
       driver: parsed.driver ?? 'Nieuwe chauffeur',
+      // Profielen van voor de profielfoto hebben deze velden niet.
+      photo: typeof parsed.photo === 'string' ? parsed.photo : undefined,
+      photoAt: typeof parsed.photoAt === 'number' ? parsed.photoAt : undefined,
       startedAt: parsed.startedAt ?? new Date().toISOString(),
       entries: Array.isArray(parsed.entries) ? parsed.entries : [],
       activeDuty:

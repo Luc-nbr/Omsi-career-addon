@@ -407,6 +407,38 @@ voorbeeldplaatje, alleen Windows' eigen `Thumbs.db`. OMSI tekent daar het
 dat model tekenen, of iets afleiden uit de texturen (in veertig mappen: 257 dds,
 133 bmp, 108 tga, 40 png) -- of het bij de monogrammen laten.
 
+**De profielfoto van een chauffeur (20-09-2026)**
+
+Dezelfde vorm als de kaartafbeeldingen, een map verder: een eigen schema
+`omsifoto://` dat precies één map doorlaat, `<gebruikersgegevens>\profielfotos`.
+De gekozen foto wordt gekópieerd (`career:photo` opent het venster in het
+hoofdproces, filter jpg/jpeg/png/webp) en heet daarna `<profiel-id>.<ext>`; in
+het profiel staat alleen die bestandsnaam. Op de tegel komt hij op de plek van
+het monogram, rond bijgesneden met `object-fit: cover`, en hij loopt mee met de
+drie maten van de chauffeurstegel: 44, 56 en 72 pixels.
+
+Twee dingen die pas bij het naproeven bleken (`probe-profielfoto.cjs` in de
+kladmap van die sessie):
+
+- **Een vervangen foto kwam niet in beeld.** Zelfde bestandsnaam is dezelfde
+  URL, en dan haalt Chromium helemaal niets op: 24x24 vervangen door 96x64 en de
+  tegel bleef `naturalWidth 24` melden. Daarom hangt de pagina `?v=<photoAt>`
+  achter de URL; het schema kijkt alleen naar het pad. `Cache-Control: no-store`
+  is hiervoor geprobeerd en helpt niet -- er wordt niet opnieuw gevraagd, dus er
+  valt ook niets te verversen.
+- **`photoAt` is het moment van kiezen en niet de tijd van het bestand.**
+  `copyFileSync` gaat op Windows via `CopyFileW`, en die neemt de tijdstempel van
+  het origineel mee: drie foto's die minuten na elkaar gekozen werden kregen
+  alle drie een tijd uit dezelfde milliseconde, want ze kwamen uit dezelfde map.
+  Met de mtime als versie zouden twee foto's uit hetzelfde zipbestand dus niet
+  van elkaar te onderscheiden zijn.
+
+En een valkuil bij het nameten: het beleid van de pagina noemt `omsifoto:`
+alleen bij `img-src`. Een `fetch()` naar het schema sneuvelt daardoor op
+`connect-src` -- ook naar een geldige foto -- en zegt niets over de afhandelaar.
+Toets hem met een `<img>`. Zo gemeten: de eigen foto laadt, en `..%2Fsettings.json`,
+`..%2Fprofiles%2Factive.json` en een pad naar `Windows\win.ini` worden geweigerd.
+
 **Het logboek van een "crash" (20-09-2026)**
 
 Een speler meldde dat de app crashte en stuurde zijn logboek: 28 kaarten op een

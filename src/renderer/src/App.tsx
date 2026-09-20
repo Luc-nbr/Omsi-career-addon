@@ -24,6 +24,7 @@ import {
   type YardOption
 } from '../../shared/api'
 import { formatDuration, formatTime } from '../../shared/format'
+import { Dienstoverzicht } from './Dienstoverzicht'
 import { DutyCard } from './DutyCard'
 import { Flag } from './Flag'
 import { GameSetup } from './GameSetup'
@@ -1858,20 +1859,63 @@ export function App(): JSX.Element {
                   id: item.id,
                   titel: item.driver,
                   monogram: item.driver,
+                  /*
+                   * Zijn eigen gezicht als hij er een heeft gekozen, anders de
+                   * initialen. Het pad gaat nooit door de brug: wat hier staat
+                   * is de bestandsnaam uit `<gebruikersgegevens>\profielfotos`,
+                   * en het schema laat alleen die map door.
+                   *
+                   * `v` is het tijdstip waarop de foto er kwam, en het staat er
+                   * niet voor de sier: een vervangen foto houdt dezelfde
+                   * bestandsnaam, dus zonder dit blijft de URL gelijk en haalt
+                   * Chromium niets op. Gemeten in het proefscript: 24x24
+                   * vervangen door 96x64 en de tegel toonde nog steeds
+                   * `naturalWidth 24`. Het schema kijkt alleen naar het pad, dus
+                   * wat erachter hangt raakt het bestand niet.
+                   */
+                  foto: item.photo
+                    ? `omsifoto://chauffeur/${encodeURIComponent(item.photo)}?v=${item.photoAt ?? 0}`
+                    : undefined,
                   onder: t(language, 'setup.driverTile', {
                     count: item.duties,
                     time: formatDuration(item.minutes, language)
                   }),
                   gekozen: item.driver === huidigProfiel,
-                  actie: {
-                    label: t(language, 'setup.deleteDriver'),
-                    gevaarlijk: true,
-                    onDoen: () => {
-                      if (!window.confirm(t(language, 'setup.deleteAsk', { name: item.driver })))
-                        return
-                      void window.career.deleteProfile(item.id).then(setCareer)
+                  /*
+                   * De handelingen in de hoek, van licht naar zwaar: een foto
+                   * kiezen, hem weghalen, en pas daarna de chauffeur zelf. Het
+                   * weghalen staat er alleen als er iets weg te halen valt --
+                   * een knop die niets doet leert je niets over wat hij doet.
+                   */
+                  acties: [
+                    {
+                      label: t(language, item.photo ? 'setup.photoChange' : 'setup.photoAdd'),
+                      teken: 'foto' as const,
+                      onDoen: () => {
+                        void window.career.chooseProfilePhoto(item.id).then(setCareer)
+                      }
+                    },
+                    ...(item.photo
+                      ? [
+                          {
+                            label: t(language, 'setup.photoRemove'),
+                            teken: 'fotoweg' as const,
+                            onDoen: () => {
+                              void window.career.clearProfilePhoto(item.id).then(setCareer)
+                            }
+                          }
+                        ]
+                      : []),
+                    {
+                      label: t(language, 'setup.deleteDriver'),
+                      gevaarlijk: true,
+                      onDoen: () => {
+                        if (!window.confirm(t(language, 'setup.deleteAsk', { name: item.driver })))
+                          return
+                        void window.career.deleteProfile(item.id).then(setCareer)
+                      }
                     }
-                  },
+                  ],
                   onDoen: () => {
                     void window.career.selectProfile(item.id).then(setCareer)
                   }
@@ -2653,7 +2697,12 @@ export function App(): JSX.Element {
             formatTime(item.duty.end),
             formatDuration(item.duty.durationMinutes, language)
           ] as [string, string, string],
-          klok: true
+          klok: true,
+          /*
+           * En wat je in die dienst gaat doen. Alleen bij de regel die je
+           * aanwijst -- acht van deze blokken tegelijk is geen lijst meer.
+           */
+          detail: <Dienstoverzicht duty={item.duty} />
         })),
         index: gekozen,
         kies: setSelected,

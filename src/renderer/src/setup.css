@@ -1560,6 +1560,18 @@
 }
 
 /*
+ * Een randje op de aangewezen tegel, want die is helemaal blauw.
+ *
+ * Bij het naproeven stond er een foto in ongeveer dezelfde kleur als
+ * `--route`, en de ronde plaat verdween in het vlak eronder -- de chauffeur
+ * die je net aanwees was de enige zonder zichtbaar gezicht. Twee pixels wit op
+ * halve dekking houden de vorm los van de ondergrond, ook bij een lichte foto.
+ */
+.tegel[aria-pressed='true'] .profielfoto {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55);
+}
+
+/*
  * Eén chauffeur staat groot in het midden.
  *
  * Wens van Luc. Het klopt ook: een rooster van één tegel linksboven is geen
