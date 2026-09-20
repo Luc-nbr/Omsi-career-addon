@@ -1403,6 +1403,52 @@
   letter-spacing: 0.01em;
 }
 
+/*
+ * De afbeelding die OMSI zelf bij een kaart heeft staan.
+ *
+ * Hij loopt tot de randen van de tegel en niet binnen de binnenruimte: een
+ * plaatje met een marge eromheen leest als een illustratie bij de tekst, en dit
+ * is de tegel zelf. De verhouding is die van het bestand (370 bij 280), zodat
+ * er niets vervormt; wat niet past wordt bijgesneden en niet uitgerekt.
+ */
+.tegel-beeld {
+  display: block;
+  width: calc(100% + 32px);
+  margin: -16px -16px 8px;
+  aspect-ratio: 370 / 280;
+  /*
+   * De hele foto, niet een uitsnede. Bijna alle kaarten leveren 370 bij 280 en
+   * dan vult hij het vak precies; wie een andere maat meelevert krijgt smalle
+   * randen in plaats van een afgesneden beeld. Dat was de vraag van Luc: "de
+   * afbeelding moet helemaal passen op de tegel".
+   */
+  object-fit: contain;
+  background: var(--monogram);
+}
+
+/*
+ * Met een afbeelding erin mag een tegel breder: 370 bij 280 op 160 pixels is
+ * een postzegel, en dan kun je net zo goed de lijst nemen.
+ *
+ * `grid-auto-rows: max-content` is hier geen smaak maar noodzaak. Het rooster
+ * heeft een vaste hoogte (het vel scrollt), en dan mag een `auto`-rij van de
+ * browser krimpen tot wat er over is: de tegel werd 122 pixels hoog terwijl de
+ * afbeelding er 192 was, dus de foto werd afgekapt en de naam viel buiten de
+ * tegel. Gemeten in het draaiende venster met `probe-weergave.cjs`: 122 -> 264,
+ * en de titel staat er weer binnen.
+ */
+.tegels:has(.tegel-beeld) {
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  grid-auto-rows: max-content;
+}
+
+.tegels:has(.tegel-beeld) .tegel {
+  /* De hoeken van het beeld volgen de tegel; zonder dit steekt het erbuiten. */
+  overflow: hidden;
+  min-height: 0;
+  padding-bottom: 14px;
+}
+
 /* De bus is getekend met lijnen, dus hij neemt de kleur van de tegel over. */
 .busicoon {
   width: 84px;
@@ -1633,6 +1679,41 @@
   border-color: var(--route);
   background: var(--route);
   color: #ffffff;
+}
+
+/*
+ * Lijst of tegels.
+ *
+ * Twee knoppen tegen elkaar, in dezelfde maat als de chips erboven: het is
+ * dezelfde soort keuze -- hoe de lijst eruitziet, niet wat erin staat. De
+ * aangezette helft draagt de inkt van het vel en niet de routekleur; die is
+ * voor de route en voor de keuze zelf, en een weergaveknop is geen van beide
+ * (zie de Three Jobs Rule in DESIGN.md).
+ */
+.weergavekeuze {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--vel-rand);
+  border-radius: var(--radius-rond);
+}
+
+.weergavekeuze button {
+  padding: 5px 11px;
+  border: 0;
+  border-radius: var(--radius-rond);
+  background: transparent;
+  color: var(--vel-zacht);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.25;
+  cursor: pointer;
+}
+
+.weergavekeuze button[aria-pressed='true'] {
+  background: var(--vel-hover);
+  color: var(--vel-ink);
 }
 
 /*

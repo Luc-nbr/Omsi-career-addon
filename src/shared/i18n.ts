@@ -2245,6 +2245,21 @@ const TEXT = {
 
   /* De kaartstap. */
   'setup.mapTitle': { en: 'Maps', de: 'Karten', fr: 'Cartes', nl: 'Kaarten' },
+  'setup.viewList': { en: 'List', de: 'Liste', fr: 'Liste', nl: 'Lijst' },
+  'setup.viewTiles': { en: 'Tiles', de: 'Kacheln', fr: 'Vignettes', nl: 'Tegels' },
+  'setup.viewSwitch': { en: 'View', de: 'Ansicht', fr: 'Affichage', nl: 'Weergave' },
+  'setup.mapTile': {
+    en: '{count} tours · {year}',
+    de: '{count} Umläufe · {year}',
+    fr: '{count} services · {year}',
+    nl: '{count} omlopen · {year}'
+  },
+  'setup.noPicture': {
+    en: 'This map has no picture of its own',
+    de: 'Diese Karte hat kein eigenes Bild',
+    fr: 'Cette carte n’a pas d’image',
+    nl: 'Deze kaart heeft geen eigen afbeelding'
+  },
   'setup.mapIntro': {
     en: 'Where are you driving today?',
     de: 'Wo fährst du heute?',

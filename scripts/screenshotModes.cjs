@@ -74,6 +74,17 @@ app.whenReady().then(async () => {
     main.showInactive()
     main.moveTop()
     await wait(300)
+    /*
+     * Twee keer vangen, de tweede telt.
+     *
+     * `capturePage` grijpt het beeld bij de eerstvolgende samenstelling, en die
+     * kan later vallen dan de aanroep: de afdruk van de kaartstap liet de
+     * tegels zien die pas na de afdruk werden aangezet, en twee afdrukken
+     * waren daardoor tot op de byte gelijk. De eerste vangst dwingt een verse
+     * samenstelling af, de tweede laat zien wat er op dat moment staat.
+     */
+    await main.capturePage()
+    await wait(200)
     const png = (await main.capturePage()).toPNG()
     nummer += 1
     const file = join(outputDir, `modes-${String(nummer).padStart(2, '0')}-${name}.png`)
@@ -142,6 +153,24 @@ app.whenReady().then(async () => {
     const naam = stap.toLowerCase().replace(/[^a-z0-9]+/g, '-')
     console.log(`stap "${stap}": ${keuzes} keuzes`)
     await shoot(`stap-${naam}`)
+
+    /*
+     * De kaartstap kent twee vormen: de lijst en de tegels met de afbeelding
+     * die OMSI zelf bij elke kaart heeft. Beide vastleggen, en daarna terug
+     * naar de lijst -- de rest van de wandeling klikt op regels.
+     */
+    if (await js(main, `Boolean(document.querySelector('.weergavekeuze'))`)) {
+      await js(main, `document.querySelectorAll('.weergavekeuze button')[1]?.click()`)
+      await wait(900)
+      const plaatjes = await js(
+        main,
+        `document.querySelectorAll('.tegel-beeld').length + '/' + document.querySelectorAll('.tegel').length`
+      )
+      console.log(`   tegels met een afbeelding: ${plaatjes}`)
+      await shoot(`stap-${naam}-tegels`)
+      await js(main, `document.querySelectorAll('.weergavekeuze button')[0]?.click()`)
+      await wait(500)
+    }
 
     /*
      * Een venstertje (de aanbevolen bus, het wagenpark) dimt het scherm

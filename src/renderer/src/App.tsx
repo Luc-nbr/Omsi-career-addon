@@ -328,12 +328,26 @@ export function App(): JSX.Element {
   const [examenScherm, setExamenScherm] = useState(false)
   const [examenLijn, setExamenLijn] = useState('')
 
+  /*
+   * Lijst of tegels op de kaartstap.
+   *
+   * Hoort net als de taal bij deze computer en niet bij de chauffeur, en blijft
+   * staan: wie de tegels wil, wil ze morgen weer.
+   */
+  const [kaartweergave, setKaartweergave] = useState<'lijst' | 'tegels'>('lijst')
+
   // De taalkeuze staat los van de chauffeur; hij hoort bij deze computer.
   useEffect(() => {
     void window.career.settings().then((settings) => {
       setLanguage(settings.language)
       setThema(settings.theme ?? 'systeem')
+      setKaartweergave(settings.mapView ?? 'lijst')
     })
+  }, [])
+
+  const kiesKaartweergave = useCallback((next: 'lijst' | 'tegels') => {
+    setKaartweergave(next)
+    void window.career.saveSettings({ mapView: next })
   }, [])
 
   useEffect(() => {
@@ -1825,10 +1839,71 @@ export function App(): JSX.Element {
         }
       }
       if (stap === 'map') {
+        /*
+         * Dezelfde stap, twee vormen.
+         *
+         * Een gebruiker stelde tegels met de afbeeldingen van OMSI voor, en
+         * daar zit wat in: Hamburg herken je aan de haven, niet aan zijn naam
+         * in een regel. Maar wie de kaart al weet, vindt hem sneller in een
+         * lijst met het aantal omlopen en het jaar erbij. Dus allebei, met een
+         * knop ertussen -- en de stap erna blijft precies wat hij was, want een
+         * tegel doet hetzelfde als een regel: hij kiest de kaart en gaat door.
+         */
+        const naarVolgende = (): void =>
+          setStap(mode === 'free' ? 'line' : mode === 'career' ? 'licence' : 'duty')
+        const gekozenKaart = maps.find((item) => item.folder === mapFolder)
+        const wisselaar = (
+          <div
+            className="weergavekeuze"
+            role="group"
+            aria-label={t(language, 'setup.viewSwitch')}
+          >
+            {(['lijst', 'tegels'] as const).map((vorm) => (
+              <button
+                key={vorm}
+                type="button"
+                aria-pressed={kaartweergave === vorm}
+                onClick={() => kiesKaartweergave(vorm)}
+              >
+                {t(language, vorm === 'lijst' ? 'setup.viewList' : 'setup.viewTiles')}
+              </button>
+            ))}
+          </div>
+        )
         return {
           stap: 'map',
           titel: t(language, 'setup.mapTitle'),
-          onderschrift: t(language, 'setup.mapIntro'),
+          /*
+           * Bovenin staat welke kaart het is.
+           *
+           * Op een tegel is de naam klein en ligt hij onder een foto die zelf
+           * al een naam draagt -- "Hamburg Tag & Nacht" staat op drie foto's,
+           * en welke van de drie je nu hebt is dan niet te zien. Zodra er een
+           * kaart gekozen is, zegt de kop welke, met het aantal omlopen en het
+           * jaar erbij. Zonder keuze staat de vraag er nog.
+           */
+          onderschrift: gekozenKaart
+            ? `${gekozenKaart.name} · ${t(language, 'setup.mapTile', {
+                count: gekozenKaart.tours,
+                year: gekozenKaart.year
+              })}`
+            : t(language, 'setup.mapIntro'),
+          regelaars: wisselaar,
+          tegels:
+            kaartweergave === 'tegels'
+              ? maps.map((item) => ({
+                  id: item.folder,
+                  titel: item.name,
+                  /* De afbeelding die OMSI zelf bij de kaart heeft staan. */
+                  beeld: `omsikaart://kaart/${encodeURIComponent(item.folder)}`,
+                  onder: t(language, 'setup.mapTile', { count: item.tours, year: item.year }),
+                  gekozen: item.folder === mapFolder,
+                  onDoen: () => {
+                    setMapFolder(item.folder)
+                    naarVolgende()
+                  }
+                }))
+              : undefined,
           koppen: [
             t(language, 'setup.colMap'),
             t(language, 'setup.colTours'),
@@ -1862,7 +1937,7 @@ export function App(): JSX.Element {
            * de dienstenlijst, in carriere op je vergunningen, en bij vrij
            * rijden op de lijn.
            */
-          verder: () => setStap(mode === 'free' ? 'line' : mode === 'career' ? 'licence' : 'duty'),
+          verder: naarVolgende,
           knop: t(language, 'setup.next')
         }
       }

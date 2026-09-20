@@ -46,6 +46,16 @@ export interface Settings {
    */
   omsiConfirmed?: boolean
   /**
+   * Hoe de kaartenlijst eruitziet: als lijst of als tegels met de afbeelding
+   * die OMSI zelf bij elke kaart heeft staan (`picture.jpg`).
+   *
+   * Een gebruiker vroeg erom: "een selectie met tegels en daarbij afbeeldingen
+   * van de kaarten". Een lijst leest sneller als je precies weet welke kaart je
+   * zoekt; een plaatje herken je zonder de naam te lezen. Allebei goed, dus
+   * allebei er, en de keuze blijft staan.
+   */
+  mapView?: 'lijst' | 'tegels'
+  /**
    * Dag of nacht. `systeem` volgt wat Windows zegt en is de beginstand.
    *
    * Los van Windows, want de app wordt 's avonds in een donkere kamer gebruikt
@@ -71,10 +81,17 @@ export function readSettings(userDataPath: string): Settings {
       theme:
         raw.theme === 'licht' || raw.theme === 'donker' || raw.theme === 'systeem'
           ? raw.theme
-          : 'systeem'
+          : 'systeem',
+      mapView: raw.mapView === 'tegels' ? 'tegels' : 'lijst'
     }
   } catch {
-    return { language: DEFAULT_LANGUAGE, overlayRate: 'rustig', windowedOmsi: true, theme: 'systeem' }
+    return {
+      language: DEFAULT_LANGUAGE,
+      overlayRate: 'rustig',
+      windowedOmsi: true,
+      theme: 'systeem',
+      mapView: 'lijst'
+    }
   }
 }
 
@@ -99,7 +116,11 @@ export function writeSettings(userDataPath: string, settings: Partial<Settings>)
     theme:
       settings.theme === 'licht' || settings.theme === 'donker' || settings.theme === 'systeem'
         ? settings.theme
-        : current.theme
+        : current.theme,
+    mapView:
+      settings.mapView === 'tegels' || settings.mapView === 'lijst'
+        ? settings.mapView
+        : current.mapView
   }
   const path = settingsPath(userDataPath)
   mkdirSync(dirname(path), { recursive: true })

@@ -1,6 +1,7 @@
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, screen, shell } from 'electron'
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, net, protocol, screen, shell } from 'electron'
 import { cpSync, existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { Worker } from 'node:worker_threads'
 import { log, logboekPad, logFout, startLogboek, TRAAG_MS } from '../core/logboek'
 import { maakKaartlaag, type Kaartlaag } from '../core/kaartlaag'
@@ -2105,6 +2106,44 @@ function adoptOldProfiles(): void {
   }
 }
 
+/*
+ * De afbeelding die OMSI zelf bij elke kaart heeft staan.
+ *
+ * In elke kaartmap ligt een `picture.jpg` van 370 bij 280 -- precies het
+ * plaatje uit de kaartkeuze van het spel. De tegelweergave laat die zien, en
+ * dat is de reden dat hier een eigen schema staat: een pagina mag geen
+ * `file://` inladen, en dezelfde elf plaatjes als gegevens-URL door de IPC
+ * duwen is 1,3 MB kopieerwerk voor iets dat de schijf al heeft.
+ *
+ * Wat er door mag is één bestand: `maps\<kaart>\picture.jpg` binnen de
+ * OMSI-map. De naam komt uit het pad en niet uit de hostnaam, want die maakt
+ * Windows-mapnamen als "Ahlheim 5" en "Hohenkirchen - Herrenhof" kapot.
+ */
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'omsikaart', privileges: { standard: true, secure: true, supportFetchAPI: true } }
+])
+
+function kaartplaatje(request: Request): Promise<Response> {
+  const leeg = (): Promise<Response> => Promise.resolve(new Response(null, { status: 404 }))
+  let kaarten: string
+  try {
+    kaarten = join(omsi(), 'maps')
+  } catch {
+    return leeg()
+  }
+  const naam = decodeURIComponent(new URL(request.url).pathname).replace(/^\/+/, '')
+  if (!naam) return leeg()
+
+  /*
+   * Alleen dit ene bestand, en alleen binnen de kaartenmap. Een naam met `..`
+   * erin komt na `resolve` buiten die map uit en valt hier af.
+   */
+  const bestand = resolve(kaarten, naam, 'picture.jpg')
+  if (!bestand.startsWith(resolve(kaarten) + sep)) return leeg()
+  if (!existsSync(bestand)) return leeg()
+  return net.fetch(pathToFileURL(bestand).toString())
+}
+
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
@@ -2140,6 +2179,8 @@ if (!app.requestSingleInstanceLock()) {
     app.on('child-process-gone', (_gebeurtenis, details) =>
       log(`FOUT  hulpproces weg: ${details.type} ${details.reason} ${details.exitCode}`)
     )
+
+    protocol.handle('omsikaart', kaartplaatje)
 
     adoptOldProfiles()
     try {

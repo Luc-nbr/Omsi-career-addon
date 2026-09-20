@@ -66,6 +66,16 @@ export interface Tegel {
    * een rooster van dertig tegels meteen uit elkaar houdt.
    */
   monogram?: string
+  /**
+   * Een echte afbeelding in plaats van een icoon.
+   *
+   * De kaarten van OMSI hebben er zelf een: `picture.jpg` in de kaartmap, het
+   * plaatje dat het spel in zijn eigen kaartkeuze laat zien. Een gebruiker
+   * vroeg om die tegels, en terecht -- Hamburg herken je aan de haven, niet aan
+   * de letters HH. Ontbreekt het bestand, dan valt de tegel terug op het
+   * monogram; van de twaalf kaarten hier is dat er een.
+   */
+  beeld?: string
   gekozen?: boolean
   onDoen: () => void
 }
@@ -282,6 +292,21 @@ function Monogram({ tekst }: { tekst: string }): JSX.Element {
     .join('')
   return (
     <span className="monogram">{letters || tekst.slice(0, 2).toUpperCase()}</span>
+  )
+}
+
+/**
+ * De afbeelding van een kaart, met een uitweg.
+ *
+ * Niet elke kaart heeft een `picture.jpg` -- Vienna 2005 bijvoorbeeld niet --
+ * en een gebroken plaatje is lelijker dan geen plaatje. Gaat het laden mis, dan
+ * staat er het monogram van de naam, net als bij de bussen.
+ */
+function Tegelbeeld({ bron, naam }: { bron: string; naam: string }): JSX.Element {
+  const [mis, setMis] = useState(false)
+  if (mis) return <Monogram tekst={naam} />
+  return (
+    <img className="tegel-beeld" src={bron} alt="" loading="lazy" onError={() => setMis(true)} />
   )
 }
 
@@ -543,7 +568,9 @@ export function Setup({
                 aria-pressed={tegel.gekozen}
                 onClick={tegel.onDoen}
               >
-                {tegel.icoon === 'hof' ? (
+                {tegel.beeld ? (
+                  <Tegelbeeld bron={tegel.beeld} naam={tegel.titel} />
+                ) : tegel.icoon === 'hof' ? (
                   <Hoficoon />
                 ) : tegel.monogram ? (
                   <Monogram tekst={tegel.monogram} />
