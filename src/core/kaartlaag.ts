@@ -16,7 +16,14 @@ import { LaneNetwork, routeForTrip, type TripRoute } from './routing'
 import { findTemplate, readSituationTime } from './situation'
 import { listMaps, loadMap, readMapOverview } from './timetable'
 import { listVehicles, type Vehicle } from './vehicles'
-import { planHofs, scanHofs, wagenparkAfdruk, type BusHofState, type HofFile } from './hofTool'
+import {
+  besteKandidaat,
+  planHofs,
+  scanHofs,
+  wagenparkAfdruk,
+  type BusHofState,
+  type HofFile
+} from './hofTool'
 import type { Hof } from './hof'
 import type { OmsiMap } from './types'
 import {
@@ -84,6 +91,14 @@ export interface Kaartlaag {
    * twee die op jouw dienst staan.
    */
   hofAanbodVoorRit(termini: string[], busmap: string): HofOffer | undefined
+  /**
+   * Het beste wagenpark dat je bij deze bus zou kunnen leggen, ook als het niet
+   * beter is dan wat hij al heeft. Voor de knop die er altijd hoort te staan.
+   */
+  wagenparkKandidaat(
+    termini: string[],
+    busmap: string
+  ): { path: string; file: string; matched: number; known: number; total: number } | undefined
   /** Alle .hof-bestanden die er liggen; komt van schijf zolang Vehicles niet wijzigt. */
   wagenparkBestanden(): HofFile[]
   diensten(request: DutyRequest): Assignment[]
@@ -410,6 +425,12 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
      * busmenu een andere bus aanwees. Nu komt het uit hetzelfde plan als de
      * lijst hierboven.
      */
+    wagenparkKandidaat(termini, busmap) {
+      const schoon = [...new Set(termini.filter(Boolean))]
+      if (schoon.length === 0) return undefined
+      return besteKandidaat(omsiPath, schoon, busmap, laag.wagenparkBestanden())
+    },
+
     hofAanbodVoorRit(termini, busmap) {
       const schoon = [...new Set(termini.filter(Boolean))]
       if (schoon.length === 0) return undefined

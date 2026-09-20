@@ -348,6 +348,56 @@ export function planHofs(
   return result.sort((a, b) => a.folder.localeCompare(b.folder))
 }
 
+/**
+ * Het beste wagenpark dat je bij déze bus zou kunnen leggen.
+ *
+ * WAAROM NAAST `planHofs`
+ * Dat plan biedt alleen iets aan als het beter is dan wat de bus al heeft, en
+ * dat is de juiste maat voor een lijst met voorstellen. Op het remisescherm
+ * staat de speler met zijn bus in de hand en ziet hij "0 van 2 bestemmingen":
+ * dan hoort er een knop te zijn, ook als de rekensom vindt dat er niets te
+ * winnen valt. Luc: "ik wil dat er altijd een knop is waarmee je de hoffile van
+ * de map kan kopieren".
+ *
+ * Wat hier wel geldt: het bestand moet ergens anders vandaan komen, het moet
+ * bij de indeling van deze bus passen (`schemaFits`, want een wagenpark met
+ * meer velden dan de bus kent levert rommel op het matrixbord), en het mag er
+ * niet al liggen.
+ */
+export function besteKandidaat(
+  omsiPath: string,
+  termini: string[],
+  folder: string,
+  hofs = scanHofs(omsiPath)
+): { path: string; file: string; matched: number; known: number; total: number } | undefined {
+  const wanted = new Set(termini.map(normalise).filter(Boolean))
+  if (wanted.size === 0) return undefined
+
+  const eigen = hofs.filter((entry) => entry.owner === folder)
+  const schemas = busSchemas(eigen)
+  let known = 0
+  for (const entry of eigen) known = Math.max(known, coverage(entry.hof, wanted))
+
+  const beste = hofs
+    .map((entry) => ({ entry, matched: coverage(entry.hof, wanted) }))
+    .filter((item) => item.matched > 0)
+    .sort((a, b) => b.matched - a.matched)
+    .find(
+      (item) =>
+        item.entry.owner !== folder &&
+        schemaFits(schemas, item.entry.schema) &&
+        !eigen.some((mijn) => mijn.file.toLowerCase() === item.entry.file.toLowerCase())
+    )
+  if (!beste) return undefined
+  return {
+    path: beste.entry.path,
+    file: beste.entry.file,
+    matched: beste.matched,
+    known,
+    total: wanted.size
+  }
+}
+
 /** Wat er bij het overzetten gebeurd is; gaat naar het profiel zodat het terug kan. */
 export interface HofPlacement {
   /** Waar het bestand nu ligt. */

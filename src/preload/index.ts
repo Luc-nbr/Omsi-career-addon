@@ -84,6 +84,8 @@ const api: CareerApi = {
   hofOffers: (mapFolder) => ipcRenderer.invoke('hof:offers', mapFolder),
   hofOfferFor: (mapFolder, folder) => ipcRenderer.invoke('hof:offerFor', mapFolder, folder),
   hofOfferForDuty: (duty, folder) => ipcRenderer.invoke('hof:offerForDuty', duty, folder),
+  hofCandidate: (duty, folder) => ipcRenderer.invoke('hof:candidate', duty, folder),
+  placeHofCandidate: (duty, folder) => ipcRenderer.invoke('hof:placeCandidate', duty, folder),
   placeHofs: (mapFolder, folders) => ipcRenderer.invoke('hof:place', mapFolder, folders)
 }
 

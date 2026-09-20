@@ -2406,6 +2406,18 @@ const TEXT = {
     fr: 'Ajouter un fichier de dépôt',
     nl: 'Wagenpark toevoegen'
   },
+  'setup.yardAddNone': {
+    en: 'No yard file on this installation covers these destinations',
+    de: 'Keine Hofdatei auf diesem Rechner kennt diese Ziele',
+    fr: 'Aucun fichier de dépôt ici ne connaît ces destinations',
+    nl: 'Geen wagenpark op deze computer kent deze bestemmingen'
+  },
+  'setup.yardAdded': {
+    en: '{file} placed next to this bus',
+    de: '{file} neben diesen Bus gelegt',
+    fr: '{file} placé à côté de ce bus',
+    nl: '{file} naast deze bus gelegd'
+  },
   'setup.yardAddFrom': {
     en: '{file} · knows {matched} destinations here',
     de: '{file} · kennt hier {matched} Ziele',

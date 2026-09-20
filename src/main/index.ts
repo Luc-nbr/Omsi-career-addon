@@ -1651,6 +1651,55 @@ function registerHandlers(): void {
     }
   )
 
+  /*
+   * Het beste wagenpark voor deze dienst, ook als het niet beter is dan wat de
+   * bus al heeft -- en het neerleggen ervan.
+   *
+   * Twee handelingen, en met opzet gescheiden: eerst kijken, dan pas schrijven.
+   * Dit is de enige plek waar de app iets in de voertuigmappen van OMSI zet.
+   *
+   * Waarom naast `hof:offerForDuty`: dat antwoordt alleen als er iets te winnen
+   * valt, en op het remisescherm hoort de knop er altijd te staan. Luc stond
+   * daar met dertien wagenparken die allemaal "0 van 2 bestemmingen" zeiden en
+   * geen enkele manier om er een bij te leggen.
+   */
+  const kandidaatVoor = async (
+    duty: Duty,
+    folder: string
+  ): Promise<{ path: string; file: string; matched: number; known: number; total: number } | undefined> => {
+    const termini = [...new Set(duty.legs.map((leg: DutyLeg) => leg.terminus).filter(Boolean))]
+    if (termini.length === 0) return undefined
+    try {
+      return await werkerVraag({ soort: 'hofkandidaat', termini, busmap: folder })
+    } catch (fout) {
+      logFout('wagenparkkandidaat via de werker', fout)
+      return laag().wagenparkKandidaat(termini, folder)
+    }
+  }
+
+  handle('hof:candidate', (_event, duty: Duty, folder: string) => kandidaatVoor(duty, folder))
+
+  handle(
+    'hof:placeCandidate',
+    async (_event, duty: Duty, folder: string): Promise<{ placed: number; file?: string }> => {
+      const kandidaat = await kandidaatVoor(duty, folder)
+      if (!kandidaat) return { placed: 0 }
+      try {
+        const gedaan = placeHof(omsi(), folder, kandidaat.path)
+        if (!gedaan) return { placed: 0, file: kandidaat.file }
+        const lijst = readPlacements(userData())
+        lijst.push(gedaan)
+        writePlacements(userData(), lijst)
+        // Er ligt een bestand bij: alles wat we van de bussen wisten klopt niet meer.
+        vergeetKaarten()
+        return { placed: 1, file: kandidaat.file }
+      } catch (fout) {
+        logFout('wagenpark neerleggen', fout)
+        return { placed: 0, file: kandidaat.file }
+      }
+    }
+  )
+
   handle(
     'hof:place',
     (_event, mapFolder: string, folders: string[]): { placed: number; failed: string[] } => {

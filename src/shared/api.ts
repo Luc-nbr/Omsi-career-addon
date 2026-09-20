@@ -522,6 +522,16 @@ export interface CareerApi {
   /** Hetzelfde, maar voor de bestemmingen van deze ene dienst. */
   hofOfferForDuty(duty: Duty, folder: string): Promise<HofOffer | undefined>
   /**
+   * Het beste wagenpark dat bij deze bus gelegd kán worden, ook als het niet
+   * beter is dan wat hij al heeft; voor de knop die er altijd staat.
+   */
+  hofCandidate(
+    duty: Duty,
+    folder: string
+  ): Promise<{ path: string; file: string; matched: number; known: number; total: number } | undefined>
+  /** En dat bestand er werkelijk neerleggen. */
+  placeHofCandidate(duty: Duty, folder: string): Promise<{ placed: number; file?: string }>
+  /**
    * Zet de aangeboden wagenparken neer bij de genoemde bussen. Geeft terug
    * hoeveel er werkelijk bij zijn gekomen -- een bestand dat er al lag telt niet
    * mee en wordt nooit overschreven.

@@ -369,6 +369,40 @@ app.whenReady().then(async () => {
     console.log(`   overgang: ${metingen.join(' | ')}`)
   }
 
+  /*
+   * De remise: die zit achter de busstap -- een bus kiezen brengt je er
+   * meteen heen. Hier hoort de knop "wagenpark toevoegen" altijd te staan,
+   * ook als er niets te halen valt; dan uitgeschakeld met de reden erbij.
+   */
+  for (let i = 0; i < 3; i++) {
+    if (await js(main, `Boolean(document.querySelector('.kruimels'))`)) {
+      const remise = await js(
+        main,
+        `Boolean([...document.querySelectorAll('.kruimel-hier')].some((k) => /remise|depot|dépôt/i.test(k.textContent || '')))`
+      )
+      if (remise) break
+    }
+    await js(main, `document.querySelector('.tegel:not([disabled])')?.click()`)
+    await wait(1500)
+  }
+  if (await js(main, `Boolean(document.querySelector('.tegel'))`)) {
+    const stand = await js(
+      main,
+      `(() => {
+         const tegels = [...document.querySelectorAll('.tegel')]
+         const knop = tegels.find((k) => /toevoegen|add|hinzuf|ajouter/i.test(k.textContent || ''))
+         return JSON.stringify({
+           tegels: tegels.length,
+           knopAanwezig: Boolean(knop),
+           knopUit: knop ? knop.disabled : null,
+           onder: knop ? (knop.querySelector('.tegel-onder')?.textContent || '').slice(0, 60) : ''
+         })
+       })()`
+    )
+    console.log(`   remise: ${stand}`)
+    await shoot('remise')
+  }
+
   // De staat van dienst hangt aan de naam in de stappenbalk.
   if (await js(main, `Boolean(document.querySelector('.balk-rechts .profielknop, .profielknop'))`)) {
     await js(main, `document.querySelector('.profielknop')?.click()`)

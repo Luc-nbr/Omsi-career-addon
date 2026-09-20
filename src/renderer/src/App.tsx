@@ -273,6 +273,17 @@ export function App(): JSX.Element {
    */
   const [ritAanbod, setRitAanbod] = useState<HofOffer>()
   /*
+   * En het beste wagenpark dat er bij deze bus gelegd kán worden, ook als het
+   * niet beter is dan wat hij al heeft. Daar hangt de knop aan die er altijd
+   * hoort te staan.
+   */
+  const [ritKandidaat, setRitKandidaat] = useState<{
+    file: string
+    matched: number
+    known: number
+    total: number
+  }>()
+  /*
    * Of de vraag over de aanbevolen bus al gesteld is voor deze dienst.
    *
    * Eenmaal per dienst: wie "zelf kiezen" aanklikt hoort niet bij elke stap
@@ -746,8 +757,13 @@ export function App(): JSX.Element {
   useEffect(() => {
     if (!duty || !vehicle) {
       setRitAanbod(undefined)
+      setRitKandidaat(undefined)
       return
     }
+    void window.career
+      .hofCandidate(duty, vehicle.folder)
+      .then((kandidaat) => setRitKandidaat(kandidaat))
+      .catch(() => setRitKandidaat(undefined))
     let geldig = true
     void window.career
       .hofOfferForDuty(duty, vehicle.folder)
@@ -811,9 +827,22 @@ export function App(): JSX.Element {
         return
       }
     }
+    /*
+     * En dan de vraag zelf -- eerst voor de bestemmingen van deze dienst.
+     *
+     * Hier stond alleen de kaartbrede vraag, en die zweeg juist in het geval
+     * waarin het scherm om hulp vroeg: een bus die drie van de
+     * honderdnegenenvijftig bestemmingen van de kaart kent, heeft kaartbreed
+     * een aanbod, maar een bus die er veertig kent en geen van de twee van
+     * jouw dienst, heeft dat niet. Luc: "ik krijg geen popup".
+     */
     let geldig = true
-    void window.career
-      .hofOfferFor(mapFolder, vehicle.folder)
+    const vraag = duty
+      ? window.career
+          .hofOfferForDuty(duty, vehicle.folder)
+          .then((aanbod) => aanbod ?? window.career.hofOfferFor(mapFolder, vehicle.folder))
+      : window.career.hofOfferFor(mapFolder, vehicle.folder)
+    void vraag
       .then((aanbod) => {
         if (geldig) setBusAanbod(aanbod)
       })
@@ -823,7 +852,7 @@ export function App(): JSX.Element {
     return () => {
       geldig = false
     }
-  }, [mapFolder, vehicle, yards, hofGevraagd, hofTeller])
+  }, [mapFolder, vehicle, yards, hofGevraagd, hofTeller, duty])
 
   useEffect(() => {
     setYardOverride('')
@@ -2297,25 +2326,52 @@ export function App(): JSX.Element {
                * werkelijk iets te halen valt: een tegel die niets doet is erger
                * dan geen tegel.
                */
-              ...(busHofAanbod && vehicle
+              /*
+               * En er een bij leggen -- altijd.
+               *
+               * Deze tegel hing eerst aan een aanbod: alleen als de rekensom
+               * vond dat er iets te winnen viel, stond hij er. Luc stond op dit
+               * scherm met dertien wagenparken die allemaal "0 van 2
+               * bestemmingen" zeiden en geen enkele knop. Nu staat hij er
+               * altijd zodra er een bus en een dienst zijn; valt er werkelijk
+               * niets te halen, dan staat hij er uitgeschakeld met de reden
+               * erbij. Dat is duidelijker dan een knop die er soms wel en soms
+               * niet is.
+               */
+              ...(vehicle && duty
                 ? [
                     {
                       id: '__nieuw__',
                       titel: t(language, 'setup.yardAdd'),
                       onder: hofBezig
                         ? t(language, 'setup.hofBusy')
-                        : t(language, 'setup.yardAddFrom', {
-                            file: busHofAanbod.offerFile ?? '',
-                            matched: busHofAanbod.offerMatched ?? 0
-                          }),
+                        : ritKandidaat
+                          ? t(language, 'setup.yardAddFrom', {
+                              file: ritKandidaat.file,
+                              matched: ritKandidaat.matched
+                            })
+                          : busHofAanbod
+                            ? t(language, 'setup.yardAddFrom', {
+                                file: busHofAanbod.offerFile ?? '',
+                                matched: busHofAanbod.offerMatched ?? 0
+                              })
+                            : t(language, 'setup.yardAddNone'),
                       icoon: 'hof' as const,
+                      uit:
+                        ritKandidaat || busHofAanbod
+                          ? undefined
+                          : t(language, 'setup.yardAddNone'),
                       onDoen: () => {
                         if (hofBezig) return
                         setHofBezig(true)
                         void window.career
-                          .placeHofs(mapFolder, [vehicle.folder])
+                          .placeHofCandidate(duty, vehicle.folder)
                           .then((result) => {
-                            setNote(t(language, 'setup.hofDone', { count: result.placed }))
+                            setNote(
+                              result.placed > 0 && result.file
+                                ? t(language, 'setup.yardAdded', { file: result.file })
+                                : t(language, 'setup.yardAddNone')
+                            )
                             /*
                              * De lijst wagenparken van deze bus opnieuw ophalen;
                              * er ligt er nu een bij, en die hoort meteen naast

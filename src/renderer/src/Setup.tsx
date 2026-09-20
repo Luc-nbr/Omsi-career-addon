@@ -96,6 +96,14 @@ export interface Tegel {
   foto?: string
   gekozen?: boolean
   /**
+   * Grijs en niet aanklikbaar, met de reden als titel.
+   *
+   * De knop om een wagenpark bij te leggen hoort er altijd te staan, ook als er
+   * niets te halen valt -- anders vraag je je af of de app het wel kan. Dan
+   * staat hij er dus uitgeschakeld, met erbij waarom.
+   */
+  uit?: string
+  /**
    * Handelingen die bij deze tegel horen en niet bij de keuze -- een chauffeur
    * weggooien, zijn foto wisselen.
    *
@@ -635,6 +643,8 @@ export function Setup({
                 className="tegel"
                 style={{ '--i': index } as CSSProperties}
                 aria-pressed={tegel.gekozen}
+                disabled={Boolean(tegel.uit)}
+                title={tegel.uit}
                 onClick={tegel.onDoen}
               >
                 {tegel.beeld ? (
