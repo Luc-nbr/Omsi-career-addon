@@ -1863,6 +1863,15 @@ export function App(): JSX.Element {
                     time: formatDuration(item.minutes, language)
                   }),
                   gekozen: item.driver === huidigProfiel,
+                  actie: {
+                    label: t(language, 'setup.deleteDriver'),
+                    gevaarlijk: true,
+                    onDoen: () => {
+                      if (!window.confirm(t(language, 'setup.deleteAsk', { name: item.driver })))
+                        return
+                      void window.career.deleteProfile(item.id).then(setCareer)
+                    }
+                  },
                   onDoen: () => {
                     void window.career.selectProfile(item.id).then(setCareer)
                   }

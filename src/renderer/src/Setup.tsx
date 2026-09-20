@@ -77,6 +77,16 @@ export interface Tegel {
    */
   beeld?: string
   gekozen?: boolean
+  /**
+   * Een handeling die bij deze tegel hoort en niet bij de keuze -- een
+   * chauffeur weggooien bijvoorbeeld.
+   *
+   * Staat in de hoek en is een eigen knop, net als achteraan een regel: hij mag
+   * nooit meeliften op het aanklikken van de tegel zelf. Toen de chauffeurs van
+   * regels naar tegels gingen viel deze handeling er stilletjes uit, en toen
+   * was er geen enkele manier meer om een chauffeur te verwijderen.
+   */
+  actie?: { label: string; gevaarlijk?: boolean; onDoen: () => void }
   onDoen: () => void
 }
 
@@ -589,6 +599,35 @@ export function Setup({
                 )}
                 <span className="tegel-titel">{tegel.titel}</span>
                 {tegel.onder && <span className="tegel-onder">{tegel.onder}</span>}
+                {tegel.actie && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className={`tegelactie ${tegel.actie.gevaarlijk ? 'gevaarlijk' : ''}`}
+                    title={tegel.actie.label}
+                    aria-label={tegel.actie.label}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      tegel.actie?.onDoen()
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter' && e.key !== ' ') return
+                      e.preventDefault()
+                      e.stopPropagation()
+                      tegel.actie?.onDoen()
+                    }}
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        d="M7 7l10 10M17 7 7 17"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </span>
+                )}
               </button>
             ))}
           </div>

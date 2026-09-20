@@ -1574,6 +1574,47 @@
   opacity: 1;
 }
 
+/* De handeling in de hoek van een tegel: klein, en pas zichtbaar bij zweven. */
+.tegelactie {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-rond);
+  color: var(--vel-zacht);
+  opacity: 0;
+  cursor: pointer;
+  transition:
+    opacity 120ms ease-out,
+    background-color 120ms ease-out,
+    color 120ms ease-out;
+}
+
+.tegelactie svg {
+  width: 15px;
+  height: 15px;
+}
+
+.tegel:hover .tegelactie,
+.tegelactie:focus-visible {
+  opacity: 1;
+}
+
+.tegelactie:hover {
+  background: var(--vel-hover);
+}
+
+.tegelactie.gevaarlijk:hover {
+  color: var(--te-laat, #e5484d);
+}
+
+.tegel {
+  position: relative;
+}
+
 .tegel-titel {
   font-size: 15px;
   font-weight: 600;
