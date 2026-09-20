@@ -139,6 +139,17 @@ export type O3dKlacht =
   | 'afgekapt'
   /** Een kenbyte die we niet kennen, midden in het bestand. */
   | 'onbekend-blok'
+  /**
+   * Versleuteld. Vanaf versie 4 staat er op plek 4 een woord: `ffffffff` bij
+   * een open bestand, en anders de sleutel waarmee de maker de hoekpunten
+   * heeft gehusseld. Zonder die sleutel komen de drie coördinaten per hoekpunt
+   * door elkaar, en dan tekent er geen bus maar een waaier van driehoeken --
+   * precies wat er op het scherm stond. Bewijs: `21_aussen_weich3.o3d` (woord
+   * 00003d29) en zijn open tweeling `21_aussen_weich3_#low.o3d` (ffffffff)
+   * hebben allebei 582 hoekpunten en 766 driehoeken, maar hoekpunt 0 staat in
+   * de een op (-0,963; 3,281; 5,084) en in de ander op (-0,963; 5,084; 3,281).
+   */
+  | 'versleuteld'
 
 /**
  * Het antwoord van de lezer. `model` en `klacht` kunnen allebei gevuld zijn:
@@ -210,6 +221,22 @@ export function ontleedO3d(bytes: Uint8Array): O3dLezing {
   if (buf.length === 0) return { klacht: 'leeg', detail: 'nul bytes' }
   if (buf.length < 4 || buf[0] !== 0x84 || buf[1] !== 0x19) {
     return { klacht: 'geen-kop', detail: `begint met ${toon(buf, 4)}` }
+  }
+
+  /*
+   * Versleuteld? Dan houdt het hier op; zie de uitleg bij `O3dKlacht`.
+   *
+   * Niet op de vlagbyte ernaast afgaan, hoe verleidelijk die ook is: geteld
+   * over alle 34.423 bestanden onder Vehicles hebben 5873 gesloten bestanden
+   * bit 1 uit en 46 open bestanden hem aan. Het woord op plek 4 is het merk,
+   * de vlag niet.
+   */
+  const versie = buf[2]
+  if (versie >= 4 && buf.length >= 8 && buf.readUInt32LE(4) !== 0xffffffff) {
+    return {
+      klacht: 'versleuteld',
+      detail: `sleutel ${buf.readUInt32LE(4).toString(16)}`
+    }
   }
 
   /*

@@ -1,6 +1,6 @@
-import { leesBusModel } from './busmodel'
+import { leesBusModel, zoekTextuurVan } from './busmodel'
 import { leesTextuur, type Textuur } from './textuur'
-import { leesO3d } from './o3d'
+import { leesO3dLezing } from './o3d'
 
 /**
  * Van een bus naar iets wat een tekenaar begrijpt.
@@ -47,6 +47,12 @@ export interface BusTekening {
   driehoeken: number
   /** Onderdelen die we niet konden lezen; puur om te melden. */
   overgeslagen: number
+  /**
+   * Onderdelen die versleuteld zijn. Die tekenen we niet: zonder de sleutel
+   * staan de coördinaten per hoekpunt door elkaar en levert het een waaier van
+   * driehoeken op in plaats van een bus.
+   */
+  versleuteld: number
 }
 
 /**
@@ -94,13 +100,59 @@ export function bouwBusTekening(busPad: string): BusTekening | undefined {
   const steekproef: [number[], number[], number[]] = [[], [], []]
   let driehoeken = 0
   let overgeslagen = 0
+  let versleuteld = 0
+
+  /*
+   * Wat er niet op een foto van de buitenkant hoort.
+   *
+   * Vijf soorten, alle vijf gemeten over de 193 modellen in deze installatie:
+   *
+   * - De binnenkant en de AI-tweeling. `[viewpoint]` is een bitpatroon (0 =
+   *   altijd, 1 = buiten, 2 = binnen, 4 = AI), en de AI-versie ligt precies op
+   *   de carrosserie: 33 procent van de driehoeken bij de Hamburgse gelede bus,
+   *   32 bij de elektrische, 22 bij de Lion's City.
+   * - De verre-afstandsschil. Achter het laatste `[LOD]` staan 359 onderdelen
+   *   die samen een grove kopie van de hele bus zijn, en 345 daarvan dragen
+   *   geen `[viewpoint]` -- ze blijven dus staan als je alleen daarop filtert.
+   *   Op naam gaat ook niet: 98 van die 359 hebben geen `lod` of `low` in hun
+   *   naam.
+   * - Onderdelen die twee keer vermeld staan: 2,5 miljoen overtollige
+   *   driehoeken, 22 procent bij de Lion's City. Dat mag weg omdat wij de
+   *   matrix uit het bestand niet toepassen -- twee vermeldingen leveren
+   *   letterlijk dezelfde pixels.
+   * - Schaduwvlakken (`[isshadow]`): 197 stuks, een per model.
+   * - Vuillagen: 425.227 driehoeken in 93 modellen, met namen als `dreck` en
+   *   `schmutz`. Bij een schone bus staat hun alfa op nul. Niet op
+   *   `[alphascale]` filteren, want dat eet ook wielen en carrosseriedelen op.
+   *
+   * Wat hier met opzet *niet* gebruikt wordt is `binnen`: 94 procent van de
+   * MB_O530 draagt `[interior]` of `[illumination_interior]` terwijl dat gewoon
+   * de buitenkant is.
+   */
+  const lods = new Set<number>()
+  for (const deel of model.onderdelen) if (deel.lod !== undefined) lods.add(deel.lod)
+  const laagsteLod = lods.size > 1 ? Math.min(...lods) : undefined
+  const alGezien = new Set<string>()
+  const VUIL = /dreck|dirt|schmutz/i
 
   for (const deel of model.onderdelen) {
     if (!deel.pad) {
       overgeslagen++
       continue
     }
-    const mesh = leesO3d(deel.pad)
+    if (deel.aanzicht !== undefined && deel.aanzicht !== 0 && (deel.aanzicht & 1) === 0) continue
+    if (laagsteLod !== undefined && deel.lod === laagsteLod) continue
+    if (deel.schaduw) continue
+    if (VUIL.test(deel.bestand)) continue
+    const sleutel = deel.bestand.toLowerCase()
+    if (alGezien.has(sleutel)) continue
+    alGezien.add(sleutel)
+    const lezing = leesO3dLezing(deel.pad)
+    if (lezing.klacht === 'versleuteld') {
+      versleuteld++
+      continue
+    }
+    const mesh = lezing.model
     if (!mesh || mesh.triangles.length === 0) {
       overgeslagen++
       continue
@@ -143,19 +195,45 @@ export function bouwBusTekening(busPad: string): BusTekening | undefined {
     }
 
     for (const [groep, indices] of perGroep) {
-      const materiaal = deel.materialen[groep] ?? deel.materialen[0]
+      /*
+       * De textuur staat in het o3d-bestand zelf, niet in model.cfg.
+       *
+       * Hier stond `deel.materialen[groep]`: de zoveelste [matl] uit de cfg. Dat
+       * klopt zelden. 65 procent van de 103.087 onderdelen heeft helemaal geen
+       * [matl]-blok, en bij 98 procent daarvan draagt het o3d de naam wel. Van
+       * de HHStadtgelenkbus2017 kreeg zo 20,7 procent van de driehoeken een
+       * textuur; uit het o3d is dat 99,8 procent.
+       */
+      const naam = mesh.materialen[groep]?.textuur ?? mesh.materialen[0]?.textuur
       stukken.push({
         posities,
         normalen,
         uvs: mesh.uvs,
         indices: Uint32Array.from(indices),
-        textuur: materiaal?.pad
+        textuur: naam
+          ? zoekTextuurVan(model.voertuigmap, model.omsimap, naam)
+          : deel.materialen[groep]?.pad
       })
       driehoeken += indices.length / 3
     }
   }
 
   if (stukken.length === 0) return undefined
+
+  /*
+   * Te veel dichtgetimmerd? Dan geen plaatje.
+   *
+   * Sommige makers versleutelen hun model; dat is hun goed recht en wij breken
+   * dat niet open. Wat overblijft is dan een bus zonder carrosserie -- bij de
+   * Hamburgse elektrische gelede bus is 34 procent van de 621 onderdelen
+   * dicht, en dan zie je het frame en de ruiten zonder plaatwerk staan. Beter
+   * geen foto dan een verminkte: de tegel valt terug op het icoon.
+   *
+   * Gemeten over de 341 bussen met een model: 28 komen boven deze grens uit,
+   * waarvan 12 volledig versleuteld zijn. De overige 313 tekenen gewoon.
+   */
+  const gelezen = versleuteld + alGezien.size
+  if (gelezen > 0 && versleuteld / gelezen > 0.1) return undefined
 
   /* De middelste 98 procent per as; zie de uitleg bij `doos` hierboven. */
   const grens = (waarden: number[], deel: number): number => {
@@ -173,7 +251,7 @@ export function bouwBusTekening(busPad: string): BusTekening | undefined {
     grens(steekproef[1], 0.99),
     grens(steekproef[2], 0.99)
   ]
-  return { stukken, doos: { min, max }, driehoeken, overgeslagen }
+  return { stukken, doos: { min, max }, driehoeken, overgeslagen, versleuteld }
 }
 
 /** Een uitgepakte textuur zoals het venster hem wil, of de melding dat het niet lukte. */

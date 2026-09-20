@@ -43,20 +43,33 @@ export interface BusOnderdeel {
   pad?: string
   materialen: BusMateriaal[]
   /**
-   * Het aanzicht waar dit onderdeel bij hoort.
+   * Het aanzicht waar dit onderdeel bij hoort, als bitpatroon.
    *
-   * OMSI gebruikt dat om binnen- en buitenkant te scheiden. Voor een plaatje
-   * van de bus wil je de buitenkant; de stoelen en het dashboard zitten er
-   * anders doorheen.
+   * De cfg's leggen het zelf uit, in 283 bestanden over 36 add-ons: 0 = altijd,
+   * 1 = buiten, 2 = binnen, 4 = AI-bus. Voor een foto van de buitenkant hoort
+   * alles mee te doen met bit 1 aan of met de waarde nul; de rest is de
+   * binnenkant en de uitgeklede AI-tweeling die precies op de carrosserie ligt.
    */
   aanzicht?: number
-  /** Zit dit onderdeel in de binnenruimte? Dan laat een buitenaanzicht het weg. */
+  /**
+   * Bij welke LOD-groep dit onderdeel hoort; `undefined` als er geen [LOD] aan
+   * voorafging. De laagste groep is de verre-afstandsschil: één grof model van
+   * de hele bus, dat anders over de echte bus heen wordt getekend.
+   */
+  lod?: number
+  /** Een schaduwvlak: plat, donker, en niet iets om te tekenen. */
+  schaduw: boolean
+  /** Zit dit onderdeel in de binnenruimte? Niet bruikbaar als filter; zie hieronder. */
   binnen: boolean
 }
 
 export interface BusModel {
   /** Het `.bus`-bestand waar dit uit komt. */
   bus: string
+  /** De map van de bus; daar (en eronder) liggen zijn texturen. */
+  voertuigmap: string
+  /** De OMSI-map zelf, voor de gedeelde texturen. */
+  omsimap: string
   /** De `model.cfg` die erbij hoort. */
   modelcfg: string
   /** De map waar de o3d-bestanden onder staan. */
@@ -132,6 +145,34 @@ function bestandenIn(map: string): Map<string, string> {
 }
 
 /**
+ * Hetzelfde, maar voor wie alleen een naam en de mappen heeft.
+ *
+ * De namen in de o3d-bestanden zijn niet altijd de namen op schijf: `Sitze_2.tga`
+ * bestaat niet en `Sitze_2.dds` wel. Die verwisseling van extensie komt genoeg
+ * voor om apart te vangen -- gemeten haalt het bijna vijftien procentpunt van de
+ * driehoeken alsnog aan een textuur.
+ */
+export function zoekTextuurVan(
+  voertuigmap: string,
+  omsimap: string,
+  naam: string
+): string | undefined {
+  const gevonden = zoekTextuur(voertuigmap, omsimap, naam)
+  if (gevonden) return gevonden
+  const plat = naam.split(/[\/]/).pop() ?? naam
+  const punt = plat.lastIndexOf('.')
+  if (punt <= 0) return undefined
+  const stam = plat.slice(0, punt).toLowerCase()
+  for (const soort of ['.dds', '.tga', '.bmp', '.png', '.jpg', '.jpeg']) {
+    const raak =
+      bestandenIn(voertuigmap).get(stam + soort) ??
+      bestandenIn(join(omsimap, 'Texture')).get(stam + soort)
+    if (raak) return raak
+  }
+  return undefined
+}
+
+/**
  * Een textuurnaam terugvinden; de map ervoor telt niet mee, alleen de naam.
  *
  * Eerst in de map van de bus, dan in de gedeelde texturenmap van OMSI zelf --
@@ -169,8 +210,15 @@ export function leesBusModel(busPad: string): BusModel | undefined {
 
   const onderdelen: BusOnderdeel[] = []
   let huidig: BusOnderdeel | undefined
+  /* De LOD-groep waar we in zitten; alles na een [LOD] hoort erbij. */
+  let huidigeLod: number | undefined
   for (let i = 0; i < regels.length; i++) {
     const kop = regels[i].trim().toLowerCase()
+    if (kop === '[lod]') {
+      const waarde = Number((regels[i + 1] ?? '').trim())
+      huidigeLod = Number.isFinite(waarde) ? waarde : huidigeLod
+      continue
+    }
     if (kop === '[mesh]') {
       const bestand = (regels[i + 1] ?? '').trim()
       if (!bestand) continue
@@ -179,6 +227,8 @@ export function leesBusModel(busPad: string): BusModel | undefined {
         bestand,
         pad: existsSync(pad) ? pad : undefined,
         materialen: [],
+        lod: huidigeLod,
+        schaduw: false,
         binnen: false
       }
       onderdelen.push(huidig)
@@ -196,9 +246,14 @@ export function leesBusModel(busPad: string): BusModel | undefined {
       })
       continue
     }
-    if (kop === '[viewpoint]') {
+    /* Ook de twee schrijffouten die in tien cfg's staan; kost niets. */
+    if (kop === '[viewpoint]' || kop === '[wiewpoint]' || kop === '[viewpint]') {
       const nummer = Number((regels[i + 1] ?? '').trim())
       if (Number.isFinite(nummer)) huidig.aanzicht = nummer
+      continue
+    }
+    if (kop === '[isshadow]') {
+      huidig.schaduw = true
       continue
     }
     /*
@@ -208,5 +263,5 @@ export function leesBusModel(busPad: string): BusModel | undefined {
     if (kop === '[interior]' || kop === '[illumination_interior]') huidig.binnen = true
   }
 
-  return { bus: busPad, modelcfg, modelmap, onderdelen }
+  return { bus: busPad, voertuigmap, omsimap, modelcfg, modelmap, onderdelen }
 }

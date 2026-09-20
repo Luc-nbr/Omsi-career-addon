@@ -81,23 +81,23 @@ uniform sampler2D plaat;
 uniform bool metPlaat;
 out vec4 kleur;
 void main() {
-  /*
-   * De normaal naar de kijker toe draaien.
-   *
-   * We tekenen beide kanten van elke driehoek, want OMSI-modellen zijn niet
-   * consequent in hun wikkelrichting. Het gevolg: een vlak dat met zijn rug
-   * naar de lamp staat werd zwart, en een hele bus kwam er donker uit terwijl
-   * een andere er grijs uitzag. gl_FrontFacing zegt welke kant we zien; met
-   * de normaal mee gedraaid is elk vlak even goed belicht.
-   */
   vec3 n = normalize(vNormaal);
   if (dot(n, n) < 0.001) n = vec3(0.0, 1.0, 0.0);
-  if (!gl_FrontFacing) n = -n;
   float voor = max(dot(n, normalize(vec3(-0.4, 0.75, 0.55))), 0.0);
   float achter = max(dot(n, normalize(vec3(0.6, 0.3, -0.5))), 0.0) * 0.35;
   float licht = 0.35 + voor * 0.75 + achter;
   vec4 grond = metPlaat ? texture(plaat, vUv) : vec4(0.72, 0.74, 0.78, 1.0);
-  if (grond.a < 0.35) discard;
+  /*
+   * Niet op alfa wegknippen.
+   *
+   * Hier stond 'is de alfa onder 0,35, laat het vlak dan weg'. Dat leek
+   * logisch en gooide juist de hele bus weg: bij OMSI is de alfa van een
+   * carrosserietextuur het spiegelmasker van [matl_envmap], geen dekking.
+   * Gemeten: newC2_77.tga heeft 100,0 procent van zijn pixels onder die
+   * drempel, newC2EG.tga 99,6 en SD77_01.tga 100,0 -- en bij geen van die
+   * onderdelen staat [matl_alpha] in de cfg. Zo verdween 18 tot 52 procent van
+   * de driehoeken, de buitenhuid voorop.
+   */
   kleur = vec4(grond.rgb * licht, 1.0);
 }`
 
@@ -140,9 +140,17 @@ function beeldmatrix(doos: Tekening['doos'], breedte: number, hoogte: number): F
     midden[2] + Math.sin(hoek) * afstand
   ]
 
+  /*
+   * OMSI rekent linkshandig: x is de deurkant, y omhoog, z naar voren. Gemeten
+   * aan een bus: het stuur ligt op x -0,96 tot -0,49, de deuren op +0,31 tot
+   * +1,27, en de lijnfilm vooraan op z +5,66. Een gewone (rechtshandige)
+   * lookAt levert daardoor een spiegelbeeld -- opschriften lezen achterstevoren,
+   * en dat krijg je met geen enkele camerastand goed. Vandaar de omgekeerde
+   * volgorde in deze twee kruisproducten.
+   */
   const kijk = normaliseer([midden[0] - oog[0], midden[1] - oog[1], midden[2] - oog[2]])
-  const rechts = normaliseer(kruis(kijk, [0, 1, 0]))
-  const op = kruis(rechts, kijk)
+  const rechts = normaliseer(kruis([0, 1, 0], kijk))
+  const op = kruis(kijk, rechts)
 
   const zicht = 45 * (Math.PI / 180)
   const f = 1 / Math.tan(zicht / 2)
@@ -269,10 +277,16 @@ async function teken(plan: Tekening, tijden: Tijden): Promise<string> {
   gl.clearColor(achter[0], achter[1], achter[2], achter[3])
   gl.enable(gl.DEPTH_TEST)
   /*
-   * Beide kanten tekenen. OMSI-modellen zijn niet consequent in de richting
-   * waarin hun driehoeken staan, en met wegsnijden valt een bus half weg.
+   * De achterkant van elk vlak wegsnijden.
+   *
+   * Dat kan: over vijf bussen loopt 98,7 tot 99,9 procent van de driehoeken
+   * dezelfde kant op. `frontFace(CW)` hoort erbij, want met het linkshandige
+   * assenstelsel van OMSI (zie `beeldmatrix`) draait de wikkelrichting om;
+   * zonder die regel klapt elke buitennormaal om en zakt de gemiddelde
+   * helderheid van 98 naar 76.
    */
-  gl.disable(gl.CULL_FACE)
+  gl.frontFace(gl.CW)
+  gl.enable(gl.CULL_FACE)
   gl.viewport(0, 0, plan.breedte, plan.hoogte)
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
