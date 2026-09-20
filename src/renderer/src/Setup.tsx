@@ -117,6 +117,15 @@ interface Props {
   voet: string
   /** Waar de kaart onder alles vandaan komt; zonder dienst blijft hij leeg. */
   duty?: Duty
+  /**
+   * Een kaart zonder dienst: teken het net van déze kaartmap.
+   *
+   * Op de kaartstap is er nog geen dienst en stond er dus een lege belofte. Nu
+   * je een kaart kunt aanwijzen hoort daar te staan wat je aanwijst -- de wegen
+   * en de haltes van die kaart. Luc vroeg erom: "als je er vervolgens een
+   * selecteert, zie je idealiter alle details en het netwerk".
+   */
+  netkaart?: string
   onStart: () => void
   startTekst?: string
   bezig?: boolean
@@ -350,6 +359,7 @@ export function Setup({
   onKies,
   voet,
   duty,
+  netkaart,
   onStart,
   startTekst,
   bezig,
@@ -399,7 +409,7 @@ export function Setup({
   const bedieningRef = useRef<{ zoomBy: (factor: number) => void; refit: () => void }>(undefined)
   const gekozenRef = useRef<HTMLButtonElement>(null)
   const [geometry, setGeometry] = useState<MapGeometry>()
-  const kaartmap = duty?.mapFolder
+  const kaartmap = duty?.mapFolder ?? netkaart
   useEffect(() => {
     if (!kaartmap) return undefined
     let geldig = true
@@ -439,7 +449,7 @@ export function Setup({
           kaart is de belofte van dit scherm, en een lege belofte is erger dan
           een uitgestelde.
         */}
-        {!beeldvullend && !(geometry && duty) && (
+        {!beeldvullend && !(geometry && (duty || netkaart)) && (
           <p className="kaart-leeg">{tr('setup.mapSoon')}</p>
         )}
         {/*
@@ -448,7 +458,7 @@ export function Setup({
           dan een straat van honderd meter in plaats van de hele lijn. Zo komt
           hij vers ter wereld op het moment dat hij ruimte heeft.
         */}
-        {!beeldvullend && geometry && duty && (
+        {!beeldvullend && geometry && (duty || netkaart) && (
           <RouteMap
             duty={duty}
             geometry={geometry}

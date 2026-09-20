@@ -1898,9 +1898,20 @@ export function App(): JSX.Element {
                   beeld: `omsikaart://kaart/${encodeURIComponent(item.folder)}`,
                   onder: t(language, 'setup.mapTile', { count: item.tours, year: item.year }),
                   gekozen: item.folder === mapFolder,
+                  /*
+                   * Eerst kiezen, dan door.
+                   *
+                   * Een tegel is een foto, en een foto is een belofte: welke
+                   * kaart is dit, hoe groot is hij, hoe ligt het net? Die vraag
+                   * hoort beantwoord te worden voordat je verder gaat. De
+                   * eerste klik zet de keuze, waarna de kop de naam draagt en
+                   * het grote vlak het net tekent; nog een klik op dezelfde
+                   * tegel -- of de knop Verder -- brengt je naar de volgende
+                   * stap, die ongewijzigd blijft.
+                   */
                   onDoen: () => {
-                    setMapFolder(item.folder)
-                    naarVolgende()
+                    if (item.folder === mapFolder) naarVolgende()
+                    else setMapFolder(item.folder)
                   }
                 }))
               : undefined,
@@ -2585,6 +2596,11 @@ export function App(): JSX.Element {
           voet={error ?? note ?? vel.voet}
           voetFout={Boolean(error)}
           duty={kaartDuty}
+          /*
+           * Op de kaartstap is er nog geen dienst; dan tekent het vel het net
+           * van de kaart die je aanwijst.
+           */
+          netkaart={opzetStap === 'map' && mapFolder ? mapFolder : undefined}
           onStart={vel.verder}
           startTekst={vel.knop}
           bezig={busy}
@@ -2738,8 +2754,12 @@ export function App(): JSX.Element {
            * De ritstap van vrij rijden is vrije inhoud, en vrije inhoud maakt
            * het vel normaal schermvullend. Hier niet: je wijst een halte aan,
            * en dat is een plek op de kaart.
+           *
+           * Op de kaartstap geldt hetzelfde zodra er een kaart aangewezen is:
+           * tegels zouden het vel beeldvullend maken, terwijl juist dán het net
+           * van die kaart ernaast hoort te staan.
            */
-          metKaart={Boolean(vel.vrij)}
+          metKaart={Boolean(vel.vrij) || (opzetStap === 'map' && Boolean(mapFolder))}
           rechtsInBalk={
             <>
               <Versie />

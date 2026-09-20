@@ -168,6 +168,14 @@ app.whenReady().then(async () => {
       )
       console.log(`   tegels met een afbeelding: ${plaatjes}`)
       await shoot(`stap-${naam}-tegels`)
+      /*
+       * En met een kaart aangewezen: dan hoort het net ernaast te staan. Met
+       * opzet de tweede tegel: de eerste staat al aangewezen, en een klik op de
+       * tegel die je al hebt is de weg vooruit.
+       */
+      await js(main, `document.querySelectorAll('.tegel')[1]?.click()`)
+      await wait(2500)
+      await shoot(`stap-${naam}-tegels-gekozen`)
       await js(main, `document.querySelectorAll('.weergavekeuze button')[0]?.click()`)
       await wait(500)
     }

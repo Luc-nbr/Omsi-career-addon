@@ -47,7 +47,15 @@ export interface LiveVehicle {
 }
 
 interface Props {
-  duty: Duty
+  /**
+   * De dienst die als route getekend wordt.
+   *
+   * Mag ontbreken. Dan tekent hij alleen wat de kaart zelf is -- de wegen en de
+   * haltes -- en dat is precies wat de kaartstap laat zien zodra je een kaart
+   * aanwijst: het netwerk waar je straks op rijdt, zonder dat er al een dienst
+   * gekozen is.
+   */
+  duty?: Duty
   geometry: MapGeometry
   /** Halte waar de bus nu heen rijdt; alles daarvoor vergrijst. */
   nextStopId?: string
@@ -225,7 +233,7 @@ export function RouteMap({
   /** De haltes van de dienst op volgorde, zonder de herhalingen eruit te gooien. */
   const legs = useMemo(() => {
     let order = 0
-    return duty.legs.map((leg, legIndex) =>
+    return (duty?.legs ?? []).map((leg, legIndex) =>
       leg.stopIds
         .map((id, at) => {
           const point = byId.get(id)
@@ -237,7 +245,8 @@ export function RouteMap({
             at,
             legIndex,
             isStart: legIndex === 0 && at === 0,
-            isEnd: legIndex === duty.legs.length - 1 && at === leg.stopIds.length - 1
+            isEnd:
+              legIndex === (duty?.legs.length ?? 0) - 1 && at === leg.stopIds.length - 1
           }
           return stop
         })
@@ -265,11 +274,15 @@ export function RouteMap({
    * is, lopen de lijnen recht van halte naar halte. De sleutel is een tekst en
    * geen object: de overlay krijgt elke tel een nieuwe kopie van dezelfde dienst.
    */
-  const routeKey = `${duty.mapFolder}|${duty.legs.map((leg) => `${leg.tripFile}:${leg.stopIds.join(',')}`).join(';')}`
+  const routeKey = `${duty?.mapFolder ?? ''}|${(duty?.legs ?? [])
+    .map((leg) => `${leg.tripFile}:${leg.stopIds.join(',')}`)
+    .join(';')}`
   const [routes, setRoutes] = useState<TripRoute[]>()
   useEffect(() => {
     let current = true
     setRoutes(undefined)
+    // Zonder dienst valt er geen weg te plannen; de kaart blijft dan het net.
+    if (!duty || duty.legs.length === 0) return undefined
     const request = duty.legs.map(({ tripFile, stopIds }) => ({ tripFile, stopIds }))
     window.career
       .routes(duty.mapFolder, request)
@@ -314,7 +327,7 @@ export function RouteMap({
     // Rijdt de kaart mee, dan bepaalt het stuk weg het beeld en niet de dienst.
     // Een aangewezen halte gaat ook voor; die zet het effect hieronder in beeld.
     if (following || (focusStopId && byId.has(focusStopId))) return
-    const key = `${duty.tourNumber}|${bounds.minX}|${bounds.minY}|${size.w}x${size.h}`
+    const key = `${duty?.tourNumber ?? 'net'}|${bounds.minX}|${bounds.minY}|${size.w}x${size.h}`
     if (fitted.current === key) return
     fitted.current = key
     const pad = 80
@@ -330,7 +343,7 @@ export function RouteMap({
       ),
       rot: 0
     })
-  }, [duty.tourNumber, bounds, size, following, focusStopId, byId])
+  }, [duty?.tourNumber, bounds, size, following, focusStopId, byId])
 
   /*
    * Meerijden: het stuk van de vorige naar de volgende halte vult het beeld.
@@ -369,7 +382,7 @@ export function RouteMap({
   /** Per rit de lijn over de weg, met de afstand langs die lijn bij elke halte. */
   const legTracks = useMemo(
     () =>
-      duty.legs.map((leg, legIndex) => {
+      (duty?.legs ?? []).map((leg, legIndex) => {
         const route = routes?.[legIndex]?.points
         if (!route || route.length < 4) return undefined
         return trackAlong(
@@ -384,7 +397,7 @@ export function RouteMap({
   const busPoint = useMemo(() => {
     if (!bus) return undefined
     const track = legTracks[bus.legIndex]
-    const leg = duty.legs[bus.legIndex]
+    const leg = duty?.legs[bus.legIndex]
     if (!track || !leg || leg.stopIds.length === 0) return undefined
     const next = Math.min(Math.max(bus.nextStop, 0), leg.stopIds.length - 1)
     const previous = next > 0 ? track.stops[next - 1] : undefined
@@ -458,14 +471,14 @@ export function RouteMap({
     if (!track) return undefined
 
     if (liveBus) {
-      const leg = duty.legs[activeLeg]
+      const leg = duty?.legs[activeLeg]
       const next = bus ? Math.min(Math.max(bus.nextStop, 0), (leg?.stopIds.length ?? 1) - 1) : 0
       const from = next > 0 ? (track.stops[next - 1] ?? 0) : 0
       return nearestAlong(track, liveBus.x, liveBus.y, from)
     }
 
     if (!bus || bus.legIndex !== activeLeg) return undefined
-    const leg = duty.legs[activeLeg]
+    const leg = duty?.legs[activeLeg]
     if (!leg || leg.stopIds.length === 0) return undefined
     const next = Math.min(Math.max(bus.nextStop, 0), leg.stopIds.length - 1)
     const previous = next > 0 ? track.stops[next - 1] : undefined
@@ -987,7 +1000,7 @@ export function RouteMap({
           * stilte toegevoegd. Zo komt hij opnieuw zodra de stukken er zijn.
           */}
         <g
-          key={`${duty.tourNumber}|${duty.start}|${legs.length}|${pieces.solid.length}`}
+          key={`${duty?.tourNumber ?? 'net'}|${duty?.start ?? ''}|${legs.length}|${pieces.solid.length}`}
           className={
             activeLeg === undefined && routeMode === 'all' ? 'route-intekenen' : undefined
           }
