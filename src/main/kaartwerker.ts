@@ -26,6 +26,9 @@ import type { DutyRequest } from '../shared/api'
 type Opdracht =
   | { id: number; soort: 'kaart'; folder: string }
   | { id: number; soort: 'overzicht' }
+  | { id: number; soort: 'voertuigen' }
+  | { id: number; soort: 'busvoorstel'; folder: string }
+  | { id: number; soort: 'hofaanbod'; folder: string }
   | { id: number; soort: 'diensten'; request: DutyRequest }
   | { id: number; soort: 'routes'; folder: string; legs: Array<{ tripFile: string; stopIds: string[] }> }
 
@@ -46,6 +49,9 @@ parentPort?.on('message', (opdracht: Opdracht) => {
     let uitkomst: unknown
     if (opdracht.soort === 'kaart') laag.leesKaart(opdracht.folder)
     else if (opdracht.soort === 'overzicht') uitkomst = laag.overzicht()
+    else if (opdracht.soort === 'voertuigen') uitkomst = laag.voertuigen()
+    else if (opdracht.soort === 'busvoorstel') uitkomst = laag.busvoorstel(opdracht.folder)
+    else if (opdracht.soort === 'hofaanbod') uitkomst = laag.hofAanbod(opdracht.folder)
     else if (opdracht.soort === 'diensten') uitkomst = laag.diensten(opdracht.request)
     else uitkomst = laag.routes(opdracht.folder, opdracht.legs)
 

@@ -1,18 +1,28 @@
 import { join } from 'node:path'
 import { dateForMask, dayKind, readCalendar, type Calendar } from './calendar'
 import { generateDuties, buildNetwork, type Network } from './duty'
-import { buildFleetIndex, pickVehicleForDuty, readMapDepot, readMapFleet, type FleetIndex } from './fleet'
+import {
+  buildFleetIndex,
+  pickVehicleForDuty,
+  readMapDepot,
+  readMapFleet,
+  suggestFromDepot,
+  type FleetIndex
+} from './fleet'
 import { readMapData, type Lane, type MapGeometry } from './geo'
 import { leesUitCache, schrijfInCache, vingerafdruk } from './kaartcache'
 import { LaneNetwork, routeForTrip, type TripRoute } from './routing'
 import { findTemplate, readSituationTime } from './situation'
 import { listMaps, loadMap } from './timetable'
+import { listVehicles, type Vehicle } from './vehicles'
+import { planHofs } from './hofTool'
 import type { OmsiMap } from './types'
 import {
   TIME_WINDOWS,
   type Assignment,
   type DutyDate,
   type DutyRequest,
+  type HofOffer,
   type MapSummary
 } from '../shared/api'
 
@@ -56,6 +66,12 @@ export interface Kaartlaag {
   kaartStaatKlaar(folder: string): boolean
   /** De kaartenlijst voor het keuzescherm: naam, aantal omlopen, tijdvak. */
   overzicht(): MapSummary[]
+  /** Alle bussen die er staan; het doorlezen van Vehicles kost ruim honderd ms. */
+  voertuigen(): Vehicle[]
+  /** Welke bus hier het meest rondrijdt, volgens de remiselijst van de kaart. */
+  busvoorstel(folder: string): Vehicle | undefined
+  /** Wagenparken die meer eindbestemmingen van deze kaart kennen dan wat er staat. */
+  hofAanbod(folder: string): HofOffer[]
   diensten(request: DutyRequest): Assignment[]
   routes(folder: string, legs: Array<{ tripFile: string; stopIds: string[] }>): TripRoute[]
 }
@@ -73,6 +89,7 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
   const laneNetworkCache = new Map<string, LaneNetwork>()
   const routeCache = new Map<string, TripRoute>()
   let fleetIndex: FleetIndex | undefined
+  let voertuigenCache: Vehicle[] | undefined
 
   const kaartPad = (folder: string): string => join(omsiPath, 'maps', folder)
 
@@ -272,6 +289,39 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
         }
       }
       return uit
+    },
+
+    voertuigen() {
+      if (!voertuigenCache) voertuigenCache = listVehicles(omsiPath)
+      return voertuigenCache
+    },
+
+    busvoorstel(folder) {
+      return suggestFromDepot(laag.wagenpark().vehicles, laag.remises(folder))
+    },
+
+    /**
+     * Wat er aan wagenparken te winnen valt op deze kaart.
+     *
+     * `planHofs` leest alle .hof-bestanden -- 448 op deze installatie, ruim een
+     * seconde koud -- en houdt dat daarna zelf vast zolang de vingerafdruk van
+     * de voertuigmappen klopt. Hier staat alleen de vertaling naar wat het
+     * scherm nodig heeft.
+     */
+    hofAanbod(folder) {
+      const termini = laag.eindbestemmingen(folder)
+      if (termini.length === 0) return []
+      return planHofs(omsiPath, termini)
+        .filter((bus) => bus.offer && bus.offer.matched > bus.known)
+        .map((bus) => ({
+          folder: bus.folder,
+          known: bus.known,
+          total: termini.length,
+          knownFile: bus.knownFile,
+          offerFile: bus.offer?.file,
+          offerMatched: bus.offer?.matched
+        }))
+        .sort((a, b) => (b.offerMatched ?? 0) - (a.offerMatched ?? 0))
     },
 
     /**

@@ -313,7 +313,17 @@ Het voorwerk na het opstarten deed hetzelfde twaalf keer achter elkaar
 (`probe-kaarttijd.ts`: 8,9 s samen, uitschieter 2516 ms voor Ahlheim 5).
 
 Nu draait dat werk in `src/main/kaartwerker.ts`, een worker_thread die dezelfde
-`core/kaartlaag.ts` gebruikt. Gemeten met `scripts/probe-haperen.cjs`, dat vanuit
+`core/kaartlaag.ts` gebruikt. Er zijn er **twee**: een voor wat de speler
+vraagt en een voor het voorwerk. Met één stond een klik in de rij achter een
+kaart van twee seconden -- `hof:offers` kwam zo op 3408 ms; met de splitsing op
+726 ms. De achtergrondwerker sluit zichzelf zodra de kaarten klaarstaan en
+geeft de buslijst nog even door aan de voorgrondwerker, zodat die klaarstaat
+voor de busstap.
+
+Wat er via de werker gaat: de kaarten (`kaart`), de kaartenlijst
+(`overzicht`), de buslijst (`voertuigen`), het busvoorstel (`busvoorstel`),
+het wagenparkaanbod (`hofaanbod`), de dienstenlijst (`diensten`) en de routes
+(`routes`). Elke aanroep valt terug op het hoofdproces als de werker uitvalt. Gemeten met `scripts/probe-haperen.cjs`, dat vanuit
 het scherm elke 50 ms de goedkoopste vraag stelt terwijl alle twaalf kaarten
 ingelezen worden: 1200 vragen, midden 0 ms, langste 160 ms, één keer boven de
 150 ms en geen enkele keer boven de halve seconde. Het werk duurt even lang; het

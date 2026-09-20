@@ -42,7 +42,7 @@ import {
   writeKeyboard,
   type KeyBinding
 } from '../core/omsiKeys'
-import { pickVehicleForDuty, suggestFromDepot, type FleetIndex } from '../core/fleet'
+import { pickVehicleForDuty, type FleetIndex } from '../core/fleet'
 import { readTileGrid, type MapGeometry } from '../core/geo'
 import { LaneNetwork, type TripRoute } from '../core/routing'
 import { VehicleTracker, type VehiclePosition } from '../core/vehicle'
@@ -104,9 +104,9 @@ function laag(): Kaartlaag {
  */
 function vergeetKaarten(): void {
   kaartlaag = undefined
-  if (werker) {
-    werker.terminate().catch(() => undefined)
-    werker = undefined
+  for (const [soort, staand] of werkers) {
+    werkers.delete(soort)
+    staand.terminate().catch(() => undefined)
   }
 }
 /**
@@ -160,12 +160,26 @@ interface WerkerAntwoord {
   fout?: string
 }
 
-let werker: Worker | undefined
+/*
+ * Twee werkers, met een reden.
+ *
+ * Alles door één werker leek genoeg, tot de meting: het voorwerk las een kaart
+ * van twee seconden en een klik van de speler stond zolang in dezelfde rij te
+ * wachten -- `hof:offers` kwam zo op 3408 ms uit. Daarom een werker voor wat de
+ * speler vraagt en een werker voor het voorwerk. De tweede sluit zichzelf zodra
+ * de kaarten klaarstaan; zijn caches zijn dan niets meer waard en het geheugen
+ * is beter elders op zijn plek.
+ */
+type Werksoort = 'voorgrond' | 'achtergrond'
+
+const werkers = new Map<Werksoort, Worker>()
 let volgendeOpdracht = 0
 const werkerWacht = new Map<number, (antwoord: WerkerAntwoord) => void>()
 
-function kaartWerker(): Worker {
-  if (werker) return werker
+function kaartWerker(soort: Werksoort): Worker {
+  const staand = werkers.get(soort)
+  if (staand) return staand
+
   const gemaakt = new Worker(join(__dirname, 'kaartwerker.js'), {
     workerData: { omsiPath: omsi(), userData: userData() }
   })
@@ -175,8 +189,8 @@ function kaartWerker(): Worker {
     wachtend?.(antwoord)
   })
   gemaakt.on('error', (fout) => {
-    logFout('kaartwerker', fout)
-    werker = undefined
+    logFout(`kaartwerker ${soort}`, fout)
+    werkers.delete(soort)
     // Wie nog wacht krijgt een antwoord, anders blijft het scherm hangen.
     for (const [id, wachtend] of werkerWacht) {
       werkerWacht.delete(id)
@@ -184,27 +198,31 @@ function kaartWerker(): Worker {
     }
   })
   gemaakt.on('exit', () => {
-    werker = undefined
+    werkers.delete(soort)
   })
   // De werker mag de app niet openhouden bij het afsluiten.
   gemaakt.unref()
-  werker = gemaakt
+  werkers.set(soort, gemaakt)
   return gemaakt
 }
 
-/**
- * Een opdracht naar de werker, en het antwoord terug.
- *
- * Mislukt hij -- geen werker, een fout onderweg -- dan gooit deze functie, en
- * de aanroeper doet het zelf. Dat is trager en dan hapert het even, maar de
- * speler krijgt wel zijn kaart. Beter een hapering dan een leeg scherm.
- */
-async function werkerVraag<T>(opdracht: Record<string, unknown>): Promise<T> {
+/** De werker van het voorwerk wegsturen; het hoofdproces houdt niets van hem. */
+function sluitAchtergrondwerker(): void {
+  const staand = werkers.get('achtergrond')
+  if (!staand) return
+  werkers.delete('achtergrond')
+  staand.terminate().catch(() => undefined)
+}
+
+async function werkerVraag<T>(
+  opdracht: Record<string, unknown>,
+  soort: Werksoort = 'voorgrond'
+): Promise<T> {
   const id = (volgendeOpdracht += 1)
   const antwoord = await new Promise<WerkerAntwoord>((klaar) => {
     werkerWacht.set(id, klaar)
     try {
-      kaartWerker().postMessage({ ...opdracht, id })
+      kaartWerker(soort).postMessage({ ...opdracht, id })
     } catch (fout) {
       werkerWacht.delete(id)
       klaar({ id, ok: false, ms: 0, fout: String(fout) })
@@ -224,9 +242,9 @@ async function werkerVraag<T>(opdracht: Record<string, unknown>): Promise<T> {
  * op de oude weg: het hoofdproces leest hem zelf, en dan hapert het even. Beter
  * een hapering dan geen kaart.
  */
-async function zorgVoorKaart(folder: string): Promise<void> {
+async function zorgVoorKaart(folder: string, wie: Werksoort = 'voorgrond'): Promise<void> {
   if (laag().kaartStaatKlaar(folder)) return
-  await werkerVraag<void>({ soort: 'kaart', folder })
+  await werkerVraag<void>({ soort: 'kaart', folder }, wie)
 }
 
 /**
@@ -307,7 +325,7 @@ async function warmKaarten(): Promise<void> {
            * werker het doet, blijft het hoofdproces vrij en is de adempauze
            * hieronder alleen nog een rem op de schijf.
            */
-          await zorgVoorKaart(folder)
+          await zorgVoorKaart(folder, 'achtergrond')
         } catch {
           // Een kaart die niet te lezen is houdt de rest niet tegen.
         }
@@ -317,6 +335,16 @@ async function warmKaarten(): Promise<void> {
       melden(undefined, klaar)
     }
     log(`kaarten klaargezet: ${folders.length}`)
+    sluitAchtergrondwerker()
+
+    /*
+     * En meteen de buslijst erbij, in de werker die straks de vragen krijgt.
+     * Het doorlezen van Vehicles kost ruim anderhalve seconde koud; nu staat
+     * die lijst er al voordat iemand bij de busstap komt. Dat gebeurt pas hier,
+     * na het voorwerk, want anders zou hij in de rij staan voor de kaartenlijst
+     * die het scherm bij het openen opvraagt.
+     */
+    void werkerVraag({ soort: 'voertuigen' }).catch(() => undefined)
   } catch (fout) {
     // Geen OMSI gevonden, of geen leesrechten: dan gewoon geen voorwerk.
     logFout('kaarten klaarzetten', fout)
@@ -1169,7 +1197,15 @@ function registerHandlers(): void {
     return kaartenStand()
   })
 
-  handle('omsi:vehicles', () => listVehicles(omsi()))
+  /* Het doorlezen van Vehicles kostte 199 ms in het hoofdproces; nu in de werker. */
+  handle('omsi:vehicles', async (): Promise<Vehicle[]> => {
+    try {
+      return await werkerVraag<Vehicle[]>({ soort: 'voertuigen' })
+    } catch (fout) {
+      logFout('voertuigen via de werker', fout)
+      return laag().voertuigen()
+    }
+  })
 
   /*
    * Welke bus de app op deze kaart zou nemen als er geen dienst is.
@@ -1179,9 +1215,15 @@ function registerHandlers(): void {
    * en daar is de vraag dus eenvoudiger -- welke bus rijdt hier het meest rond.
    * Dat weet de kaart zelf, in haar remiselijst.
    */
-  handle('fleet:suggest', (_event, mapFolder: string): Vehicle | undefined =>
-    suggestFromDepot(fleet().vehicles, depotOf(mapFolder))
-  )
+  handle('fleet:suggest', async (_event, mapFolder: string): Promise<Vehicle | undefined> => {
+    // De eerste keer bouwt dit het hele wagenpark op; dat hoort niet hier.
+    try {
+      return await werkerVraag<Vehicle | undefined>({ soort: 'busvoorstel', folder: mapFolder })
+    } catch (fout) {
+      logFout('busvoorstel via de werker', fout)
+      return laag().busvoorstel(mapFolder)
+    }
+  })
 
   /**
    * Opnieuw kijken wat er staat.
@@ -1477,21 +1519,19 @@ function registerHandlers(): void {
    * Dit is de enige plek waar de app iets in de voertuigmappen van OMSI zet, dus
    * daar moet de chauffeur ja tegen gezegd hebben.
    */
-  handle('hof:offers', (_event, mapFolder: string): HofOffer[] => {
-    const termini = terminiOf(mapFolder)
-    if (termini.length === 0) return []
-    return planHofs(omsi(), termini)
-      .filter((bus) => bus.offer && bus.offer.matched > bus.known)
-      .map((bus) => ({
-        folder: bus.folder,
-        known: bus.known,
-        total: termini.length,
-        knownFile: bus.knownFile,
-        offerFile: bus.offer?.file,
-        offerMatched: bus.offer?.matched
-      }))
-      .sort((a, b) => (b.offerMatched ?? 0) - (a.offerMatched ?? 0))
+  /*
+   * De wagenparkvraag kostte 581 ms in het hoofdproces, bij het openen van de
+   * busstap. Het lezen van 448 .hof-bestanden hoort niet in de weg te lopen.
+   */
+  handle('hof:offers', async (_event, mapFolder: string): Promise<HofOffer[]> => {
+    try {
+      return await werkerVraag<HofOffer[]>({ soort: 'hofaanbod', folder: mapFolder })
+    } catch (fout) {
+      logFout('wagenparkaanbod via de werker', fout)
+      return laag().hofAanbod(mapFolder)
+    }
   })
+
 
   handle(
     'hof:offerFor',
