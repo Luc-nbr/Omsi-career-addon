@@ -565,11 +565,14 @@ een `gap` bij, en een maatklasse voor het icoontje van een pixel of veertien.
   expliciet ("in vrije modus is er selectie mogelijk per lijn en kunnen handmatig
   meer ritten worden toegevoegd") en het is nooit gebouwd. De ritstap van vrij
   rijden is nu een formulier (waar, wanneer, weer) en kent geen ritten.
-- **Versie 0.3.0 staat nog niet op GitHub.** Het uitgeefscript werkt; `gh` is in
+- **Versie 0.3.1 staat nog niet op GitHub.** (0.3.0 evenmin: die is wel getagd,
+  maar nooit uitgegeven. De notities in `uitgaven/0.3.0.md` dekken dus nog niet
+  wat er na die tag bij kwam -- de spiegelingen, de staat van dienst, het
+  logboek, de starthub en het werk hierboven aan de snelheid.) Het uitgeefscript werkt; `gh` is in
   de schil van de assistent aangemeld maar niet in het PowerShell-venster van de
   gebruiker (vermoedelijk verhoogd, dus een andere sessie en geen toegang tot de
   sleutelring). Commando:
-  `node scripts/uitgeven.mjs 0.3.0 --publiceer --notities uitgaven/0.3.0.md`.
+  `node scripts/uitgeven.mjs 0.3.1 --publiceer --notities uitgaven/0.3.1.md`.
   De Discord-aankondiging staat klaar in
   `C:\OMSI Enhancer Discord\uitgaven\0.3.0.md` maar de links daarin zijn dood
   tot de release bestaat. **Publiceren doet de gebruiker zelf.**
