@@ -646,18 +646,28 @@ een `gap` bij, en een maatklasse voor het icoontje van een pixel of veertien.
 
 **Verder open:**
 
+- **De O3D-lezer is half af en staat niet in git.** Luc koos voor het tekenen
+  van het busmodel zelf (optie 3) om bussen in de keuze te laten zien, maar wil
+  dat later. Wat er ligt -- een lezer voor OMSI's modelformaat en een meetscript
+  -- staat in de kladmap van die sessie:
+  `%TEMP%\claude\C--OMSI-Career--claude-worktrees-ecstatic-noether-2968009453af6-61d8-4662-b5b4-760aa670cb78\scratchpad\o3d-werk`.
+  Wat er al gemeten is aan het formaat staat hierboven onder "De kaartkeuze in
+  twee vormen": kop `84 19 <versie>`, blok 0x17 hoekpunten (uint16 aantal, 8
+  floats per punt), 0x49 driehoeken (4 uint16), 0x26 materialen; in deze
+  installatie 3957 bestanden van versie 1, 29 van 5, 12 van 4 en 2 van 3.
+
 - **In vrije modus zelf ritten aan je dienst toevoegen.** De gebruiker vroeg dit
   expliciet ("in vrije modus is er selectie mogelijk per lijn en kunnen handmatig
   meer ritten worden toegevoegd") en het is nooit gebouwd. De ritstap van vrij
   rijden is nu een formulier (waar, wanneer, weer) en kent geen ritten.
-- **Versie 0.3.3 staat nog niet op GitHub.** (0.3.0 evenmin: die is wel getagd,
+- **Versie 0.3.4 staat nog niet op GitHub.** (0.3.0 evenmin: die is wel getagd,
   maar nooit uitgegeven. De notities in `uitgaven/0.3.0.md` dekken dus nog niet
   wat er na die tag bij kwam -- de spiegelingen, de staat van dienst, het
   logboek, de starthub en het werk hierboven aan de snelheid.) Het uitgeefscript werkt; `gh` is in
   de schil van de assistent aangemeld maar niet in het PowerShell-venster van de
   gebruiker (vermoedelijk verhoogd, dus een andere sessie en geen toegang tot de
   sleutelring). Commando:
-  `node scripts/uitgeven.mjs 0.3.3 --publiceer --notities uitgaven/0.3.3.md`.
+  `node scripts/uitgeven.mjs 0.3.4 --publiceer --notities uitgaven/0.3.4.md`.
   De Discord-aankondiging staat klaar in
   `C:\OMSI Enhancer Discord\uitgaven\0.3.0.md` maar de links daarin zijn dood
   tot de release bestaat. **Publiceren doet de gebruiker zelf.**
