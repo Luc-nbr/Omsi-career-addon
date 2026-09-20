@@ -519,6 +519,8 @@ export interface CareerApi {
    * erbij zet. Niets als er niets passends te vinden is.
    */
   hofOfferFor(mapFolder: string, folder: string): Promise<HofOffer | undefined>
+  /** Hetzelfde, maar voor de bestemmingen van deze ene dienst. */
+  hofOfferForDuty(duty: Duty, folder: string): Promise<HofOffer | undefined>
   /**
    * Zet de aangeboden wagenparken neer bij de genoemde bussen. Geeft terug
    * hoeveel er werkelijk bij zijn gekomen -- een bestand dat er al lag telt niet

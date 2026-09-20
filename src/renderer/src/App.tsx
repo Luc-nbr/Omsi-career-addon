@@ -264,6 +264,15 @@ export function App(): JSX.Element {
    */
   const [busAanbod, setBusAanbod] = useState<HofOffer>()
   /*
+   * Wat er voor déze dienst bij deze bus te halen valt.
+   *
+   * Los van `hofAanbod`, dat over alle bestemmingen van de kaart gaat. Op het
+   * remisescherm staat "0 van 2 bestemmingen" -- die twee van je dienst -- en
+   * dan hoort de tegel "wagenpark erbij halen" er ook bij te horen. Hij bleef
+   * weg omdat de bus kaartbreed genoeg kende.
+   */
+  const [ritAanbod, setRitAanbod] = useState<HofOffer>()
+  /*
    * Of de vraag over de aanbevolen bus al gesteld is voor deze dienst.
    *
    * Eenmaal per dienst: wie "zelf kiezen" aanklikt hoort niet bij elke stap
@@ -732,6 +741,26 @@ export function App(): JSX.Element {
       current = false
     }
   }, [duty, vehicle, selectedMap, yardOverride])
+
+  /* En of er voor de bestemmingen van deze dienst een beter wagenpark bestaat. */
+  useEffect(() => {
+    if (!duty || !vehicle) {
+      setRitAanbod(undefined)
+      return
+    }
+    let geldig = true
+    void window.career
+      .hofOfferForDuty(duty, vehicle.folder)
+      .then((aanbod) => {
+        if (geldig) setRitAanbod(aanbod)
+      })
+      .catch(() => {
+        if (geldig) setRitAanbod(undefined)
+      })
+    return () => {
+      geldig = false
+    }
+  }, [duty, vehicle, hofTeller])
 
   /*
    * Welke wagenparken er naast deze bus liggen. Wisselt de bus, dan vervalt de
@@ -2186,8 +2215,13 @@ export function App(): JSX.Element {
      * niet uit `busAanbod`: dat laatste verdwijnt zodra je het venstertje hebt
      * weggeklikt, en de tegel hoort te blijven staan.
      */
+    /*
+     * Het aanbod voor deze dienst gaat voor: dat gaat over de bestemmingen die
+     * op het scherm staan. Is daar niets, dan blijft het kaartbrede aanbod over
+     * -- dat helpt je op de volgende dienst van dezelfde kaart.
+     */
     const busHofAanbod = vehicle
-      ? hofAanbod.find((item) => item.folder === vehicle.folder)
+      ? (ritAanbod ?? hofAanbod.find((item) => item.folder === vehicle.folder))
       : undefined
 
     const tipBus = mode === 'free' ? vrijeTip : assignment?.vehicle

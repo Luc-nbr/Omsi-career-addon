@@ -76,6 +76,14 @@ export interface Kaartlaag {
   hofAanbod(folder: string): HofOffer[]
   /** Hetzelfde aanbod, maar voor één busmap; komt uit dezelfde rekensom. */
   hofAanbodVoor(folder: string, busmap: string): HofOffer | undefined
+  /**
+   * En hetzelfde voor de bestemmingen van één dienst.
+   *
+   * Dat is een andere vraag dan die van de kaart. Een bus kan veertig van de
+   * honderdnegenenvijftig bestemmingen van Ahlheim kennen -- en geen van de
+   * twee die op jouw dienst staan.
+   */
+  hofAanbodVoorRit(termini: string[], busmap: string): HofOffer | undefined
   /** Alle .hof-bestanden die er liggen; komt van schijf zolang Vehicles niet wijzigt. */
   wagenparkBestanden(): HofFile[]
   diensten(request: DutyRequest): Assignment[]
@@ -402,6 +410,20 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
      * busmenu een andere bus aanwees. Nu komt het uit hetzelfde plan als de
      * lijst hierboven.
      */
+    hofAanbodVoorRit(termini, busmap) {
+      const schoon = [...new Set(termini.filter(Boolean))]
+      if (schoon.length === 0) return undefined
+      const sleutel = `rit:${[...schoon].sort().join('')}`
+      let plan = aanbodCache.get(sleutel)
+      if (!plan) {
+        plan = planHofs(omsiPath, schoon, laag.wagenparkBestanden())
+        aanbodCache.set(sleutel, plan)
+      }
+      const bus = plan.find((item) => item.folder === busmap)
+      if (!bus?.offer || bus.offer.matched <= bus.known) return undefined
+      return aanbodVan(bus, schoon.length)
+    },
+
     hofAanbodVoor(folder, busmap) {
       const termini = laag.eindbestemmingen(folder)
       const bus = plan(folder).find((item) => item.folder === busmap)

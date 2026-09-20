@@ -284,11 +284,35 @@ export function planHofs(
     .filter((item) => item.matched > 0)
     .sort((a, b) => b.matched - a.matched)
 
+  /*
+   * Alle busmappen, niet alleen die met een wagenpark.
+   *
+   * Hier stond `for (const [folder, own] of perFolder)`, en die lijst komt uit
+   * de gevonden .hof-bestanden. Een bus zonder enig wagenparkbestand kwam er
+   * dus niet in voor -- terwijl dat juist de bus is die het nodig heeft: hij
+   * kent geen enkele bestemming, het matrixbord blijft leeg en de IBIS weigert
+   * de codes. In het busmenu bleef de tegel "wagenpark erbij halen" daardoor
+   * weg bij precies de bussen waar hij hoorde te staan.
+   */
+  let mappen: string[]
+  try {
+    mappen = readdirSync(join(omsiPath, 'Vehicles'))
+  } catch {
+    mappen = [...perFolder.keys()]
+  }
+
   const result: BusHofState[] = []
-  for (const [folder, own] of perFolder) {
+  for (const folder of mappen) {
+    const own = perFolder.get(folder) ?? []
     // Alleen echte bussen; mappen zonder .bus zijn treinen, auto's en decor.
     const dir = join(omsiPath, 'Vehicles', folder)
-    if (!readdirSync(dir).some((name) => extname(name).toLowerCase() === '.bus')) continue
+    let inhoud: string[]
+    try {
+      inhoud = readdirSync(dir)
+    } catch {
+      continue
+    }
+    if (!inhoud.some((name) => extname(name).toLowerCase() === '.bus')) continue
 
     const schemas = busSchemas(own)
     let known = 0

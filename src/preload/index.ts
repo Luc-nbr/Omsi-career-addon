@@ -83,6 +83,7 @@ const api: CareerApi = {
   browseOmsi: () => ipcRenderer.invoke('omsi:browse'),
   hofOffers: (mapFolder) => ipcRenderer.invoke('hof:offers', mapFolder),
   hofOfferFor: (mapFolder, folder) => ipcRenderer.invoke('hof:offerFor', mapFolder, folder),
+  hofOfferForDuty: (duty, folder) => ipcRenderer.invoke('hof:offerForDuty', duty, folder),
   placeHofs: (mapFolder, folders) => ipcRenderer.invoke('hof:place', mapFolder, folders)
 }
 

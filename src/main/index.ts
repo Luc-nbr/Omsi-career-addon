@@ -1623,6 +1623,34 @@ function registerHandlers(): void {
     }
   )
 
+  /*
+   * Valt er voor déze dienst iets te halen bij deze bus?
+   *
+   * `hof:offerFor` kijkt naar alle bestemmingen van de kaart, en dat is een
+   * andere vraag: een bus kan veertig van de honderdnegenenvijftig
+   * bestemmingen van Ahlheim kennen en geen van de twee die op jouw dienst
+   * staan. Op het remisescherm gaat het over die twee, en daar hoorde de tegel
+   * "wagenpark erbij halen" dus ook bij te horen -- hij bleef weg terwijl er
+   * "0 van 2 bestemmingen" stond.
+   */
+  handle(
+    'hof:offerForDuty',
+    async (_event, duty: Duty, folder: string): Promise<HofOffer | undefined> => {
+      const termini = [...new Set(duty.legs.map((leg: DutyLeg) => leg.terminus).filter(Boolean))]
+      if (termini.length === 0) return undefined
+      try {
+        return await werkerVraag<HofOffer | undefined>({
+          soort: 'hofaanbodrit',
+          termini,
+          busmap: folder
+        })
+      } catch (fout) {
+        logFout('wagenpark voor deze dienst via de werker', fout)
+        return laag().hofAanbodVoorRit(termini, folder)
+      }
+    }
+  )
+
   handle(
     'hof:place',
     (_event, mapFolder: string, folders: string[]): { placed: number; failed: string[] } => {
