@@ -359,6 +359,43 @@ Twee dingen die daarbij hoorden:
   in de schijfcache, met de vingerafdruk van `Vehicles` als sleutel: 604 -> 47 ms
   en 565 -> 80 ms, met dezelfde uitkomst (`probe-wagenpark`).
 
+**Het logboek van een "crash" (20-09-2026)**
+
+Een speler meldde dat de app crashte en stuurde zijn logboek: 28 kaarten op een
+tweede schijf, geen enkele `FOUT`-regel, en midden in het logboek een herstart.
+Daar viel niets aan te zien -- er stond geen regel bij netjes afsluiten, dus een
+crash en een gewone afsluiting zien er hetzelfde uit. Die regel staat er nu wel
+(`afsluiten` bij `will-quit`): ontbreekt hij vóór een start, dan is de app
+omgevallen.
+
+Wat er in dat logboek wél stond, verklaart de klacht waarschijnlijk zonder
+crash: `TRAAG vraag hof:offerFor: 18990 ms`. Die vraag komt bij **elke bus die
+je in het busmenu aanwijst**, stond in het hoofdproces, en rekende zijn eigen
+plan uit zonder de bewaarde lijst wagenparkbestanden -- dus met een lezing van
+alle .hof van schijf erbij. Negentien seconden lang reageert er dan niets,
+Windows zet "reageert niet" in de titelbalk, en wie dan op het kruisje drukt
+heeft een app die "crasht". Nu doet de werker het, uit hetzelfde plan als de
+lijst: 580 ms, en het scherm blijft intussen leven.
+
+Drie dingen die daarbij hoorden:
+
+- **De schijfcache van de bussen keek naar de verkeerde dingen.** `wagenpark()`
+  en `wagenparkBestanden()` bewaarden hun uitkomst onder `vingerafdruk()` uit
+  `kaartcache.ts`, en die kijkt naar `tile_*.map` en `global.cfg` -- bestanden
+  die in `Vehicles` niet bestaan. De afdruk was daar dus een vaste waarde: de
+  cache sloeg altijd aan, ook nadat er een bus bij was gezet of een .hof was
+  neergelegd. `hofTool.wagenparkAfdruk()` kijkt naar de mappen zelf; bewezen met
+  `probe-afdruk.ts`.
+- **Wie op een gesloten werker wachtte, wachtte voor altijd.** `vergeetKaarten()`
+  sluit beide werkers, en de vragen die op dat moment openstonden kregen nooit
+  antwoord -- het scherm houdt dan zijn wachtdraaitje aan. Ze krijgen nu een
+  "niet gelukt" en vallen terug. Let op het detail dat dit eerst fout ging: de
+  wachtenden hangen aan de werker zelf, niet aan zijn soort, want een gesloten
+  werker wordt meteen vervangen en zijn afscheidsbericht komt pas daarna.
+- **De werker vertelt nu waar zijn tijd heen gaat.** `hofaanbod` was bij die
+  speler 27724 ms en daar viel niet uit af te lezen wat traag was. Hier staat er
+  nu bij: `159 bestemmingen 267 ms, 459 wagenparken 563 ms, vergelijken 55 ms`.
+
 **Wat er in het hoofdproces mag staan, en wat niet**
 
 - Het hoofdproces is enkeldradig. Zolang daar iets loopt tekent er geen venster,
@@ -565,14 +602,14 @@ een `gap` bij, en een maatklasse voor het icoontje van een pixel of veertien.
   expliciet ("in vrije modus is er selectie mogelijk per lijn en kunnen handmatig
   meer ritten worden toegevoegd") en het is nooit gebouwd. De ritstap van vrij
   rijden is nu een formulier (waar, wanneer, weer) en kent geen ritten.
-- **Versie 0.3.1 staat nog niet op GitHub.** (0.3.0 evenmin: die is wel getagd,
+- **Versie 0.3.2 staat nog niet op GitHub.** (0.3.0 evenmin: die is wel getagd,
   maar nooit uitgegeven. De notities in `uitgaven/0.3.0.md` dekken dus nog niet
   wat er na die tag bij kwam -- de spiegelingen, de staat van dienst, het
   logboek, de starthub en het werk hierboven aan de snelheid.) Het uitgeefscript werkt; `gh` is in
   de schil van de assistent aangemeld maar niet in het PowerShell-venster van de
   gebruiker (vermoedelijk verhoogd, dus een andere sessie en geen toegang tot de
   sleutelring). Commando:
-  `node scripts/uitgeven.mjs 0.3.1 --publiceer --notities uitgaven/0.3.1.md`.
+  `node scripts/uitgeven.mjs 0.3.2 --publiceer --notities uitgaven/0.3.2.md`.
   De Discord-aankondiging staat klaar in
   `C:\OMSI Enhancer Discord\uitgaven\0.3.0.md` maar de links daarin zijn dood
   tot de release bestaat. **Publiceren doet de gebruiker zelf.**

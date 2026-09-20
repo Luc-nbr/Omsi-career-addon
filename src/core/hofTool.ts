@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { copyFileSync, existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { basename, dirname, extname, join } from 'node:path'
 import { readHof, normalise, type Hof } from './hof'
@@ -170,6 +171,21 @@ function vingerafdruk(root: string): string {
     }
   }
   return delen.join('|')
+}
+
+/**
+ * Dezelfde afdruk, voor wie hem buiten dit bestand nodig heeft.
+ *
+ * De schijfcache bewaarde de busindex en de wagenparken onder de afdruk uit
+ * `kaartcache.ts`, en die kijkt naar `tile_*.map` en `global.cfg` -- bestanden
+ * die in `Vehicles` niet bestaan. Daarmee was de afdruk daar een vaste waarde:
+ * de cache sloeg altijd aan, ook nadat er een bus bij was gezet. Deze afdruk
+ * kijkt naar de mappen zelf en ziet dat wel.
+ */
+export function wagenparkAfdruk(omsiPath: string): string {
+  const root = join(omsiPath, 'Vehicles')
+  if (!existsSync(root)) return ''
+  return createHash('sha1').update(vingerafdruk(root)).digest('hex')
 }
 
 /** Alle wagenparken die in de voertuigmappen liggen. */

@@ -29,6 +29,7 @@ type Opdracht =
   | { id: number; soort: 'voertuigen' }
   | { id: number; soort: 'busvoorstel'; folder: string }
   | { id: number; soort: 'hofaanbod'; folder: string }
+  | { id: number; soort: 'hofaanbodvoor'; folder: string; busmap: string }
   | { id: number; soort: 'diensten'; request: DutyRequest }
   | { id: number; soort: 'routes'; folder: string; legs: Array<{ tripFile: string; stopIds: string[] }> }
 
@@ -38,6 +39,8 @@ interface Antwoord {
   ms: number
   uitkomst?: unknown
   fout?: string
+  /** Waar de tijd heen ging, als de opdracht dat zelf kan zeggen. */
+  detail?: string
 }
 
 const { omsiPath, userData } = workerData as { omsiPath: string; userData: string }
@@ -47,15 +50,34 @@ parentPort?.on('message', (opdracht: Opdracht) => {
   const begin = Date.now()
   try {
     let uitkomst: unknown
+    let detail: string | undefined
     if (opdracht.soort === 'kaart') laag.leesKaart(opdracht.folder)
     else if (opdracht.soort === 'overzicht') uitkomst = laag.overzicht()
     else if (opdracht.soort === 'voertuigen') uitkomst = laag.voertuigen()
     else if (opdracht.soort === 'busvoorstel') uitkomst = laag.busvoorstel(opdracht.folder)
-    else if (opdracht.soort === 'hofaanbod') uitkomst = laag.hofAanbod(opdracht.folder)
+    else if (opdracht.soort === 'hofaanbod') {
+      /*
+       * Uitgesplitst, want het logboek van een speler zette deze opdracht op
+       * 27724 ms en daaruit valt niet af te lezen waar dat zat: de kaart die
+       * zijn bestemmingen moet geven, de wagenparkbestanden van schijf, of het
+       * vergelijken zelf. Hier kost het bij elkaar een tiende seconde, dus dat
+       * moeten we van zijn machine horen.
+       */
+      const t1 = Date.now()
+      const bestemmingen = laag.eindbestemmingen(opdracht.folder).length
+      const t2 = Date.now()
+      const bestanden = laag.wagenparkBestanden().length
+      const t3 = Date.now()
+      uitkomst = laag.hofAanbod(opdracht.folder)
+      detail =
+        `${bestemmingen} bestemmingen ${t2 - t1} ms, ` +
+        `${bestanden} wagenparken ${t3 - t2} ms, vergelijken ${Date.now() - t3} ms`
+    } else if (opdracht.soort === 'hofaanbodvoor')
+      uitkomst = laag.hofAanbodVoor(opdracht.folder, opdracht.busmap)
     else if (opdracht.soort === 'diensten') uitkomst = laag.diensten(opdracht.request)
     else uitkomst = laag.routes(opdracht.folder, opdracht.legs)
 
-    const antwoord: Antwoord = { id: opdracht.id, ok: true, ms: Date.now() - begin, uitkomst }
+    const antwoord: Antwoord = { id: opdracht.id, ok: true, ms: Date.now() - begin, uitkomst, detail }
     parentPort?.postMessage(antwoord)
   } catch (fout) {
     const antwoord: Antwoord = {

@@ -158,6 +158,8 @@ interface WerkerAntwoord {
   ms: number
   uitkomst?: unknown
   fout?: string
+  /** Waar de tijd heen ging, als de opdracht dat zelf bijhoudt. */
+  detail?: string
 }
 
 /*
@@ -174,7 +176,34 @@ type Werksoort = 'voorgrond' | 'achtergrond'
 
 const werkers = new Map<Werksoort, Worker>()
 let volgendeOpdracht = 0
-const werkerWacht = new Map<number, (antwoord: WerkerAntwoord) => void>()
+/*
+ * Wie op antwoord wacht, en van wie.
+ *
+ * De soort staat erbij omdat een werker kan verdwijnen terwijl er nog vragen
+ * openstaan -- `vergeetKaarten()` sluit ze allebei, en de werker van het
+ * voorwerk sluit zichzelf. Wie dan blijft wachten, wacht voor altijd: het
+ * scherm houdt zijn wachtdraaitje aan en voor de speler is de app vastgelopen.
+ * Daarom krijgt iedereen van die werker meteen een antwoord, ook al is het
+ * "niet gelukt" -- daar staat een terugval op.
+ */
+const werkerWacht = new Map<number, { werker: Worker; klaar: (antwoord: WerkerAntwoord) => void }>()
+
+/**
+ * Iedereen die op déze werker wacht een antwoord geven, met reden.
+ *
+ * Op de werker zelf, niet op zijn soort: een gesloten werker wordt meteen
+ * vervangen door een nieuwe van dezelfde soort, en zijn afscheidsbericht komt
+ * pas daarna binnen. Op soort vergelijken gooide zo de vragen weg die net bij
+ * de nieuwe waren neergelegd -- die vielen dan terug op het hoofdproces, en dat
+ * stond 608 ms stil waar het 14 ms hoorde te zijn (`probe-stilstand.cjs`).
+ */
+function stuurWachtendenWeg(werker: Worker, reden: string): void {
+  for (const [id, wachtend] of werkerWacht) {
+    if (wachtend.werker !== werker) continue
+    werkerWacht.delete(id)
+    wachtend.klaar({ id, ok: false, ms: 0, fout: reden })
+  }
+}
 
 function kaartWerker(soort: Werksoort): Worker {
   const staand = werkers.get(soort)
@@ -186,19 +215,16 @@ function kaartWerker(soort: Werksoort): Worker {
   gemaakt.on('message', (antwoord: WerkerAntwoord) => {
     const wachtend = werkerWacht.get(antwoord.id)
     werkerWacht.delete(antwoord.id)
-    wachtend?.(antwoord)
+    wachtend?.klaar(antwoord)
   })
   gemaakt.on('error', (fout) => {
     logFout(`kaartwerker ${soort}`, fout)
     werkers.delete(soort)
-    // Wie nog wacht krijgt een antwoord, anders blijft het scherm hangen.
-    for (const [id, wachtend] of werkerWacht) {
-      werkerWacht.delete(id)
-      wachtend({ id, ok: false, ms: 0, fout: String(fout) })
-    }
+    stuurWachtendenWeg(gemaakt, String(fout))
   })
-  gemaakt.on('exit', () => {
-    werkers.delete(soort)
+  gemaakt.on('exit', (code) => {
+    if (werkers.get(soort) === gemaakt) werkers.delete(soort)
+    stuurWachtendenWeg(gemaakt, `werker ${soort} is gestopt (${code})`)
   })
   // De werker mag de app niet openhouden bij het afsluiten.
   gemaakt.unref()
@@ -220,16 +246,21 @@ async function werkerVraag<T>(
 ): Promise<T> {
   const id = (volgendeOpdracht += 1)
   const antwoord = await new Promise<WerkerAntwoord>((klaar) => {
-    werkerWacht.set(id, klaar)
     try {
-      kaartWerker(soort).postMessage({ ...opdracht, id })
+      const werker = kaartWerker(soort)
+      werkerWacht.set(id, { werker, klaar })
+      werker.postMessage({ ...opdracht, id })
     } catch (fout) {
       werkerWacht.delete(id)
       klaar({ id, ok: false, ms: 0, fout: String(fout) })
     }
   })
   if (!antwoord.ok) throw new Error(antwoord.fout ?? 'de werker gaf geen antwoord')
-  if (antwoord.ms >= TRAAG_MS) log(`werker ${String(opdracht.soort)}: ${antwoord.ms} ms`)
+  if (antwoord.ms >= TRAAG_MS)
+    log(
+      `werker ${String(opdracht.soort)}: ${antwoord.ms} ms` +
+        (antwoord.detail ? ` (${antwoord.detail})` : '')
+    )
   return antwoord.uitkomst as T
 }
 
@@ -1551,20 +1582,25 @@ function registerHandlers(): void {
   })
 
 
+  /*
+   * Deze vraag komt bij elke bus die je in het busmenu aanwijst. Hij stond in
+   * het hoofdproces en rekende zijn eigen plan uit zonder de bewaarde lijst
+   * wagenparkbestanden, dus las hij elke keer alle .hof van schijf: in het
+   * logboek van een speler 18990 ms, en zolang stond de hele app stil. Nu doet
+   * de werker het, uit hetzelfde plan als de lijst.
+   */
   handle(
     'hof:offerFor',
-    (_event, mapFolder: string, folder: string): HofOffer | undefined => {
-      const termini = terminiOf(mapFolder)
-      if (termini.length === 0) return undefined
-      const bus = planHofs(omsi(), termini).find((item) => item.folder === folder)
-      if (!bus?.offer || bus.offer.matched <= bus.known) return undefined
-      return {
-        folder: bus.folder,
-        known: bus.known,
-        total: termini.length,
-        knownFile: bus.knownFile,
-        offerFile: bus.offer.file,
-        offerMatched: bus.offer.matched
+    async (_event, mapFolder: string, folder: string): Promise<HofOffer | undefined> => {
+      try {
+        return await werkerVraag<HofOffer | undefined>({
+          soort: 'hofaanbodvoor',
+          folder: mapFolder,
+          busmap: folder
+        })
+      } catch (fout) {
+        logFout('wagenparkaanbod via de werker', fout)
+        return laag().hofAanbodVoor(mapFolder, folder)
       }
     }
   )
@@ -1574,7 +1610,7 @@ function registerHandlers(): void {
     (_event, mapFolder: string, folders: string[]): { placed: number; failed: string[] } => {
       const termini = terminiOf(mapFolder)
       const wanted = new Set(folders)
-      const plan = planHofs(omsi(), termini).filter(
+      const plan = planHofs(omsi(), termini, laag().wagenparkBestanden()).filter(
         (bus) => wanted.has(bus.folder) && bus.offer
       )
 
@@ -2093,8 +2129,11 @@ if (!app.requestSingleInstanceLock()) {
 
     /*
      * Wat de app onderuit haalt hoort in het logboek te staan, niet alleen in
-     * een venster dat wegklikt. Afsluiten doen we er niet bij: Electron doet
-     * dat zelf al waar het moet.
+     * een venster dat wegklikt. Netjes afsluiten staat er sinds 20-09-2026 ook
+     * bij, en dat is niet voor de sier: in het logboek van een speler die zei
+     * dat de app crashte stond een herstart zonder één foutregel ervoor. Daar
+     * viel niet aan te zien of hij was omgevallen of gewoon afgesloten. Staat
+     * er nu geen "afsluiten" voor een start, dan is hij omgevallen.
      */
     process.on('uncaughtException', (fout) => logFout('onafgevangen fout', fout))
     process.on('unhandledRejection', (reden) => logFout('onafgehandelde belofte', reden))
@@ -2142,6 +2181,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on('will-quit', () => {
     globalShortcut.unregisterAll()
+    log('afsluiten')
   })
 
   app.on('window-all-closed', () => {

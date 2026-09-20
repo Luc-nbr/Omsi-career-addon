@@ -16,7 +16,7 @@ import { LaneNetwork, routeForTrip, type TripRoute } from './routing'
 import { findTemplate, readSituationTime } from './situation'
 import { listMaps, loadMap, readMapOverview } from './timetable'
 import { listVehicles, type Vehicle } from './vehicles'
-import { planHofs, scanHofs, type HofFile } from './hofTool'
+import { planHofs, scanHofs, wagenparkAfdruk, type BusHofState, type HofFile } from './hofTool'
 import type { Hof } from './hof'
 import type { OmsiMap } from './types'
 import {
@@ -74,6 +74,8 @@ export interface Kaartlaag {
   busvoorstel(folder: string): Vehicle | undefined
   /** Wagenparken die meer eindbestemmingen van deze kaart kennen dan wat er staat. */
   hofAanbod(folder: string): HofOffer[]
+  /** Hetzelfde aanbod, maar voor één busmap; komt uit dezelfde rekensom. */
+  hofAanbodVoor(folder: string, busmap: string): HofOffer | undefined
   /** Alle .hof-bestanden die er liggen; komt van schijf zolang Vehicles niet wijzigt. */
   wagenparkBestanden(): HofFile[]
   diensten(request: DutyRequest): Assignment[]
@@ -96,7 +98,33 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
   let voertuigenCache: Vehicle[] | undefined
   let hofBestanden: HofFile[] | undefined
 
+  const aanbodCache = new Map<string, BusHofState[]>()
+
   const kaartPad = (folder: string): string => join(omsiPath, 'maps', folder)
+
+  /*
+   * Het wagenparkplan van een kaart: welke bus kent wat, en wat valt er bij te
+   * leggen. Het is één rekensom voor de hele kaart -- de lijst én de vraag per
+   * bus komen eruit -- dus hij hoort één keer gemaakt te worden.
+   */
+  const plan = (folder: string): BusHofState[] => {
+    const bewaard = aanbodCache.get(folder)
+    if (bewaard) return bewaard
+    const termini = laag.eindbestemmingen(folder)
+    const uit = termini.length === 0 ? [] : planHofs(omsiPath, termini, laag.wagenparkBestanden())
+    aanbodCache.set(folder, uit)
+    return uit
+  }
+
+  const aanbodVan = (bus: BusHofState, totaal: number): HofOffer | undefined =>
+    bus.offer && {
+      folder: bus.folder,
+      known: bus.known,
+      total: totaal,
+      knownFile: bus.knownFile,
+      offerFile: bus.offer.file,
+      offerMatched: bus.offer.matched
+    }
 
   const laag: Kaartlaag = {
     map(folder) {
@@ -265,7 +293,7 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
      */
     wagenpark() {
       if (fleetIndex) return fleetIndex
-      const afdruk = vingerafdruk(join(omsiPath, 'Vehicles'))
+      const afdruk = wagenparkAfdruk(omsiPath)
       const bewaard = leesUitCache<{ vehicles: Vehicle[]; hofs: Array<[string, Hof[]]> }>(
         userData,
         '_bussen',
@@ -287,7 +315,7 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
     /** Dezelfde reden als hierboven: één keer lezen, daarna van schijf. */
     wagenparkBestanden() {
       if (hofBestanden) return hofBestanden
-      const afdruk = vingerafdruk(join(omsiPath, 'Vehicles'))
+      const afdruk = wagenparkAfdruk(omsiPath)
       const bewaard = leesUitCache<HofFile[]>(userData, '_bussen', 'hofs', afdruk)
       if (bewaard) {
         hofBestanden = bewaard
@@ -357,18 +385,28 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
      */
     hofAanbod(folder) {
       const termini = laag.eindbestemmingen(folder)
-      if (termini.length === 0) return []
-      return planHofs(omsiPath, termini, laag.wagenparkBestanden())
+      return plan(folder)
         .filter((bus) => bus.offer && bus.offer.matched > bus.known)
-        .map((bus) => ({
-          folder: bus.folder,
-          known: bus.known,
-          total: termini.length,
-          knownFile: bus.knownFile,
-          offerFile: bus.offer?.file,
-          offerMatched: bus.offer?.matched
-        }))
+        .map((bus) => aanbodVan(bus, termini.length))
+        .filter((aanbod): aanbod is HofOffer => aanbod !== undefined)
         .sort((a, b) => (b.offerMatched ?? 0) - (a.offerMatched ?? 0))
+    },
+
+    /**
+     * Hetzelfde, maar voor één bus.
+     *
+     * Dit hing in het hoofdproces en rekende zijn eigen plan uit -- zonder de
+     * bewaarde lijst wagenparkbestanden, dus met een lezing van alle .hof van
+     * schijf erbij. In het logboek van een speler stond die ene vraag op
+     * 18990 ms, en zo lang stond de hele app stil: elke keer dat je in het
+     * busmenu een andere bus aanwees. Nu komt het uit hetzelfde plan als de
+     * lijst hierboven.
+     */
+    hofAanbodVoor(folder, busmap) {
+      const termini = laag.eindbestemmingen(folder)
+      const bus = plan(folder).find((item) => item.folder === busmap)
+      if (!bus?.offer || bus.offer.matched <= bus.known) return undefined
+      return aanbodVan(bus, termini.length)
     },
 
     /**
