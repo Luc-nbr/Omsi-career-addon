@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type JSX, type ReactNo
 import type { MapGeometry } from '../../core/geo'
 import type { Duty } from '../../core/types'
 import { useT } from './language'
+import { Icoon as Pictogram, ICONEN } from './Icoon'
 import { RouteMap } from './RouteMap'
 import './setup.css'
 
@@ -210,18 +211,6 @@ interface Props {
   inhoud?: ReactNode
 }
 
-/* De icoontjes zijn bewust klein en van één gewicht; ze zijn label, geen plaatje. */
-const PADEN = {
-  profile: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 2c-4 0-7 2-7 4v2h14v-2c0-2-3-4-7-4Z',
-  map: 'M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Zm0 2.2 6 2v11.6l-6-2V6.2Z',
-  line: 'M4 20 10 8l4 6 6-10',
-  mode: 'M12 2 4 6v6c0 5 3.4 9.1 8 10 4.6-.9 8-5 8-10V6l-8-4Zm0 2.2 6 3V12c0 3.9-2.5 7.2-6 8-3.5-.8-6-4.1-6-8V7.2l6-3Z',
-  duty: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm1 9V7h-2v7h6v-2h-4Z',
-  /* Een pasje met een stempel erop: waar je mee mag rijden, en wie dat zegt. */
-  licence:
-    'M3 5h18v14H3V5Zm2 2v10h14V7H5Zm1.5 2h6v1.6h-6V9Zm0 3h5v1.6h-5V12Zm9.5-2.6a2.6 2.6 0 1 1 0 5.2 2.6 2.6 0 0 1 0-5.2Z',
-  bus: 'M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2v2h-3v-2H8v2H5v-2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 3v5h14V7H5Zm2 9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm10 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z'
-} as const
 
 /**
  * De vorm van een bus, getekend en niet gefotografeerd.
@@ -310,22 +299,13 @@ function Hoficoon(): JSX.Element {
   )
 }
 
+/*
+ * Het icoontje van een stap. De vormen staan in Icoon.tsx, bij de rest: ze
+ * stonden hier, en toen kwamen er ook icoontjes bij het weer, het dagdeel en het
+ * chauffeursoverzicht. Twee plekken met tekeningen worden twee stijlen.
+ */
 function Icoon({ stap, klasse }: { stap: Stap; klasse?: string }): JSX.Element {
-  const open = stap === 'line'
-  return (
-    <svg className={klasse} viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d={PADEN[stap]}
-        fill={open ? 'none' : 'currentColor'}
-        /* Ringen met een uitsparing -- de klok, de kaart -- lopen zonder dit dicht. */
-        fillRule="evenodd"
-        stroke={open ? 'currentColor' : 'none'}
-        strokeWidth={open ? 2 : undefined}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
+  return <Pictogram naam={stap} klasse={klasse} />
 }
 
 /**
@@ -648,7 +628,7 @@ export function Setup({
                   <span className="dienstduur">
                     {rij.klok && (
                       <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d={PADEN.duty} fill="currentColor" fillRule="evenodd" />
+                        <path d={ICONEN.duty.d} fill="currentColor" fillRule="evenodd" />
                       </svg>
                     )}
                     {rij.cellen[2]}
