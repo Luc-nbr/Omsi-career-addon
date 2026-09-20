@@ -245,6 +245,39 @@ export function loadMap(mapsPath: string, folder: string): OmsiMap | undefined {
   }
 }
 
+/**
+ * Alleen wat de kaartenlijst nodig heeft: de naam en het aantal omlopen.
+ *
+ * `loadMap` leest ook elke rit (.ttp) en alle haltes, en dat is het dure deel:
+ * in het logboek van een speler met 46 kaarten kostte de kaartenlijst 29,5
+ * seconden. Omlopen staan in de .ttl-bestanden, en of een omloop meetelt --
+ * heeft hij ritten, mag de speler hem rijden -- staat daar ook in. Dus hoeft er
+ * voor dit lijstje geen enkele .ttp open.
+ */
+export function readMapOverview(
+  mapsPath: string,
+  folder: string
+): { name: string; tours: number } | undefined {
+  const path = join(mapsPath, folder)
+  const ttData = join(path, 'TTData')
+  if (!existsSync(join(path, 'global.cfg')) || !existsSync(ttData)) return undefined
+
+  const tours: Tour[] = []
+  for (const entry of readdirSync(ttData)) {
+    if (extname(entry).toLowerCase() !== '.ttl') continue
+    try {
+      tours.push(...readTours(join(ttData, entry)))
+    } catch {
+      // Eén kapot bestand in een addon mag de hele kaart niet onbruikbaar maken.
+    }
+  }
+
+  // Dezelfde keuze als in loadMap: rijdbare omlopen, en anders alles wat er is.
+  const usable = tours.filter((tour) => tour.trips.length > 0)
+  const allowed = usable.filter((tour) => tour.userAllowed)
+  return { name: readMapName(path) || folder, tours: (allowed.length > 0 ? allowed : usable).length }
+}
+
 /** De leesbare kaartnaam staat als `[name]`-blok in global.cfg. */
 function readMapName(mapPath: string): string {
   try {

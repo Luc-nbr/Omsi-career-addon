@@ -56,12 +56,12 @@ import { receiptHeightMicrons, RECEIPT_WIDTH_MICRONS } from '../core/receipt'
 import { difference, readKnown, writeKnown } from '../core/installed'
 import { readSettings, writeSettings, type Settings } from '../core/settings'
 import { formatTime } from '../shared/format'
-import { findTemplate, writeSituation } from '../core/situation'
+import { writeSituation } from '../core/situation'
 import { presetStartup } from '../core/startup'
 import { trailerOf } from '../core/trailer'
 import { spawnAtStop } from '../core/spawn'
 import { listMaps } from '../core/timetable'
-import { listVehicles, type Vehicle } from '../core/vehicles'
+import type { Vehicle } from '../core/vehicles'
 import type { Duty, DutyLeg, OmsiMap } from '../core/types'
 import { listHofs, matchHof, pickHof } from '../core/hof'
 import { placeHof, planHofs, readPlacements, writePlacements } from '../core/hofTool'
@@ -1249,23 +1249,28 @@ function registerHandlers(): void {
    *
    * Wat er nieuw is, weten we doordat we bewaren wat er de vorige keer stond.
    */
-  handle('omsi:check', (): InstalledCheck => {
+  handle('omsi:check', async (): Promise<InstalledCheck> => {
     vergeetKaarten()
     vehicleTrackers.clear()
 
-    const maps = listMaps(omsi()).map((folder) => {
-      const loaded = map(folder)
-      const time = era(folder)
-      return {
-        folder,
-        name: loaded.name,
-        tours: loaded.tours.length,
-        hasTemplate: Boolean(findTemplate(omsi(), folder)),
-        year: time.year,
-        dayOfYear: time.dayOfYear
-      }
-    })
-    const vehicles = listVehicles(omsi())
+    /*
+     * Ook dit hoort bij de werker. Het hoofdproces las hier van elke kaart de
+     * hele dienstregeling in -- voor een naam en een aantal omlopen -- en lag
+     * ondertussen stil; bij een speler met zesenveertig kaarten op een tweede
+     * schijf duurde dat een halve minuut. `vergeetKaarten()` hierboven sluit de
+     * werkers, dus wat hierna komt is opnieuw gelezen: dat is de hele bedoeling
+     * van deze knop.
+     */
+    const [maps, vehicles] = await Promise.all([
+      werkerVraag<MapSummary[]>({ soort: 'overzicht' }).catch((fout) => {
+        logFout('kaartenlijst via de werker', fout)
+        return laag().overzicht()
+      }),
+      werkerVraag<Vehicle[]>({ soort: 'voertuigen' }).catch((fout) => {
+        logFout('voertuigen via de werker', fout)
+        return laag().voertuigen()
+      })
+    ])
     // Per map kijken, niet per busbestand: een add-on is een map, en anders
     // meldt de app dertig "nieuwe bussen" voor één pakket.
     const busFolders = [...new Set(vehicles.map((item) => item.folder))].sort()

@@ -333,6 +333,32 @@ Wat nog in het hoofdproces gebeurt en boven de 150 ms uitkomt, schrijft zichzelf
 op in het logboek (`TRAAG vraag ...`). Dat is de plek om te kijken als iemand
 weer meldt dat het hapert.
 
+**Waar de tijd zat bij het zoeken van diensten (20-09-2026)**
+
+Het logboek van een speler met 46 kaarten op een tweede schijf gaf
+`duty:list: 64249 ms`. Gemeten met `scripts/probe-dienstentijd.ts` kostte het
+zoeken hier op elke kaart ongeveer 1,84 s -- ook op Grundorf met 112 ritten, dus
+het lag niet aan de kaart. De uitsplitsing wees het aan: het zoeken zelf kostte
+1 ms en het kiezen van een bus 1695 ms voor acht diensten.
+
+`pickVehicleForDuty` liep voor elke dienst álle bussen langs en vroeg per bus
+welk wagenpark het beste paste. De wagenparken staan per voertuigmap in de index
+-- honderdtweeënzestig bussen uit één pakket delen dezelfde .hof-bestanden --
+dus dezelfde vergelijking gebeurde honderden keren. Nu wordt het antwoord per
+map onthouden, en over de acht diensten van één rooster heen
+(`maakBusGeheugen()`). Zoeken over alle twaalf kaarten: 22,5 s -> 1,5 s.
+
+Twee dingen die daarbij hoorden:
+
+- **De kaartenlijst las elke dienstregeling in** om er een naam en een aantal
+  omlopen uit te halen: 29,5 s bij die speler. Omlopen staan in de
+  `.ttl`-bestanden, dus `readMapOverview()` laat elke `.ttp` dicht. Zelfde
+  antwoord op alle kaarten, 0,86 s -> 0,17 s, en daarna staat het in de cache.
+- **De wagenparkscan stond alleen in het geheugen** en werd dus elke start
+  opnieuw gedaan (14,4 s bij die speler). De busindex en de .hof-lijst staan nu
+  in de schijfcache, met de vingerafdruk van `Vehicles` als sleutel: 604 -> 47 ms
+  en 565 -> 80 ms, met dezelfde uitkomst (`probe-wagenpark`).
+
 **Wat er in het hoofdproces mag staan, en wat niet**
 
 - Het hoofdproces is enkeldradig. Zolang daar iets loopt tekent er geen venster,
@@ -344,6 +370,11 @@ weer meldt dat het hapert.
   houdt worden nu overgeslagen en na anderhalve seconde houdt het op; `C:\` doet
   er 485 ms over, en alle zes manieren om dezelfde installatie aan te wijzen komen
   er nog steeds op uit (`probe-omsimap.ts`).
+- `omsi:check` -- de knop "opnieuw kijken" en de eerste keer opstarten -- las in
+  het hoofdproces elke dienstregeling van elke kaart in. Dat gaat nu langs de
+  werker, met `overzicht()` en `voertuigen()`. Gemeten met `probe-check.cjs`:
+  twaalf kaarten en 342 bussen, dezelfde namen en aantallen omlopen, en het
+  hoofdproces staat onderwijl nooit langer dan 14 ms stil.
 - Wat géén probleem bleek: de overlay stuurt tien keer per seconde een heel beeld
   door de IPC met de dienst erin. Vier ritten en 124 haltes is 5,1 kB en het wegen
   kost 0,01 ms per beeld (`probe-framegrootte.ts`). Zoek haperingen daar niet.

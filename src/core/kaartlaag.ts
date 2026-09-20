@@ -3,6 +3,7 @@ import { dateForMask, dayKind, readCalendar, type Calendar } from './calendar'
 import { generateDuties, buildNetwork, type Network } from './duty'
 import {
   buildFleetIndex,
+  maakBusGeheugen,
   pickVehicleForDuty,
   readMapDepot,
   readMapFleet,
@@ -13,9 +14,10 @@ import { readMapData, type Lane, type MapGeometry } from './geo'
 import { leesUitCache, schrijfInCache, vingerafdruk } from './kaartcache'
 import { LaneNetwork, routeForTrip, type TripRoute } from './routing'
 import { findTemplate, readSituationTime } from './situation'
-import { listMaps, loadMap } from './timetable'
+import { listMaps, loadMap, readMapOverview } from './timetable'
 import { listVehicles, type Vehicle } from './vehicles'
-import { planHofs } from './hofTool'
+import { planHofs, scanHofs, type HofFile } from './hofTool'
+import type { Hof } from './hof'
 import type { OmsiMap } from './types'
 import {
   TIME_WINDOWS,
@@ -72,6 +74,8 @@ export interface Kaartlaag {
   busvoorstel(folder: string): Vehicle | undefined
   /** Wagenparken die meer eindbestemmingen van deze kaart kennen dan wat er staat. */
   hofAanbod(folder: string): HofOffer[]
+  /** Alle .hof-bestanden die er liggen; komt van schijf zolang Vehicles niet wijzigt. */
+  wagenparkBestanden(): HofFile[]
   diensten(request: DutyRequest): Assignment[]
   routes(folder: string, legs: Array<{ tripFile: string; stopIds: string[] }>): TripRoute[]
 }
@@ -90,6 +94,7 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
   const routeCache = new Map<string, TripRoute>()
   let fleetIndex: FleetIndex | undefined
   let voertuigenCache: Vehicle[] | undefined
+  let hofBestanden: HofFile[] | undefined
 
   const kaartPad = (folder: string): string => join(omsiPath, 'maps', folder)
 
@@ -248,9 +253,49 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
       }
     },
 
+    /*
+     * De busindex, en waarom hij op schijf staat.
+     *
+     * `buildFleetIndex` opent van elke voertuigmap de .hof-bestanden. Hier kost
+     * dat een halve seconde; in het logboek van een speler met veel add-ons
+     * stond alleen al het wagenparkaanbod op 14449 ms. Het antwoord verandert
+     * pas als er een bus bij komt, en dat ziet de vingerafdruk van de map
+     * Vehicles. Een Map overleeft JSON niet, dus hij gaat als paren heen en
+     * weer.
+     */
     wagenpark() {
-      if (!fleetIndex) fleetIndex = buildFleetIndex(omsiPath)
+      if (fleetIndex) return fleetIndex
+      const afdruk = vingerafdruk(join(omsiPath, 'Vehicles'))
+      const bewaard = leesUitCache<{ vehicles: Vehicle[]; hofs: Array<[string, Hof[]]> }>(
+        userData,
+        '_bussen',
+        'index',
+        afdruk
+      )
+      if (bewaard) {
+        fleetIndex = { vehicles: bewaard.vehicles, hofsByFolder: new Map(bewaard.hofs) }
+        return fleetIndex
+      }
+      fleetIndex = buildFleetIndex(omsiPath)
+      schrijfInCache(userData, '_bussen', 'index', afdruk, {
+        vehicles: fleetIndex.vehicles,
+        hofs: [...fleetIndex.hofsByFolder]
+      })
       return fleetIndex
+    },
+
+    /** Dezelfde reden als hierboven: één keer lezen, daarna van schijf. */
+    wagenparkBestanden() {
+      if (hofBestanden) return hofBestanden
+      const afdruk = vingerafdruk(join(omsiPath, 'Vehicles'))
+      const bewaard = leesUitCache<HofFile[]>(userData, '_bussen', 'hofs', afdruk)
+      if (bewaard) {
+        hofBestanden = bewaard
+        return bewaard
+      }
+      hofBestanden = scanHofs(omsiPath)
+      schrijfInCache(userData, '_bussen', 'hofs', afdruk, hofBestanden)
+      return hofBestanden
     },
 
     /**
@@ -272,12 +317,14 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
             uit.push(bewaard)
             continue
           }
-          const loaded = laag.map(folder)
+          // Alleen de naam en het aantal omlopen; de ritten blijven dicht.
+          const kort = readMapOverview(join(omsiPath, 'maps'), folder)
+          if (!kort) continue
           const tijd = laag.tijdvak(folder)
           const samenvatting: MapSummary = {
             folder,
-            name: loaded.name,
-            tours: loaded.tours.length,
+            name: kort.name,
+            tours: kort.tours,
             hasTemplate: Boolean(findTemplate(omsiPath, folder)),
             year: tijd.year,
             dayOfYear: tijd.dayOfYear
@@ -311,7 +358,7 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
     hofAanbod(folder) {
       const termini = laag.eindbestemmingen(folder)
       if (termini.length === 0) return []
-      return planHofs(omsiPath, termini)
+      return planHofs(omsiPath, termini, laag.wagenparkBestanden())
         .filter((bus) => bus.offer && bus.offer.matched > bus.known)
         .map((bus) => ({
           folder: bus.folder,
@@ -350,6 +397,8 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
         if (duties.length > 0) break
       }
 
+      // Eén geheugen voor de hele lijst: acht diensten delen hun bestemmingen.
+      const busGeheugen = maakBusGeheugen()
       return duties.map((duty) => {
         const choice = pickVehicleForDuty(
           laag.wagenpark(),
@@ -357,7 +406,8 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
           year,
           mapFleet,
           undefined,
-          laag.remises(request.mapFolder)
+          laag.remises(request.mapFolder),
+          busGeheugen
         )
         return {
           duty,

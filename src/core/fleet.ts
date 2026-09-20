@@ -158,6 +158,13 @@ export interface VehicleChoice {
  * bestemmingsfilms rond. Onder de overblijvers wordt willekeurig gekozen, zodat
  * dezelfde lijn niet elke keer dezelfde bus oplevert.
  */
+/** Het geheugen dat `pickVehicleForDuty` over diensten heen mag gebruiken. */
+export type BusGeheugen = Map<string, Map<string, ReturnType<typeof pickHof>>>
+
+export function maakBusGeheugen(): BusGeheugen {
+  return new Map()
+}
+
 export function pickVehicleForDuty(
   index: FleetIndex,
   duty: Duty,
@@ -170,7 +177,16 @@ export function pickVehicleForDuty(
    * Zonder deze lijst blijft alles werken zoals het werkte; met de lijst wint
    * de bus die op deze kaart het gewoonst is.
    */
-  depot?: Map<string, number>
+  depot?: Map<string, number>,
+  /**
+   * Geheugen dat over meerdere diensten heen meegaat.
+   *
+   * Een rooster levert acht diensten, en die rijden op dezelfde kaart vaak naar
+   * dezelfde eindbestemmingen. Zonder dit doet elke dienst het hele
+   * wagenparkonderzoek opnieuw. Maak er een met `maakBusGeheugen()` en geef
+   * hem aan alle acht mee.
+   */
+  geheugen?: BusGeheugen
 ): VehicleChoice | undefined {
   const termini = [...new Set(duty.legs.map((leg) => leg.terminus).filter(Boolean))]
   if (termini.length === 0) return undefined
@@ -185,10 +201,34 @@ export function pickVehicleForDuty(
   }
   const scored: Scored[] = []
 
+  /*
+   * Eén keer zoeken per voertuigmap, niet per bus.
+   *
+   * De wagenparken staan per map in de index, want honderdtweeënzestig bussen
+   * uit één pakket delen dezelfde .hof-bestanden. De lus hieronder loopt langs
+   * elke bus, en deed dus voor elk van die honderdtweeënzestig opnieuw dezelfde
+   * vergelijking tegen dezelfde bestemmingen. Gemeten op deze installatie: acht
+   * diensten kostten 1695 ms, en in het logboek van een speler met veel add-ons
+   * stond `duty:list` op 64 seconden. Met dit geheugentje blijft er per map één
+   * vergelijking over.
+   */
+  const sleutel = `${year}|${[...termini].sort().join('')}`
+  const perMap =
+    geheugen?.get(sleutel) ??
+    (() => {
+      const vers = new Map<string, ReturnType<typeof pickHof>>()
+      geheugen?.set(sleutel, vers)
+      return vers
+    })()
+
   for (const vehicle of index.vehicles) {
     const hofs = index.hofsByFolder.get(vehicle.folder)
     if (!hofs || hofs.length === 0) continue
-    const match = pickHof(hofs, termini, year)
+    let match = perMap.get(vehicle.folder)
+    if (match === undefined && !perMap.has(vehicle.folder)) {
+      match = pickHof(hofs, termini, year)
+      perMap.set(vehicle.folder, match)
+    }
     if (!match || match.matched === 0) continue
     scored.push({
       vehicle,
