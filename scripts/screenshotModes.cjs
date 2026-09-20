@@ -1,26 +1,37 @@
 /**
- * Loopt de nieuwe schermen langs en legt ze vast: chauffeur kiezen, modus
- * kiezen, en de drie modi zelf.
+ * Loopt de schermen langs en legt ze vast: het welkomstscherm, de chauffeur,
+ * de modus, en daarna elke stap van de stappenbalk.
  *
- *   npx electron scripts/screenshotModes.cjs [uitvoermap]
+ *   npx electron scripts/screenshotModes.cjs [uitvoermap] [modus] [breedtexhoogte]
  *
- * Draait met een eigen gebruikersmap, dus de profielen van de gebruiker blijven
- * onaangeroerd. Er wordt niets in de spelmap geschreven: op "klaarzetten en
- * starten" wordt niet gedrukt.
+ * Modus is `dienst` (standaard), `carriere` of `vrij`. De maat is optioneel:
+ * `720x560` is de ondergrens uit DESIGN.md en laat zien of alles daar nog past.
+ * Draait met een eigen
+ * gebruikersmap, dus de profielen van de gebruiker blijven onaangeroerd. Er
+ * wordt niets in de spelmap geschreven: op "klaarzetten en starten" wordt niet
+ * gedrukt.
+ *
+ * Het script kiest in elke stap de eerste tegel en gaat door tot de stappenbalk
+ * niet meer verspringt. Zo hoeft het niet te weten welke stappen een modus
+ * heeft; dat verschilt per modus en verandert nog.
  */
 const { app, BrowserWindow } = require('electron')
 const { mkdtempSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 
-const args = process.argv.slice(process.argv.findIndex((arg) => arg.endsWith('screenshotModes.cjs')) + 1)
+const args = process.argv.slice(
+  process.argv.findIndex((arg) => arg.endsWith('screenshotModes.cjs')) + 1
+)
 const outputDir = args[0] || __dirname
+const modus = args[1] || 'dienst'
+const MODUSKNOP = { dienst: 'Dienst', carriere: 'Carrière', vrij: 'Vrij rijden' }
 
-app.setPath('userData', mkdtempSync(join(tmpdir(), 'omsi-career-modes-')))
+app.setPath('userData', mkdtempSync(join(tmpdir(), 'omsi-enhancer-modes-')))
 setTimeout(() => {
   console.error('time-out')
   app.exit(1)
-}, 240000).unref()
+}, 300000).unref()
 require('../out/main/index.js')
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -45,65 +56,101 @@ const clickText = (window, text) =>
      })()`
   )
 
+/** Welke stap er nu open staat, aan de stappenbalk afgelezen. */
+const huidigeStap = (window) =>
+  js(
+    window,
+    `document.querySelector('.stap[data-stand="nu"] .stapknop')?.textContent?.trim() ?? ''`
+  )
+
 app.whenReady().then(async () => {
   await wait(1200)
   const [main] = BrowserWindow.getAllWindows()
-  main.setSize(1360, 900)
+  const maat = (args[2] || '1360x900').split('x').map(Number)
+  main.setSize(maat[0] || 1360, maat[1] || 900)
 
+  let nummer = 0
   const shoot = async (name) => {
     main.showInactive()
     main.moveTop()
     await wait(300)
     const png = (await main.capturePage()).toPNG()
-    const file = join(outputDir, `modes-${name}.png`)
+    nummer += 1
+    const file = join(outputDir, `modes-${String(nummer).padStart(2, '0')}-${name}.png`)
     writeFileSync(file, png)
     console.log(`${name}: ${png.length} bytes -> ${file}`)
   }
 
-  // Verse gebruikersmap, dus eerst het welkomsscherm.
-  if (await waitFor(main, `document.querySelector('#welcome-name')`, 60)) {
+  // Verse gebruikersmap: eerst de vraag waar OMSI staat.
+  if (await waitFor(main, `document.querySelector('.welkom-vel')`, 60)) {
     await clickText(main, 'Nederlands')
-    await wait(400)
-    await js(
-      main,
-      `(() => { const i = document.querySelector('#welcome-name'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, 'Testchauffeur'); i.dispatchEvent(new Event('input', { bubbles: true })) })()`
-    )
-    await wait(300)
-    await js(main, `document.querySelector('.welcome .actions .btn')?.click()`)
+    await wait(500)
+    await shoot('welkom')
+    await js(main, `document.querySelector('.welkom-knop.primair')?.click()`)
   }
 
-  // Na het aanmaken staat de modussenkeuze er.
-  await waitFor(main, `document.querySelector('.mode-grid')`)
-  await wait(600)
-  await shoot('1-modi')
+  // Daarna de chauffeur, en als er nog geen is: er een aanmaken.
+  if (await waitFor(main, `document.querySelector('.setup')`, 80)) {
+    await wait(1200)
+    await shoot('chauffeur')
+    const veld = `document.querySelector('.invoerveld')`
+    if (await js(main, `Boolean(${veld})`)) {
+      await js(
+        main,
+        `(() => { const i = ${veld}; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, 'Testchauffeur'); i.dispatchEvent(new Event('input', { bubbles: true })) })()`
+      )
+      await wait(300)
+      await js(main, `document.querySelector('.invoerknop')?.click()`)
+    } else {
+      await js(main, `document.querySelector('.tegel')?.click()`)
+    }
+  }
 
-  // En na herladen begint de app bij de chauffeur.
-  await js(main, `location.reload()`)
-  await waitFor(main, `document.querySelector('.driver-grid')`)
-  await wait(800)
-  await shoot('2-chauffeur')
-
-  await js(main, `document.querySelector('.driver-pick')?.click()`)
-  await waitFor(main, `document.querySelector('.mode-grid')`)
-  await wait(400)
-
-  for (const [name, label] of [
-    ['3-carriere', 'Carrière'],
-    ['4-dienst', 'Dienst'],
-    ['5-vrij', 'Vrij rijden']
-  ]) {
-    await clickText(main, label)
-    await waitFor(main, `document.querySelector('.mode-bar')`)
-    // De lijnen van de kaart worden erbij gezocht; even laten landen.
-    await wait(2500)
-    console.log(
-      `${name}: kaart "${await js(main, `document.querySelector('#map')?.value ?? ''`)}", ` +
-        `lijnen ${await js(main, `document.querySelectorAll('#line option').length`)}`
+  // De modus, en daarna elke stap: afdruk, eerste keuze, hoofdknop.
+  let vorige = ''
+  for (let i = 0; i < 9; i++) {
+    await wait(2500) // de kaart en de lijnen worden erbij gezocht
+    const stap = await huidigeStap(main)
+    if (!stap || stap === vorige) break
+    vorige = stap
+    const keuzes = await js(
+      main,
+      `document.querySelectorAll('.dienstrij, .tegel').length`
     )
-    await shoot(name)
-    await clickText(main, 'Andere modus')
-    await waitFor(main, `document.querySelector('.mode-grid')`)
-    await wait(300)
+    const naam = stap.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+    console.log(`stap "${stap}": ${keuzes} keuzes`)
+    await shoot(`stap-${naam}`)
+
+    /*
+     * Een venstertje (de aanbevolen bus, het wagenpark) dimt het scherm
+     * erachter. Dat is de stap zelf niet, dus die krijgt daarna een eigen
+     * afdruk: eerst het venstertje, dan de stap eronder.
+     */
+    if (await js(main, `Boolean(document.querySelector('.backdrop .dialog'))`)) {
+      await js(main, `document.querySelector('.dialog-actions .btn.ghost')?.click()`)
+      await wait(700)
+      await shoot(`stap-${naam}-zonder-venstertje`)
+    }
+    if (stap.toLowerCase().includes('mod')) await clickText(main, MODUSKNOP[modus] ?? 'Dienst')
+    else await js(main, `document.querySelector('.dienstrij, .tegel')?.click()`)
+    await wait(600)
+    // De stappen gaan via de hoofdknop; op de laatste stap drukken we niet.
+    const laatste = await js(
+      main,
+      `Boolean(document.querySelector('.startknop')?.textContent?.match(/start|klaarzet/i))`
+    )
+    if (laatste) {
+      console.log(`laatste stap bereikt bij "${stap}"; niet gestart`)
+      break
+    }
+    await js(main, `document.querySelector('.startknop')?.click()`)
+  }
+
+  // De staat van dienst hangt aan de naam in de stappenbalk.
+  if (await js(main, `Boolean(document.querySelector('.balk-rechts .profielknop, .profielknop'))`)) {
+    await js(main, `document.querySelector('.profielknop')?.click()`)
+    await wait(1200)
+    await shoot('staat-van-dienst')
   }
 
   app.exit(0)

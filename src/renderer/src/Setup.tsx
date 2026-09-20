@@ -266,14 +266,14 @@ function Busicoon({ vorm }: { vorm: Busvorm }): JSX.Element {
 /**
  * Een monogram voor een merk.
  *
- * De kleur komt uit de naam zelf, via een kleine optelsom: hetzelfde merk krijgt
- * altijd dezelfde kleur, en twee merken naast elkaar zelden dezelfde. Verzadiging
- * en helderheid liggen vast, zodat het bij de rest van het scherm hoort in plaats
- * van eruit te springen.
+ * De letters onderscheiden het merk, de kleur niet. Eerder kwam er via een
+ * optelsom over de naam een eigen tint uit, en dan staan er twaalf tegels met
+ * twaalf kleuren op een scherm waar kleur maar drie dingen mag betekenen: de
+ * route, het lijnnummer en de tijd (DESIGN.md, de Three Jobs Rule). Een
+ * regenboog aan merktegels zegt niets en pakt de aandacht die de route nodig
+ * heeft.
  */
 function Monogram({ tekst }: { tekst: string }): JSX.Element {
-  let som = 0
-  for (let i = 0; i < tekst.length; i++) som = (som * 31 + tekst.charCodeAt(i)) % 360
   const letters = tekst
     .split(/[\s-]+/)
     .filter(Boolean)
@@ -281,9 +281,7 @@ function Monogram({ tekst }: { tekst: string }): JSX.Element {
     .map((woord) => woord[0]?.toUpperCase() ?? '')
     .join('')
   return (
-    <span className="monogram" style={{ background: `hsl(${som} 58% 42%)` }}>
-      {letters || tekst.slice(0, 2).toUpperCase()}
-    </span>
+    <span className="monogram">{letters || tekst.slice(0, 2).toUpperCase()}</span>
   )
 }
 

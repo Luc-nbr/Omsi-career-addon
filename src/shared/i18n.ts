@@ -2160,6 +2160,12 @@ const TEXT = {
     nl: 'De modus bepaalt wat de app van je vraagt'
   },
   'setup.modeRunning': { en: 'running', de: 'läuft', fr: 'en cours', nl: 'loopt' },
+  'setup.modeNoLicences': {
+    en: 'not needed',
+    de: 'nicht nötig',
+    fr: 'pas nécessaire',
+    nl: 'niet nodig'
+  },
   'setup.omsiSettings': {
     en: 'OMSI settings',
     de: 'OMSI-Einstellungen',

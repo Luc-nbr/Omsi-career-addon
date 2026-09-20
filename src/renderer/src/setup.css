@@ -465,6 +465,24 @@
   color: var(--vel-ink);
 }
 
+/*
+ * Op de kaart is hij een paneeltje, geen doorzichtige knop.
+ *
+ * Sinds de rij naast het vel begint staat "Terug" op de kaart zelf, en daar
+ * loopt een straat dwars door het woord. Wat op de kaart ligt, draagt in deze
+ * wereld de kaartknopkleuren -- zie "map control" in DESIGN.md.
+ */
+.setup[data-vol='nee'] .terugknop {
+  border-color: var(--kaartknop-lijn);
+  background: var(--kaartknop-grond);
+  color: var(--kaartknop-ink);
+  box-shadow: var(--vel-schaduw);
+}
+
+.setup[data-vol='nee'] .terugknop:hover {
+  border-color: var(--kaartknop-ink);
+}
+
 .terugknop svg {
   width: 18px;
   height: 18px;
@@ -695,6 +713,20 @@
 
 .knoppenrij > * {
   pointer-events: auto;
+}
+
+/*
+ * Naast het vel beginnen zodra de kaart eronder ligt.
+ *
+ * "Terug" staat links in deze rij, op dezelfde plek waar het vel eindigt, en
+ * lag dus dwars over de voetregel ("131 - 8 diensten beschikbaar"). Twee dingen
+ * op een plek leest als een fout. Het vel korter maken loste het ook op, maar
+ * bij 720x560 bleef er dan nog een dienst in de lijst staan; de knop verzetten
+ * kost niets. De rij begint daarom waar het vel ophoudt, met dezelfde maat als
+ * het vel zelf gebruikt.
+ */
+.setup[data-vol='nee'] .knoppenrij {
+  left: calc(22px + clamp(288px, 27.4%, 420px) + 12px);
 }
 
 .startknop {
@@ -1353,6 +1385,10 @@
  * in een vaste vorm doen hier het werk: in een rooster van dertig tegels vind je
  * MAN terug zonder te lezen.
  */
+/*
+ * Het merkplaatje draagt letters, geen kleur: zie de Three Jobs Rule in
+ * DESIGN.md. Een plaat in de inkt van het vel, zodat hij bij de tegel hoort.
+ */
 .monogram {
   display: grid;
   place-items: center;
@@ -1360,7 +1396,8 @@
   height: 44px;
   margin-bottom: 4px;
   border-radius: var(--radius-klein);
-  color: #ffffff;
+  background: var(--monogram);
+  color: var(--vel-ink);
   font-size: 17px;
   font-weight: 800;
   letter-spacing: 0.01em;

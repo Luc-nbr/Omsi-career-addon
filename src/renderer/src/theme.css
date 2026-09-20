@@ -68,6 +68,8 @@
   /* Waar een rij oplicht zonder gekozen te zijn. */
   --vel-hover: rgba(255, 255, 255, 0.06);
   --veld: #1b2231;
+  /* De plaat onder een merkmonogram: inkt op het vel, geen eigen kleur. */
+  --monogram: rgba(255, 255, 255, 0.09);
 
   /*
    * De knoppen op de kaart zijn geen vel maar een paneeltje op de kaart zelf:
@@ -116,6 +118,7 @@
   --vel-schaduw: 0 6px 20px rgba(14, 17, 23, 0.1);
   --vel-hover: rgba(14, 17, 23, 0.05);
   --veld: #ffffff;
+  --monogram: rgba(14, 17, 23, 0.07);
   --kaartknop-grond: rgba(255, 255, 255, 0.94);
   --kaartknop-ink: #0e1117;
   --kaartknop-lijn: rgba(14, 17, 23, 0.12);
@@ -143,6 +146,7 @@
     --vel-schaduw: 0 6px 20px rgba(14, 17, 23, 0.1);
     --vel-hover: rgba(14, 17, 23, 0.05);
     --veld: #ffffff;
+  --monogram: rgba(14, 17, 23, 0.07);
     --kaartknop-grond: rgba(255, 255, 255, 0.94);
     --kaartknop-ink: #0e1117;
     --kaartknop-lijn: rgba(14, 17, 23, 0.12);

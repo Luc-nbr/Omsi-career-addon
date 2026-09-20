@@ -229,7 +229,10 @@ line number, and punctuality.
 **The Three Jobs Rule.** Colour has three jobs on this screen: the route
 (blue), the line (yellow), and time (red/green/blue). Anything else is ground,
 sheet, or ink. A new element that wants a colour must first prove it is doing
-one of those three jobs.
+one of those three jobs. Worked example: the brand monogram on a bus tile used
+to take a hue derived from the brand's name, which put a dozen unrelated colours
+on one screen. It is now an ink plate on the sheet (`--monogram`); the letters
+tell the brands apart.
 
 **The Two States, One World Rule.** Dark and light differ in exactly three
 things: the ground, whether a sheet gets a shadow or a hairline, and whether a
@@ -319,6 +322,14 @@ it.
 **The Fixed-Corner Rule.** The primary action never moves. Same corner, same
 size band, every step — so it can be hit without being looked for.
 
+**The Action Row Starts Beside The Sheet.** The row carrying the actions spans
+from the sheet's right edge to the window's right edge, not from the window's
+left edge. Back sits at its left end, and a full-width row put that button on
+top of the sheet's own footer line. Back therefore lands on the map, where it
+takes the map-control colours rather than the sheet's; on the full-bleed steps,
+which have no map, the row keeps the full width and the sheet reserves room
+below itself instead.
+
 ## Elevation & Depth
 
 Depth comes from one idea: sheets are above the map, and everything else is in
@@ -350,10 +361,14 @@ list rows), 12px for the primary action, 8px for the map control stack, 6px for
 the line badge — and 999px for the one true circle, the row's radio.
 
 Borders are hairlines or nothing. Icons are inline SVG paths at a single weight,
-16px in the step bar, 13–18px elsewhere; they are labels, not pictures. Stops on
-the map are reduced to 4.5px dots with a 2.5px route-blue ring — a network-map
-convention, replacing the overlay's yellow H-poles, which stay as they are in
-the overlay.
+16px in the step bar, 13–18px elsewhere; they are labels, not pictures.
+
+Stops on the map are the German H sign: a yellow disc with a green ring and a
+green H, the same object that stands beside the road in the game. An earlier
+draft of this file called for 4.5px route-blue dots here and kept the H signs
+for the overlay only; the owner decided on 20-09-2026 that both worlds carry the
+H. It is not an exception to the Three Jobs Rule: the sign is a real-world
+object, like a road or a building, not a colour given a meaning.
 
 ### Named Rules
 **The One Radius Rule.** A new floating surface takes 14px. A control inside a

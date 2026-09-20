@@ -1712,8 +1712,15 @@ export function App(): JSX.Element {
             id: naam,
             cellen: [
               t(language, `mode.${naam}` as const),
-              naam === 'career' ? String(career?.summary?.licences ?? 0) : '—',
-              active && (active.mode ?? 'service') === naam ? t(language, 'setup.modeRunning') : '—'
+              /*
+               * Geen streepje waar niets te melden is. Een kolom vol "—" leest
+               * als ontbrekende gegevens, terwijl het antwoord gewoon is dat
+               * deze modus geen vergunningen kent.
+               */
+              naam === 'career'
+                ? String(career?.summary?.licences ?? 0)
+                : t(language, 'setup.modeNoLicences'),
+              active && (active.mode ?? 'service') === naam ? t(language, 'setup.modeRunning') : ''
             ] as [string, string, string]
           })),
           index: Math.max(0, modi.indexOf(mode)),
