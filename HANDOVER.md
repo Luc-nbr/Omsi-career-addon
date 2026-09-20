@@ -113,6 +113,8 @@ blijft eenmalig een kopie staan als `laststn.osn.voor-omsi-career`. Verder niets
 | `settings.ts` | Taal, in `settings.json` |
 | `installed.ts` | Wat er de vorige keer in de OMSI-map stond, in `installed.json` |
 | `overlayLayout.ts` | Indeling van de overlay, in `overlay.json` |
+| `kaartlaag.ts` | Alles wat uit de OMSI-map komt, met zijn caches; draait in het hoofdproces **en** in de werker |
+| `logboek.ts` | Het logboek van de app zelf: `%APPDATA%\omsi-enhancer\logs\omsi-enhancer.log` |
 
 ### `src/shared/`
 
@@ -170,6 +172,9 @@ tegen: ze bestaan niet meer.
   gesneden en uitgezoomd gebufferd. Als één SVG-pad kostte slepen over
   HamburgLi20 350 ms per beeld, zo 7 ms.
 - `DutyMap.tsx` — het paneel eromheen plus het routevenster.
+- `Starthub.tsx` — het hoofdscherm: drie grote tegels voor de modus, je staat
+  van dienst, en de weg naar de instellingen van OMSI en naar de chauffeurs.
+- `Klaarzetten.tsx` — de installatiestap die de kaarten inleest, met een balk.
 - `overlay.tsx` — de overlay boven het spel.
 - `receipt.tsx` — het kaartje voor de bonprinter.
 - `language.tsx` — `useT()` en `useLanguage()`.
@@ -296,6 +301,27 @@ aan `geo.ts`, `roads.ts`, `track.ts` of `routing.ts` komt.
 - **Nog niet bevestigd in het spel.** Of de nulmeting nu op het goede moment valt
   is alleen te zien aan een volgende dienst: staat er dan een gewoon getal als
   24 km, dan is hij goed.
+
+**Het hoofdproces doet één ding tegelijk (20-09-2026)**
+
+Een melding uit Discord: "hängt sich ständig auf nach jedem drücken eines
+Buttons ... besonders häufig in der Dienstauswahl". Gemeten in het nieuwe
+logboek, bij een gewone opzet: `map:geometry` 2767 ms, `duty:list` 1989 ms,
+`map:routes` 810 ms, `omsi:maps` 851 ms. Al die tijd stond de hele app stil --
+geen knop, geen venster, geen overlay -- want dat werk liep in het hoofdproces.
+Het voorwerk na het opstarten deed hetzelfde twaalf keer achter elkaar
+(`probe-kaarttijd.ts`: 8,9 s samen, uitschieter 2516 ms voor Ahlheim 5).
+
+Nu draait dat werk in `src/main/kaartwerker.ts`, een worker_thread die dezelfde
+`core/kaartlaag.ts` gebruikt. Gemeten met `scripts/probe-haperen.cjs`, dat vanuit
+het scherm elke 50 ms de goedkoopste vraag stelt terwijl alle twaalf kaarten
+ingelezen worden: 1200 vragen, midden 0 ms, langste 160 ms, één keer boven de
+150 ms en geen enkele keer boven de halve seconde. Het werk duurt even lang; het
+blokkeert alleen niets meer.
+
+Wat nog in het hoofdproces gebeurt en boven de 150 ms uitkomt, schrijft zichzelf
+op in het logboek (`TRAAG vraag ...`). Dat is de plek om te kijken als iemand
+weer meldt dat het hapert.
 
 **Wat er in het hoofdproces mag staan, en wat niet**
 
@@ -698,9 +724,8 @@ nog gekeken moet worden zodra iemand voor het scherm zit:
 
 ### 5.3 Kleiner grut
 
-- De routes worden in het hoofdproces uitgerekend, synchroon. Het rijstrokennet
-  opbouwen kost tot een seconde (HamburgLi20); het inlezen van TH_Wald 2,5 s. Zo
-  lang staat de overlay stil. Verhuizen naar een worker kan.
+- (Opgelost op 20-09-2026.) Het zware werk stond in het hoofdproces en legde de
+  hele app stil; zie "Het hoofdproces doet één ding tegelijk" in §4.
 - De drie standen van het overlay-paneel zijn nog niet naast elkaar bekeken: er
   staat een oude `live.json` op de machine van de gebruiker waarin de dienst als
   uitgereden staat, en dan valt het paneel in alle standen terug op één regel.

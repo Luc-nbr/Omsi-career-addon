@@ -15,6 +15,7 @@ import {
   type CareerApi,
   type CareerPayload,
   type DutyRequest,
+  type KaartenStand,
   type MapSummary,
   type PrinterInfo,
   type HofOffer,
@@ -42,6 +43,8 @@ import { LiveDienst } from './LiveDienst'
 import { HofDialog } from './HofDialog'
 import { BusDialog } from './BusDialog'
 import { Welkom } from './Welkom'
+import { Klaarzetten } from './Klaarzetten'
+import { Starthub } from './Starthub'
 import { ThemaKnop, type Thema } from './ThemaKnop'
 import { Versie } from './Versie'
 import { DEFAULT_LANGUAGE, LANGUAGES, t, type Language } from '../../shared/i18n'
@@ -200,6 +203,16 @@ export function App(): JSX.Element {
    */
   const [omsi, setOmsi] = useState<OmsiState>()
   const [omsiBezig, setOmsiBezig] = useState(false)
+  /*
+   * Het klaarzetten van de kaarten: de laatste stap van het installeren.
+   *
+   * `undefined` betekent dat we het nog niet weten; zodra de stand binnen is en
+   * er kaarten te gaan zijn, komt het scherm ervoor. Wie overslaat ziet het
+   * deze sessie niet meer -- het klaarzetten loopt dan gewoon door op de
+   * achtergrond.
+   */
+  const [kaartenStand, setKaartenStand] = useState<KaartenStand>()
+  const [klaarzettenOverslaan, setKlaarzettenOverslaan] = useState(false)
   useEffect(() => {
     let staat = true
     void window.career.screenMode().then((modus) => {
@@ -1190,6 +1203,26 @@ export function App(): JSX.Element {
   }, [finish])
 
   /*
+   * Zodra de OMSI-map vaststaat: beginnen met het klaarzetten van de kaarten,
+   * en meeluisteren hoe ver het is. Eén keer per sessie; wat al klaarstaat
+   * wordt overgeslagen, dus dit is bij de tweede start meteen voorbij.
+   */
+  useEffect(() => {
+    if (!omsi?.confirmed) return undefined
+    let geldig = true
+    void window.career.kaartenVoorbereiden().then((stand) => {
+      if (geldig) setKaartenStand(stand)
+    })
+    const opzeggen = window.career.opKaartenWarm((stand) => {
+      if (geldig) setKaartenStand(stand)
+    })
+    return () => {
+      geldig = false
+      opzeggen()
+    }
+  }, [omsi?.confirmed])
+
+  /*
    * Het eerste dat iemand van deze app ziet: waar staat OMSI?
    *
    * Alles hierna hangt aan die map, dus er valt niets te laden zolang die niet
@@ -1238,6 +1271,27 @@ export function App(): JSX.Element {
     )
   }
 
+  /*
+   * De installatiestap: de kaarten klaarzetten voordat er iets gekozen wordt.
+   *
+   * Alleen als er werkelijk iets te doen is, dus bij de eerste start en later
+   * alleen voor een kaart die erbij is gekomen. Wie overslaat gaat gewoon
+   * verder; het klaarzetten loopt dan door op de achtergrond.
+   */
+  if (kaartenStand && kaartenStand.resterend > 0 && !klaarzettenOverslaan) {
+    return (
+      <LanguageProvider language={language}>
+        <Klaarzetten
+          language={language}
+          thema={thema}
+          onThema={kiesThema}
+          stand={kaartenStand}
+          onOverslaan={() => setKlaarzettenOverslaan(true)}
+        />
+      </LanguageProvider>
+    )
+  }
+
   if (error && !ready) {
     return (
       <div className="main">
@@ -1253,6 +1307,40 @@ export function App(): JSX.Element {
         <h1>{t(language, 'app.loading')}</h1>
         <p className="subtitle">{t(language, 'app.loadingSub')}</p>
       </div>
+    )
+  }
+
+  /*
+   * De starthub: het hoofdscherm.
+   *
+   * Hier kom je binnen als er een chauffeur is en er nog niets gekozen is, en
+   * hier kom je terug via de stappenbalk. De modus staat als drie tegels op
+   * tafel in plaats van als drie regels in een keuzevel -- het is de keuze waar
+   * de rest van de app aan hangt, en geen rij in een lijst. Wat er verder bij
+   * binnenkomen hoort staat eromheen: je staat van dienst, de instellingen van
+   * OMSI en wie er rijdt.
+   */
+  if (screen === 'modes' && career?.state) {
+    return (
+      <LanguageProvider language={language}>
+        <Starthub
+          language={language}
+          onLanguage={chooseLanguage}
+          thema={thema}
+          onThema={kiesThema}
+          chauffeur={career.state.driver}
+          samenvatting={career.summary ?? undefined}
+          modus={mode}
+          lopend={active ? (active.mode ?? 'service') : undefined}
+          onModus={(gekozen) => {
+            setMode(gekozen)
+            setScreen('drive')
+          }}
+          onStaatVanDienst={() => setScreen('profiel')}
+          onInstellingen={() => setScreen('game')}
+          onChauffeur={() => setScreen('profiles')}
+        />
+      </LanguageProvider>
     )
   }
 

@@ -1597,17 +1597,27 @@
 .regelaar-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 5px;
 }
 
+/*
+ * Krap is niet hetzelfde als passend.
+ *
+ * Met 11px binnenruimte vulden de vijf dagdelen de breedte van het vel tot op
+ * de pixel: "Night" stond tegen de rand, en dat leest als een scherm dat net
+ * niet past. Iets minder ruimte om de tekst en een kleinere letter geven de rij
+ * lucht, zonder dat er een regel bij komt. De chips mogen nog steeds afbreken
+ * in een smal venster; dan staan ze op twee regels in plaats van geperst.
+ */
 .regelaar-chips button {
-  padding: 5px 11px;
+  padding: 5px 9px;
   border: 1px solid var(--vel-rand);
   border-radius: var(--radius-rond);
   background: transparent;
   color: var(--vel-zacht);
   font-family: inherit;
-  font-size: 12.5px;
+  font-size: 12px;
+  line-height: 1.25;
   cursor: pointer;
 }
 
@@ -2179,4 +2189,329 @@
   color: var(--vel-zacht);
   font-size: 12.5px;
   line-height: 1.5;
+}
+
+/*
+ * De balk van het klaarzetten.
+ *
+ * Eén vlak met een vulling erin, in de routekleur: dit is de app die iets aan
+ * het doen is, en dat is precies wat blauw in deze wereld betekent.
+ */
+.klaarbalk {
+  width: 100%;
+  height: 8px;
+  margin: 2px 0 10px;
+  border-radius: var(--radius-rond);
+  background: var(--vel-hover);
+  overflow: hidden;
+}
+
+.klaarbalk-vulling {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-rond);
+  background: var(--route);
+  transition: width 180ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .klaarbalk-vulling {
+    transition: none;
+  }
+}
+
+/* ---- de starthub ---- */
+
+/*
+ * Het scherm waar je binnenkomt.
+ *
+ * Dezelfde wereld als de rest: de grond eronder, één vel erop, één accent. Wat
+ * hier anders is dan in het opzetscherm is de maat van de keuze -- drie tegels
+ * in plaats van drie regels, want dit is de vraag waar het hele spel aan hangt.
+ */
+.hub {
+  position: fixed;
+  inset: 0;
+  overflow: auto;
+  background: var(--grond);
+  color: var(--op-grond);
+  font-family: var(--letter);
+  font-feature-settings: var(--cijfers);
+}
+
+.hub-balk {
+  left: 22px;
+  right: 22px;
+  top: 22px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border-radius: var(--radius-klein);
+}
+
+.hub-merk {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.hub-versie {
+  color: var(--vel-zacht);
+  font-size: 12px;
+}
+
+/*
+ * Het vel is zo hoog als wat erin staat, niet zo hoog als het venster.
+ *
+ * Uitgerekt tot de onderrand stond de helft van het scherm leeg onder de
+ * knoppen, en dat leest als een scherm dat nog niet af is. Nu ligt het vel op
+ * de grond zoals elk ander vel in deze wereld, en blijft de rest ondergrond.
+ */
+.hub-vel {
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  top: 85px;
+  max-height: calc(100% - 107px);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px;
+  overflow: auto;
+}
+
+.hub-kop h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.hub-kop p {
+  margin: 4px 0 0;
+  color: var(--vel-zacht);
+  font-size: 13px;
+}
+
+/*
+ * De tegels. Drie naast elkaar zolang het past, daaronder gestapeld: onder de
+ * negenhonderd punten wordt een derde van de breedte te smal voor een zin.
+ */
+.hub-tegels {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+@media (max-width: 900px) {
+  .hub-tegels {
+    grid-template-columns: 1fr;
+  }
+}
+
+.hub-tegel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 210px;
+  padding: 22px;
+  border: 1px solid var(--vel-rand);
+  border-radius: var(--radius);
+  background: var(--vel-hover);
+  color: var(--vel-ink);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease-out,
+    border-color 120ms ease-out;
+}
+
+.hub-tegel:hover {
+  border-color: var(--vel-zacht);
+}
+
+/* De aangewezen modus draagt het accent, zoals elke keuze in deze wereld. */
+.hub-tegel[aria-pressed='true'] {
+  border-color: var(--route);
+  background: var(--route);
+  color: #ffffff;
+}
+
+.hub-tegel-icoon svg {
+  width: 28px;
+  height: 28px;
+}
+
+.hub-tegel-naam {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.hub-tegel-uitleg {
+  color: var(--vel-zacht);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.hub-tegel[aria-pressed='true'] .hub-tegel-uitleg {
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.hub-tegel-stand {
+  margin-top: auto;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.hub-onder {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 900px) {
+  .hub-onder {
+    grid-template-columns: 1fr;
+  }
+}
+
+.hub-paneel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 20px;
+  border: 1px solid var(--vel-rand);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--vel-ink);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease-out;
+}
+
+.hub-paneel:hover {
+  border-color: var(--vel-zacht);
+}
+
+.hub-paneel-kop {
+  color: var(--vel-zacht);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.hub-cijfers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.hub-cijfers > span {
+  display: flex;
+  flex-direction: column;
+  color: var(--vel-zacht);
+  font-size: 12px;
+}
+
+.hub-cijfers b {
+  color: var(--vel-ink);
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.hub-rang {
+  color: var(--vel-zacht);
+  font-size: 13px;
+}
+
+.hub-knoppen {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hub-knop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 18px;
+  border: 1px solid var(--vel-rand);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--vel-ink);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease-out;
+}
+
+.hub-knop:hover {
+  border-color: var(--vel-zacht);
+}
+
+.hub-knop svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-tegel,
+  .hub-paneel,
+  .hub-knop {
+    transition: none;
+  }
+}
+
+/*
+ * Klein venster: dezelfde tegels, minder lucht.
+ *
+ * Bij 720x560 -- de ondergrens uit DESIGN.md -- stonden de drie tegels onder
+ * elkaar op volle hoogte, en dan zie je er één en moet je scrollen om te weten
+ * dat er drie zijn. De keuze hoort in één blik te passen, dus hier een lagere
+ * tegel en een uitleg van hooguit twee regels.
+ */
+@media (max-width: 900px), (max-height: 700px) {
+  .hub-vel {
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .hub-kop h1 {
+    font-size: 22px;
+  }
+
+  .hub-tegel {
+    min-height: 0;
+    gap: 6px;
+    padding: 14px 16px;
+  }
+
+  .hub-tegel-icoon svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .hub-tegel-naam {
+    font-size: 17px;
+  }
+
+  .hub-tegel-uitleg {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
 }

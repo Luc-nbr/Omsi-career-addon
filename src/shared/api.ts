@@ -29,6 +29,23 @@ export interface MapSummary {
 }
 
 /**
+ * Hoe ver de app is met het klaarzetten van de kaarten.
+ *
+ * Een kaart die nog niet klaarstaat moet uit de tegels gelezen worden, en dat
+ * duurt tot ruim twee seconden. Eén keer per kaart: daarna staat hij in de
+ * cache op schijf en is hij in tientallen milliseconden terug. Het
+ * installatiescherm laat zien hoeveel er nog te gaan zijn.
+ */
+export interface KaartenStand {
+  /** De kaart die nu gelezen wordt, als er één gelezen wordt. */
+  bezig?: string
+  klaar: number
+  totaal: number
+  /** Hoeveel kaarten er nog ingelezen moeten worden. */
+  resterend: number
+}
+
+/**
  * Wat er in de OMSI-map staat, en wat er nieuw is sinds de vorige keer kijken.
  *
  * Kaarten en bussen zet je erbij door een map neer te zetten; niets meldt dat
@@ -311,6 +328,12 @@ export interface GameControllersPayload {
 export interface CareerApi {
   status(): Promise<OmsiStatus>
   maps(): Promise<MapSummary[]>
+  /** Hoe ver de app is met het klaarzetten van de kaarten. */
+  kaartenStand(): Promise<KaartenStand>
+  /** Begin met klaarzetten (als dat nog niet liep) en geef de stand terug. */
+  kaartenVoorbereiden(): Promise<KaartenStand>
+  /** Meeluisteren met het klaarzetten; geeft een opzegfunctie terug. */
+  opKaartenWarm(luisteraar: (stand: KaartenStand) => void): () => void
   /** Opnieuw in de OMSI-map kijken en melden wat erbij is gekomen. */
   checkInstalled(): Promise<InstalledCheck>
   vehicles(): Promise<Vehicle[]>

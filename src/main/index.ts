@@ -1,6 +1,9 @@
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, screen } from 'electron'
 import { cpSync, existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { Worker } from 'node:worker_threads'
+import { log, logFout, startLogboek, TRAAG_MS } from '../core/logboek'
+import { maakKaartlaag, type Kaartlaag } from '../core/kaartlaag'
 import {
   completeDuty,
   recordExam,
@@ -18,11 +21,8 @@ import {
   setActive,
   writeProfile
 } from '../core/profiles'
-import { dateForMask, dayKind, readCalendar, type Calendar } from '../core/calendar'
 import {
-  buildNetwork,
   examTrip,
-  generateDuties,
   generateDuty,
   listLines,
   type LineSummary,
@@ -42,20 +42,12 @@ import {
   writeKeyboard,
   type KeyBinding
 } from '../core/omsiKeys'
-import {
-  buildFleetIndex,
-  pickVehicleForDuty,
-  suggestFromDepot,
-  readMapDepot,
-  readMapFleet,
-  type FleetIndex
-} from '../core/fleet'
-import { readMapData, readTileGrid, type Lane, type MapGeometry } from '../core/geo'
-import { LaneNetwork, routeForTrip, type TripRoute } from '../core/routing'
+import { pickVehicleForDuty, suggestFromDepot, type FleetIndex } from '../core/fleet'
+import { readTileGrid, type MapGeometry } from '../core/geo'
+import { LaneNetwork, type TripRoute } from '../core/routing'
 import { VehicleTracker, type VehiclePosition } from '../core/vehicle'
 import { buildIbisPlan, type IbisPlan } from '../core/ibis'
 import { describeLive, readLive } from '../core/live'
-import { leesUitCache, schrijfInCache, vingerafdruk } from '../core/kaartcache'
 import { findOmsiInstall, hasMaps, isOmsiInstall, resolveOmsiFolder } from '../core/install'
 import { isOmsiRunning, launchOmsi } from '../core/launch'
 import { ensurePlugin, pluginSourceDir, type PluginStatus } from '../core/pluginInstall'
@@ -64,19 +56,19 @@ import { receiptHeightMicrons, RECEIPT_WIDTH_MICRONS } from '../core/receipt'
 import { difference, readKnown, writeKnown } from '../core/installed'
 import { readSettings, writeSettings, type Settings } from '../core/settings'
 import { formatTime } from '../shared/format'
-import { findTemplate, readSituationTime, writeSituation } from '../core/situation'
+import { findTemplate, writeSituation } from '../core/situation'
 import { presetStartup } from '../core/startup'
 import { trailerOf } from '../core/trailer'
 import { spawnAtStop } from '../core/spawn'
-import { listMaps, loadMap } from '../core/timetable'
+import { listMaps } from '../core/timetable'
 import { listVehicles, type Vehicle } from '../core/vehicles'
 import type { Duty, DutyLeg, OmsiMap } from '../core/types'
 import { listHofs, matchHof, pickHof } from '../core/hof'
 import { placeHof, planHofs, readPlacements, writePlacements } from '../core/hofTool'
 import { readScreenMode } from '../core/schermmodus'
 import {
-  TIME_WINDOWS,
   type Assignment,
+  type KaartenStand,
   type BeginRequest,
   type FreeRequest,
   type DutyDate,
@@ -90,17 +82,33 @@ import {
 } from '../shared/api'
 import { defaultLayout, OVERLAY_RATES, type OverlayLayout } from '../shared/overlay'
 
-/** Kaarten inlezen kost merkbaar tijd, dus we doen het één keer per sessie. */
-const mapCache = new Map<string, OmsiMap>()
-const networkCache = new Map<string, Network>()
-const mapFleetCache = new Map<string, Set<string>>()
-const mapEraCache = new Map<string, { year: number; dayOfYear: number }>()
-const calendarCache = new Map<string, Calendar>()
-const geometryCache = new Map<string, MapGeometry>()
-const laneCache = new Map<string, Lane[]>()
-const laneNetworkCache = new Map<string, LaneNetwork>()
-const routeCache = new Map<string, TripRoute>()
-let fleetIndex: FleetIndex | undefined
+/*
+ * Alles wat uit de OMSI-map komt, met zijn caches, staat in `core/kaartlaag.ts`.
+ * Het hoofdproces houdt er één van; de werker houdt er zelf ook een, voor het
+ * zware werk. Kaarten inlezen kost merkbaar tijd, dus het gebeurt één keer per
+ * sessie en daarna komt het van schijf.
+ */
+let kaartlaag: Kaartlaag | undefined
+
+function laag(): Kaartlaag {
+  if (!kaartlaag) kaartlaag = maakKaartlaag(omsi(), userData())
+  return kaartlaag
+}
+
+/**
+ * Alles vergeten wat er van de OMSI-map in het geheugen staat.
+ *
+ * Gebeurt als de speler een andere OMSI-map aanwijst of laat nakijken of er
+ * kaarten bij zijn gekomen: dan klopt geen enkele cache meer. De werker krijgt
+ * dezelfde opdracht, want die heeft zijn eigen kopie.
+ */
+function vergeetKaarten(): void {
+  kaartlaag = undefined
+  if (werker) {
+    werker.terminate().catch(() => undefined)
+    werker = undefined
+  }
+}
 /**
  * Nulmeting bij het begin van een dienst, gelezen uit de live gegevens van de
  * plugin. Het verschil met de stand aan het eind is wat er werkelijk gereden is.
@@ -118,101 +126,107 @@ function omsi(): string {
   return omsiPath
 }
 
-function map(folder: string): OmsiMap {
-  const cached = mapCache.get(folder)
-  if (cached) return cached
-  const loaded = loadMap(join(omsi(), 'maps'), folder)
-  if (!loaded) throw new Error(`Kaart "${folder}" kon niet worden geladen.`)
-  mapCache.set(folder, loaded)
-  return loaded
-}
-
-/**
- * Halteposities en wegennet van een kaart. Het doorlezen van de tegels kost een
- * fractie van een seconde tot ruim een seconde, dus eenmaal per kaart. De
- * rijstroken blijven hier; de interface heeft alleen de tekening nodig.
+/*
+ * Korte namen voor de laag hieronder. Ze stonden hier ooit als eigen functies
+ * met eigen caches; sinds de werker hetzelfde moet kunnen, wonen ze in
+ * `core/kaartlaag.ts` en staat hier alleen nog de doorgeefluik-versie.
  */
-/** Het pad naar de bronbestanden van een kaart; ook de sleutel voor de cache. */
-function kaartPad(folder: string): string {
-  return join(omsi(), 'maps', folder)
-}
+const map = (folder: string): OmsiMap => laag().map(folder)
+const mapGeometry = (folder: string): MapGeometry => laag().geometrie(folder)
+const laneNetwork = (folder: string): LaneNetwork => laag().rijstrokennet(folder)
+const network = (folder: string): Network => laag().net(folder)
+const fleetOf = (folder: string): Set<string> => laag().wagenparkVanKaart(folder)
+const terminiOf = (folder: string): string[] => laag().eindbestemmingen(folder)
+const depotOf = (folder: string): Map<string, number> => laag().remises(folder)
+const era = (folder: string): { year: number; dayOfYear: number } => laag().tijdvak(folder)
+const dutyDate = (folder: string, days: number): DutyDate | undefined =>
+  laag().dienstDatum(folder, days)
+const fleet = (): FleetIndex => laag().wagenpark()
 
 /**
- * De tegels echt uitlezen, en het resultaat bewaren.
+ * De werker die kaarten uitleest, en de wachtrij ervoor.
  *
- * Dit is het dure stuk: tussen de dertig milliseconden en ruim drie seconden per
- * kaart, gemeten met `scripts/probe-kaarttijd.ts`. Alles eromheen bestaat om
- * hier zo min mogelijk te komen.
+ * Eén werker, één opdracht tegelijk: het gaat om schijf en geheugen, niet om
+ * rekenkracht, en drie kaarten tegelijk inlezen maakt het voor niemand sneller.
+ * Hij wordt pas gemaakt als er echt iets te lezen valt, en hij blijft daarna
+ * staan -- hem opstarten kost ongeveer dertig milliseconden.
  */
-function berekenKaart(folder: string): { geometry: MapGeometry; lanes: Lane[] } {
-  const loaded = map(folder)
-  const ids = new Set<string>(loaded.stops.keys())
-  for (const trip of loaded.trips.values()) for (const stop of trip.stops) ids.add(stop.id)
-  const { geometry, lanes } = readMapData(loaded.path, ids, omsi())
-  // Busstops.cfg is de bron voor de namen; wat er in de tegel staat is de
-  // naam van het object en heet lang niet altijd naar de halte.
-  for (const stop of geometry.stops) {
-    const known = loaded.stops.get(stop.id)
-    if (known?.name) stop.name = known.name
-  }
-  geometryCache.set(folder, geometry)
-  laneCache.set(folder, lanes)
+/** Wat de werker terugstuurt; `uitkomst` hangt af van de soort opdracht. */
+interface WerkerAntwoord {
+  id: number
+  ok: boolean
+  ms: number
+  uitkomst?: unknown
+  fout?: string
+}
 
-  const afdruk = vingerafdruk(kaartPad(folder))
-  schrijfInCache(userData(), folder, 'tekening', afdruk, geometry)
-  schrijfInCache(userData(), folder, 'stroken', afdruk, lanes)
-  return { geometry, lanes }
+let werker: Worker | undefined
+let volgendeOpdracht = 0
+const werkerWacht = new Map<number, (antwoord: WerkerAntwoord) => void>()
+
+function kaartWerker(): Worker {
+  if (werker) return werker
+  const gemaakt = new Worker(join(__dirname, 'kaartwerker.js'), {
+    workerData: { omsiPath: omsi(), userData: userData() }
+  })
+  gemaakt.on('message', (antwoord: WerkerAntwoord) => {
+    const wachtend = werkerWacht.get(antwoord.id)
+    werkerWacht.delete(antwoord.id)
+    wachtend?.(antwoord)
+  })
+  gemaakt.on('error', (fout) => {
+    logFout('kaartwerker', fout)
+    werker = undefined
+    // Wie nog wacht krijgt een antwoord, anders blijft het scherm hangen.
+    for (const [id, wachtend] of werkerWacht) {
+      werkerWacht.delete(id)
+      wachtend({ id, ok: false, ms: 0, fout: String(fout) })
+    }
+  })
+  gemaakt.on('exit', () => {
+    werker = undefined
+  })
+  // De werker mag de app niet openhouden bij het afsluiten.
+  gemaakt.unref()
+  werker = gemaakt
+  return gemaakt
 }
 
 /**
- * De tekening van een kaart: haltes, wegen, water, borden.
+ * Een opdracht naar de werker, en het antwoord terug.
  *
- * Drie lagen diep: het geheugen van deze sessie, de schijf, en pas daarna de
- * tegels zelf. De rijstroken blijven hier buiten -- het scherm heeft ze niet
- * nodig, en ze zijn ruwweg even groot als de tekening.
+ * Mislukt hij -- geen werker, een fout onderweg -- dan gooit deze functie, en
+ * de aanroeper doet het zelf. Dat is trager en dan hapert het even, maar de
+ * speler krijgt wel zijn kaart. Beter een hapering dan een leeg scherm.
  */
-function mapGeometry(folder: string): MapGeometry {
-  const cached = geometryCache.get(folder)
-  if (cached) return cached
-
-  const vanSchijf = leesUitCache<MapGeometry>(
-    userData(),
-    folder,
-    'tekening',
-    vingerafdruk(kaartPad(folder))
-  )
-  if (vanSchijf) {
-    geometryCache.set(folder, vanSchijf)
-    return vanSchijf
-  }
-
-  return berekenKaart(folder).geometry
+async function werkerVraag<T>(opdracht: Record<string, unknown>): Promise<T> {
+  const id = (volgendeOpdracht += 1)
+  const antwoord = await new Promise<WerkerAntwoord>((klaar) => {
+    werkerWacht.set(id, klaar)
+    try {
+      kaartWerker().postMessage({ ...opdracht, id })
+    } catch (fout) {
+      werkerWacht.delete(id)
+      klaar({ id, ok: false, ms: 0, fout: String(fout) })
+    }
+  })
+  if (!antwoord.ok) throw new Error(antwoord.fout ?? 'de werker gaf geen antwoord')
+  if (antwoord.ms >= TRAAG_MS) log(`werker ${String(opdracht.soort)}: ${antwoord.ms} ms`)
+  return antwoord.uitkomst as T
 }
 
 /**
- * De rijstroken van een kaart; nodig om de bus ergens neer te zetten.
+ * Zorgt dat de kaart in de cache staat, zonder het hoofdproces stil te leggen.
  *
- * Staat de tekening al in het geheugen maar de stroken niet, dan komen ze van
- * schijf; ontbreken ze daar ook, dan wordt de kaart alsnog uitgelezen. Die
- * laatste stap moet expliciet, want `mapGeometry` zou hier een tekening uit het
- * geheugen teruggeven en de stroken leeg laten.
+ * Staat hij er al (geheugen of schijf), dan gebeurt er niets. Anders leest de
+ * werker hem in en schrijft hem naar schijf; daarna vindt `mapGeometry` hem
+ * daar in enkele milliseconden. Lukt de werker het niet, dan valt alles terug
+ * op de oude weg: het hoofdproces leest hem zelf, en dan hapert het even. Beter
+ * een hapering dan geen kaart.
  */
-function lanesOf(folder: string): Lane[] {
-  const cached = laneCache.get(folder)
-  if (cached) return cached
-
-  const vanSchijf = leesUitCache<Lane[]>(
-    userData(),
-    folder,
-    'stroken',
-    vingerafdruk(kaartPad(folder))
-  )
-  if (vanSchijf) {
-    laneCache.set(folder, vanSchijf)
-    return vanSchijf
-  }
-
-  return berekenKaart(folder).lanes
+async function zorgVoorKaart(folder: string): Promise<void> {
+  if (laag().kaartStaatKlaar(folder)) return
+  await werkerVraag<void>({ soort: 'kaart', folder })
 }
 
 /**
@@ -240,14 +254,41 @@ let warmLoopt = false
  */
 let voorgrondBezig = 0
 
+/**
+ * Hoe ver het klaarzetten is. Het scherm laat dit zien tijdens de
+ * installatiestap, en vraagt het ook op als het die stap binnenkomt nadat er al
+ * iets liep.
+ */
+let warmStand: KaartenStand = { bezig: undefined, klaar: 0, totaal: 0, resterend: 0 }
+
+/** Hoeveel kaarten er nog ingelezen moeten worden voordat alles vlot gaat. */
+function kaartenStand(): KaartenStand {
+  if (warmLoopt) return warmStand
+  try {
+    const folders = listMaps(omsi())
+    const resterend = folders.filter((folder) => !laag().kaartStaatKlaar(folder)).length
+    warmStand = {
+      bezig: undefined,
+      klaar: folders.length - resterend,
+      totaal: folders.length,
+      resterend
+    }
+  } catch {
+    // Geen OMSI, geen kaarten: dan valt er ook niets klaar te zetten.
+    warmStand = { bezig: undefined, klaar: 0, totaal: 0, resterend: 0 }
+  }
+  return warmStand
+}
+
 async function warmKaarten(): Promise<void> {
   if (warmLoopt) return
   warmLoopt = true
   try {
     const folders = listMaps(omsi())
-    const melden = (bezig: string | undefined, klaar: number, totaal: number): void => {
+    const melden = (bezig: string | undefined, klaar: number): void => {
+      warmStand = { bezig, klaar, totaal: folders.length, resterend: folders.length - klaar }
       for (const venster of BrowserWindow.getAllWindows()) {
-        if (!venster.isDestroyed()) venster.webContents.send('kaarten:warm', { bezig, klaar, totaal })
+        if (!venster.isDestroyed()) venster.webContents.send('kaarten:warm', warmStand)
       }
     }
 
@@ -257,131 +298,30 @@ async function warmKaarten(): Promise<void> {
       while (voorgrondBezig > 0) await new Promise((verder) => setTimeout(verder, 300))
 
       // Al in het geheugen of al op de schijf: dan valt er niets in te lezen.
-      const afdruk = vingerafdruk(kaartPad(folder))
-      const staatEr =
-        geometryCache.has(folder) ||
-        Boolean(leesUitCache<MapGeometry>(userData(), folder, 'tekening', afdruk))
-      if (!staatEr) {
-        melden(folder, klaar, folders.length)
+      if (!laag().kaartStaatKlaar(folder)) {
+        melden(folder, klaar)
         try {
-          berekenKaart(folder)
+          /*
+           * Door de werker, niet hier. Dit is het voorwerk waar niemand om
+           * vroeg; dat hoort geen enkele klik in de weg te zitten. Sinds de
+           * werker het doet, blijft het hoofdproces vrij en is de adempauze
+           * hieronder alleen nog een rem op de schijf.
+           */
+          await zorgVoorKaart(folder)
         } catch {
           // Een kaart die niet te lezen is houdt de rest niet tegen.
         }
-        // Even lucht geven aan het scherm voordat de volgende kaart begint.
-        await new Promise((verder) => setTimeout(verder, 600))
+        await new Promise((verder) => setTimeout(verder, 150))
       }
       klaar += 1
+      melden(undefined, klaar)
     }
-    melden(undefined, folders.length, folders.length)
-  } catch {
+    log(`kaarten klaargezet: ${folders.length}`)
+  } catch (fout) {
     // Geen OMSI gevonden, of geen leesrechten: dan gewoon geen voorwerk.
+    logFout('kaarten klaarzetten', fout)
   } finally {
     warmLoopt = false
-  }
-}
-
-function laneNetwork(folder: string): LaneNetwork {
-  const cached = laneNetworkCache.get(folder)
-  if (cached) return cached
-  const built = new LaneNetwork(lanesOf(folder))
-  laneNetworkCache.set(folder, built)
-  return built
-}
-
-function network(folder: string): Network {
-  const cached = networkCache.get(folder)
-  if (cached) return cached
-  const built = buildNetwork(map(folder))
-  networkCache.set(folder, built)
-  return built
-}
-
-/** Wagenpark van de kaart uit ailists.cfg. */
-function fleetOf(folder: string): Set<string> {
-  const cached = mapFleetCache.get(folder)
-  if (cached) return cached
-  const fleet = readMapFleet(join(omsi(), 'maps', folder))
-  mapFleetCache.set(folder, fleet)
-  return fleet
-}
-
-/**
- * Alle eindbestemmingen die op deze kaart voorkomen.
- *
- * Een wagenpark hoort bij een bus en een kaart, niet bij een bus en een dienst.
- * Het lag eerst aan de dienst -- de eindbestemmingen van de ritten die je net
- * toegewezen kreeg -- en dat gaf twee scheve uitkomsten. Een bus die de halve
- * kaart kent maar net niet de vier haltes van deze ene dienst kreeg een aanbod
- * dat hij niet nodig had; en bij vrij rijden, waar geen dienst bestaat, kreeg
- * niemand ooit iets te horen. De vraag is "kent deze bus deze kaart", dus is
- * dit het antwoord waar hij tegen gelegd hoort te worden.
- */
-const mapTerminiCache = new Map<string, string[]>()
-function terminiOf(folder: string): string[] {
-  const cached = mapTerminiCache.get(folder)
-  if (cached) return cached
-  const gevonden = new Set<string>()
-  for (const trip of map(folder).trips.values()) {
-    if (trip.terminus) gevonden.add(trip.terminus)
-  }
-  const lijst = [...gevonden]
-  mapTerminiCache.set(folder, lijst)
-  return lijst
-}
-
-/** De remise van de kaart: welke bus, en hoeveel wagens ervan. */
-const mapDepotCache = new Map<string, Map<string, number>>()
-function depotOf(folder: string): Map<string, number> {
-  const cached = mapDepotCache.get(folder)
-  if (cached) return cached
-  const depot = readMapDepot(join(omsi(), 'maps', folder))
-  mapDepotCache.set(folder, depot)
-  return depot
-}
-
-/**
- * Het tijdvak waarin een kaart speelt. Bij voorkeur uit haar situatiebestand;
- * heeft de kaart er geen, dan draagt de mapnaam het jaartal vaak zelf
- * ("Vienna_2005_Line_24A"). Dat jaar bepaalt welk wagenpark-bestand geldt, dus
- * terugvallen op het huidige jaar zou de verkeerde bestemmingscodes opleveren.
- */
-function era(folder: string): { year: number; dayOfYear: number } {
-  const cached = mapEraCache.get(folder)
-  if (cached) return cached
-
-  const template = findTemplate(omsi(), folder)
-  const fromName = folder.match(/(19\d{2}|20[0-2]\d)/)
-  const time = (template && readSituationTime(template)) || {
-    year: fromName ? Number.parseInt(fromName[1], 10) : new Date().getFullYear(),
-    dayOfYear: 180
-  }
-  mapEraCache.set(folder, time)
-  return time
-}
-
-/** Feestdagen en schoolvakanties van een kaart; die bepalen welke omloop rijdt. */
-function calendar(folder: string): Calendar {
-  const cached = calendarCache.get(folder)
-  if (cached) return cached
-  const built = readCalendar(map(folder).path)
-  calendarCache.set(folder, built)
-  return built
-}
-
-/**
- * De datum waarop een omloop rijdt, gezocht vanaf het tijdvak van de kaart.
- * Zonder de juiste datum staat de omloop niet in het dienstregelingsmenu.
- */
-function dutyDate(folder: string, days: number): DutyDate | undefined {
-  const start = era(folder)
-  const found = dateForMask(calendar(folder), start.year, start.dayOfYear, days)
-  if (!found) return undefined
-  return {
-    year: found.year,
-    dayOfYear: found.dayOfYear,
-    iso: found.date.toISOString().slice(0, 10),
-    kind: dayKind(calendar(folder), found.date)
   }
 }
 
@@ -403,11 +343,6 @@ function spawnFor(folder: string, stopId: string | undefined) {
 function omsiLanguage(): string {
   const value = readGameSettings(omsi()).language
   return value && value.length === 3 ? value.toUpperCase() : 'ENG'
-}
-
-function fleet(): FleetIndex {
-  if (!fleetIndex) fleetIndex = buildFleetIndex(omsi())
-  return fleetIndex
 }
 
 /**
@@ -1049,6 +984,36 @@ function prepareSituation(
   return { ...result, date: when, startup, timetableSet: false }
 }
 
+/**
+ * Elke vraag van het scherm langs de klok, en langs het logboek als hij misgaat.
+ *
+ * Het hoofdproces doet één ding tegelijk: duurt een vraag lang, dan staat in
+ * die tijd de hele app stil. Daarom staat de duur in het logboek zodra hij
+ * boven de {@link TRAAG_MS} komt -- ongeveer waar een klik begint aan te voelen
+ * als een hapering. Zo is bij een melding ("hij hangt na elke knop") te zien
+ * wélke vraag het was, in plaats van te moeten raden.
+ *
+ * Een fout gaat eerst het logboek in en daarna gewoon door naar het scherm, dat
+ * er zijn eigen melding van maakt.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Vraag = (event: Electron.IpcMainInvokeEvent, ...args: any[]) => unknown
+
+function handle(kanaal: string, doen: Vraag): void {
+  ipcMain.handle(kanaal, async (event, ...args) => {
+    const begin = Date.now()
+    try {
+      return await doen(event, ...args)
+    } catch (fout) {
+      logFout(`vraag ${kanaal}`, fout)
+      throw fout
+    } finally {
+      const duur = Date.now() - begin
+      if (duur >= TRAAG_MS) log(`TRAAG vraag ${kanaal}: ${duur} ms`)
+    }
+  })
+}
+
 function registerHandlers(): void {
   /*
     * Welke versie dit is. Het meldsjabloon in Discord vraagt er als eerste
@@ -1061,14 +1026,14 @@ function registerHandlers(): void {
    * de versie van Electron zelf terug, en dat is niet wat iemand in een
    * foutmelding hoort te plakken.
    */
-  ipcMain.handle('app:version', () => __APP_VERSION__)
+  handle('app:version', () => __APP_VERSION__)
 
   /*
    * Hoe OMSI de vorige keer draaide. Alleen interessant als het volledig scherm
    * was: de overlay ligt dan over een spel dat het scherm exclusief opeist, en
    * dat eindigt in een zwart beeld.
    */
-  ipcMain.handle('omsi:screen', () => {
+  handle('omsi:screen', () => {
     try {
       return readScreenMode(omsi())
     } catch {
@@ -1076,7 +1041,7 @@ function registerHandlers(): void {
     }
   })
 
-  ipcMain.handle('omsi:status', () => {
+  handle('omsi:status', () => {
     const found = findOmsiInstall(readSettings(userData()).omsiPath)
     omsiPath = found
     return { found: Boolean(found), path: found }
@@ -1090,7 +1055,7 @@ function registerHandlers(): void {
    * de doosversie van Aerosoft, twee kopieën naast elkaar, een map die iemand
    * zelf ergens heeft neergezet. Daarom legt hij zijn vondst eenmaal voor.
    */
-  ipcMain.handle('omsi:state', (): OmsiState => {
+  handle('omsi:state', (): OmsiState => {
     const settings = readSettings(userData())
     const found = findOmsiInstall(settings.omsiPath)
     omsiPath = found
@@ -1102,7 +1067,7 @@ function registerHandlers(): void {
   })
 
   /** De map vastleggen als de juiste; daarna vraagt de app er niet meer om. */
-  ipcMain.handle('omsi:confirm', (_event, path: string): OmsiState => {
+  handle('omsi:confirm', (_event, path: string): OmsiState => {
     const uit = resolveOmsiFolder(path)
     if (!uit.path) {
       const settings = readSettings(userData())
@@ -1111,13 +1076,7 @@ function registerHandlers(): void {
     writeSettings(userData(), { omsiPath: uit.path, omsiConfirmed: true })
     if (uit.path !== omsiPath) {
       // Alles wat uit de oude map kwam is niet meer van toepassing.
-      mapCache.clear()
-      geometryCache.clear()
-      networkCache.clear()
-      mapFleetCache.clear()
-      mapDepotCache.clear()
-      mapTerminiCache.clear()
-      fleetIndex = undefined
+      vergeetKaarten()
     }
     omsiPath = uit.path
     return { path: uit.path, confirmed: true, via: uit.via, zonderKaarten: uit.zonderKaarten }
@@ -1127,7 +1086,7 @@ function registerHandlers(): void {
    * Een map aanwijzen. Geeft alleen terug wat eruit komt; vastleggen doet
    * `omsi:confirm`, zodat het scherm eerst kan laten zien wat het gevonden heeft.
    */
-  ipcMain.handle('omsi:browse', async (): Promise<OmsiState> => {
+  handle('omsi:browse', async (): Promise<OmsiState> => {
     const keuze = await dialog.showOpenDialog({
       title: 'Waar staat OMSI 2?',
       properties: ['openDirectory'],
@@ -1147,7 +1106,7 @@ function registerHandlers(): void {
    * ergens hebben staan waar niemand kijkt -- en dan stond de app met lege
    * handen en een foutmelding. Nu vraagt hij het gewoon.
    */
-  ipcMain.handle('omsi:choose', async () => {
+  handle('omsi:choose', async () => {
     const keuze = await dialog.showOpenDialog({
       title: 'Waar staat OMSI 2?',
       properties: ['openDirectory'],
@@ -1161,9 +1120,7 @@ function registerHandlers(): void {
     writeSettings(userData(), { omsiPath: gekozen })
     omsiPath = gekozen
     // Alles wat uit de oude map kwam is niet meer van toepassing.
-    mapCache.clear()
-    geometryCache.clear()
-    networkCache.clear()
+    vergeetKaarten()
     return { found: true, path: gekozen, chosen: true }
   })
 
@@ -1180,28 +1137,39 @@ function registerHandlers(): void {
    * Daarom nu per kaart. Wat niet te lezen is blijft uit de lijst en staat in
    * het logboek; de rest kun je gewoon rijden.
    */
-  ipcMain.handle('omsi:maps', (): MapSummary[] => {
-    const summaries: MapSummary[] = []
-    for (const folder of listMaps(omsi())) {
-      try {
-        const loaded = map(folder)
-        const time = era(folder)
-        summaries.push({
-          folder,
-          name: loaded.name,
-          tours: loaded.tours.length,
-          hasTemplate: Boolean(findTemplate(omsi(), folder)),
-          year: time.year,
-          dayOfYear: time.dayOfYear
-        })
-      } catch (reden) {
-        console.warn(`kaart "${folder}" overgeslagen: ${(reden as Error).message}`)
-      }
+  /*
+   * De kaartenlijst komt uit de werker, en daarna van schijf.
+   *
+   * Hij kostte 851 ms bij het openen van de app: voor elke kaart de hele
+   * dienstregeling inlezen om er de naam en het aantal omlopen uit te halen.
+   * Dat is nu een samenvatting in de kaartcache, met dezelfde vingerafdruk als
+   * de tekening -- verandert er niets aan een kaart, dan hoeft er niets
+   * opnieuw gelezen te worden.
+   */
+  handle('omsi:maps', async (): Promise<MapSummary[]> => {
+    try {
+      return await werkerVraag<MapSummary[]>({ soort: 'overzicht' })
+    } catch (fout) {
+      logFout('kaartenlijst via de werker', fout)
+      return laag().overzicht()
     }
-    return summaries
   })
 
-  ipcMain.handle('omsi:vehicles', () => listVehicles(omsi()))
+  /*
+   * De installatiestap: hoe ver staat het klaarzetten, en begin eraan.
+   *
+   * Het scherm toont dit meteen na het aanwijzen van de OMSI-map. Wie daar
+   * wacht tot het klaar is, merkt daarna niets meer van het inlezen -- en dat
+   * was de klacht: haperingen op elk scherm, juist in de eerste minuten.
+   */
+  handle('kaarten:stand', (): KaartenStand => kaartenStand())
+
+  handle('kaarten:voorbereiden', (): KaartenStand => {
+    void warmKaarten()
+    return kaartenStand()
+  })
+
+  handle('omsi:vehicles', () => listVehicles(omsi()))
 
   /*
    * Welke bus de app op deze kaart zou nemen als er geen dienst is.
@@ -1211,7 +1179,7 @@ function registerHandlers(): void {
    * en daar is de vraag dus eenvoudiger -- welke bus rijdt hier het meest rond.
    * Dat weet de kaart zelf, in haar remiselijst.
    */
-  ipcMain.handle('fleet:suggest', (_event, mapFolder: string): Vehicle | undefined =>
+  handle('fleet:suggest', (_event, mapFolder: string): Vehicle | undefined =>
     suggestFromDepot(fleet().vehicles, depotOf(mapFolder))
   )
 
@@ -1226,17 +1194,8 @@ function registerHandlers(): void {
    *
    * Wat er nieuw is, weten we doordat we bewaren wat er de vorige keer stond.
    */
-  ipcMain.handle('omsi:check', (): InstalledCheck => {
-    mapCache.clear()
-    networkCache.clear()
-    mapFleetCache.clear()
-    mapDepotCache.clear()
-    mapEraCache.clear()
-    calendarCache.clear()
-    geometryCache.clear()
-    laneCache.clear()
-    laneNetworkCache.clear()
-    routeCache.clear()
+  handle('omsi:check', (): InstalledCheck => {
+    vergeetKaarten()
     vehicleTrackers.clear()
 
     const maps = listMaps(omsi()).map((folder) => {
@@ -1290,14 +1249,15 @@ function registerHandlers(): void {
    * Halteposities van een kaart. Het doorlezen van de tegels kost een fractie
    * van een seconde tot ruim een seconde, dus eenmaal per kaart.
    */
-  ipcMain.handle('map:geometry', (_event, folder: string): MapGeometry => {
+  handle('map:geometry', async (_event, folder: string): Promise<MapGeometry> => {
     /*
      * Meetellen als voorgrondwerk: het voorwerk op de achtergrond wacht hierop.
-     * De teller gaat omlaag in dezelfde tik, want deze functie is van begin tot
-     * eind synchroon -- er zit geen await in waar iets tussen kan komen.
      */
     voorgrondBezig += 1
     try {
+      // Staat de kaart nog nergens, dan leest de werker hem; anders komt hij
+      // zo van schijf. Het hoofdproces legt in geen van beide gevallen stil.
+      await zorgVoorKaart(folder)
       return mapGeometry(folder)
     } finally {
       voorgrondBezig -= 1
@@ -1309,22 +1269,26 @@ function registerHandlers(): void {
    * rit uitgerekend; het rijstrokennet wordt pas opgebouwd als een rit geen
    * bruikbare route van OMSI zelf heeft.
    */
-  ipcMain.handle(
+  /**
+   * De route van elke rit van een dienst, als lijn over de kaart.
+   *
+   * Ook dit gaat naar de werker: het rijstrokennet van een kaart opbouwen kost
+   * tot een seconde, en dat gebeurt precies op het moment dat de speler een
+   * dienst aanwijst.
+   */
+  handle(
     'map:routes',
-    (_event, folder: string, legs: Array<{ tripFile: string; stopIds: string[] }>): TripRoute[] => {
-      const loaded = map(folder)
-      const geometry = mapGeometry(folder)
-      const stopAt = new Map(geometry.stops.map((stop) => [stop.id, stop]))
-      return legs.map((leg) => {
-        const key = `${folder}|${leg.tripFile}|${leg.stopIds.join(',')}`
-        const cached = routeCache.get(key)
-        if (cached) return cached
-        const stops = leg.stopIds.map((id) => stopAt.get(id)).filter((stop) => stop !== undefined)
-        if (stops.length < 2) return { points: [], guessed: [] }
-        const route = routeForTrip(loaded.path, omsi(), leg.tripFile, stops, () => laneNetwork(folder))
-        routeCache.set(key, route)
-        return route
-      })
+    async (
+      _event,
+      folder: string,
+      legs: Array<{ tripFile: string; stopIds: string[] }>
+    ): Promise<TripRoute[]> => {
+      try {
+        return await werkerVraag<TripRoute[]>({ soort: 'routes', folder, legs })
+      } catch (fout) {
+        logFout('routes via de werker', fout)
+        return laag().routes(folder, legs)
+      }
     }
   )
 
@@ -1335,18 +1299,18 @@ function registerHandlers(): void {
    * opnieuw. Draait het spel, dan is alles wat hier verandert straks weg, dus
    * dat melden we erbij in plaats van het stilletjes te laten gebeuren.
    */
-  ipcMain.handle('game:settings', async () => ({
+  handle('game:settings', async () => ({
     values: readGameSettings(omsi()),
     omsiRunning: await isOmsiRunning()
   }))
 
-  ipcMain.handle('game:settings:save', (_event, changes: Record<string, string>) => {
+  handle('game:settings:save', (_event, changes: Record<string, string>) => {
     writeGameSettings(omsi(), changes)
     return readGameSettings(omsi())
   })
 
   /** De taal van OMSI zelf bepaalt hoe de toetsen en handelingen heten. */
-  ipcMain.handle('game:keys', async () => {
+  handle('game:keys', async () => {
     const language = omsiLanguage()
     return {
       bindings: readKeyboard(omsi()),
@@ -1361,24 +1325,24 @@ function registerHandlers(): void {
    * toetsenbord, dus die gaan mee: een knop op je stuur doet hetzelfde als een
    * toets.
    */
-  ipcMain.handle('game:controllers', async () => ({
+  handle('game:controllers', async () => ({
     controllers: readControllers(omsi()),
     labels: [...readActionLabels(omsi(), omsiLanguage())],
     omsiRunning: await isOmsiRunning()
   }))
 
-  ipcMain.handle('game:controllers:save', (_event, controllers: ControllerConfig[]) => {
+  handle('game:controllers:save', (_event, controllers: ControllerConfig[]) => {
     writeControllers(omsi(), controllers)
     return readControllers(omsi())
   })
 
-  ipcMain.handle('game:keys:save', (_event, bindings: KeyBinding[]) => {
+  handle('game:keys:save', (_event, bindings: KeyBinding[]) => {
     writeKeyboard(omsi(), bindings)
     return readKeyboard(omsi())
   })
 
   /** Terug naar de indeling waarmee OMSI geleverd wordt. */
-  ipcMain.handle('game:keys:reset', () => {
+  handle('game:keys:reset', () => {
     const defaults = readKeyboard(omsi(), true)
     if (defaults.length > 0) writeKeyboard(omsi(), defaults)
     return readKeyboard(omsi())
@@ -1390,10 +1354,10 @@ function registerHandlers(): void {
    * zou het opstartvenster meteen sluiten en de overlay boven een spel hangen
    * dat nog aan het laden is.
    */
-  ipcMain.handle('omsi:live', () => Boolean(freshLive()?.alive))
+  handle('omsi:live', () => Boolean(freshLive()?.alive))
 
   /** Draait het spel al? Los van de plugin, die zich pas meldt met een bus. */
-  ipcMain.handle('omsi:running', () => isOmsiRunning())
+  handle('omsi:running', () => isOmsiRunning())
 
   /*
    * Wat de bus op dit moment doorgeeft, voor het hoofdvenster.
@@ -1403,7 +1367,7 @@ function registerHandlers(): void {
    * Voor een dienstregeling die meeloopt is meer nodig: welke rit, welke halte,
    * en hoeveel je voor of achter ligt op dit punt.
    */
-  ipcMain.handle('live:status', () => {
+  handle('live:status', () => {
     const live = freshLive()
     if (!live) return { status: undefined, vehicle: undefined }
     const duty = currentDuty()
@@ -1419,7 +1383,7 @@ function registerHandlers(): void {
   })
 
   /** Printers die Windows kent, met de standaardprinter vooraan. */
-  ipcMain.handle('print:printers', async (event) => {
+  handle('print:printers', async (event) => {
     const printers = await event.sender.getPrintersAsync()
     return printers
       .map((printer) => ({
@@ -1430,11 +1394,11 @@ function registerHandlers(): void {
       .sort((a, b) => Number(b.isDefault) - Number(a.isDefault))
   })
 
-  ipcMain.handle('print:receipt', (_event, payload, deviceName?: string) =>
+  handle('print:receipt', (_event, payload, deviceName?: string) =>
     printReceipt(withDriver(payload), { deviceName, preview: false })
   )
 
-  ipcMain.handle('print:preview', (_event, payload) =>
+  handle('print:preview', (_event, payload) =>
     printReceipt(withDriver(payload), { preview: true })
   )
 
@@ -1443,7 +1407,7 @@ function registerHandlers(): void {
    * zet hem er neer als het Steam via het register vindt; staat OMSI elders, dan
    * gebeurt het hier alsnog.
    */
-  ipcMain.handle('plugin:status', () => {
+  handle('plugin:status', () => {
     if (!pluginStatus) {
       pluginStatus = ensurePlugin(
         omsi(),
@@ -1458,42 +1422,24 @@ function registerHandlers(): void {
    * Levert een rooster om uit te kiezen. Bij elke dienst wordt een passende bus
    * gezocht — die is een aanbeveling, want de speler laadt zijn bus zelf in OMSI.
    */
-  ipcMain.handle('duty:list', (_event, request: DutyRequest): Assignment[] => {
-    const window = TIME_WINDOWS[request.window] ?? TIME_WINDOWS.heledag
-    const loaded = map(request.mapFolder)
-    const net = network(request.mapFolder)
-    const { year } = era(request.mapFolder)
-    const mapFleet = fleetOf(request.mapFolder)
-
-    // Lukt het binnen het gevraagde dagdeel niet, dan verruimen we stapsgewijs.
-    let duties: ReturnType<typeof generateDuties> = []
-    for (const tolerance of [undefined, 40, 75]) {
-      duties = generateDuties(loaded, net, {
-        targetMinutes: request.targetMinutes,
-        toleranceMinutes: tolerance,
-        earliestStart: window.from,
-        latestStart: window.to,
-        lineFile: request.lineFile,
-        lineFiles: request.lineFiles
-      })
-      if (duties.length > 0) break
+  /*
+   * De dienstenlijst komt uit de werker.
+   *
+   * Dit was met 1989 ms de traagste vraag van het hele scherm, en zolang hij
+   * liep deed de app niets: geen knop, geen venster, geen overlay. Nu rekent de
+   * werker en blijft het scherm leven. Valt de werker uit, dan doet het
+   * hoofdproces het alsnog zelf -- traag, maar de speler krijgt zijn diensten.
+   */
+  handle('duty:list', async (_event, request: DutyRequest): Promise<Assignment[]> => {
+    try {
+      return await werkerVraag<Assignment[]>({ soort: 'diensten', request })
+    } catch (fout) {
+      logFout('diensten via de werker', fout)
+      return laag().diensten(request)
     }
-
-    return duties.map((duty) => {
-      const choice = pickVehicleForDuty(fleet(), duty, year, mapFleet, undefined, depotOf(request.mapFolder))
-      return {
-        duty,
-        date: dutyDate(request.mapFolder, duty.days | duty.period),
-        vehicle: choice?.vehicle ?? null,
-        yard: choice?.yard,
-        fit: choice?.fit,
-        fromMapFleet: choice?.fromMapFleet,
-        alternatives: choice?.alternatives
-      }
-    })
   })
 
-  ipcMain.handle('duty:ibis', (_event, duty, vehicle, year: number, yard?: string) =>
+  handle('duty:ibis', (_event, duty, vehicle, year: number, yard?: string) =>
     buildIbisPlan(omsi(), vehicle.relativePath, duty, year, yard)
   )
 
@@ -1502,7 +1448,7 @@ function registerHandlers(): void {
    * en per tijdvak, en dus ook wat de chauffeur intoetst -- daarom mag hij zelf
    * kiezen, met erbij hoeveel bestemmingen elk wagenpark van deze dienst kent.
    */
-  ipcMain.handle(
+  handle(
     'duty:yards',
     (_event, duty: Duty, vehicle: { relativePath: string }, year: number): YardOption[] => {
       const termini: string[] = [
@@ -1531,7 +1477,7 @@ function registerHandlers(): void {
    * Dit is de enige plek waar de app iets in de voertuigmappen van OMSI zet, dus
    * daar moet de chauffeur ja tegen gezegd hebben.
    */
-  ipcMain.handle('hof:offers', (_event, mapFolder: string): HofOffer[] => {
+  handle('hof:offers', (_event, mapFolder: string): HofOffer[] => {
     const termini = terminiOf(mapFolder)
     if (termini.length === 0) return []
     return planHofs(omsi(), termini)
@@ -1547,7 +1493,7 @@ function registerHandlers(): void {
       .sort((a, b) => (b.offerMatched ?? 0) - (a.offerMatched ?? 0))
   })
 
-  ipcMain.handle(
+  handle(
     'hof:offerFor',
     (_event, mapFolder: string, folder: string): HofOffer | undefined => {
       const termini = terminiOf(mapFolder)
@@ -1565,7 +1511,7 @@ function registerHandlers(): void {
     }
   )
 
-  ipcMain.handle(
+  handle(
     'hof:place',
     (_event, mapFolder: string, folders: string[]): { placed: number; failed: string[] } => {
       const termini = terminiOf(mapFolder)
@@ -1593,13 +1539,13 @@ function registerHandlers(): void {
        * Het wagenpark van een bus wordt bij het opbouwen van de vloot gelezen;
        * met een nieuw bestand ernaast klopt die lijst niet meer.
        */
-      if (placed > 0) fleetIndex = undefined
+      if (placed > 0) vergeetKaarten()
       return { placed, failed }
     }
   )
 
   /** De lijnen van een kaart, om er een route mee te kiezen of een examen op te doen. */
-  ipcMain.handle('map:lines', (_event, mapFolder: string): LineSummary[] =>
+  handle('map:lines', (_event, mapFolder: string): LineSummary[] =>
     listLines(map(mapFolder), network(mapFolder))
   )
 
@@ -1607,7 +1553,7 @@ function registerHandlers(): void {
    * De examenrit: één rit op de gekozen lijn, met een bus erbij gezocht. Slaagt
    * de kandidaat, dan levert dat de vergunning voor deze lijn op.
    */
-  ipcMain.handle('duty:exam', (_event, mapFolder: string, lineFile: string): Assignment | null => {
+  handle('duty:exam', (_event, mapFolder: string, lineFile: string): Assignment | null => {
     const duty = examTrip(map(mapFolder), network(mapFolder), lineFile)
     if (!duty) return null
     const choice = pickVehicleForDuty(
@@ -1633,7 +1579,7 @@ function registerHandlers(): void {
    * Het examen afronden: de gereden rit langs de eisen leggen en het oordeel in
    * het profiel zetten. Geslaagd betekent een vergunning voor deze lijn erbij.
    */
-  ipcMain.handle(
+  handle(
     'career:exam',
     (_event, duty: Duty, measured: ExamMeasurement, basic: boolean) => {
       if (!career) return careerPayload()
@@ -1663,7 +1609,7 @@ function registerHandlers(): void {
    * vertrekt -- dan staat het dienstregelingsmenu ook meteen goed en heeft de
    * overlay een route om te tekenen.
    */
-  ipcMain.handle('free:start', async (_event, request: FreeRequest) => {
+  handle('free:start', async (_event, request: FreeRequest) => {
     const loaded = map(request.mapFolder)
     const net = network(request.mapFolder)
 
@@ -1727,7 +1673,7 @@ function registerHandlers(): void {
    * blijft hij daar tot hij is afgerond of geannuleerd. Een tweede dienst
    * aannemen terwijl er een loopt kan niet.
    */
-  ipcMain.handle(
+  handle(
     'duty:confirm',
     (
       _event,
@@ -1751,7 +1697,7 @@ function registerHandlers(): void {
   )
 
   /** De aangenomen dienst teruggeven, zonder hem in het logboek te zetten. */
-  ipcMain.handle('duty:cancel', () => {
+  handle('duty:cancel', () => {
     closeOverlay()
     overlayDuty = undefined
     overlayIbis = undefined
@@ -1765,7 +1711,7 @@ function registerHandlers(): void {
    * situatie wordt geschreven en als "Last Situation" klaargezet, en pas daarna
    * gaat het spel aan. Zo hoeft de chauffeur in OMSI alleen op Start te drukken.
    */
-  ipcMain.handle('duty:begin', async (_event, request: BeginRequest) => {
+  handle('duty:begin', async (_event, request: BeginRequest) => {
     const { duty, ibis } = request
     if (career?.activeDuty && !career.activeDuty.startedAt) {
       persist({ ...career, activeDuty: { ...career.activeDuty, startedAt: new Date().toISOString() } })
@@ -1829,7 +1775,7 @@ function registerHandlers(): void {
    * het startscherm rechtgezet moet worden: het spel schrijft `options.cfg` bij
    * het afsluiten opnieuw en gooit onze kaartkeuze eruit.
    */
-  ipcMain.handle('duty:session', () => {
+  handle('duty:session', () => {
     void herstelStartscherm()
     return sessieGegevens()
   })
@@ -1838,23 +1784,23 @@ function registerHandlers(): void {
    * Open of dicht, zoals gevraagd, en niet omgekeerd: een knop die "wisselt"
    * sluit een overlay die de app voor dicht aanzag. Levert de werkelijke stand.
    */
-  ipcMain.handle('overlay:set', (_event, duty: Duty | undefined, open: boolean, ibis?: IbisPlan) => {
+  handle('overlay:set', (_event, duty: Duty | undefined, open: boolean, ibis?: IbisPlan) => {
     if (open && duty) openOverlay(duty, ibis)
     else if (!open) closeOverlay()
     return overlayIsOpen()
   })
 
-  ipcMain.handle('overlay:isOpen', () => overlayIsOpen())
+  handle('overlay:isOpen', () => overlayIsOpen())
 
   /** De overlay sluit zichzelf, met de knop in de bewerkstand. */
-  ipcMain.handle('overlay:close', () => closeOverlay())
+  handle('overlay:close', () => closeOverlay())
 
-  ipcMain.handle('overlay:edit', (_event, on?: boolean) =>
+  handle('overlay:edit', (_event, on?: boolean) =>
     setOverlayEdit(on === undefined ? !overlayEditing : on)
   )
 
   /** De pagina meldt of de muis boven een knop hangt. */
-  ipcMain.handle('overlay:hit', (_event, on: boolean) => {
+  handle('overlay:hit', (_event, on: boolean) => {
     if (overlayEditing || overlayGrabbing) return
     passMouseThrough(!on)
   })
@@ -1867,16 +1813,16 @@ function registerHandlers(): void {
    * inhoud heen -- elke punt die het venster beslaat moet Windows immers over
    * het spel heen mengen.
    */
-  ipcMain.handle('overlay:grab', (_event, on: boolean) => {
+  handle('overlay:grab', (_event, on: boolean) => {
     if (overlayEditing) return
     overlayGrabbing = on
     passMouseThrough(!on)
     applyOverlayBounds()
   })
 
-  ipcMain.handle('settings:read', () => readSettings(userData()))
+  handle('settings:read', () => readSettings(userData()))
 
-  ipcMain.handle('settings:write', (_event, settings: Partial<Settings>) => {
+  handle('settings:write', (_event, settings: Partial<Settings>) => {
     const saved = writeSettings(userData(), settings)
     // Een overlay die al openstaat hoort de nieuwe verversing meteen te volgen.
     if (overlayTimer) {
@@ -1886,25 +1832,25 @@ function registerHandlers(): void {
     return saved
   })
 
-  ipcMain.handle('overlay:bounds', (_event, box?: { x: number; y: number; w: number; h: number }) => {
+  handle('overlay:bounds', (_event, box?: { x: number; y: number; w: number; h: number }) => {
     overlayBox = box
     applyOverlayBounds()
   })
 
-  ipcMain.handle('overlay:layout', () => readOverlayLayout(userData()))
+  handle('overlay:layout', () => readOverlayLayout(userData()))
 
-  ipcMain.handle('overlay:layout:save', (_event, layout: OverlayLayout) => {
+  handle('overlay:layout:save', (_event, layout: OverlayLayout) => {
     writeOverlayLayout(userData(), layout)
     return layout
   })
 
-  ipcMain.handle('overlay:layout:reset', () => {
+  handle('overlay:layout:reset', () => {
     const layout = defaultLayout()
     writeOverlayLayout(userData(), layout)
     return layout
   })
 
-  ipcMain.handle('career:load', () => careerPayload())
+  handle('career:load', () => careerPayload())
 
   /*
    * Bij het wisselen van chauffeur moet alles van de vorige los.
@@ -1920,12 +1866,12 @@ function registerHandlers(): void {
     overlayIbis = undefined
   }
 
-  ipcMain.handle('career:create', (_event, name: string) => {
+  handle('career:create', (_event, name: string) => {
     wisselVanChauffeur()
     return persist(createProfile(userData(), name))
   })
 
-  ipcMain.handle('career:select', (_event, id: string) => {
+  handle('career:select', (_event, id: string) => {
     const chosen = readProfile(userData(), id)
     if (!chosen) return careerPayload()
     wisselVanChauffeur()
@@ -1934,14 +1880,14 @@ function registerHandlers(): void {
     return careerPayload()
   })
 
-  ipcMain.handle('career:delete', (_event, id: string) => {
+  handle('career:delete', (_event, id: string) => {
     wisselVanChauffeur()
     deleteProfile(userData(), id)
     career = resolveActive(userData())
     return careerPayload()
   })
 
-  ipcMain.handle('career:complete', (_event, duty, vehicle: string, measured) => {
+  handle('career:complete', (_event, duty, vehicle: string, measured) => {
     // Een afgeronde dienst heeft geen overlay meer nodig.
     closeOverlay()
     overlayDuty = undefined
@@ -1950,7 +1896,7 @@ function registerHandlers(): void {
     return persist(completeDuty(career, duty, vehicle, measured))
   })
 
-  ipcMain.handle('career:rename', (_event, name: string) => {
+  handle('career:rename', (_event, name: string) => {
     if (!career) return careerPayload()
     return persist({ ...career, driver: name.trim() || career.driver })
   })
@@ -1982,6 +1928,30 @@ function createWindow(): void {
 
   window.on('ready-to-show', () => window.show())
   mainWindow = window
+
+  /*
+   * Wat er met het venster misgaat hoort in het logboek.
+   *
+   * "Hij hangt" en "hij is zomaar weg" zijn twee verschillende dingen, en
+   * alleen Windows kan ze uit elkaar houden: `unresponsive` is het eerste,
+   * `render-process-gone` het tweede, met de reden erbij (geheugen op,
+   * vastgelopen, zelf afgesloten). Zonder deze twee regels stuurt een speler
+   * een schermafdruk van een leeg venster en weten we nog niets.
+   */
+  window.on('unresponsive', () => log('venster reageert niet meer'))
+  window.on('responsive', () => log('venster reageert weer'))
+  window.webContents.on('render-process-gone', (_gebeurtenis, details) =>
+    log(`FOUT  venster weg: ${details.reason}, exitcode ${details.exitCode}`)
+  )
+  window.webContents.on('console-message', (_gebeurtenis, niveau, bericht, regel, bron) => {
+    /*
+     * Alleen echte fouten (niveau 3). Op 2 staan de waarschuwingen, en die
+     * vulden het logboek meteen met honderden regels van één soort -- het
+     * beveiligingsbeleid dat een lettertype weigerde. Nuttig om te weten, maar
+     * niet driehonderd keer.
+     */
+    if (niveau >= 3) log(`FOUT  in het scherm: ${bericht} (${bron}:${regel})`)
+  })
 
   /*
    * Het hoofdvenster dicht is de app dicht. Zonder dit bleef de app draaien: het
@@ -2047,7 +2017,39 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', bringMainWindowForward)
 
   app.whenReady().then(() => {
+    /*
+     * Het logboek gaat als eerste aan, nog voor er iets gelezen wordt.
+     *
+     * Meldingen kwamen binnen als "hij hangt" en "hij is zomaar afgesloten", en
+     * daar viel niets aan na te kijken. Vanaf nu schrijft de app mee: wat er
+     * traag was, welke kaart eraan te pas kwam, en waarop het ophield. De
+     * speler stuurt dat bestand mee en dan staat het er gewoon.
+     */
+    const pad = startLogboek(
+      userData(),
+      `OMSI Enhancer ${__APP_VERSION__} start -- Electron ${process.versions.electron}, ` +
+        `Windows ${process.getSystemVersion?.() ?? ''}, ${process.arch}`
+    )
+    log(`gebruikersgegevens: ${userData()}`)
+    if (pad) log(`logboek: ${pad}`)
+
+    /*
+     * Wat de app onderuit haalt hoort in het logboek te staan, niet alleen in
+     * een venster dat wegklikt. Afsluiten doen we er niet bij: Electron doet
+     * dat zelf al waar het moet.
+     */
+    process.on('uncaughtException', (fout) => logFout('onafgevangen fout', fout))
+    process.on('unhandledRejection', (reden) => logFout('onafgehandelde belofte', reden))
+    app.on('child-process-gone', (_gebeurtenis, details) =>
+      log(`FOUT  hulpproces weg: ${details.type} ${details.reason} ${details.exitCode}`)
+    )
+
     adoptOldProfiles()
+    try {
+      log(`OMSI: ${omsi()}`)
+    } catch (fout) {
+      logFout('OMSI zoeken', fout)
+    }
     career = resolveActive(userData())
     registerHandlers()
     createWindow()

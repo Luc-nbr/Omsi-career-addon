@@ -22,6 +22,7 @@
  */
 
 .setup,
+.hub,
 .overlay-body {
   /* Vast in beide standen. */
   --route: #2a75f7;
@@ -106,7 +107,8 @@
  * Windows, dus hij hoort de stand van Windows ook niet te volgen. De overlay is
  * altijd donker, en dat is geen instelling maar wat hij is.
  */
-:root[data-thema='licht'] .setup {
+:root[data-thema='licht'] .setup,
+:root[data-thema='licht'] .hub {
   --grond: #eef1f5;
   --op-grond: #0e1117;
   --op-grond-zacht: rgba(14, 17, 23, 0.6);
@@ -134,7 +136,8 @@
  * :root:not([data-thema]) en niet aan :root.
  */
 @media (prefers-color-scheme: light) {
-  :root:not([data-thema]) .setup {
+  :root:not([data-thema]) .setup,
+  :root:not([data-thema]) .hub {
     --grond: #eef1f5;
     --op-grond: #0e1117;
     --op-grond-zacht: rgba(14, 17, 23, 0.6);

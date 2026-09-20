@@ -17,7 +17,19 @@ export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
     define: { __APP_VERSION__: JSON.stringify(versie) },
-    build: { rollupOptions: { input: resolve(__dirname, 'src/main/index.ts') } }
+    /*
+     * Twee ingangen: de app zelf, en de werker die kaarten uitleest. Die tweede
+     * draait als worker_thread naast het hoofdproces, dus hij moet als eigen
+     * bestand in `out/main` staan -- vandaar een naam in plaats van één pad.
+     */
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve(__dirname, 'src/main/index.ts'),
+          kaartwerker: resolve(__dirname, 'src/main/kaartwerker.ts')
+        }
+      }
+    }
   },
   preload: {
     plugins: [externalizeDepsPlugin()],

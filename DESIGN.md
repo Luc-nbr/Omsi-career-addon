@@ -150,7 +150,8 @@ components:
 > `--lijn`, `--laat`, `--optijd`, `--vroeg` — with different values on each
 > side, and `styles.css` loads later. That is why this world's token layer is
 > scoped to `.setup` and not to `:root`. Anyone extending this system adds
-> tokens inside `.setup`. The only exception is the canvas road palette, which
+> tokens inside `.setup`; the start hub (`.hub`) hangs on the same rule, so
+> there is one token layer and not a copy per screen. The only exception is the canvas road palette, which
 > must sit on `:root` because `roadLayer.ts` reads it from
 > `document.documentElement` for an off-DOM canvas; those names collide with
 > nothing.
@@ -409,6 +410,27 @@ cells on a fixed grid, 38px tall, 10px radius.
 - **Scrollbar:** thin, `rgba(14,17,23,0.25)` thumb on a transparent track,
   pill-shaped, with a 3px transparent inset via `background-clip: content-box`.
   Windows' default arrows and grey gutter are the loudest thing on a white sheet.
+
+### Start hub (signature)
+The screen the app opens on, and the one the step bar returns to. It carries the
+same world as the setup screen -- ground, one sheet, one accent -- but the main
+choice is not a list row here: the three ways to play are three tiles, 210px
+tall, 14px corners, laid out three across and stacking below 900px. The chosen
+mode takes full route blue like a selected row; the others sit on the sheet's
+hover tint with a hairline. Below them, two panels of unequal weight: the
+driver's record (duties, hours, km, licences, rank; the whole record is behind
+it) and the plain buttons to OMSI's settings and to switching driver.
+
+The sheet is as tall as its content, not as tall as the window: stretched to the
+bottom edge it left half a screen of nothing under the buttons, which reads as
+unfinished. Below 900px wide or 700px tall the tiles lose their minimum height
+and their description clamps to two lines, so all three stay in one view.
+
+### Preparing maps
+The last step of installing, and the only screen with a progress bar: one track
+in the sheet's hover tint with a route-blue fill, the map being read named under
+it, and one quiet button to skip. It uses the welcome screen's centred card, not
+the setup world's sheet-on-map, because there is no map to stand on yet.
 
 ### Navigation (step bar)
 The step bar is the only navigation on this screen; the app's sidebar is hidden

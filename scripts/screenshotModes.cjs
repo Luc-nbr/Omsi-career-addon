@@ -89,6 +89,17 @@ app.whenReady().then(async () => {
     await js(main, `document.querySelector('.welkom-knop.primair')?.click()`)
   }
 
+  /*
+   * Bij een verse gebruikersmap staan de kaarten nog niet klaar, en dan komt
+   * eerst de installatiestap. Die leggen we vast en laten we daarna uitlopen:
+   * de schermen erna zijn pas eerlijk te beoordelen als de kaarten er zijn.
+   */
+  if (await waitFor(main, `document.querySelector('.klaarbalk')`, 20)) {
+    await wait(800)
+    await shoot('kaarten-klaarzetten')
+    await waitFor(main, `!document.querySelector('.klaarbalk')`, 600)
+  }
+
   // Daarna de chauffeur, en als er nog geen is: er een aanmaken.
   if (await waitFor(main, `document.querySelector('.setup')`, 80)) {
     await wait(1200)
@@ -106,7 +117,18 @@ app.whenReady().then(async () => {
     }
   }
 
-  // De modus, en daarna elke stap: afdruk, eerste keuze, hoofdknop.
+  /*
+   * De starthub: het hoofdscherm met de drie modustegels. Hij staat buiten de
+   * stappenbalk, dus hij krijgt zijn eigen afdruk en zijn eigen klik.
+   */
+  if (await waitFor(main, `document.querySelector('.hub-tegel')`, 40)) {
+    await wait(700)
+    await shoot('starthub')
+    const tegel = { dienst: 1, carriere: 0, vrij: 2 }[modus] ?? 1
+    await js(main, `document.querySelectorAll('.hub-tegel')[${tegel}]?.click()`)
+  }
+
+  // En daarna elke stap: afdruk, eerste keuze, hoofdknop.
   let vorige = ''
   for (let i = 0; i < 9; i++) {
     await wait(2500) // de kaart en de lijnen worden erbij gezocht

@@ -33,6 +33,70 @@ const TEXT = {
     fr: 'Bienvenue dans OMSI Enhancer',
     nl: 'Welkom bij OMSI Enhancer'
   },
+  'hub.title': {
+    en: 'Hello {naam}',
+    de: 'Hallo {naam}',
+    fr: 'Bonjour {naam}',
+    nl: 'Dag {naam}'
+  },
+  'hub.intro': {
+    en: 'How do you want to drive today?',
+    de: 'Wie möchtest du heute fahren?',
+    fr: 'Comment voulez-vous conduire aujourd’hui ?',
+    nl: 'Hoe wil je vandaag rijden?'
+  },
+  'hub.record': {
+    en: 'Your record',
+    de: 'Deine Bilanz',
+    fr: 'Votre bilan',
+    nl: 'Je staat van dienst'
+  },
+  'hub.duties': { en: 'duties', de: 'Dienste', fr: 'services', nl: 'diensten' },
+  'hub.hours': { en: 'driven', de: 'gefahren', fr: 'au volant', nl: 'gereden' },
+  'hub.km': { en: 'km', de: 'km', fr: 'km', nl: 'km' },
+  'hub.licences': { en: 'licences', de: 'Lizenzen', fr: 'licences', nl: 'vergunningen' },
+  'hub.driver': {
+    en: 'Driver: {naam}',
+    de: 'Fahrer: {naam}',
+    fr: 'Conducteur : {naam}',
+    nl: 'Chauffeur: {naam}'
+  },
+  'prepare.title': {
+    en: 'Getting your maps ready',
+    de: 'Deine Karten werden vorbereitet',
+    fr: 'Préparation de vos cartes',
+    nl: 'De kaarten worden klaargezet'
+  },
+  'prepare.intro': {
+    en: 'Every map is read once. After this the app opens them in a blink, and it only does this again for a map you add or change.',
+    de: 'Jede Karte wird einmal gelesen. Danach öffnet die App sie im Nu, und nur eine neue oder geänderte Karte wird noch einmal gelesen.',
+    fr: 'Chaque carte est lue une fois. Ensuite, l’application les ouvre en un clin d’œil, et seule une carte ajoutée ou modifiée sera relue.',
+    nl: 'Elke kaart wordt één keer gelezen. Daarna opent de app ze in een oogwenk, en alleen een kaart die je toevoegt of wijzigt wordt opnieuw gelezen.'
+  },
+  'prepare.progress': {
+    en: '{klaar} of {totaal} maps ready',
+    de: '{klaar} von {totaal} Karten fertig',
+    fr: '{klaar} cartes sur {totaal} prêtes',
+    nl: '{klaar} van {totaal} kaarten klaar'
+  },
+  'prepare.almost': {
+    en: 'Almost there',
+    de: 'Fast fertig',
+    fr: 'Presque fini',
+    nl: 'Bijna klaar'
+  },
+  'prepare.skip': {
+    en: 'Skip and start now',
+    de: 'Überspringen und jetzt starten',
+    fr: 'Passer et commencer',
+    nl: 'Overslaan en nu beginnen'
+  },
+  'prepare.foot': {
+    en: 'You can skip this. The rest happens in the background, and a map you open before it is ready simply takes a moment longer.',
+    de: 'Du kannst das überspringen. Der Rest läuft im Hintergrund, und eine Karte, die noch nicht fertig ist, braucht dann kurz länger.',
+    fr: 'Vous pouvez passer. Le reste se fait en arrière-plan ; une carte pas encore prête mettra simplement un instant de plus.',
+    nl: 'Je mag dit overslaan. De rest gebeurt op de achtergrond, en een kaart die nog niet klaar is duurt dan even wat langer.'
+  },
   'welcome.intro': {
     en: 'OMSI Enhancer turns the maps you already own into a job. Choose how long you want to drive and you get a real duty: the line, the tour, the IBIS codes to key in and the stop where your bus belongs.',
     de: 'OMSI Enhancer macht aus den Karten, die du schon hast, einen Dienst. Du wählst, wie lange du fahren möchtest, und bekommst einen echten Umlauf: Linie, Kurs, die IBIS-Eingaben und die Haltestelle, an der dein Bus stehen muss.',
