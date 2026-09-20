@@ -33,7 +33,19 @@ export default defineConfig({
   },
   preload: {
     plugins: [externalizeDepsPlugin()],
-    build: { rollupOptions: { input: resolve(__dirname, 'src/preload/index.ts') } }
+    /*
+     * Twee bruggen: die van de app, en een kale voor het venster dat busfoto's
+     * maakt. Dat venster hoort niets te kunnen behalve een tekening ontvangen
+     * en een plaatje terugsturen.
+     */
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve(__dirname, 'src/preload/index.ts'),
+          busfoto: resolve(__dirname, 'src/preload/busfoto.ts')
+        }
+      }
+    }
   },
   renderer: {
     root: resolve(__dirname, 'src/renderer'),
@@ -43,7 +55,9 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, 'src/renderer/index.html'),
           overlay: resolve(__dirname, 'src/renderer/overlay.html'),
-          receipt: resolve(__dirname, 'src/renderer/receipt.html')
+          receipt: resolve(__dirname, 'src/renderer/receipt.html'),
+          /* Het verborgen venster dat een bus in beeld brengt. */
+          busfoto: resolve(__dirname, 'src/renderer/busfoto.html')
         }
       }
     }

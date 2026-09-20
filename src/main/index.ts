@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, net, protocol, screen, shell } from 'electron'
 import { cpSync, existsSync } from 'node:fs'
-import { dirname, join, resolve, sep } from 'node:path'
+import { basename, dirname, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Worker } from 'node:worker_threads'
 import { log, logboekPad, logFout, startLogboek, TRAAG_MS } from '../core/logboek'
@@ -61,6 +61,7 @@ import { receiptHeightMicrons, RECEIPT_WIDTH_MICRONS } from '../core/receipt'
 import { difference, readKnown, writeKnown } from '../core/installed'
 import { readSettings, writeSettings, type Settings } from '../core/settings'
 import { formatTime } from '../shared/format'
+import { busfotoMap, maakBusfoto, sluitBusfotoVenster } from './busfoto'
 import { writeSituation } from '../core/situation'
 import { presetStartup } from '../core/startup'
 import { trailerOf } from '../core/trailer'
@@ -1242,6 +1243,24 @@ function registerHandlers(): void {
    * logboek. Dus meet de tekening zichzelf en meldt het hier, één keer per
    * kaart, en alleen als het werkelijk hapert.
    */
+  /*
+   * Een foto van een bus. De eerste keer wordt hij getekend -- lezen en tekenen
+   * kostte gemeten 266 tot 1092 ms per bus -- daarna komt hij van schijf.
+   */
+  handle('bus:foto', async (_event, relatiefPad: string): Promise<string | undefined> => {
+    const bestand = await maakBusfoto({
+      busPad: join(omsi(), relatiefPad),
+      relatiefPad,
+      userData: userData(),
+      preload: join(__dirname, '../preload/busfoto.js'),
+      pagina: process.env.ELECTRON_RENDERER_URL
+        ? { url: `${process.env.ELECTRON_RENDERER_URL}/busfoto.html` }
+        : { bestand: join(__dirname, '../renderer/busfoto.html') }
+    })
+    if (!bestand) return undefined
+    return `omsibus://foto/${basename(bestand)}`
+  })
+
   handle('logboek:melden', (_event, regel: string) => {
     log(`pagina: ${String(regel).slice(0, 300)}`)
   })
@@ -2273,6 +2292,21 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'omsifoto', privileges: { standard: true, secure: true, supportFetchAPI: true } }
 ])
 
+/**
+ * Een getekende bus. Zelfde afspraak als bij de kaartplaatjes: één map, en de
+ * naam komt uit het pad -- nooit iets anders van de schijf.
+ */
+function busplaatje(request: Request): Promise<Response> {
+  const leeg = (): Promise<Response> => Promise.resolve(new Response(null, { status: 404 }))
+  const map = busfotoMap(userData())
+  const naam = decodeURIComponent(new URL(request.url).pathname).replace(/^\/+/, '')
+  if (!naam || !/^[a-f0-9]{8,40}\.png$/i.test(naam)) return leeg()
+  const bestand = resolve(map, naam)
+  if (!bestand.startsWith(resolve(map) + sep)) return leeg()
+  if (!existsSync(bestand)) return leeg()
+  return net.fetch(pathToFileURL(bestand).toString())
+}
+
 function kaartplaatje(request: Request): Promise<Response> {
   const leeg = (): Promise<Response> => Promise.resolve(new Response(null, { status: 404 }))
   let kaarten: string
@@ -2353,6 +2387,7 @@ if (!app.requestSingleInstanceLock()) {
     )
 
     protocol.handle('omsikaart', kaartplaatje)
+    protocol.handle('omsibus', busplaatje)
     protocol.handle('omsifoto', profielfoto)
 
     adoptOldProfiles()
@@ -2389,6 +2424,7 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.on('before-quit', () => {
+    sluitBusfotoVenster()
     closeOverlay()
     sluitLopendeDienstAf()
   })

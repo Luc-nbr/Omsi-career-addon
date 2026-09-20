@@ -183,6 +183,7 @@ app.whenReady().then(async () => {
 
   // En daarna elke stap: afdruk, eerste keuze, hoofdknop.
   let overgangGeschoten = false
+  let bussenGeschoten = false
   let vorige = ''
   for (let i = 0; i < 9; i++) {
     await wait(2500) // de kaart en de lijnen worden erbij gezocht
@@ -384,6 +385,24 @@ app.whenReady().then(async () => {
     }
     await js(main, `document.querySelector('.tegel:not([disabled])')?.click()`)
     await wait(1500)
+    /*
+     * Het uitvoeringsniveau: daar tekent de app de bussen zelf. Die plaatjes
+     * komen een voor een binnen -- gemeten een halve tot vijf seconden per bus
+     * -- dus even wachten en dan pas vastleggen.
+     */
+    if (!bussenGeschoten && (await js(main, `Boolean(document.querySelector('.tegel'))`))) {
+      const raak = await waitFor(main, `document.querySelector('.tegel-beeld')`, 60)
+      if (raak) {
+        await wait(6000)
+        const tel = await js(
+          main,
+          `document.querySelectorAll('.tegel-beeld').length + ' van ' + document.querySelectorAll('.tegel').length`
+        )
+        console.log(`   bussen met een foto: ${tel}`)
+        bussenGeschoten = true
+        await shoot('bus-uitvoeringen')
+      }
+    }
   }
   if (await js(main, `Boolean(document.querySelector('.tegel'))`)) {
     const stand = await js(

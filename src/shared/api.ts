@@ -332,6 +332,14 @@ export interface CareerApi {
   logboekOpenen(): Promise<string | undefined>
   /** Een regel in het logboek zetten; voor metingen die alleen bij de speler optreden. */
   logboekMelden(regel: string): Promise<void>
+  /**
+   * Een foto van deze bus, getekend uit zijn eigen model.
+   *
+   * Geeft een `omsibus://`-adres terug, of niets als het model niet te tekenen
+   * was. De eerste keer kost het enkele honderden milliseconden; daarna komt
+   * het plaatje van schijf.
+   */
+  busFoto(relatiefPad: string): Promise<string | undefined>
   /** Hoe ver de app is met het klaarzetten van de kaarten. */
   kaartenStand(): Promise<KaartenStand>
   /** Begin met klaarzetten (als dat nog niet liep) en geef de stand terug. */

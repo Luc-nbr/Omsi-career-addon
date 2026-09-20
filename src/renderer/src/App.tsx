@@ -277,6 +277,28 @@ export function App(): JSX.Element {
    * niet beter is dan wat hij al heeft. Daar hangt de knop aan die er altijd
    * hoort te staan.
    */
+  /*
+   * De foto's van de bussen, per pad.
+   *
+   * De app tekent ze zelf uit het model van de bus -- OMSI levert er geen -- en
+   * dat kost de eerste keer een halve tot vijf seconden per bus. Dus: vragen
+   * zodra een tegel in beeld komt, bewaren zodra hij binnen is, en tot die tijd
+   * het icoon laten staan. Een tweede keer komt hij van schijf.
+   */
+  const [busFotos, setBusFotos] = useState<Record<string, string>>({})
+  const gevraagdeFotos = useRef(new Set<string>())
+
+  const vraagBusfoto = useCallback((relatiefPad: string) => {
+    if (!relatiefPad || gevraagdeFotos.current.has(relatiefPad)) return
+    gevraagdeFotos.current.add(relatiefPad)
+    void window.career
+      .busFoto(relatiefPad)
+      .then((adres) => {
+        if (adres) setBusFotos((oud) => ({ ...oud, [relatiefPad]: adres }))
+      })
+      .catch(() => undefined)
+  }, [])
+
   const [ritKandidaat, setRitKandidaat] = useState<{
     file: string
     matched: number
@@ -2517,6 +2539,11 @@ export function App(): JSX.Element {
         const uitvoeringen = ontleed.filter(
           (item) => item.merk === busMerk && item.type === busType
         )
+        /*
+         * De foto's erbij vragen zodra dit scherm er is. Eén tegelijk, achter
+         * elkaar; het hoofdproces zet ze in de rij en bewaart ze op schijf.
+         */
+        for (const item of uitvoeringen) vraagBusfoto(item.bus.relativePath)
         return {
           ...leegBus,
           stap: 'bus' as Stap,
@@ -2540,6 +2567,15 @@ export function App(): JSX.Element {
               item.bus.paint,
               item.bus.relativePath === assignment?.vehicle?.relativePath
             ),
+            /*
+             * De bus zelf op de tegel.
+             *
+             * Op dit niveau verschillen de uitvoeringen vaak alleen in hun
+             * kleurstelling -- `MB_C2_EN_BVG` heeft er 85 -- en dan kies je uit
+             * namen die je uit elkaar moet pluizen. De app tekent de bus uit
+             * zijn eigen model; tot dat plaatje er is blijft het icoon staan.
+             */
+            beeld: busFotos[item.bus.relativePath],
             vorm: busvorm(item.type + ' ' + item.uitvoering),
             gekozen: (vehicleOverride || vehicle?.relativePath) === item.bus.relativePath,
             onDoen: () => {
