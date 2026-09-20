@@ -11,6 +11,8 @@ import type { TripRoute } from '../core/routing'
 import type { PluginStatus } from '../core/pluginInstall'
 import type { Duty } from '../core/types'
 import type { Vehicle } from '../core/vehicles'
+import type { LiveStatus } from '../core/live'
+import type { VehiclePosition } from '../core/vehicle'
 import type { Settings } from '../core/settings'
 import type { OverlayLayout } from './overlay'
 
@@ -61,6 +63,12 @@ export interface DutyRequest {
    * zelf, in carrieremodus mag hij alleen waar hij een vergunning voor heeft.
    */
   lineFile?: string
+  /**
+   * De lijnen waaruit gekozen mag worden, als het er meer dan een zijn. Zo
+   * rijdt de carriere alleen op vergunde lijnen, terwijl de dienst er binnen
+   * die verzameling gewoon overheen mag lopen.
+   */
+  lineFiles?: string[]
 }
 
 /** Wat vrij rijden nodig heeft: de speler stelt alles zelf samen. */
@@ -117,6 +125,23 @@ export interface PreparedSituation {
   timetableSet?: boolean
 }
 
+/**
+ * Een wagenparkbestand (.hof) dat naast een busmodel ligt.
+ *
+ * Eén bus heeft er vaak meerdere: per stad en per tijdvak een. Daarin staan de
+ * bestemmingscodes die de chauffeur in de IBIS intoetst, dus welke je kiest
+ * bepaalt wat er op de film verschijnt.
+ */
+export interface YardOption {
+  name: string
+  /** Hoeveel eindbestemmingen van deze dienst dit wagenpark kent. */
+  known: number
+  /** Hoeveel het er in totaal zijn. */
+  total: number
+  /** Of de app deze zelf gekozen zou hebben. */
+  suggested: boolean
+}
+
 /** Alles wat het klaarzetten en starten van een dienst nodig heeft. */
 export interface BeginRequest {
   duty: Duty
@@ -157,14 +182,72 @@ export interface Assignment {
 }
 
 /** Wat er van een dienst terecht is gekomen, gemeten via de plugin. */
+/**
+ * Een bus die de kaart van deze dienst (nog) niet kent.
+ *
+ * Een wagenpark hoort in de map van de bus en niet bij de kaart, dus een bus die
+ * het bestand niet naast zich heeft liggen kent geen enkele bestemmingscode --
+ * de IBIS weigert je invoer en de film blijft leeg. Zo'n bus laat de app nu ook
+ * niet in het busmenu zien.
+ */
+export interface HofOffer {
+  /** Mapnaam onder Vehicles. */
+  folder: string
+  /** Hoeveel eindbestemmingen van deze dienst hij nu herkent. */
+  known: number
+  /** Van hoeveel. */
+  total: number
+  /** Het wagenpark dat hij daarvoor gebruikt, als hij er een heeft. */
+  knownFile?: string
+  /** Wat de app zou neerzetten, en hoeveel bestemmingen dat kent. */
+  offerFile?: string
+  offerMatched?: number
+}
+
+/** Wat de app van de OMSI-map weet. */
+export interface OmsiState {
+  /** Waar hij staat, gevonden of aangewezen. Leeg als er niets is. */
+  path?: string
+  /** Heeft de speler deze map zelf bevestigd? */
+  confirmed: boolean
+  /** Hoe hij gevonden is toen de speler een map aanwees. */
+  via?: 'zelf' | 'kind' | 'ouder'
+  /** De installatie staat er, maar er zijn geen kaarten om op te rijden. */
+  zonderKaarten?: boolean
+  /** De aangewezen map draagt geen Omsi.exe, ook niet in de mappen eromheen. */
+  wrong?: boolean
+}
+
 export interface SessionResult {
-  drivenKm: number
+  /**
+   * Gereden kilometers, of niets als de kilometerteller van de bus onzin zegt.
+   *
+   * `kmcounter_km` is een variabele van het voertuig en niet elke bus vult hem
+   * netjes; zie `gereden` in het hoofdproces. Niets is hier een echt antwoord en
+   * geen ontbrekende waarde: het betekent "deze dienst is niet gemeten", en dat
+   * is iets anders dan nul kilometer.
+   */
+  drivenKm?: number
   elapsedMinutes: number
   delayMinutes?: number
   /** Gemeten rijstijl over deze dienst. */
   harshBrakes?: number
   harshAccels?: number
   topSpeed?: number
+  /** Verkochte kaartjes, aanrijdingen en verbruikte brandstof over deze dienst. */
+  tickets?: number
+  collisions?: number
+  worstCollision?: number
+  fuelUsed?: number
+  /** Stand van tank en accu aan het eind, als deel van 0 tot 1. */
+  fuel?: number
+  battery?: number
+  /**
+   * Hoeveel haltes van de hele dienst er gehaald zijn. Hiermee wordt betaald:
+   * een halve dienst levert een halve dag op. Niets als het spel zich niet laat
+   * lezen -- dan valt er niets te meten en telt de dienst gewoon voor vol.
+   */
+  stopsDone?: number
   /** De eindtijd is voorbij en de bus staat stil. */
   dutyComplete: boolean
   /** Onwaar zolang OMSI niet draait; dan valt er niets te meten. */
@@ -231,6 +314,13 @@ export interface CareerApi {
   /** Opnieuw in de OMSI-map kijken en melden wat erbij is gekomen. */
   checkInstalled(): Promise<InstalledCheck>
   vehicles(): Promise<Vehicle[]>
+  /**
+   * De bus die de app op deze kaart zou voorstellen als er geen dienst is.
+   *
+   * Voor vrij rijden: daar valt niets te matchen op eindbestemmingen, dus komt
+   * het antwoord uit de remiselijst van de kaart zelf.
+   */
+  suggestVehicle(mapFolder: string): Promise<Vehicle | undefined>
   /** Halteposities van een kaart, om te tonen waar je de bus neerzet. */
   geometry(mapFolder: string): Promise<MapGeometry>
   /**
@@ -248,6 +338,14 @@ export interface CareerApi {
   editOverlay(on?: boolean): Promise<boolean>
   /** Meldt of de muis boven een knop van de overlay hangt. */
   overlayHit(on: boolean): Promise<void>
+  /**
+   * Vasthouden tijdens slepen of schalen.
+   *
+   * Buiten het slepen is het venster precies zo groot als de overlay zelf; je
+   * kunt hem dan niet verder verplaatsen dan zijn eigen rand. Tijdens het slepen
+   * groeit het venster even naar het hele scherm en daarna weer terug.
+   */
+  overlayGrab(on: boolean): Promise<void>
   /**
    * Hoe groot het overlayvenster hoeft te zijn: het vak waar de elementen in
    * staan, in schermpunten vanaf de linkerbovenhoek van het werkgebied. Niets
@@ -269,7 +367,9 @@ export interface CareerApi {
   finishExam(duty: Duty, measured: ExamMeasurement, basic: boolean): Promise<CareerPayload>
   /** Vrij rijden: alleen klaarzetten en starten, zonder dienst en zonder logboek. */
   startFree(request: FreeRequest): Promise<FreeResult>
-  ibis(duty: Duty, vehicle: Vehicle, year: number): Promise<IbisPlan>
+  ibis(duty: Duty, vehicle: Vehicle, year: number, yard?: string): Promise<IbisPlan>
+  /** De wagenparkbestanden die naast deze bus liggen, met hun kennis van deze dienst. */
+  yards(duty: Duty, vehicle: Vehicle, year: number): Promise<YardOption[]>
   /** Zet de overlay boven het spel open of dicht. Geeft terug of hij nu open is. */
   setOverlay(duty: Duty | undefined, open: boolean, ibis?: IbisPlan): Promise<boolean>
   overlayIsOpen(): Promise<boolean>
@@ -296,6 +396,19 @@ export interface CareerApi {
   beginDuty(request: BeginRequest): Promise<BeginResult>
   /** Geeft de plugin gegevens door? Zo ja, dan draait OMSI en is de kaart geladen. */
   liveConnected(): Promise<boolean>
+  /** Wat de bus nu doorgeeft, voor de meelopende dienstregeling. */
+  liveStatus(): Promise<{ status?: LiveStatus; vehicle?: VehiclePosition }>
+  /** Draait het spel al? Los van de plugin, die zich pas meldt met een bus erin. */
+  omsiRunning(): Promise<boolean>
+  /** Het versienummer van de app zelf, zoals het in de installer staat. */
+  version(): Promise<string>
+  /** Hoe OMSI de vorige keer draaide: op volledig scherm of in een venster. */
+  screenMode(): Promise<'volledig' | 'venster' | undefined>
+  /**
+   * Laat de speler zijn OMSI-map aanwijzen. `wrong` betekent: hij koos een map
+   * zonder Omsi.exe erin, en dan blijft alles zoals het was.
+   */
+  chooseOmsi(): Promise<{ found: boolean; path?: string; chosen?: boolean; wrong?: boolean }>
   /** De instellingen van OMSI zelf. */
   gameSettings(): Promise<GameSettingsPayload>
   /** Schrijft alleen de instellingen die veranderd zijn terug naar options.cfg. */
@@ -329,9 +442,51 @@ export interface CareerApi {
       delayMinutes?: number
       harshBrakes?: number
       harshAccels?: number
+      /** Hoeveel haltes er gehaald zijn; bepaalt wat de dienst oplevert. */
+      stopsDone?: number
+      tickets?: number
+      collisions?: number
+      fuelUsed?: number
     }
   ): Promise<CareerPayload>
   renameDriver(name: string): Promise<CareerPayload>
+  /**
+   * Welke bussen de kaart van deze dienst niet kennen, en wat eraan te doen is.
+   * Leest alleen; er wordt pas iets neergezet als de chauffeur dat vraagt.
+   */
+  /**
+   * De stand van de OMSI-map bij het opstarten.
+   *
+   * `confirmed` zegt of de speler hem zelf heeft aangewezen. Zo niet, dan is
+   * `path` een vondst van de app en hoort hij hem een keer voorgelegd te
+   * krijgen -- er zijn te veel installaties denkbaar om te gokken.
+   */
+  omsiState(): Promise<OmsiState>
+  /** De gevonden of aangewezen map vastleggen als de juiste. */
+  confirmOmsi(path: string): Promise<OmsiState>
+  /** Een map aanwijzen; legt nog niets vast, zodat het scherm het eerst toont. */
+  browseOmsi(): Promise<OmsiState>
+  /**
+   * Welke bussen deze kaart niet kennen, en wat eraan te doen is.
+   *
+   * Het gaat over de kaart en niet over de dienst: een wagenpark hoort bij een
+   * bus en een kaart. Dat scheelt twee scheve uitkomsten -- een bus die de halve
+   * kaart kent maar net niet de vier haltes van deze ene dienst, en vrij rijden,
+   * waar geen dienst bestaat en dus nooit iets gevraagd werd.
+   */
+  hofOffers(mapFolder: string): Promise<HofOffer[]>
+  /**
+   * Hetzelfde voor een bus, en dat is waar het om draait: je kiest een bus, elke
+   * remise zegt "0 van 2", en dan hoort de app te vragen of hij het bestand
+   * erbij zet. Niets als er niets passends te vinden is.
+   */
+  hofOfferFor(mapFolder: string, folder: string): Promise<HofOffer | undefined>
+  /**
+   * Zet de aangeboden wagenparken neer bij de genoemde bussen. Geeft terug
+   * hoeveel er werkelijk bij zijn gekomen -- een bestand dat er al lag telt niet
+   * mee en wordt nooit overschreven.
+   */
+  placeHofs(mapFolder: string, folders: string[]): Promise<{ placed: number; failed: string[] }>
 }
 
 /** Vertaalt het gekozen dagdeel naar vroegste en laatste vertrektijd in minuten. */

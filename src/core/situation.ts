@@ -47,6 +47,14 @@ export interface SituationRequest {
     terminus: string
     /** Wagenpark waar de bestemmingscodes uit komen; staat achter in het blok. */
     yard?: string
+    /**
+     * De aanhanger van een gelede bus, als die er is.
+     *
+     * Een gelede bus is in OMSI twee voertuigen. Zetten we alleen de voorwagen
+     * neer, dan begin je met een halve bus -- de balg achterop en verder niets.
+     * Zie `src/core/trailer.ts` voor waar de afstand vandaan komt.
+     */
+    trailer?: { relativePath: string; distance: number }
   }
   /**
    * De dienstregeling die OMSI meteen moet klaarzetten. Met dit blok staat de
@@ -178,7 +186,7 @@ function yawQuaternion(headingDegrees: number): [string, string, string, string]
  * Daardoor is er geen sjabloon meer nodig en werkt het ook op een kaart die je
  * nooit eerder hebt gespeeld.
  */
-function buildSituation(request: SituationRequest): string[] {
+export function buildSituation(request: SituationRequest): string[] {
   const dayOverflow = Math.floor(request.minutes / 1440)
   const minuteOfDay = ((request.minutes % 1440) + 1440) % 1440
   const spawn = request.spawn
@@ -296,9 +304,57 @@ function buildSituation(request: SituationRequest): string[] {
       )
     }
 
+    /*
+     * De aanhanger, als tweede voertuig.
+     *
+     * Zo doet OMSI het zelf ook: in `Nur für Fortgeschrittene.osn` staan de
+     * voorwagen en de aanhanger achter elkaar, en de tweede draagt een
+     * `[coupledwith]`-blok. Hij staat op dezelfde tegel en in dezelfde richting,
+     * alleen `distance` meter naar achteren -- vooruit is (sin, cos) van de
+     * koers, dus naar achteren is dat eraf.
+     */
+    const trailer = vehicle.trailer
+    if (trailer) {
+      const rad = (spawn.heading * Math.PI) / 180
+      lines.push(
+        '----------------------------------------------',
+        '',
+        'Fahrzeug Nr. 1:',
+        '',
+        '[vehicle]',
+        trailer.relativePath,
+        (spawn.x - Math.sin(rad) * trailer.distance).toFixed(3),
+        spawn.height.toFixed(3),
+        (spawn.z - Math.cos(rad) * trailer.distance).toFixed(3),
+        q[0],
+        q[1],
+        q[2],
+        q[3],
+        '0.000',
+        '0.000',
+        '0.000',
+        String(spawn.tx),
+        String(spawn.ty),
+        '0.000',
+        vehicle.yard ?? '',
+        '',
+        // OMSI zet hier -1; de koppeling zelf leidt het spel uit de bestanden af.
+        '[coupledwith]',
+        '-1',
+        '',
+        '[vars]',
+        '0',
+        '',
+        '[stringvars]',
+        '0',
+        ''
+      )
+    }
+
     lines.push(
       '----------------------------------------------',
       '',
+      // Nul: de voorwagen. De aanhanger is nummer 1 en bestuur je niet.
       '[myvehicle]',
       '0',
       ''

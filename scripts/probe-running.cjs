@@ -202,7 +202,43 @@ app.whenReady().then(async () => {
   eis('route 1', velden.includes('1'))
   eis('vertrek vanaf ' + leg.stops[0], op.includes(leg.stops[0]))
   eis('richting ' + leg.terminus, op.includes(leg.terminus))
-  eis('hoe je ervoor staat', op.includes('12.4 km gereden') && op.includes('2 min te laat'))
+  eis('hoe je ervoor staat', op.includes('12.4 km gereden') && op.includes('te laat'))
+
+  /*
+   * En de regel waar het om draait: kleur zegt alleen iets over de tijd. Rood te
+   * laat, groen op tijd, blauw te vroeg. De klasse op het vak zegt welke het is;
+   * die wordt in één plek bepaald (`src/shared/status.ts`), dus als hij hier
+   * klopt klopt hij in de overlay ook.
+   */
+  console.log('\nde tijd in kleur:')
+  const standen = [
+    ['ruim te laat', 2, 'is-laat'],
+    ['ruim te vroeg', -3, 'is-vroeg'],
+    ['binnen de minuut', 0.4, 'is-optijd'],
+    ['precies op tijd', 0, 'is-optijd']
+  ]
+  for (const [naam, minuten, klasse] of standen) {
+    await js(
+      'window.toon(' +
+        JSON.stringify({
+          ...props,
+          session: { drivenKm: 12.4, elapsedMinutes: 30, delayMinutes: minuten, dutyComplete: false, finished: true }
+        }) +
+        '); true'
+    )
+    await wait(250)
+    const gevonden = await js('document.querySelector(".running-delta")?.className ?? ""')
+    eis(`${naam} -> ${klasse}`, gevonden.includes(klasse), `stond op "${gevonden.trim()}"`)
+  }
+
+  // En zonder verbinding met OMSI valt er niets af te lezen; dan hoort er geen
+  // kleur te staan, want een cijfer zou nergens op slaan.
+  await js('window.toon(' + JSON.stringify({ ...props, connected: false, session: undefined }) + '); true')
+  await wait(250)
+  const zonder = await js('document.querySelector(".running-delta")?.className ?? ""')
+  eis('zonder OMSI geen kleur', !/is-(laat|optijd|vroeg)/.test(zonder), `stond op "${zonder.trim()}"`)
+  await js('window.toon(' + JSON.stringify(props) + '); true')
+  await wait(250)
 
   console.log('\nwat erachter hoort te zitten:')
   eis('dienstkaart niet in beeld', !(await er('#hele-dienstkaart')))

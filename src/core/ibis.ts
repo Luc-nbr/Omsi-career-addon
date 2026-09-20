@@ -1,6 +1,7 @@
 import { join } from 'node:path'
-import { listHofs, normalise, pickHof, type Route } from './hof'
+import { listHofs, matchHof, normalise, pickHof, type Route } from './hof'
 import type { Duty } from './types'
+import { shortRoute } from '../shared/format'
 
 /** Wat de chauffeur per rit in de IBIS zet. */
 export interface IbisLeg {
@@ -12,6 +13,19 @@ export interface IbisLeg {
    * route en volgt er vanzelf uit.
    */
   route?: string
+  /**
+   * Hetzelfde nummer zonder het lijnnummer ervoor: lijn 135 met route 13502
+   * wordt hier 02.
+   *
+   * Wagenparken schrijven hun routecodes met de lijn erin, en overal waar dit
+   * getal staat, staat het lijnnummer er al naast. Dan is driekwart van de
+   * code een herhaling van wat er links van staat, terwijl juist het staartje
+   * zegt welke kant je oprijdt.
+   *
+   * De volle code blijft in `route` staan -- daar rekent de rest mee, en wie
+   * hem ergens toch voluit nodig heeft kan erbij.
+   */
+  routeShort?: string
   /** Korte omschrijving van de route, zoals "URUH-NERV". */
   routeName?: string
   /** Bestemmingscode. Alleen ter controle van wat er op de film verschijnt. */
@@ -70,10 +84,19 @@ export function buildIbisPlan(
   omsiPath: string,
   vehicleRelativePath: string,
   duty: Duty,
-  year: number
+  year: number,
+  /*
+   * Een wagenpark dat de chauffeur zelf aanwijst. Eén busmodel heeft er soms
+   * tien naast zich liggen -- Spandau 86 tot en met 94, Grundorf, Rheinhausen --
+   * en de app kiest er een die de bestemmingen kent. Wie het beter weet, of een
+   * ander tijdvak wil rijden, zet hier zijn eigen keuze neer.
+   */
+  yardName?: string
 ): IbisPlan {
   const termini = [...new Set(duty.legs.map((leg) => leg.terminus).filter(Boolean))]
-  const match = pickHof(listHofs(join(omsiPath, vehicleRelativePath)), termini, year)
+  const hofs = listHofs(join(omsiPath, vehicleRelativePath))
+  const gekozen = yardName ? hofs.find((hof) => hof.name === yardName) : undefined
+  const match = gekozen ? matchHof(gekozen, termini) : pickHof(hofs, termini, year)
 
   const routes = match?.hof.routes ?? []
   const sameLine = (a: string, b: string) => a.trim() === b.trim()
@@ -98,6 +121,7 @@ export function buildIbisPlan(
       lineNumber: leg.lineNumber,
       terminus: leg.terminus,
       route: route?.code,
+      routeShort: shortRoute(route?.code, leg.lineNumber),
       routeName: route?.name,
       code: terminus?.code,
       display: terminus?.display

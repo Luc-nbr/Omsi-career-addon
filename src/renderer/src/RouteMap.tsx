@@ -56,6 +56,11 @@ interface Props {
   /** Halte die de gebruiker elders aanwees; die springt in beeld. */
   focusStopId?: string
   /**
+   * Geeft zoomen en centreren naar buiten door, zodat een scherm er eigen
+   * knoppen op kan zetten. Optioneel: de overlay gebruikt alleen wiel en slepen.
+   */
+  bediening?: (b: { zoomBy: (factor: number) => void; refit: () => void }) => void
+  /**
    * Het stuk weg waar de bus nu op rijdt: van de vorige halte naar de volgende.
    * Staat dit aan, dan houdt de kaart dat stuk in beeld in plaats van de hele
    * dienst -- ingezoomd genoeg om de straat te kunnen volgen.
@@ -89,6 +94,10 @@ interface Props {
   vehicle?: LiveVehicle
   /** Teksten van de overlay, die zijn eigen taalkeuze heeft. */
   texts?: { waiting?: string; busNote?: string; centre?: string }
+  /** Wat er aan manoeuvre voor je ligt; de navigatiebalk tekent hem. */
+  onManoeuvre?(manoeuvre: Manoeuvre | undefined): void
+  /** De snelheid van het laatste bord dat je voorbij bent; niets als er geen staat. */
+  onSpeedLimit?(kmh: number | undefined): void
   /**
    * Vergroting van het venster waar de kaart in hangt. Het wegennet staat op een
    * canvas; zonder deze factor wordt dat bij vergroten uitgerekt en dus wazig.
@@ -112,8 +121,28 @@ const FOLLOW_PAD_M = 130
 const OTHER_LABEL_MPP = 2.5
 const ROUTE_LABEL_MPP = 14
 
-/** Afstand tussen de rijrichtingspijltjes op de route. */
-const ARROW_GAP_PX = 110
+/**
+ * De manoeuvre die eraan komt: rechtdoor, of een bocht met de afstand erbij.
+ *
+ * Een navigatie die altijd een afslagpijl laat zien, zegt niets. Deze kijkt
+ * tweehonderd meter vooruit langs de route en telt de bocht op; pas als de weg
+ * echt draait staat er een pijl die die kant op wijst.
+ */
+export interface Manoeuvre {
+  kind: 'rechtdoor' | 'links' | 'rechts'
+  /** Meters tot het begin van de bocht; alleen bij een bocht. */
+  metres?: number
+}
+
+/** Zo dicht moet een snelheidsbord bij de route staan om erbij te horen. */
+const SIGN_NEAR_M = 12
+
+/** Zover kijkt de navigatie vooruit voor de volgende manoeuvre. */
+const LOOKAHEAD_M = 200
+/** Minder dan zoveel graden verschil is een slinger in de weg, geen afslag. */
+const TURN_DEG = 32
+/** Over hoeveel meter die draai gemaakt moet zijn om als afslag te tellen. */
+const TURN_SPAN_M = 60
 
 /** Zoveel meter voorbij een halte telt hij pas als gehad. */
 const STOP_PASSED_M = 12
@@ -125,14 +154,40 @@ const MANUAL_MS = 6000
 const BUS_MPP = 0.9
 
 /**
- * Meerijden als een navigatiesysteem. Stilstaand ingezoomd, bij 50 km/u zo ver
- * uit dat je de volgende kruising ruim ziet aankomen. De bus staat onder het
- * midden, want wat voor je ligt is belangrijker dan wat achter je ligt.
+ * Meerijden als een navigatiesysteem: langzaam rijden zoomt in, harder rijden
+ * zoomt uit, zodat je de volgende kruising ruim ziet aankomen. De bus staat
+ * onder het midden, want wat voor je ligt telt zwaarder dan wat achter je ligt.
  */
-const LIVE_MIN_MPP = 0.55
 const LIVE_MAX_MPP = 2
-const LIVE_MPP_PER_KMH = 0.02
 const LIVE_AHEAD = 0.22
+
+/**
+ * Stapvoets hoort de kaart op vijfentwintig meter te staan.
+ *
+ * Dat is de stand waarin je de halte, de inrit en de stoeprand nog uit elkaar
+ * houdt -- precies wat je nodig hebt als je langzaam rijdt, want dan ben je aan
+ * het aanrijden, keren of invoegen. De schaalbalk van de navigatie mikt op
+ * negentig punten breed, dus vijfentwintig meter valt op 25/90 meter per punt.
+ */
+const SLOW_KMH = 30
+const SLOW_MPP = 25 / 90
+
+/** En bij deze snelheid is hij helemaal uitgezoomd. */
+const FAST_KMH = 80
+
+/** Hoeveel meter per punt erbij komt boven stapvoets. */
+const LIVE_MPP_PER_KMH = (LIVE_MAX_MPP - SLOW_MPP) / (FAST_KMH - SLOW_KMH)
+
+/**
+ * De zoomstand die bij een snelheid hoort. Onder de stapvoetsgrens vast op
+ * vijfentwintig meter, daarboven vloeiend verder open -- zonder sprong op de
+ * grens zelf, want een kaart die bij precies dertig ineens wegspringt leest als
+ * een storing.
+ */
+export function liveZoom(speedKmh: number): number {
+  if (!(speedKmh > SLOW_KMH)) return SLOW_MPP
+  return Math.min(LIVE_MAX_MPP, SLOW_MPP + (speedKmh - SLOW_KMH) * LIVE_MPP_PER_KMH)
+}
 /** Hoe snel de getoonde bus de gemeten plek volgt, in seconden; kleiner is strakker. */
 const LIVE_SMOOTH_S = 0.18
 /** Zo ver rekent de kaart vooruit op de snelheid, tussen twee metingen in. */
@@ -151,7 +206,10 @@ export function RouteMap({
   bus,
   vehicle,
   texts,
-  pixelScale = 1
+  onManoeuvre,
+  onSpeedLimit,
+  pixelScale = 1,
+  bediening
 }: Props): JSX.Element {
   const tr = useT()
   const boxRef = useRef<HTMLDivElement>(null)
@@ -416,6 +474,142 @@ export function RouteMap({
     const along = previous + Math.max(0, bus.metresSinceStop ?? 0)
     return upcoming !== undefined && upcoming >= previous ? Math.min(along, upcoming) : along
   }, [activeLeg, legTracks, liveBus, bus, duty])
+  /*
+   * Waar de weg voor je draait.
+   *
+   * We lopen de route vooruit en tellen per stuk hoeveel graden hij van koers
+   * verandert. Draait hij binnen zestig meter meer dan tweeëndertig graden, dan
+   * is dat een afslag en niet een slinger; het teken zegt of het naar links of
+   * naar rechts gaat. Gebeurt dat niet binnen tweehonderd meter, dan is het
+   * rechtdoor.
+   */
+  const manoeuvre = useMemo<Manoeuvre | undefined>(() => {
+    if (activeLeg === undefined || progressAlong === undefined) return undefined
+    const track = legTracks[activeLeg]
+    if (!track || track.points.length < 8) return undefined
+    const { points, cumulative } = track
+    const einde = cumulative[cumulative.length - 1]
+    const at = clamp(progressAlong, 0, einde)
+
+    // De punten staan plat achter elkaar: x, y, x, y. De afstanden in
+    // `cumulative` horen bij die punten, dus per twee getallen een.
+    const koers = (i: number): number => {
+      const dx = points[(i + 1) * 2] - points[i * 2]
+      const dy = points[(i + 1) * 2 + 1] - points[i * 2 + 1]
+      return (Math.atan2(dx, dy) * 180) / Math.PI
+    }
+    const verschil = (a: number, b: number): number => {
+      let d = a - b
+      while (d > 180) d -= 360
+      while (d < -180) d += 360
+      return d
+    }
+
+    let i = 0
+    while (i < cumulative.length - 2 && cumulative[i + 1] < at) i++
+
+    let som = 0
+    let begin: number | undefined
+    const aantal = Math.min(cumulative.length, Math.floor(points.length / 2))
+    for (let k = i; k < aantal - 2; k++) {
+      const afstand = cumulative[k] - at
+      if (afstand > LOOKAHEAD_M) break
+      const draai = verschil(koers(k + 1), koers(k))
+      if (Math.abs(draai) < 1) {
+        // Recht stuk: wat er tot nu toe gedraaid is telt niet meer mee.
+        if (begin !== undefined && cumulative[k] - begin > TURN_SPAN_M) {
+          som = 0
+          begin = undefined
+        }
+        continue
+      }
+      if (begin === undefined || Math.sign(draai) !== Math.sign(som)) {
+        begin = cumulative[k]
+        som = 0
+      }
+      som += draai
+      if (Math.abs(som) >= TURN_DEG) {
+        return {
+          kind: som > 0 ? 'rechts' : 'links',
+          metres: Math.max(0, Math.round((begin - at) / 10) * 10)
+        }
+      }
+    }
+    return { kind: 'rechtdoor' }
+  }, [activeLeg, legTracks, progressAlong])
+
+  /*
+   * Naar boven doorgeven, en alleen als hij verandert: anders krijgt de balk bij
+   * elk beeld een nieuw voorwerp en tekent hij zichzelf tien keer per seconde
+   * opnieuw.
+   */
+  const laatsteManoeuvre = useRef('')
+  useEffect(() => {
+    const sleutel = manoeuvre ? `${manoeuvre.kind}|${manoeuvre.metres ?? ''}` : ''
+    if (sleutel === laatsteManoeuvre.current) return
+    laatsteManoeuvre.current = sleutel
+    onManoeuvre?.(manoeuvre)
+  }, [manoeuvre, onManoeuvre])
+
+  /*
+   * De snelheidsborden langs deze rit, op volgorde van hoe ver ze langs de
+   * route liggen.
+   *
+   * Ze staan in paren, links en rechts van de weg -- het linker bord is voor het
+   * verkeer dat de andere kant op komt. We houden alleen de rechter, want dat is
+   * het bord dat over jou gaat.
+   */
+  const signsAlong = useMemo(() => {
+    const track = activeLeg !== undefined ? legTracks[activeLeg] : undefined
+    const borden = geometry.limits
+    if (!track || !borden || borden.length === 0) return []
+    const { points, cumulative } = track
+    const aantal = Math.min(cumulative.length, Math.floor(points.length / 2))
+    const gevonden: Array<{ along: number; kmh: number }> = []
+
+    for (const bord of borden) {
+      let beste = Infinity
+      let waar = 0
+      let kant = 0
+      for (let i = 1; i < aantal; i++) {
+        const ax = points[(i - 1) * 2]
+        const ay = points[(i - 1) * 2 + 1]
+        const vx = points[i * 2] - ax
+        const vy = points[i * 2 + 1] - ay
+        const len2 = vx * vx + vy * vy
+        const t = len2 > 0 ? clamp(((bord.x - ax) * vx + (bord.y - ay) * vy) / len2, 0, 1) : 0
+        const d = Math.hypot(bord.x - (ax + vx * t), bord.y - (ay + vy * t))
+        if (d < beste) {
+          beste = d
+          waar = cumulative[i - 1] + Math.sqrt(len2) * t
+          kant = Math.sign(vx * (bord.y - ay) - vy * (bord.x - ax))
+        }
+        if (beste <= 0.5) break
+      }
+      // Rechts van de rijrichting, en dicht genoeg bij de weg.
+      if (beste <= SIGN_NEAR_M && kant < 0) gevonden.push({ along: waar, kmh: bord.kmh })
+    }
+    return gevonden.sort((a, b) => a.along - b.along)
+  }, [activeLeg, legTracks, geometry.limits])
+
+  /** Het laatste bord dat je voorbij bent; daarvoor geldt geen bord. */
+  const speedLimit = useMemo(() => {
+    if (progressAlong === undefined || signsAlong.length === 0) return undefined
+    let kmh: number | undefined
+    for (const bord of signsAlong) {
+      if (bord.along > progressAlong) break
+      kmh = bord.kmh
+    }
+    return kmh
+  }, [signsAlong, progressAlong])
+
+  const laatsteLimiet = useRef<number | undefined>(undefined)
+  useEffect(() => {
+    if (laatsteLimiet.current === speedLimit) return
+    laatsteLimiet.current = speedLimit
+    onSpeedLimit?.(speedLimit)
+  }, [speedLimit, onSpeedLimit])
+
   const hasVehicle = Boolean(vehicle)
   useEffect(() => {
     if (!hasVehicle) {
@@ -446,8 +640,15 @@ export function RouteMap({
         shown.y += (ty - shown.y) * step
         shown.heading = (shown.heading + turn(shown.heading, target.data.heading) * step + 360) % 360
       }
-      const wanted = clamp(LIVE_MIN_MPP + target.data.speedKmh * LIVE_MPP_PER_KMH, LIVE_MIN_MPP, LIVE_MAX_MPP)
+      const wanted = liveZoom(target.data.speedKmh)
       shown.mpp += (wanted - shown.mpp) * (1 - Math.exp(-dt / 1.2))
+      /*
+       * Een glijdende beweging komt er nooit helemaal: hij blijft op een kruimel
+       * na hangen. Dat is onzichtbaar op de kaart, maar niet op de schaalbalk --
+       * die staat op vijfentwintig meter en springt van een honderdste te veel
+       * naar vijftig. Dus dicht genoeg is aangekomen.
+       */
+      if (Math.abs(wanted - shown.mpp) < wanted * 0.01) shown.mpp = wanted
       setLiveBus({ x: shown.x, y: shown.y, heading: shown.heading })
       if (Date.now() < manualUntil.current) return
       const ahead = sizeRef.current.h * LIVE_AHEAD * shown.mpp
@@ -529,6 +730,16 @@ export function RouteMap({
     fitted.current = ''
     setSize((old) => ({ ...old }))
   }
+
+  /*
+   * Zoomen en centreren zitten hier al, voor het muiswiel en het slepen. Het
+   * opzetscherm wil er knoppen op zetten, dus geven we ze naar buiten door. Wie
+   * `bediening` niet meegeeft -- de overlay -- merkt hier niets van.
+   */
+  useEffect(() => {
+    bediening?.({ zoomBy, refit })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bediening])
 
   /* Het wegennet gaat op een canvas onder de SVG; zie roadLayer.ts waarom. */
   const roads = useMemo(() => new RoadLayer(geometry), [geometry])
@@ -727,34 +938,11 @@ export function RouteMap({
     return { done, ahead, at }
   }, [activeLeg, progressAlong, legTracks, toScreen])
 
-  /** Pijltjes langs de lijn die laten zien welke kant je op rijdt, alleen op de huidige rit. */
-  const arrows = useMemo(() => {
-    const found: Array<{ key: string; x: number; y: number; angle: number }> = []
-    legLines.forEach((line, legIndex) => {
-      if (activeLeg !== undefined && legIndex !== activeLeg) return
-      // Om de zoveel beeldpunten langs de lijn, waar hij ook buigt. Achter de bus
-      // hoeven ze niet: dat stuk heb je gehad.
-      const source = trail && legIndex === activeLeg ? trail.ahead : line
-      let next = ARROW_GAP_PX / 2
-      let walked = 0
-      for (let i = 1; i < source.length && found.length < 200; i++) {
-        const [ax, ay] = source[i - 1]
-        const [bx, by] = source[i]
-        const span = Math.hypot(bx - ax, by - ay)
-        while (span > 0 && next <= walked + span) {
-          const t = (next - walked) / span
-          const x = ax + (bx - ax) * t
-          const y = ay + (by - ay) * t
-          if (x > -20 && y > -20 && x < size.w + 20 && y < size.h + 20) {
-            found.push({ key: `${legIndex}-${i}-${next}`, x, y, angle: (Math.atan2(by - ay, bx - ax) * 180) / Math.PI })
-          }
-          next += ARROW_GAP_PX
-        }
-        walked += span
-      }
-    })
-    return found
-  }, [legLines, activeLeg, size, trail])
+/*
+ * Hier stonden pijltjes langs de lijn die de rijrichting aangaven. Ze zijn eruit:
+ * op een kaart die met je meedraait wijst de bus zelf al vooruit, en de lijn
+ * achter je verdwijnt, dus de richting stond er twee keer te veel bij.
+ */
 
   const hoveredStop = hovered ? byId.get(hovered) : undefined
   const scaleBar = niceScale(view.mpp, big ? 140 : 90)
@@ -778,6 +966,32 @@ export function RouteMap({
           * Eerst de ritten die nu niet aan de beurt zijn en daarna de huidige:
           * in SVG bepaalt de volgorde in de DOM wat bovenop ligt.
           */}
+        {/*
+          * De route tekent zichzelf als hij voor het eerst verschijnt.
+          *
+          * Alleen tijdens het klaarzetten. Rijd je, dan wordt deze laag bij elk
+          * beeld opnieuw verdeeld in gereden en nog te gaan, en een route die
+          * zich tien keer per seconde opnieuw tekent is geen navigatie meer.
+          * Vandaar `activeLeg === undefined`: dat is precies het verschil
+          * tussen "kijken wat je gaat doen" en "het doen".
+          *
+          * De sleutel hangt aan de dienst en niet aan de stap: je kiest op de
+          * dienstenlijst de ene dienst na de andere, en dan hoort de kaart elke
+          * keer opnieuw te tekenen wat je net aanwees. Ga je daarna door naar
+          * de bus, dan is het dezelfde route en blijft hij staan.
+          *
+          * Het aantal stukken staat erbij, en dat is geen sierselsel: de wegen
+          * worden opgehaald en zijn er dus niet op het moment dat je klikt.
+          * Hing de sleutel alleen aan de dienst, dan kwam deze groep leeg ter
+          * wereld, liep de animatie op niets, en werden de lijnen daarna in
+          * stilte toegevoegd. Zo komt hij opnieuw zodra de stukken er zijn.
+          */}
+        <g
+          key={`${duty.tourNumber}|${duty.start}|${legs.length}|${pieces.solid.length}`}
+          className={
+            activeLeg === undefined && routeMode === 'all' ? 'route-intekenen' : undefined
+          }
+        >
         {legs
           .map((leg, index) => ({ leg, index }))
           .filter(({ index }) => legLines[index].length >= 2)
@@ -804,26 +1018,18 @@ export function RouteMap({
                   .filter((piece) => piece.key.startsWith(`${index}-`))
                   .map((piece) => (
                     <g key={piece.key}>
-                      <polyline className="route-casing" points={asPoints(piece.line)} />
-                      <polyline className="route-line" points={asPoints(piece.line)} />
+                      <polyline className="route-casing" pathLength={1} points={asPoints(piece.line)} />
+                      <polyline className="route-line" pathLength={1} points={asPoints(piece.line)} />
                     </g>
                   ))}
               </g>
             )
           })}
+        </g>
 
         {/* De stukken zonder gevonden weg: gestreept, zodat ze niet als route lezen. */}
         {pieces.guessed.map((piece) => (
           <polyline key={`gok-${piece.key}`} className="route-guess" points={asPoints(piece.line)} />
-        ))}
-
-        {arrows.map((arrow) => (
-          <path
-            key={arrow.key}
-            className="route-arrow"
-            d="M-3.5 -3.6 L4.5 0 L-3.5 3.6 Z"
-            transform={`translate(${arrow.x.toFixed(1)} ${arrow.y.toFixed(1)}) rotate(${arrow.angle.toFixed(1)})`}
-          />
         ))}
 
         {otherStops.map((stop) => {
@@ -917,8 +1123,12 @@ export function RouteMap({
         </g>
       </svg>
 
-      {/* data-hit: in de overlay laten alleen zulke plekken de muis niet door naar het spel. */}
-      <div className="map-tools" data-hit>
+      {/*
+        Wie de bediening overneemt, tekent zijn eigen knoppen; twee stel naast
+        elkaar is verwarrend. data-hit: in de overlay laten alleen zulke plekken
+        de muis niet door naar het spel.
+      */}
+      <div className="map-tools" data-hit style={bediening ? { display: 'none' } : undefined}>
         <button type="button" onClick={() => zoomBy(1 / 1.6)} aria-label={tr('map.zoomIn')}>
           +
         </button>
@@ -1123,11 +1333,12 @@ function overlaps(
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
 }
 
-/** Een ronde maat voor de schaalbalk: 50 m, 100 m, 250 m, 500 m, 1 km, … */
-function niceScale(mpp: number, aim: number): { px: number; label: string } {
+/** Een ronde maat voor de schaalbalk: 25 m, 50 m, 100 m, 250 m, 500 m, 1 km, … */
+export function niceScale(mpp: number, aim: number): { px: number; label: string } {
   const target = mpp * aim
   const steps = [25, 50, 100, 250, 500, 1000, 2000, 5000]
-  const metres = steps.find((step) => step >= target) ?? steps[steps.length - 1]
+  // Een half procent speling: anders kost een rekenkruimel een hele maat.
+  const metres = steps.find((step) => step >= target * 0.995) ?? steps[steps.length - 1]
   return {
     px: metres / mpp,
     label: metres >= 1000 ? `${metres / 1000} km` : `${metres} m`

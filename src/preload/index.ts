@@ -7,9 +7,13 @@ import type { CareerApi, DutyRequest } from '../shared/api'
  */
 const api: CareerApi = {
   status: () => ipcRenderer.invoke('omsi:status'),
+  chooseOmsi: () => ipcRenderer.invoke('omsi:choose'),
+  version: () => ipcRenderer.invoke('app:version'),
+  screenMode: () => ipcRenderer.invoke('omsi:screen'),
   maps: () => ipcRenderer.invoke('omsi:maps'),
   checkInstalled: () => ipcRenderer.invoke('omsi:check'),
   vehicles: () => ipcRenderer.invoke('omsi:vehicles'),
+  suggestVehicle: (mapFolder) => ipcRenderer.invoke('fleet:suggest', mapFolder),
   geometry: (mapFolder) => ipcRenderer.invoke('map:geometry', mapFolder),
   routes: (mapFolder, legs) => ipcRenderer.invoke('map:routes', mapFolder, legs),
   pluginStatus: () => ipcRenderer.invoke('plugin:status'),
@@ -20,7 +24,8 @@ const api: CareerApi = {
   examDuty: (mapFolder, lineFile) => ipcRenderer.invoke('duty:exam', mapFolder, lineFile),
   finishExam: (duty, measured, basic) => ipcRenderer.invoke('career:exam', duty, measured, basic),
   startFree: (request) => ipcRenderer.invoke('free:start', request),
-  ibis: (duty, vehicle, year) => ipcRenderer.invoke('duty:ibis', duty, vehicle, year),
+  ibis: (duty, vehicle, year, yard) => ipcRenderer.invoke('duty:ibis', duty, vehicle, year, yard),
+  yards: (duty, vehicle, year) => ipcRenderer.invoke('duty:yards', duty, vehicle, year),
   setOverlay: (duty, open, ibis) => ipcRenderer.invoke('overlay:set', duty, open, ibis),
   overlayIsOpen: () => ipcRenderer.invoke('overlay:isOpen'),
   onOverlayState: (handler) => {
@@ -31,6 +36,7 @@ const api: CareerApi = {
   closeOverlay: () => ipcRenderer.invoke('overlay:close'),
   editOverlay: (on) => ipcRenderer.invoke('overlay:edit', on),
   overlayHit: (on) => ipcRenderer.invoke('overlay:hit', on),
+  overlayGrab: (on) => ipcRenderer.invoke('overlay:grab', on),
   overlayBounds: (box) => ipcRenderer.invoke('overlay:bounds', box),
   overlayLayout: () => ipcRenderer.invoke('overlay:layout'),
   saveOverlayLayout: (layout) => ipcRenderer.invoke('overlay:layout:save', layout),
@@ -40,6 +46,8 @@ const api: CareerApi = {
   cancelDuty: () => ipcRenderer.invoke('duty:cancel'),
   beginDuty: (request) => ipcRenderer.invoke('duty:begin', request),
   liveConnected: () => ipcRenderer.invoke('omsi:live'),
+  liveStatus: () => ipcRenderer.invoke('live:status'),
+  omsiRunning: () => ipcRenderer.invoke('omsi:running'),
   gameSettings: () => ipcRenderer.invoke('game:settings'),
   saveGameSettings: (changes) => ipcRenderer.invoke('game:settings:save', changes),
   gameKeys: () => ipcRenderer.invoke('game:keys'),
@@ -57,7 +65,13 @@ const api: CareerApi = {
   checkSession: () => ipcRenderer.invoke('duty:session'),
   completeDuty: (duty, vehicle, measured) =>
     ipcRenderer.invoke('career:complete', duty, vehicle, measured),
-  renameDriver: (name) => ipcRenderer.invoke('career:rename', name)
+  renameDriver: (name) => ipcRenderer.invoke('career:rename', name),
+  omsiState: () => ipcRenderer.invoke('omsi:state'),
+  confirmOmsi: (path) => ipcRenderer.invoke('omsi:confirm', path),
+  browseOmsi: () => ipcRenderer.invoke('omsi:browse'),
+  hofOffers: (mapFolder) => ipcRenderer.invoke('hof:offers', mapFolder),
+  hofOfferFor: (mapFolder, folder) => ipcRenderer.invoke('hof:offerFor', mapFolder, folder),
+  placeHofs: (mapFolder, folders) => ipcRenderer.invoke('hof:place', mapFolder, folders)
 }
 
 contextBridge.exposeInMainWorld('career', api)

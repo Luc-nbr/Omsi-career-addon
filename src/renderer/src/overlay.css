@@ -6,8 +6,9 @@
 .overlay-body {
   margin: 0;
   background: transparent;
-  font: 13px/1.45 "Segoe UI", system-ui, sans-serif;
-  color: #f2f5f9;
+  font: 13px/1.45 var(--letter);
+  font-feature-settings: var(--cijfers);
+  color: var(--vel-ink);
   user-select: none;
   overflow: hidden;
 }
@@ -33,15 +34,32 @@
    * titelbalk zelf blijft erbuiten, anders kun je de schuif niet meer aflezen
    * op het moment dat je hem gebruikt.
    */
-  background: rgba(12, 16, 22, calc(0.82 * var(--fade, 1)));
-  border: 1px solid rgba(255, 255, 255, calc(0.09 * var(--fade, 1)));
-  border-left: 3px solid rgba(240, 180, 41, var(--fade, 1));
-  border-radius: 10px;
-  backdrop-filter: blur(calc(6px * var(--fade, 1)));
+  /*
+   * Glas, op verzoek terug.
+   *
+   * Het waas kost meer dan een vlak vullen, en het stond eerder in de
+   * verdenking van de haperingen. De kostenproef meet alleen ons eigen
+   * verbruik -- 0,2 procent GPU -- en kan dat dus niet uitsluiten; wat Windows
+   * kwijt is aan het mengen van een doorzichtig venster over het spel meet je
+   * alleen in OMSI zelf. De gebruiker wil het spel eronderdoor zien, en dat
+   * weegt zwaarder. Waas van 18 in plaats van de 22 van vroeger.
+   */
+  background: var(--glas-overlay);
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  border: 1px solid var(--vel-overlay-rand);
+  /*
+   * Eén ronding voor de hele overlay, en flink: hierdoor leest elk element als
+   * een scherm dat over het spel heen ligt, en niet als een venster van het
+   * programma. De gele rand die hier eerst stond zei "hier begint een lijst" --
+   * precies wat het niet moet zijn.
+   */
+  border-radius: var(--radius);
+  box-shadow: var(--vel-overlay-schaduw);
 }
 
 .editing .panel {
-  border-color: rgba(240, 180, 41, 0.45);
+  border-color: var(--route);
 }
 
 .panel-body {
@@ -49,6 +67,173 @@
   min-height: 0;
   opacity: var(--fade, 1);
   padding: 9px 13px 11px;
+  /*
+   * Een kolom, ook met één blok erin: de navigatie rekent erop dat hij de
+   * overgebleven hoogte krijgt in plaats van een vaste.
+   */
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * De navigatie: een balk met wat je nu moet doen, de kaart eronder, en één regel
+ * met wat erna komt. Die volgorde is niet willekeurig -- tijdens het rijden kijk
+ * je naar boven, niet naar beneden.
+ */
+/*
+ * De navigatie is geen paneel met een kaart erin maar een toestel: één glazen
+ * kaart met ronde hoeken, waarin de kaart van rand tot rand staat en de
+ * manoeuvrebalk erboven zweeft. Daarom krijgt dit paneel geen gele rand en geen
+ * binnenmarge -- alles wat je anders als lijst zou lezen, hoort hier bij het
+ * scherm zelf.
+ */
+.panel:has(.nav-wrap) .panel-body {
+  padding: 5px;
+}
+
+.nav-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  border-radius: var(--radius-klein);
+  overflow: hidden;
+}
+
+.navbar {
+  position: absolute;
+  z-index: 2;
+  top: 7px;
+  left: 7px;
+  right: 7px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 13px 10px;
+  border-radius: var(--radius-klein);
+  background: var(--vel-overlay);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+
+.navbar-arrow {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  color: #ffd23f;
+}
+
+.navbar-what {
+  min-width: 0;
+  flex: 1;
+}
+
+.navbar-what b {
+  display: block;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.navbar-what span {
+  display: block;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.86);
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.navbar-when {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.navbar-when b {
+  display: block;
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* De tijd draagt de kleur van het verschil; zie `src/shared/status.ts`. */
+.navbar-when b.late {
+  color: #ff5f57;
+}
+
+.navbar-when b.ontime {
+  color: #37d67a;
+}
+
+.navbar-when b.early {
+  color: #4da3ff;
+}
+
+.navbar-when span {
+  display: block;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.nav-wrap .map-box,
+.nav-wrap .route-map {
+  flex: 1;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+}
+
+/*
+ * De knoppen staan onderin.
+ *
+ * Ze stonden onder de zwevende balk, op een vaste afstand van de bovenkant --
+ * en die balk groeit mee met wat erin staat. Een lange haltenaam duwde hem over
+ * de plusknop heen. Onderin kan dat niet gebeuren: daar staat alleen de
+ * schaalbalk, en die staat links.
+ */
+.nav-wrap .map-tools {
+  top: auto;
+  bottom: 10px;
+  right: 9px;
+}
+
+.navfoot {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 13px;
+  flex-shrink: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--vel-overlay);
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.navfoot-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+  flex-shrink: 0;
+}
+
+.navfoot-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.navfoot-time {
+  color: rgba(255, 255, 255, 0.62);
+  font-variant-numeric: tabular-nums;
 }
 
 /* De kaart vult zijn element helemaal; opvulling zou er alleen ruimte afsnoepen. */
@@ -126,18 +311,18 @@
 }
 
 .clock {
-  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
-  font-size: 21px;
+  font-size: 22px;
   font-weight: 700;
-  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
+/* Het lijnnummer draagt de lijnkleur, net als in het venster van de app. */
 .line {
-  background: #f0b429;
-  color: #1d1607;
-  font-weight: 700;
-  font-family: ui-monospace, Consolas, monospace;
-  border-radius: 5px;
+  background: #ffd23f;
+  color: #1a1400;
+  font-weight: 800;
+  border-radius: 8px;
   padding: 1px 8px;
 }
 
@@ -147,12 +332,16 @@
   font-size: 14px;
 }
 
+/*
+ * De enige plek in de overlay waar kleur iets betekent. Groen op tijd, rood te
+ * laat, blauw te vroeg -- zie `src/shared/status.ts` voor waar de grens ligt.
+ */
 .delay.ontime {
-  color: #57d6a8;
+  color: #37d67a;
 }
 
 .delay.late {
-  color: #ff8f6b;
+  color: #ff5f57;
 }
 
 /*
@@ -284,8 +473,8 @@
 .grid > div {
   flex: 1;
   background: rgba(255, 255, 255, 0.05);
-  border-radius: 7px;
-  padding: 5px 9px;
+  border-radius: 14px;
+  padding: 7px 11px;
   min-width: 62px;
 }
 
@@ -686,7 +875,7 @@
 
 /* Voor op de dienstregeling is net zo goed het vermelden waard als achter. */
 .delay.early {
-  color: #6fb8ff;
+  color: #4da3ff;
 }
 
 /* De twee stappen in het instructiepaneel: eerst het menu, dan de IBIS. */
@@ -736,4 +925,551 @@
 
 .ovl-btn:hover {
   background: #ffc746;
+}
+
+/* Het versienummer in de bewerkbalk: klein, grijs, en alleen daar. */
+.editbar-version {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * De snelheidsmeter, linksonder op de kaart en boven de schaalbalk.
+ *
+ * Klein, want je hebt er ook een op je dashboard; hij staat er voor het moment
+ * dat je met een half oog naar de kaart kijkt en wilt weten of je te hard gaat.
+ */
+.nav-speed {
+  position: absolute;
+  z-index: 2;
+  left: 10px;
+  bottom: 62px;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: var(--radius-klein);
+  background: var(--glas-overlay);
+  border: 1px solid var(--vel-overlay-rand);
+}
+
+.nav-speed b {
+  font-size: 19px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.nav-speed span {
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* Te hard voor het laatste bord: het getal kleurt, de rest blijft zoals het was. */
+.nav-speed b.tehard {
+  color: var(--laat, #ff5f57);
+}
+
+/* Het bord zelf, zoals het langs de weg staat. */
+.nav-limit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-left: 2px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 3px solid #d7291f;
+  color: #16181c;
+  font-size: 12px;
+  font-weight: 800;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+
+/*
+ * De balk staat er altijd, dus hij mag niet schreeuwen. Rustig tot je er met de
+ * muis overheen gaat; dan pas laat hij zien dat je kunt slepen en schuiven.
+ */
+.panel-bar {
+  /*
+   * In rust helemaal weg.
+   *
+   * Hij stond op 0,35 -- flauw, maar zichtbaar -- en dan kijk je tijdens het
+   * rijden de hele tijd tegen een titelbalk met een schuif en een kruisje aan
+   * boven je kaart. Dat hoort er niet te staan: je gebruikt hem eens, bij het
+   * inrichten, en daarna nooit meer.
+   *
+   * Hij blijft wel op zijn plek liggen en blijft aanklikbaar, dus hij is er
+   * meteen zodra je de muis erheen brengt. Weggehaald zou betekenen dat je er
+   * een knop voor moet indrukken, en dat was juist het bezwaar.
+   */
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+.panel:hover .panel-bar,
+.panel-bar:focus-within {
+  opacity: 1;
+}
+
+.panel-grip {
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+.panel:hover .panel-grip {
+  opacity: 0.9;
+}
+
+
+/* ---- het toestel: apps en het balkje onderin ----
+ *
+ * De navigatie stond al staand en smal, als een telefoon in een houder. Onderin
+ * een vaste rij van vier: kaart, dienst, pauze, rit. Vaste volgorde en vaste
+ * plek, want tijdens het rijden wil je niet zoeken.
+ */
+
+.dock {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--vel-overlay-rand);
+}
+
+.dock-knop {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 34px;
+  border: 0;
+  border-radius: var(--radius-klein);
+  background: transparent;
+  color: var(--vel-ink);
+  opacity: 0.45;
+  cursor: pointer;
+}
+
+.dock-knop svg {
+  width: 19px;
+  height: 19px;
+}
+
+.dock-knop:hover {
+  opacity: 0.8;
+}
+
+.dock-knop[aria-pressed='true'] {
+  background: var(--route);
+  color: #ffffff;
+  opacity: 1;
+}
+
+/* Een lopende pauze zie je ook als je ergens anders kijkt. */
+.dock-stip {
+  position: absolute;
+  top: 5px;
+  right: 8px;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-rond);
+  background: var(--lijn);
+}
+
+.app-scherm {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--vel-zacht) transparent;
+}
+
+.app-lijst {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Een rit uit de dienst: vertrek, waarheen, aankomst. */
+.app-rit {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 2px;
+  border-bottom: 1px solid var(--vel-overlay-rand);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.app-rit.nu {
+  background: rgba(42, 117, 247, 0.16);
+  border-radius: var(--radius-klein);
+  padding-inline: 8px;
+}
+
+.app-rit-tijd,
+.app-rit-aan {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.app-rit-naar {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.app-rit-naar b {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-rit-naar small {
+  color: var(--vel-zacht);
+  font-size: 11px;
+}
+
+.app-pauzeblok {
+  grid-column: 1 / -1;
+  color: var(--lijn);
+  font-size: 11px;
+}
+
+/* De pauze: één ring, want dat is waar je naar kijkt. */
+.app-pauze {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 2px;
+  text-align: center;
+}
+
+.app-label {
+  color: var(--vel-zacht);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.app-knop {
+  margin-top: 10px;
+  padding: 9px 16px;
+  border: 1px solid var(--vel-overlay-rand);
+  border-radius: var(--radius-klein);
+  background: transparent;
+  color: var(--vel-ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.app-knop.primair {
+  border-color: var(--route);
+  background: var(--route);
+  color: #ffffff;
+}
+
+.app-knop:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/*
+ * DE TEGEL
+ *
+ * Het dienstpaneel zet een getal dat ertoe doet al in een tegel: groot cijfer,
+ * klein onderschrift in kapitalen. Op een staand scherm is er breedte voor twee
+ * naast elkaar en hoogte voor meer eronder, dus hier als raster in plaats van
+ * als rij. Alles eraan -- de vulling, de hoek, de kapitalen -- komt uit wat het
+ * paneel al draagt; er is niets bij verzonnen.
+ */
+.app-tegels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 2px 0 4px;
+}
+
+.app-tegels > div {
+  padding: 11px 13px;
+  border: 1px solid var(--vel-overlay-rand);
+  border-radius: var(--radius-klein);
+  background: var(--vel-hover);
+}
+
+/* De vertraging is het getal waar het om draait, dus die krijgt de hele rij. */
+.app-tegels > .breed {
+  grid-column: 1 / -1;
+}
+
+.app-tegels b {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 23px;
+  letter-spacing: -0.01em;
+  font-weight: 700;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.app-tegels > .breed b {
+  font-size: 42px;
+}
+
+/* De eenheid hoort bij het getal, maar mag er niet mee wedijveren. */
+.app-tegels small {
+  margin-left: 4px;
+  color: var(--vel-zacht);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.app-tegels > .breed small {
+  font-size: 15px;
+}
+
+.app-tegels span {
+  color: var(--vel-zacht);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Kleur betekent tijd; zie `src/shared/status.ts` voor waar de grens ligt. */
+.app-tegels b.late {
+  color: #ff5f57;
+}
+
+.app-tegels b.ontime {
+  color: #37d67a;
+}
+
+.app-tegels b.early {
+  color: #4da3ff;
+}
+
+/* De rit: eerst de cijfers, dan waar je langs komt. */
+.app-ritscherm {
+  display: flex;
+  flex-direction: column;
+}
+
+.app-haltes {
+  margin-top: 16px;
+}
+
+/* Een halte draagt geen bestemming en geen aankomst, alleen tijd en naam. */
+.app-rit.halte {
+  grid-template-columns: 14px auto 1fr;
+  padding-block: 6px;
+}
+
+.app-halte-naam {
+  overflow: hidden;
+  font-size: 13.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * DE RAIL
+ *
+ * Dezelfde blauwe lijn met haltepunten als op de kaart, maar dan verticaal:
+ * de dienst van boven naar beneden. Vol waar je geweest bent, flauw voor wat
+ * nog komt, met een dikkere punt op de rit die nu loopt.
+ */
+.app-lijst.met-rail .app-rit {
+  grid-template-columns: 14px auto 1fr auto;
+}
+
+.app-punt {
+  position: relative;
+  align-self: stretch;
+  width: 14px;
+  min-height: 22px;
+}
+
+/*
+ * De lijn loopt door de kieren heen. Het punt rekt mee met de rij, maar de
+ * ruimte tussen twee rijen -- de marge en het gat -- hoort er ook bij, anders
+ * valt de rail bij elke halte in stukken uit elkaar.
+ */
+.app-punt::before {
+  content: '';
+  position: absolute;
+  top: -10px;
+  bottom: -10px;
+  left: 5px;
+  width: 3px;
+  border-radius: var(--radius-rond);
+  background: rgba(42, 117, 247, 0.26);
+}
+
+.app-rit.gereden .app-punt::before,
+.app-rit.nu .app-punt::before {
+  background: var(--route);
+}
+
+/* De lijn begint bij de eerste punt en houdt op bij de laatste. */
+.app-lijst.met-rail .app-rit:first-child .app-punt::before {
+  top: 14px;
+}
+
+.app-lijst.met-rail .app-rit:last-child .app-punt::before {
+  bottom: calc(100% - 14px);
+}
+
+.app-punt::after {
+  content: '';
+  position: absolute;
+  top: 9px;
+  left: 2px;
+  width: 9px;
+  height: 9px;
+  border-radius: var(--radius-rond);
+  background: rgba(42, 117, 247, 0.4);
+}
+
+.app-rit.gereden .app-punt::after {
+  background: var(--route);
+}
+
+.app-rit.nu .app-punt::after {
+  top: 7px;
+  left: 0;
+  width: 13px;
+  height: 13px;
+  background: var(--route);
+  box-shadow: 0 0 0 3px rgba(42, 117, 247, 0.28);
+}
+
+/* Wat je gereden hebt mag naar de achtergrond; het staat er om te kloppen. */
+.app-rit.gereden {
+  opacity: 0.5;
+}
+
+.app-lijst.met-rail .app-rit.nu {
+  padding-inline: 0 8px;
+}
+
+/* De pauzeregel begint naast de rail, niet eroverheen. */
+.app-lijst.met-rail .app-pauzeblok {
+  grid-column: 2 / -1;
+}
+
+/*
+ * DE RING
+ *
+ * Eén beslissende vorm in plaats van twee halve: hij loopt vol terwijl je
+ * staat. --deel is hoe ver hij is, van 0 tot 1. De kleuren zijn die van de
+ * tijd en van niets anders -- groen binnen de tijd, rood eroverheen -- en
+ * voordat je begint heeft hij er geen, want er loopt dan niets.
+ */
+@property --deel {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+
+.pauze-ring {
+  position: relative;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  align-self: center;
+  width: 168px;
+  height: 168px;
+  margin: 12px 0 16px;
+  --boog: rgba(255, 255, 255, 0.22);
+  transition: --deel 420ms ease-out;
+}
+
+.pauze-ring.ontime {
+  --boog: #37d67a;
+}
+
+.pauze-ring.late {
+  --boog: #ff5f57;
+}
+
+/*
+ * De boog zelf staat op een schijfje dat met een masker uitgehold is, zodat
+ * het spel door het midden blijft schijnen zoals door de rest van het paneel.
+ */
+.pauze-ring::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-rond);
+  background: conic-gradient(var(--boog) calc(var(--deel) * 360deg), rgba(255, 255, 255, 0.09) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 13px), #000 calc(100% - 12px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 13px), #000 calc(100% - 12px));
+}
+
+.pauze-ring b {
+  font-size: 52px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.pauze-ring.late b {
+  color: #ff5f57;
+}
+
+.pauze-ring span {
+  margin-top: 2px;
+  color: var(--vel-zacht);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* De knop onder de ring loopt over de hele breedte. */
+.app-pauze .app-knop {
+  align-self: stretch;
+}
+
+.app-volgende {
+  align-self: stretch;
+  margin-top: 18px;
+  text-align: left;
+}
+
+.app-volgende > .app-label {
+  display: block;
+  margin-bottom: 4px;
+}
+
+/* Eén rit, dus geen streep eronder: die scheidt niets. */
+.app-volgende .app-rit {
+  border-bottom: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pauze-ring {
+    transition: none;
+  }
+}
+
+/*
+ * Het lijndeel van een routecode.
+ *
+ * De code moet voluit blijven staan -- die toets je zo in op de IBIS -- maar
+ * met het lijnnummer er al naast is het begin een herhaling. Gedempt dus: je
+ * typt 85302 en je oog ziet 02.
+ */
+.routekop {
+  color: var(--vel-zacht, #8d9bad);
+  font-weight: 400;
 }

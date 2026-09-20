@@ -1,0 +1,97 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: #0f1114; }
+    a { color: #7ef0c0; } a:hover { color: #a9f7d8; }
+  </style>
+</helmet>
+
+<div style="width: 880px; height: 560px; background: #0f1114; color: #eef1f4; font-family: 'Outfit', system-ui, sans-serif; display: flex; flex-direction: column;">
+
+  <div style="display: flex; align-items: center; gap: 22px; padding: 0 34px; height: 56px; font-size: 13px; color: #79808a; font-weight: 300;">
+    <span style="display: flex; align-items: center; gap: 8px; color: #7ef0c0;">
+      <span style="width: 6px; height: 6px; border-radius: 50%; background: #7ef0c0;"></span>
+      Dienst loopt
+    </span>
+    <span>Hohenkirchen &ndash; Herrenhof</span>
+    <span style="margin-left: auto; font-family: 'IBM Plex Mono', monospace;">rit 1 / 2</span>
+  </div>
+
+  <div style="padding: 0 34px; display: flex; gap: 16px; flex-grow: 1; min-height: 0;">
+
+    <div style="flex-grow: 1; background: #171a1f; border-radius: 16px; padding: 28px 30px; display: flex; flex-direction: column;">
+      <div style="display: flex; align-items: center; gap: 14px;">
+        <span style="border: 1px solid #7ef0c0; color: #7ef0c0; border-radius: 999px; padding: 5px 15px; font-size: 19px; font-weight: 500; letter-spacing: 0.02em;">X49</span>
+        <span style="color: #79808a; font-size: 14px; font-weight: 300;">route 1</span>
+      </div>
+
+      <div style="margin-top: 26px; font-size: 13px; color: #79808a; font-weight: 300; letter-spacing: 0.02em;">Richting</div>
+      <div style="margin-top: 5px; font-size: 40px; font-weight: 500; line-height: 1.08; letter-spacing: -0.015em;">Hohenkirchen,<br>Bahnhof</div>
+
+      <div style="margin-top: auto; display: flex; gap: 40px;">
+        <div>
+          <div style="font-size: 12px; color: #79808a; font-weight: 300; letter-spacing: 0.04em;">Vertrek</div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 30px; font-weight: 400; margin-top: 3px; font-variant-numeric: tabular-nums;">18:23</div>
+        </div>
+        <div>
+          <div style="font-size: 12px; color: #79808a; font-weight: 300; letter-spacing: 0.04em;">Aankomst</div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 30px; font-weight: 400; margin-top: 3px; color: #a4abb4; font-variant-numeric: tabular-nums;">18:52</div>
+        </div>
+        <div style="flex-grow: 1;">
+          <div style="font-size: 12px; color: #79808a; font-weight: 300; letter-spacing: 0.04em;">Vanaf halte</div>
+          <div style="font-size: 18px; font-weight: 400; margin-top: 6px;">Herrenhof, am Anger</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="width: 286px; display: flex; flex-direction: column; gap: 16px;">
+
+      <div style="background: #171a1f; border-radius: 16px; padding: 22px 24px; display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-size: 12px; color: #79808a; font-weight: 300; letter-spacing: 0.04em;">Op de dienstregeling</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 46px; font-weight: 500; line-height: 1; color: #ffb27a; font-variant-numeric: tabular-nums;">+2:14</span>
+        <span style="font-size: 14px; color: #ffb27a; font-weight: 300;">twee minuten te laat</span>
+      </div>
+
+      <div style="background: #171a1f; border-radius: 16px; padding: 20px 24px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;">
+        <div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 24px; font-weight: 400;">12,4</div>
+          <div style="font-size: 11px; color: #79808a; font-weight: 300; letter-spacing: 0.04em;">km gereden</div>
+        </div>
+        <div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 24px; font-weight: 400;">18</div>
+          <div style="font-size: 11px; color: #79808a; font-weight: 300; letter-spacing: 0.04em;">haltes</div>
+        </div>
+        <div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 24px; font-weight: 400;">29</div>
+          <div style="font-size: 11px; color: #79808a; font-weight: 300; letter-spacing: 0.04em;">minuten</div>
+        </div>
+        <div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 24px; font-weight: 400;">08</div>
+          <div style="font-size: 11px; color: #79808a; font-weight: 300; letter-spacing: 0.04em;">omloop</div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 10px; padding: 20px 34px 22px;">
+    <button type="button" style="font: inherit; cursor: pointer; border: none; background: #7ef0c0; color: #0f1114; padding: 13px 24px; border-radius: 999px; font-size: 15px; font-weight: 500;">Dienst afronden</button>
+    <button type="button" style="font: inherit; cursor: pointer; border: 1px solid #2a2f36; background: transparent; color: #eef1f4; padding: 13px 20px; border-radius: 999px; font-size: 15px; font-weight: 400;">Volledige dienst</button>
+    <button type="button" style="font: inherit; cursor: pointer; border: 1px solid #2a2f36; background: transparent; color: #eef1f4; padding: 13px 20px; border-radius: 999px; font-size: 15px; font-weight: 400;">Route</button>
+    <button type="button" style="font: inherit; cursor: pointer; border: 1px solid #2a2f36; background: transparent; color: #a4abb4; padding: 13px 20px; border-radius: 999px; font-size: 15px; font-weight: 400;">Overlay</button>
+    <button type="button" style="font: inherit; cursor: pointer; border: none; background: transparent; color: #79808a; padding: 13px 8px; font-size: 15px; font-weight: 300; margin-left: auto;">Annuleren</button>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

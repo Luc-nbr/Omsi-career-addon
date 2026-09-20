@@ -64,8 +64,13 @@ export const PANELS: PanelInfo[] = [
 /** Het paneel linksboven, de navigatie eronder. */
 export const DEFAULT_LAYOUT: OverlayLayout = {
   detail: 1,
-  dienst: { x: 24, y: 30, w: 320, h: 0, scale: 1, opacity: 1, visible: true },
-  navigatie: { x: 24, y: 470, w: 360, h: 300, scale: 1, opacity: 1, visible: true }
+  dienst: { x: 24, y: 30, w: 330, h: 0, scale: 1, opacity: 1, visible: true },
+  /*
+   * Staand en smal, zoals een telefoon in een houder op het dashboard. Een
+   * liggende kaart laat meer land zien, maar je rijdt vooruit en niet opzij:
+   * wat je wilt zien is de straat die voor je ligt.
+   */
+  navigatie: { x: 24, y: 360, w: 330, h: 620, scale: 1, opacity: 1, visible: true }
 }
 
 export function defaultLayout(): OverlayLayout {

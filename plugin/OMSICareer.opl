@@ -11,7 +11,7 @@
 OMSICareerPlugin.dll
 
 [systemvarlist]
-6
+8
 Time
 Day
 Month
@@ -19,11 +19,23 @@ Year
 PrecipRate
 PrecipType
 
+	De twee hieronder staan ACHTER PrecipType met opzet. Het wegschrijven hangt
+	aan PrecipType; zou een van deze namen niet bestaan, dan roept OMSI die index
+	nooit aan en zou de plugin met een naam achteraan helemaal niets meer
+	schrijven.
+
+	coll_energy is de klap van dit beeld, niet een optelsom. De busscripts zelf
+	rekenen alles boven de 10 als een echte aanrijding (collision.osc); die grens
+	nemen we over in plaats van er een te verzinnen.
+
+coll_energy
+Weather_Temperature
+
 	De eerste zeventien hieronder houdt OMSI in elk voertuig bij; de rest komt
 	uit de scripts van het busmodel en kan ontbreken.
 
 [varlist]
-23
+24
 Velocity
 humans_count
 schedule_active
@@ -47,6 +59,7 @@ lights_blinker_r
 lights_brems
 engine_on
 IBIS_busstop_index
+electric_battery
 
 [stringvarlist]
 6

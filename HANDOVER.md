@@ -70,6 +70,11 @@ blijft eenmalig een kopie staan als `laststn.osn.voor-omsi-career`. Verder niets
 - **Valkuil: heredocs eten backslashes.** Python-scripts met `\` erin (paden,
   regex) moeten met het Write-gereedschap geschreven worden, niet via
   `python - <<'PY'`. Dit is meerdere keren misgegaan.
+- **Valkuil: PowerShell knipt `-c.directories.output=...` doormidden.**
+  `npx electron-builder -c.directories.output=$out` komt bij electron-builder aan
+  als `-c` plus een los stuk, en dan leest hij dat stuk als de naam van een
+  configuratiebestand. Zet het argument in een rij en geef die door:
+  `$argv = @("-c.directories.output=$out"); npx electron-builder @argv`.
 - **Valkuil: PowerShell 5.1 verminkt UTF-8.** `Get-Content -Raw` leest de
   bronbestanden als Windows-1252; wie dat met `Set-Content` terugschrijft maakt
   van "één" "Ã©Ã©n". Tijdelijke wijzigingen met het Edit-gereedschap doen.
@@ -124,18 +129,42 @@ blijft eenmalig een kopie staan als `laststn.osn.voor-omsi-career`. Verder niets
 
 ### `src/renderer/src/`
 
-- `App.tsx` — de drie schermen (chauffeur, modus, rijden), laadt instellingen,
-  zet de `LanguageProvider`.
-- `Profiles.tsx` — wie rijdt er? Het scherm waarmee de app opent.
-- `Modes.tsx` — carrière, dienst of vrij rijden.
-- `CareerPanel.tsx` — rijexamen, lijnexamens en de vergunningen.
-- `FreePlay.tsx` — lijn, bus, plek, weer, datum en tijd zelf samenstellen.
-- `LinePicker.tsx` — een lijn kiezen; wat OMSI een lijn noemt is een bestand.
+**Let op: er is nog maar één wereld.** Tot september 2026 stonden er twee
+schermenstelsels naast elkaar -- de oude glazen zijbalk met een keuzevak per
+vraag, en het nieuwe opzetscherm met een stappenbalk. De dienstmodus was
+overgezet en carrière en vrij rijden vielen nog op de oude terug. Die tweede
+wereld is weg, met acht bestanden tegelijk: `Sidebar`, `CareerPanel`, `FreePlay`,
+`DutyProposal`, `LinePicker` (de oude wereld) plus `Welcome`, `Profiles` en
+`Modes` (al orphan sinds de eerste overzetting). Kom je ze in oude notities
+tegen: ze bestaan niet meer.
+
+- `App.tsx` — het hart. Kiest welk scherm er staat, houdt alle toestand vast,
+  en bouwt per stap het `vel` dat `Setup` toont. Groot bestand; de `vel`-bouwer
+  is een reeks `if (stap === …)`-takken die elk een titel, kolomkoppen, rijen of
+  tegels, een voet en een hoofdknop teruggeven.
+- `Setup.tsx` — de vorm waarin élke stap getoond wordt: de kaart als ondergrond,
+  de stappenbalk, het vel met de keuzelijst, en de knoppenrij. Alle modi lopen
+  dezelfde reeks; wat per modus verschilt is één stap tussen de kaart en de
+  dienst (niets / vergunning / lijn) en dat staat in `STAPPEN_DIENST`,
+  `STAPPEN_CARRIERE` en `STAPPEN_VRIJ` in `App.tsx`.
+- `Welkom.tsx` — het allereerste scherm: waar staat OMSI 2? Niet te verwarren met
+  het verdwenen `Welcome.tsx`.
+- `Profiel.tsx` + `profiel.css` — de staat van dienst van een chauffeur: alles
+  wat het logboek bijhield, als cijfers en staafjes.
+- `Icoon.tsx` — alle icoontjes van de app op één plek; zie hieronder.
+- `LiveDienst.tsx` — de dienstregeling die meeloopt tijdens het rijden, met de
+  navigatie ernaast.
+- `BusDialog.tsx`, `HofDialog.tsx` — de twee venstertjes op de busstap: neem je
+  de aanbevolen bus, en zal ik er een wagenpark bij zetten.
+- `StartingDialog.tsx` — het venstertje terwijl OMSI opstart.
+- `ThemaKnop.tsx`, `Versie.tsx`, `Flag.tsx` — wat rechts in de stappenbalk hangt.
+- `RouteCode.tsx` — een routenummer met het lijndeel gedempt (85302 leest als 02).
 - `GameSetup.tsx` — de instellingen, de toetsen en de controllers van OMSI.
 - `Controllers.tsx` — apparaten, assen met een meebewegende balk, knoppen met
   zoeken, en de wizard voor een nieuw apparaat.
-- `Welcome.tsx` — eerste start: taal kiezen en een account aanmaken.
-- `DutyCard.tsx` — de dienstkaart met alle deelpanelen.
+- `DutyCard.tsx` — de dienstkaart met alle deelpanelen; leeft nog, getoond
+  binnen het nieuwe vel zodra de dienst rijdt.
+- `RunningDuty.tsx` — het compacte scherm tijdens het rijden.
 - `RouteMap.tsx` — de kaart (halteborden, routes, zoomen, slepen), in SVG.
 - `roadLayer.ts` — het wegennet op een canvas onder die SVG; per vak van 300 m
   gesneden en uitgezoomd gebufferd. Als één SVG-pad kostte slepen over
@@ -144,6 +173,33 @@ blijft eenmalig een kopie staan als `laststn.osn.voor-omsi-career`. Verder niets
 - `overlay.tsx` — de overlay boven het spel.
 - `receipt.tsx` — het kaartje voor de bonprinter.
 - `language.tsx` — `useT()` en `useLanguage()`.
+- `theme.css` — de kleuren, gehangen aan `.setup` en `.overlay-body` en
+  **niet** aan `:root`: `styles.css` gebruikt dezelfde namen met andere waarden
+  en wordt later ingeladen, dus op `:root` wint die. De lichte stand geldt alleen
+  voor `.setup`; de overlay is altijd donker (zie §4).
+
+#### De icoontjes
+
+Ze staan allemaal in `Icoon.tsx`, en ze zijn getekend en niet opgehaald. Dat is
+een keuze met een reden: er stond al een handvol in `Setup.tsx` met erboven
+"bewust klein en van één gewicht; ze zijn label, geen plaatje", en dat is een
+stijl die je alleen houdt als er niets vreemds tussen komt. Een set uit een
+pictogrammenpakket -- of uit een beeldmodel -- komt met andere lijndiktes en een
+ander optisch gewicht, en dat zie je meteen naast de zes die er al waren.
+
+Regels van de set:
+
+- Veld van 24 × 24, gevuld en niet gelijnd. Bij zestien pixels valt een lijn van
+  twee pixels uit elkaar; een vlak niet.
+- `currentColor`, zodat ze de tekst volgen waar ze bij staan. De maat komt van de
+  klasse, niet van het icoon.
+- `vulling: 'nonzero'` voor vormen die uit overlappende delen bestaan (een wolk is
+  drie cirkels en een balk). Standaard is `evenodd`, want een ring of een pasje
+  met een uitsparing loopt anders dicht.
+- **Beoordeel ze op zestien pixels.** `scripts/probe-iconen.ts` zet de hele set op
+  een vel in vier maten en op beide achtergronden; `scripts/schermafdruk.cjs`
+  maakt daar een plaatje van. Vier van de eerste lichting moesten opnieuw: wat op
+  tweeënzeventig pixels een rozet was, was op zestien een poppetje met beentjes.
 
 ### `plugin/`
 
@@ -172,6 +228,111 @@ aan `geo.ts`, `roads.ts`, `track.ts` of `routing.ts` komt.
   dwarsprofiel ligt gespiegeld, rijstroken wisselen van kant én van richting.
 - In een `[object]`-blok zijn veld 4 en 5 de grondcoördinaten, veld 6 de hoogte.
 - In een `[spline]`-blok staat de hoogte **tussen** de twee grondcoördinaten in.
+- **Beide hoogtes zijn wereldhoogtes, geen afstand tot de grond.** Nagemeten op
+  de plekken waar een baan uit een object aansluit op een baan uit een spline:
+  de twee komen in 96 tot 98 procent van de gevallen binnen een meter overeen
+  (`probe-baanhoogte.ts`). Reken er dus niet het maaiveld bij op -- dat zit er op
+  Spandau 33 m naast.
+- **Een haltepaal is de uitzondering en zegt niets.** Zijn veld 6 staat op 0,00:
+  mediaan over elke kaart, op Spandau 99% binnen een halve meter, terwijl het
+  maaiveld daar op 32 m ligt. Nul betekent daar "op de grond" en is geen bruikbare
+  wegdekhoogte (`probe-haltehoogte.ts`). Twee eerdere pogingen om hier iets uit te
+  halen zijn op die meting gestrand; doe het niet nog eens.
+
+**Waar de bus komt te staan (`spawn.ts`) — het maaiveld is de zwakke meting**
+
+- Het wegdek wint, met het maaiveld als ondergrens en als terugval wanneer er
+  geen rijstrook is. Er staat **geen bovengrens** meer, en dat is met opzet.
+- Hier stond wel een grens: ligt het wegdek meer dan acht meter boven het
+  maaiveld, dan is het geen talud maar een viaduct dat over de halte heen loopt,
+  dus terug naar het maaiveld. Die gok was verkeerd, en hij was de oorzaak van
+  "de bus spawnt onder de weg". Wat de gok voor een viaduct aanzag is het
+  maaiveld dat niet klopt: op HamburgLi20 staat de Michaeliskirche met een
+  maaiveld van **-11,5 m** in de boeken -- dat is de bodem van de Elbe en geen
+  straat. Van de 47 haltes waar de grens aansloeg lag er geen enkele onder iets:
+  geen van alle had ook maar één rijstrook beneden zich. De bus werd er tot
+  vijftien meter onder gezet (`probe-viaduct.ts`).
+- Van de 1934 haltes op deze installatie heeft **geen enkele** een rijstrook
+  zonder hoogte; 189 hebben een weg die ónder het maaiveld ligt, gemiddeld 0,03
+  tot 0,15 m -- meetruis, en daar vangt de `Math.max` hem op (`probe-wegdek.ts`).
+- IJkpunt: de bus die OMSI zelf op Berlin-Spandau achterliet stond op 32,04; wij
+  komen op 32,39 bij een halte 13 m verderop (`probe-bushoogte.ts`).
+- Twee hypothesen die **niet** waar zijn, opgeschreven zodat ze niet opnieuw
+  geprobeerd worden. (1) Splinehoogtes zijn relatief aan het terrein -- nee: op
+  Spandau is de mediaan 33,0 bij een maaiveld van gemiddeld 33,0, ze lopen mee
+  (`probe-splinehoogte.ts`). (2) Een spline draagt een hoogteverloop dat wij niet
+  lezen -- het veld dat daarop leek haalt in de ketting 87% tegen 79% zonder, met
+  uitschieters van 2000 m; dat is geen hoogteverschil (`probe-hoogteverloop.ts`).
+
+**Het wagenpark (`.hof`) hoort bij een bus en een kaart**
+
+- Niet bij een bus en een dienst. Dat scheelde twee scheve uitkomsten: een bus
+  die de halve kaart kent maar net niet de vier haltes van déze dienst kreeg een
+  aanbod dat hij niet nodig had, en bij vrij rijden -- waar geen dienst bestaat --
+  werd er nooit iets gevraagd. `hof:offers`, `hof:offerFor` en `hof:place` nemen
+  daarom een `mapFolder`, en de eindbestemmingen komen uit de ritten van de kaart
+  zelf (`terminiOf` in `main/index.ts`). Aantallen per kaart: 3 (Grundorf) tot 159
+  (Ahlheim 5).
+- `scanHofs` leest 448 bestanden en dat kostte 1,0 tot 1,3 seconde, in het
+  hoofdproces, bij elke vraag opnieuw. Nu één keer van schijf voor beide lezingen
+  (716 ms) en daarna bewaard zolang de vingerafdruk klopt: de tijden van de 154
+  voertuigmappen samen, 17 ms om na te vragen. `planHofs` ging van 1157 naar
+  101 ms (`probe-hoftijd.ts`).
+
+**De kilometerteller van een bus deugt niet altijd**
+
+- `kmcounter_km` is een variabele van het voertuig. In het logboek van de
+  gebruiker staat `drivenKm` bij alle negentien diensten ofwel precies nul, ofwel
+  iets in de miljoenen: 2.094.964 km op een dienst van 49 minuten.
+- Oorzaak: `alive` zegt dat de plugin schrijft, niet dat er een bus staat. Tussen
+  het starten van OMSI en het inladen van de situatie schrijft hij al, met een
+  kilometerstand van nul -- en dan is het begin nul en het eind de hele
+  kilometerstand van dat voertuig. `captureBaseline` wacht daarom nu op
+  `mem.ok === 1`, dezelfde vlag waar de kaartpositie aan hangt.
+- En er staat een grens op de uitkomst (`gereden` in `main/index.ts`): meer dan
+  in de verstreken tijd te rijden valt bij 100 km/u is geen afstand maar een
+  kapotte teller, en dan wordt er níéts opgeschreven. `SessionResult.drivenKm` is
+  daarom optioneel; "niet gemeten" is iets anders dan "nul kilometer".
+- **Nog niet bevestigd in het spel.** Of de nulmeting nu op het goede moment valt
+  is alleen te zien aan een volgende dienst: staat er dan een gewoon getal als
+  24 km, dan is hij goed.
+
+**Wat er in het hoofdproces mag staan, en wat niet**
+
+- Het hoofdproces is enkeldradig. Zolang daar iets loopt tekent er geen venster,
+  beweegt de overlay niet en wacht elke klik. Drie plekken stonden daar te lang:
+  `tasklist` (89 ms per keer, stond op elke 1,5 s in het opstartvenstertje, nu op
+  5 s), het wagenparkonderzoek hierboven, en het zoeken naar de OMSI-map.
+- Dat laatste: `C:\` aanwijzen op het welkomstscherm kostte **12465 ms** om
+  daarna te zeggen dat er niets gevonden was. De mappen die Windows voor zichzelf
+  houdt worden nu overgeslagen en na anderhalve seconde houdt het op; `C:\` doet
+  er 485 ms over, en alle zes manieren om dezelfde installatie aan te wijzen komen
+  er nog steeds op uit (`probe-omsimap.ts`).
+- Wat géén probleem bleek: de overlay stuurt tien keer per seconde een heel beeld
+  door de IPC met de dienst erin. Vier ritten en 124 haltes is 5,1 kB en het wegen
+  kost 0,01 ms per beeld (`probe-framegrootte.ts`). Zoek haperingen daar niet.
+
+**De overlay is altijd donker**
+
+Hij volgde de stand van Windows, net als het opzetscherm. Maar wat in een overlay
+licht is, is geen vel op een scherm maar een lamp op je voorruit, en hij is
+doorzichtig: de kleuren zijn op een donkere ondergrond gerekend. Gemeten met
+Windows op licht: overlay `#141a26`, opzetscherm `#f7f8f8`
+(`probe-overlaydonker.cjs`). De lichte regels in `theme.css` hangen daarom alleen
+aan `.setup`.
+
+**Beweging**
+
+Er stond een regel dat het vel opkomt als je van stap wisselt, en die deed het
+niet: het vel blijft tussen de stappen door hetzelfde element, dus speelde de
+animatie precies één keer af, bij het openen van de app. Met een sleutel per stap
+-- een sleutel op de stap plus de diepte van de kruimels -- komt hij werkelijk
+opnieuw ter wereld. Gemeten in het draaiende venster met `document.getAnimations()`: bij een
+stapwissel lopen `vel-op` (180 ms), `rij-op` (170 ms, laatste klaar na 346 ms) en
+het streepje (260 ms); bij het aanwijzen van een andere dienst binnen dezelfde
+stap alleen `route-tekenen` en géén `vel-op` -- de lijst waar je muis in staat
+hoort niet onder je handen opnieuw op te komen (`probe-beweging.cjs`,
+`probe-velsleutel.cjs`).
 - Richting: graden, noord is nul, met de klok mee. Recht:
   `eind = start + lengte · (sin θ, cos θ)`. Bocht: `θ = lengte / straal`, lokaal
   `(R(1−cos t), R sin t)`, positieve straal buigt naar rechts.
@@ -294,6 +455,69 @@ aan `geo.ts`, `roads.ts`, `track.ts` of `routing.ts` komt.
 
 ## 5. Openstaand werk
 
+### 5.0 Waar het nu staat (20-09-2026)
+
+Vier dingen zijn deze ronde vastgelegd: `f0e29d4` (drie plekken waar het
+hoofdproces stond te wachten), `113160a` (carrière en vrij rijden in de nieuwe
+wereld), `a2bb62d` (de bus onder de weg, plus de hof-vraag, de terugknop en de
+donkere overlay), `764621c` (de staat van dienst en de kilometerteller).
+
+**Halverwege blijven liggen: de icoontjes.** De set staat er en is nagekeken, maar
+hij hangt nog nergens:
+
+- `src/renderer/src/Icoon.tsx` — 23 vormen, getekend en beoordeeld op zestien
+  pixels. `Setup.tsx` haalt zijn stapicoontjes er al uit; de oude `PADEN` is weg,
+  dus er is nog maar één set.
+- `scripts/probe-iconen.ts` — zet de set op een vel in vier maten, licht en donker.
+- `scripts/schermafdruk.cjs` — maakt van een HTML-bestand een plaatje; algemeen
+  bruikbaar, het voorbeeldpaneel legt geen lokale bestanden vast.
+
+De veertien nieuwe vormen -- weer, dagdeel, de koppen van het overzicht -- worden
+dus nog door niemand getoond.
+
+**Wat er nog moet gebeuren** is ze inbouwen waar ze voor bedoeld zijn. Die plekken
+zijn uitgezocht en het zijn er drie:
+
+1. **De weerchips op de ritstap** (`App.tsx`, bij `WEATHER_KINDS.map`) — nu kale
+   tekst. Iconen: `weerHelder`, `weerZomer`, `weerBewolkt`, `weerRegen`,
+   `weerMist`.
+2. **De dagdeelchips op de dienststap** (`App.tsx`, bij `TIME_WINDOWS`) — ook kale
+   tekst. Iconen: `dagHele`, `dagOchtend`, `dagMiddag`, `dagAvond`, `dagNacht`.
+3. **De koppen van de staat van dienst** (`Profiel.tsx`, de `<h4>`'s in elk
+   `.profiel-vak`) — iconen: `stipt`, `stuur`, `record`, `plek`, `bus`, `duty`,
+   `licence`, `logboek`. Er is ook `kaartje` voor de tegel met de verkochte
+   kaartjes, als je de tegels ook iconen wilt geven; dat is nog niet besloten.
+
+De chips hebben nog geen ruimte voor een icoon in `setup.css` (`.regelaar-chips
+button` is `padding: 5px 11px`, tekst alleen). Daar moet een `display:flex` met
+een `gap` bij, en een maatklasse voor het icoontje van een pixel of veertien.
+
+**Verder open:**
+
+- **In vrije modus zelf ritten aan je dienst toevoegen.** De gebruiker vroeg dit
+  expliciet ("in vrije modus is er selectie mogelijk per lijn en kunnen handmatig
+  meer ritten worden toegevoegd") en het is nooit gebouwd. De ritstap van vrij
+  rijden is nu een formulier (waar, wanneer, weer) en kent geen ritten.
+- **Versie 0.3.0 staat nog niet op GitHub.** Het uitgeefscript werkt; `gh` is in
+  de schil van de assistent aangemeld maar niet in het PowerShell-venster van de
+  gebruiker (vermoedelijk verhoogd, dus een andere sessie en geen toegang tot de
+  sleutelring). Commando:
+  `node scripts/uitgeven.mjs 0.3.0 --publiceer --notities uitgaven/0.3.0.md`.
+  De Discord-aankondiging staat klaar in
+  `C:\OMSI Enhancer Discord\uitgaven\0.3.0.md` maar de links daarin zijn dood
+  tot de release bestaat. **Publiceren doet de gebruiker zelf.**
+- **De kilometerteller is niet in het spel bevestigd** — zie §4.
+- **Twee getallen op hetzelfde scherm spreken elkaar tegen.** Op het remisescherm
+  zeggen de tegels "0 van 2 bestemmingen" (dat gaat over je dienst) terwijl het
+  venstertje "1 van de 87 op deze kaart" zegt. Allebei kloppen ze voor hun eigen
+  vraag; naast elkaar lezen ze verkeerd. `duty:yards` is nog dienstgebaseerd.
+- **De vergunningenlijst is nooit met een echte vergunning gezien.** Die verschijnt
+  pas als je een examen werkelijk rijdt en haalt; de probe komt niet verder dan
+  het examenscherm. De code volgt dezelfde logica als het oude `CareerPanel`.
+- **Vrij rijden kan geen remise kiezen.** `duty:yards` heeft een dienst nodig, en
+  die is er niet; het remisescherm toont daar alleen de tegel om er een bij te
+  halen.
+
 ### 5.1 Wegennet en routes — opgelost, met twee losse eindjes
 
 Het wegennet was niet te dun omdat kaarten geen splines gebruiken, maar omdat we
@@ -379,6 +603,54 @@ zelf vast welke Direct3D-as het noorden is (de lezing die op een rijstrook valt)
 van de vertraging en of `tripName` een pad of een naam is. Kijk in `live.json`
 onder `mem` zodra een bus staat. Proeven: `scripts/probe-vehicle.ts` (kern) en
 `scripts/screenshotLive.cjs` (overlay met rijdende nepbus).
+
+**De rit die aan de beurt is, is de eerste die nog niet is aangekomen** (sinds
+15-09-2026). `describeLive` pakte de laatste rit die al vertrokken was, en die
+bleef staan nadat hij was aangekomen: stond de bus op het eindpunt te wachten op
+de volgende rit, dan lag de gereden route nog op de kaart en hoorden de
+instructies bij een rit van een half uur geleden. Nu geldt overal dezelfde regel
+-- wat in OMSI gekozen is gaat voor, anders de eerste rit met `arrival >
+clockMinutes` -- en `overlay.tsx` rekent hem niet meer zelf na. Proef:
+`scripts/probe-legswitch.ts`, zes standen inclusief "OMSI rijdt iets dat niet in
+de dienst zit".
+
+**Bij het kiezen van een vervolgrit telt de lijn, niet het aantal ritten**
+(sinds 15-09-2026). `pickNext` woog per rit: stonden er op een knooppunt twintig
+vervolgritten van de eigen lijn en een van een andere, dan hadden die twintig
+samen twintig lootjes tegen de zes van die ene. Nu wordt eerst de lijn gekozen en
+dan pas de rit. Rheinhausen ging van 23% naar 39% van de overgangen op een andere
+lijn, TH_Wald naar 67%. Hohenkirchen blijft op 9%, en dat is de kaart: van de 569
+eindpunten bieden er 18 een tweede lijn, en er zijn maar twee haltes waar meer
+dan een lijn vertrekt. Proef: `scripts/probe-variety.ts`.
+
+**De navigatie staat op 25 m zodra de bus stapvoets rijdt** (sinds 15-09-2026).
+Onder de 30 km/u vast op 25/90 meter per punt -- de schaalbalk van de navigatie
+mikt op negentig punten, dus dat leest als "25 m" -- en daarboven vloeiend open
+tot 2 m per punt bij 80 km/u, zonder sprong op de grens. `liveZoom` in
+`RouteMap.tsx`; proef: `scripts/probe-zoom.cjs`.
+
+**De vormtaal** (sinds 15-09-2026). Luc vond de oude interface op een sjabloon
+lijken; na een ronde ontwerpen op canvas is dit eruit gekomen:
+
+- **Glas op een lijnennet.** Vlakken zijn doorschijnend wit met een lichte rand
+  (`--glas`, `--glas-rand`, hoeken 22); erachter ligt `Backdrop.tsx`, een
+  routekaart van vier lijnen en zeven knooppunten op drie procent wit. Glas
+  heeft iets nodig om op te liggen -- zonder iets erachter is doorzichtig
+  hetzelfde als grijs. Het net staat in `main.tsx`, achter elk scherm.
+- **Kleur betekent twee dingen, en verder niets.** Geel (`--lijn`) is de lijn:
+  het nummer op de bus en de knop die de dienst afmaakt. Rood, groen en blauw
+  zijn de tijd: te laat, op tijd, te vroeg, met de grens op een minuut in
+  `src/shared/status.ts`. Die ene bron voedt zowel het rijscherm als de overlay,
+  zodat er niet op het ene scherm groen en op het andere rood staat. Alles wat
+  vroeger ook kleur had -- de stip "dienst loopt", de rijstijl, de buspijl op de
+  kaart -- is nu wit.
+- **Manrope**, meegeleverd via `@fontsource/manrope` (het programma mag niet van
+  het internet afhangen). De losse schrijfmachineletter is eruit: cijfers staan
+  in Manrope met `font-variant-numeric: tabular-nums`, dus kolommen dansen niet.
+- **De navigatie houdt zijn afspraken**: de Duitse H-bordjes (geel vlak, groene
+  ring en H -- een echt object, geen statuskleur), de zoom op 25 m onder de
+  30 km/u (`liveZoom`), en de gereden route verdwijnt achter je.
+- De ontwerpbestanden staan in `design/`; het canvas erbij is een Artifact.
 
 **Opnieuw kijken wat er geinstalleerd is** (sinds 15-09-2026). Kaarten en bussen
 komen als een map de OMSI-map in en niets meldt dat aan de app, die ze alleen
@@ -472,6 +744,35 @@ Er staan probes in `scripts/`:
 - `screenshotModes.cjs` — loopt de schermen langs: chauffeur, modus, en de drie
   modi. Eigen gebruikersmap, raakt de spelmap niet aan.
 - `screenshotExam.cjs` — het rijexamen van routekeuze tot examenrit.
+
+Uit de ronde van september 2026, op volgorde van waar ze over gaan:
+
+- `probe-wegdek.ts` — per halte: vindt `spawnAtStop` een plek, kent die plek een
+  wegdekhoogte, en waarom valt hij anders terug op het maaiveld.
+- `probe-viaduct.ts` — alleen de haltes waar de weg hoog boven het maaiveld ligt,
+  met wat er verder omheen ligt. Dit is de probe die de achtmetergrens onderuit
+  haalde; draai hem opnieuw als je aan `spawn.ts` komt.
+- `probe-bushoogte.ts` — onze hoogte naast die van de bus die OMSI zelf achterliet.
+- `probe-baanhoogte.ts` — of objecthoogtes wereldhoogtes zijn, gemeten aan de
+  aansluitingen met splines.
+- `probe-splinehoogte.ts`, `probe-haltehoogte.ts`, `probe-hoogteverloop.ts` — de
+  drie hypothesen die het niet waren. Ze staan er zodat niemand ze opnieuw
+  bedenkt.
+- `probe-hoftijd.ts` — wat het lezen van alle wagenparken kost, koud en warm.
+- `probe-hofvraag.cjs` — komt het venstertje als de bus de kaart niet kent, staat
+  de tegel "Wagenpark toevoegen" er, en is er een terugknop.
+- `probe-modi.cjs` — loopt carrière en vrij rijden stap voor stap af en meldt per
+  stap wat er staat. Eigen gebruikersmap; er wordt niet op START gedrukt.
+- `probe-profiel.cjs` — de staat van dienst met een **kopie** van een echt
+  logboek, zodat het profiel van de gebruiker onaangeroerd blijft.
+- `probe-beweging.cjs`, `probe-velsleutel.cjs` — welke animaties er werkelijk
+  lopen, uit `document.getAnimations()`. Een plaatje bewijst niets over beweging.
+- `probe-overlaydonker.cjs` — of de overlay donker blijft als Windows om licht
+  vraagt, en het opzetscherm níét.
+- `probe-framegrootte.ts` — wat een overlaybeeld weegt. Uitkomst: niets om aan te
+  komen; staat er om dat vast te houden.
+- `probe-iconen.ts` + `schermafdruk.cjs` — de icoontjes op een vel, en dat vel als
+  plaatje. Beoordeel ze op zestien pixels.
 
 Schermafdrukken maken kan door het hoofdproces te laden in een klein
 Electron-scriptje en de renderer met `executeJavaScript` te bedienen; zie de

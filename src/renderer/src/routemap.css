@@ -10,7 +10,12 @@
   border: 1px solid var(--line, #2a3441);
   border-radius: 10px;
   overflow: hidden;
-  background: var(--bg, #10141b);
+  /*
+    De ondergrond van een navigatiekaart is niet zwart maar blauwgrijs: daardoor
+    liggen de wegen erop in plaats van erin, en kan de gele route eroverheen
+    zonder te gaan gloeien.
+  */
+  background: #171d26;
 }
 
 .route-map-full {
@@ -42,11 +47,15 @@
   cursor: grabbing;
 }
 
-/* de route van de dienst */
-
+/*
+ * De route van de dienst.
+ *
+ * Blauw, zoals elke navigatie die je kent. Dat maakt het geel weer vrij voor
+ * waar het thuishoort: het lijnnummer en de knop die de dienst afmaakt.
+ */
 .route-casing {
   fill: none;
-  stroke: #17386b;
+  stroke: #123a6b;
   stroke-width: 9;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -54,22 +63,20 @@
 
 .route-line {
   fill: none;
-  stroke: #4c9aff;
+  stroke: #4a90ff;
   stroke-width: 5;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
-.route-done .route-casing {
-  stroke: #1c222b;
-}
-
+/*
+ * Wat je gereden hebt, verdwijnt. Je hoeft niet te weten waar je vandaan komt;
+ * wat telt is wat er nog voor je ligt, en een tweede lijn erbij maakt de kaart
+ * alleen maar drukker.
+ */
+.route-done .route-casing,
 .route-done .route-line {
-  stroke: #46505f;
-}
-
-.route-arrow {
-  fill: rgba(233, 240, 250, 0.85);
+  stroke: transparent;
 }
 
 /* haltes */
@@ -95,7 +102,7 @@
 
 .sign-h {
   fill: #0a6b3d;
-  font-family: "Segoe UI", system-ui, sans-serif;
+  font-family: Manrope, "Segoe UI", system-ui, sans-serif;
   font-weight: 800;
   text-anchor: middle;
   dominant-baseline: central;
@@ -114,9 +121,13 @@
   fill: #414a44;
 }
 
+/*
+ * De ring om de eerstvolgende halte draagt de lijnkleur. Groen zou hier
+ * "op tijd" betekenen, en dat zegt deze ring niet.
+ */
 .sign-next-ring {
   fill: none;
-  stroke: var(--good, #4ec9a5);
+  stroke: var(--lijn, #ffd23f);
   stroke-width: 2.5;
 }
 
@@ -126,15 +137,19 @@
   pointer-events: none;
 }
 
+/*
+  De bus is wit in een lichte hof, niet geel: geel is van de lijn en de route.
+  Een eigen kleur voor de bus maakt van elke kaart een kerstboom.
+*/
 .bus-halo {
-  fill: rgba(76, 154, 255, 0.18);
-  stroke: rgba(76, 154, 255, 0.55);
+  fill: rgba(233, 240, 250, 0.22);
+  stroke: rgba(233, 240, 250, 0.45);
   stroke-width: 1.5;
 }
 
 .bus-arrow {
-  fill: #e8f1ff;
-  stroke: #1d4f95;
+  fill: #ffffff;
+  stroke: #10141a;
   stroke-width: 1.5;
   stroke-linejoin: round;
 }
@@ -164,7 +179,7 @@
 
 .map-start-halo {
   fill: none;
-  stroke: var(--accent, #f0b429);
+  stroke: var(--lijn, #ffd23f);
   stroke-width: 2.5;
   pointer-events: none;
 }
@@ -176,7 +191,7 @@
   font-family: "Segoe UI", system-ui, sans-serif;
   font-size: 11px;
   paint-order: stroke;
-  stroke: rgba(10, 14, 20, 0.92);
+  stroke: rgba(16, 20, 26, 0.92);
   stroke-width: 3;
   stroke-linejoin: round;
   pointer-events: none;
@@ -187,39 +202,50 @@
   font-weight: 600;
 }
 
+/* De schaalbalk leest ook op een lichte ondergrond; vandaar de schaduw. */
 .map-scale line {
-  stroke: var(--muted, #8d9bad);
+  stroke: rgba(255, 255, 255, 0.8);
   stroke-width: 1.5;
 }
 
 .map-scale text {
-  fill: var(--muted, #8d9bad);
-  font-size: 10px;
-  font-family: "Segoe UI", system-ui, sans-serif;
+  fill: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: Manrope, "Segoe UI", system-ui, sans-serif;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.55);
+  stroke-width: 2.5px;
+  stroke-linejoin: round;
 }
 
 .map-tools {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 10px;
+  right: 10px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
+/* Glas, net als de panelen: dezelfde taal tot in de knopjes op de kaart. */
 .map-tools button {
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
-  border: 1px solid var(--line, #2a3441);
-  background: rgba(23, 29, 39, 0.9);
-  color: var(--text, #e8edf4);
-  font-size: 15px;
+  width: 34px;
+  height: 34px;
+  /* Rond, zoals de knoppen op een telefoon; een vierkantje leest als een venster. */
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(16, 20, 26, 0.62);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #ffffff;
+  font-size: 19px;
+  font-weight: 600;
   line-height: 1;
 }
 
 .map-tools button:hover {
-  border-color: var(--muted, #8d9bad);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
 /*
@@ -264,4 +290,48 @@
   stroke-width: 3;
   stroke-dasharray: 7 7;
   stroke-linecap: round;
+}
+
+/*
+ * De route tekent zichzelf.
+ *
+ * Alleen op het opzetscherm, en alleen als de route voor het eerst verschijnt
+ * -- zie het commentaar bij `route-intekenen` in RouteMap.tsx waarom niet
+ * tijdens het rijden. Het duurt langer dan de rest van de beweging in deze app,
+ * en met opzet: dit kondigt niet aan dat er iets nieuw is, het vertelt je wat
+ * de dienst is. Je volgt de lijn met je ogen van het begin naar het eind, en
+ * dat is precies wat je van een dienst wilt weten voordat je hem aanneemt.
+ *
+ * `pathLength=1` op de lijnen maakt de maat onafhankelijk van de werkelijke
+ * lengte: een rit van acht kilometer en een van twee tekenen even lang, in
+ * plaats van dat de korte klaar is voordat je gekeken hebt.
+ *
+ * De streping gaat van niets naar alles en niet van een streepafstand naar
+ * nul; daardoor blijft er na afloop geen streping op de lijn staan die de ronde
+ * uiteinden zou afkappen.
+ */
+@keyframes route-tekenen {
+  from {
+    stroke-dasharray: 0 1;
+  }
+  to {
+    stroke-dasharray: 1 0;
+  }
+}
+
+.route-intekenen .route-casing,
+.route-intekenen .route-line {
+  animation: route-tekenen 620ms ease-out backwards;
+}
+
+/* De omranding loopt een tikje voor, zodat de blauwe lijn er niet naast valt. */
+.route-intekenen .route-line {
+  animation-delay: 40ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-intekenen .route-casing,
+  .route-intekenen .route-line {
+    animation: none;
+  }
 }

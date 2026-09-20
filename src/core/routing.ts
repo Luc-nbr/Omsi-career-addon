@@ -78,6 +78,7 @@ const GRID_M = 40
 /** Verder dan dit van een halte ligt zijn rijstrook niet. */
 const STOP_REACH_M = 30
 
+
 /**
  * Levert dat bereik niets op, dan mag de halte nog een keer verder kijken.
  *
@@ -271,24 +272,64 @@ export class LaneNetwork {
     return points
   }
 
+  /**
+   * De hoogtes van alle rijstroken bij een halte, hoe ver ze ook uit elkaar
+   * liggen in de hoogte.
+   *
+   * `spawnAt` kiest er een en geeft alleen die terug. Deze laat zien wat er
+   * verder ligt, en dat is nodig om te beoordelen of een halte waar de weg hoog
+   * boven het maaiveld ligt onder een viaduct staat of er zelf op. Zie
+   * `scripts/probe-viaduct.ts`: van de zevenenveertig haltes waar dat speelt lag
+   * er geen enkele onder iets -- het maaiveld klopte er niet. Dat is de reden
+   * dat `spawn.ts` geen bovengrens meer heeft, en deze methode is waarmee dat
+   * na te lopen blijft.
+   */
+  heightsNear(stop: StopPoint, reach: number = STOP_REACH_M): number[] {
+    const gevonden: number[] = []
+    const gx = Math.floor(stop.x / GRID_M)
+    const gy = Math.floor(stop.y / GRID_M)
+    const ring = Math.max(1, Math.ceil(reach / GRID_M))
+    for (let ox = -ring; ox <= ring; ox++) {
+      for (let oy = -ring; oy <= ring; oy++) {
+        const cell = this.segments.get(`${gx + ox},${gy + oy}`)
+        if (!cell) continue
+        for (let k = 0; k < cell.length; k += 2) {
+          const lane = cell[k]
+          const hit = this.project(lane, cell[k + 1], stop.x, stop.y)
+          if (hit.distance > reach) continue
+          const hoogte = this.lanes[lane].height
+          if (hoogte !== undefined && Number.isFinite(hoogte)) gevonden.push(hoogte)
+        }
+      }
+    }
+    return gevonden
+  }
+
   /** Afstand tot de dichtstbijzijnde rijstrook binnen 40 m, anders Infinity. */
   /**
    * Waar de bus bij een halte op de weg komt te staan, en met de neus welke
    * kant op. Dezelfde keuze als bij het plannen: de dichtstbijzijnde rijstrook
    * waarvoor de halte rechts van de rijrichting ligt, want daar stopt een bus.
    */
-  spawnAt(stop: StopPoint): { x: number; y: number; heading: number } | undefined {
-    let best: { x: number; y: number; heading: number; penalty: number } | undefined
+  spawnAt(
+    stop: StopPoint,
+    reach: number = STOP_REACH_M
+  ): { x: number; y: number; heading: number; height?: number } | undefined {
+    let best:
+      | { x: number; y: number; heading: number; height?: number; penalty: number }
+      | undefined
     const gx = Math.floor(stop.x / GRID_M)
     const gy = Math.floor(stop.y / GRID_M)
-    for (let ox = -1; ox <= 1; ox++) {
-      for (let oy = -1; oy <= 1; oy++) {
+    // Zo ver moeten we vakjes aflopen om alles binnen `reach` te zien.
+    const ring = Math.max(1, Math.ceil(reach / GRID_M))
+    for (let ox = -ring; ox <= ring; ox++) {
+      for (let oy = -ring; oy <= ring; oy++) {
         const cell = this.segments.get(`${gx + ox},${gy + oy}`)
         if (!cell) continue
         for (let k = 0; k < cell.length; k += 2) {
           const lane = cell[k]
           const hit = this.project(lane, cell[k + 1], stop.x, stop.y)
-          if (hit.distance > STOP_REACH_M) continue
+          if (hit.distance > reach) continue
           const direction = this.lanes[lane].direction
           for (const forward of [true, false]) {
             if ((forward && direction === 1) || (!forward && direction === 0)) continue
@@ -301,13 +342,21 @@ export class LaneNetwork {
               x: hit.x,
               y: hit.y,
               heading: (Math.atan2(dx, dy) * 180) / Math.PI,
+              /*
+               * De hoogte van het wegdek, niet die van het maaiveld. Een weg
+               * ligt zelden op de grond: hij loopt over een talud of een
+               * viaduct, en op een heuvelkaart scheelt dat meters.
+               */
+              height: this.lanes[lane].height,
               penalty
             }
           }
         }
       }
     }
-    return best ? { x: best.x, y: best.y, heading: best.heading } : undefined
+    return best
+      ? { x: best.x, y: best.y, heading: best.heading, height: best.height }
+      : undefined
   }
 
   distanceToLane(x: number, y: number): number {

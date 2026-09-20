@@ -1,0 +1,97 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600&family=Fragment+Mono:ital@0;1&display=swap">
+  <style>
+    body { margin: 0; background: #14110e; }
+    a { color: #e8b23c; } a:hover { color: #f3cd79; }
+  </style>
+</helmet>
+
+<div style="width: 880px; height: 560px; background: #14110e; color: #f2ece4; font-family: 'Schibsted Grotesk', system-ui, sans-serif; display: flex; flex-direction: column;">
+
+  <div style="display: flex; align-items: center; gap: 22px; padding: 0 34px; height: 56px; font-size: 13px; color: #9a8f80;">
+    <span style="display: flex; align-items: center; gap: 8px; color: #e8b23c;">
+      <span style="width: 6px; height: 6px; border-radius: 50%; background: #e8b23c;"></span>
+      Dienst loopt
+    </span>
+    <span>Hohenkirchen &ndash; Herrenhof</span>
+    <span style="margin-left: auto; font-family: 'Fragment Mono', monospace;">rit 1 / 2</span>
+  </div>
+
+  <div style="padding: 0 34px; display: flex; gap: 16px; flex-grow: 1; min-height: 0;">
+
+    <div style="flex-grow: 1; background: #1e1a15; border-radius: 16px; padding: 28px 30px; display: flex; flex-direction: column;">
+      <div style="display: flex; align-items: center; gap: 14px;">
+        <span style="border: 1px solid #e8b23c; color: #e8b23c; border-radius: 999px; padding: 5px 15px; font-size: 19px; font-weight: 500;">X49</span>
+        <span style="color: #9a8f80; font-size: 14px;">route 1</span>
+      </div>
+
+      <div style="margin-top: 26px; font-size: 13px; color: #9a8f80;">Richting</div>
+      <div style="margin-top: 5px; font-size: 40px; font-weight: 600; line-height: 1.08; letter-spacing: -0.02em;">Hohenkirchen,<br>Bahnhof</div>
+
+      <div style="margin-top: auto; display: flex; gap: 40px;">
+        <div>
+          <div style="font-size: 12px; color: #9a8f80;">Vertrek</div>
+          <div style="font-family: 'Fragment Mono', monospace; font-size: 30px; font-weight: 400; margin-top: 3px; font-variant-numeric: tabular-nums;">18:23</div>
+        </div>
+        <div>
+          <div style="font-size: 12px; color: #9a8f80;">Aankomst</div>
+          <div style="font-family: 'Fragment Mono', monospace; font-size: 30px; font-weight: 400; margin-top: 3px; color: #b9ac9a; font-variant-numeric: tabular-nums;">18:52</div>
+        </div>
+        <div style="flex-grow: 1;">
+          <div style="font-size: 12px; color: #9a8f80;">Vanaf halte</div>
+          <div style="font-size: 18px; font-weight: 500; margin-top: 6px;">Herrenhof, am Anger</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="width: 286px; display: flex; flex-direction: column; gap: 16px;">
+
+      <div style="background: #1e1a15; border-radius: 16px; padding: 22px 24px; display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-size: 12px; color: #9a8f80;">Op de dienstregeling</span>
+        <span style="font-family: 'Fragment Mono', monospace; font-size: 46px; font-weight: 500; line-height: 1; color: #e1674a; font-variant-numeric: tabular-nums;">+2:14</span>
+        <span style="font-size: 14px; color: #e1674a;">twee minuten te laat</span>
+      </div>
+
+      <div style="background: #1e1a15; border-radius: 16px; padding: 20px 24px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;">
+        <div>
+          <div style="font-family: 'Fragment Mono', monospace; font-size: 24px;">12,4</div>
+          <div style="font-size: 11px; color: #9a8f80;">km gereden</div>
+        </div>
+        <div>
+          <div style="font-family: 'Fragment Mono', monospace; font-size: 24px;">18</div>
+          <div style="font-size: 11px; color: #9a8f80;">haltes</div>
+        </div>
+        <div>
+          <div style="font-family: 'Fragment Mono', monospace; font-size: 24px;">29</div>
+          <div style="font-size: 11px; color: #9a8f80;">minuten</div>
+        </div>
+        <div>
+          <div style="font-family: 'Fragment Mono', monospace; font-size: 24px;">08</div>
+          <div style="font-size: 11px; color: #9a8f80;">omloop</div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 10px; padding: 20px 34px 22px;">
+    <button type="button" style="font: inherit; cursor: pointer; border: none; background: #e8b23c; color: #14110e; padding: 13px 24px; border-radius: 999px; font-size: 15px; font-weight: 600;">Dienst afronden</button>
+    <button type="button" style="font: inherit; cursor: pointer; border: 1px solid #2f2820; background: transparent; color: #f2ece4; padding: 13px 20px; border-radius: 999px; font-size: 15px; font-weight: 500;">Volledige dienst</button>
+    <button type="button" style="font: inherit; cursor: pointer; border: 1px solid #2f2820; background: transparent; color: #f2ece4; padding: 13px 20px; border-radius: 999px; font-size: 15px; font-weight: 500;">Route</button>
+    <button type="button" style="font: inherit; cursor: pointer; border: 1px solid #2f2820; background: transparent; color: #b9ac9a; padding: 13px 20px; border-radius: 999px; font-size: 15px; font-weight: 500;">Overlay</button>
+    <button type="button" style="font: inherit; cursor: pointer; border: none; background: transparent; color: #9a8f80; padding: 13px 8px; font-size: 15px; font-weight: 400; margin-left: auto;">Annuleren</button>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

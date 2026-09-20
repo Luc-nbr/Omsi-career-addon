@@ -1,0 +1,2145 @@
+/*
+ * Het opzetscherm: kiezen doe je op de kaart.
+ *
+ * De maten hieronder zijn niet naar smaak gekozen maar afgelezen van de
+ * goedgekeurde afbeelding (.impeccable/build/spec.json, dertien gebieden). Ze
+ * staan als percentage van het venster, niet in pixels, zodat hetzelfde scherm
+ * meeschaalt zonder dat de verhoudingen verschuiven.
+ *
+ * Er zit geen enkel kader omheen dat de afbeelding niet toont: de kaart loopt
+ * tot in de rand door en de vellen liggen erop.
+ */
+
+/*
+ * Vast aan het venster, niet aan wat er toevallig omheen staat. Dit scherm is
+ * het venster: de kaart loopt tot in alle vier de randen door, en er is geen
+ * omhullend blok dat er een hoogte aan zou kunnen geven.
+ */
+.setup {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--grond);
+  color: var(--op-grond);
+  font-family: var(--letter);
+  font-feature-settings: var(--cijfers);
+}
+
+/* De kaart vult alles; de app tekent hem zelf uit de tegels van OMSI. */
+.setup-kaart {
+  position: absolute;
+  inset: 0;
+}
+
+.setup-kaart > .route-map {
+  width: 100%;
+  height: 100%;
+}
+
+/*
+ * De haltes op het opzetscherm zijn de gele H-palen, net als in de overlay.
+ *
+ * Ze waren hier eerst punten op de lijn, zoals een netkaart ze tekent, omdat de
+ * palen de route afdekken als je de hele lijn in beeld hebt. Op verzoek van de
+ * gebruiker staan ze er weer: de H is waar je in Duitsland op stopt, en die
+ * herkenning weegt zwaarder dan een schonere lijn. Alleen de rinkelende
+ * toevoegingen uit het rijden -- de gloed om de volgende halte en de ring om de
+ * eerste -- blijven hier weg; die horen bij navigeren, niet bij kiezen.
+ */
+.setup-kaart .sign-glow,
+.setup-kaart .sign-next-ring {
+  display: none;
+}
+
+/*
+ * Haltes die niet op de gekozen route liggen horen achter het wegennet te
+ * blijven. Op de donkere kaart vielen ze niet op; toen de lichte kaart tekening
+ * kreeg, werden het zwarte spikkels over het hele veld.
+ */
+.setup-kaart .map-other {
+  fill: var(--op-grond-zacht);
+  opacity: 0.3;
+}
+
+/*
+ * De kaart van de overlay heeft een eigen donkere ondergrond en labels met een
+ * donkere omranding; dat klopt daar, want de overlay is altijd donker. Op het
+ * opzetscherm volgt de kaart het thema, dus zetten we die twee hier om. Alleen
+ * hier: buiten .setup-kaart verandert er niets.
+ */
+.setup-kaart .route-map {
+  background: var(--grond);
+}
+
+/*
+ * Geen haltenamen op dit scherm.
+ *
+ * Eerst stonden ze er allemaal, toen alleen die van de route. Beide keren
+ * schoven er namen onder de stappenbalk en achter de rand van het vel; dat valt
+ * met opmaak niet op te lossen, want de kaart weet niet waar de vellen liggen.
+ * De goedgekeurde afbeelding toont er ook geen enkele: hier dient de kaart om
+ * te zien waar je rijdt, niet om te lezen hoe elke halte heet. In de overlay
+ * blijven ze staan -- daar rijd je erlangs en moet je ze herkennen.
+ */
+.setup-kaart .map-label {
+  display: none;
+}
+
+.setup-kaart .map-scale line {
+  stroke: var(--op-grond-zacht);
+}
+
+.setup-kaart .map-scale text {
+  fill: var(--op-grond-zacht);
+  /*
+   * Het streepje van de schaalbalk liep dwars door zijn eigen label heen, wat
+   * las als doorgehaalde tekst. De letters krijgen een rand in de grondkleur en
+   * die wordt eerst getekend, dus het streepje stopt netjes bij het woord.
+   */
+  paint-order: stroke;
+  stroke: var(--grond);
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+
+/* Nog geen route: dan een rustige regel in het midden van de ondergrond. */
+.kaart-leeg {
+  position: absolute;
+  left: 32%;
+  right: 4%;
+  top: 50%;
+  margin: 0;
+  transform: translateY(-50%);
+  text-align: center;
+  color: var(--op-grond-zacht);
+  font-size: 15px;
+}
+
+/* Een vel: het enige vlak dat boven de kaart mag liggen. */
+.vel {
+  position: absolute;
+  background: var(--vel);
+  color: var(--vel-ink);
+  border: 1px solid var(--vel-rand);
+  border-radius: var(--radius);
+  box-shadow: var(--vel-schaduw);
+}
+
+/* ---- de stappenbalk ---- */
+
+.setup-stappen {
+  /*
+   * In pixels, niet in procenten. Een balk van vijf procent hoog is op 1344
+   * precies goed en op een breed scherm een bank. Chrome houdt zijn maat; wat
+   * meeschaalt is de inhoud eromheen. De waarden zijn dezelfde als gemeten:
+   * 22px inspringen, 40px hoog.
+   */
+  left: 22px;
+  right: 22px;
+  top: 22px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 1.4%;
+  padding: 0 1.2% 0 1.34%;
+  border-radius: var(--radius-klein);
+}
+
+.lijnplaatje {
+  flex: none;
+  display: grid;
+  place-items: center;
+  min-width: 57px;
+  height: 25px;
+  padding: 0 10px;
+  background: var(--lijn);
+  color: var(--op-lijn);
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.stappen {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  margin: 0;
+  padding: 0 0 0 5%;
+  list-style: none;
+}
+
+.stap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--vel-zacht);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.stapknop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.stapknop:disabled {
+  cursor: default;
+}
+
+.stap-icoon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+/* De lijn tussen twee stappen: de route die je aflegt door de opzet heen. */
+.stap-streep {
+  flex: 1;
+  height: 2px;
+  min-width: 24px;
+  margin: 0 14px;
+  background-color: var(--vel-lijn);
+  /* Een streepje van twee pixels hoog is een staafje: volledig rond dus. */
+  border-radius: var(--radius-rond);
+}
+
+.stap[data-stand='klaar'] {
+  color: var(--vel-ink);
+}
+
+/* Hoe hij volloopt staat onder "beweging"; hier alleen dat hij dat doet. */
+
+.stap[data-stand='nu'] {
+  color: var(--route);
+  position: relative;
+}
+
+/* De actieve stap krijgt een onderstreping die tot de rand van de balk loopt. */
+.stap[data-stand='nu']::after {
+  content: '';
+  position: absolute;
+  left: -14px;
+  right: -14px;
+  bottom: -12px;
+  height: 3px;
+  background: var(--route);
+  border-radius: var(--radius-rond) var(--radius-rond) 0 0;
+}
+
+.stap[data-stand='straks'] {
+  color: rgba(107, 114, 128, 0.55);
+}
+
+/* Rechts in de balk: wat bij de app hoort en niet bij een stap, zoals de taal. */
+.balk-rechts {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  margin-left: auto;
+}
+
+.balk-rechts button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.45;
+}
+
+.balk-rechts button[aria-pressed='true'] {
+  border-color: var(--route);
+  opacity: 1;
+}
+
+.balk-rechts img,
+.balk-rechts svg {
+  width: 18px;
+  height: 13px;
+  display: block;
+}
+
+/* ---- het dienstenvel ---- */
+
+.dienstenvel {
+  left: 22px;
+  top: 85px;
+  /*
+   * Ruim een kwart van het venster, maar nooit zo smal dat een vertrektijd
+   * afbreekt en nooit zo breed dat de kaart eronder verdwijnt. Bij 1344 komt
+   * dit uit op de 368px van de goedgekeurde afbeelding.
+   */
+  width: clamp(288px, 27.4%, 420px);
+  height: calc(100% - 85px - 30px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.velkop {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  /*
+   * Bovenaan uitlijnen, niet midden: het onderschrift hoort strak onder de
+   * titel te hangen, zoals in de goedgekeurde afbeelding. Midden uitlijnen zet
+   * er een gat tussen dat er niet hoort.
+   */
+  align-items: start;
+  column-gap: 14px;
+  row-gap: 1px;
+  padding: 18px 20px 10px;
+}
+
+.velicoon {
+  width: 30px;
+  height: 27px;
+  color: var(--vel-ink);
+}
+
+.veltitel {
+  margin: 0;
+  /* Kaphoogte 18px, gemeten; 26px is de bijbehorende korpsgrootte. */
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+}
+
+.velonderschrift {
+  grid-column: 2;
+  margin: 0;
+  /* Kaphoogte 9,5px gemeten op de afbeelding; 13px is de bijbehorende maat. */
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--vel-zacht);
+}
+
+/* Zelfde kolommen als de rijen eronder, inclusief de plek van het keuzerondje. */
+.kolomkoppen {
+  display: grid;
+  grid-template-columns: 26px 1.25fr 0.85fr 1.25fr auto;
+  gap: 8px;
+  padding: 10px 20px 8px 28px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vel-zacht);
+}
+
+.dienstenlijst {
+  flex: 1;
+  margin: 0;
+  padding: 0 12px;
+  list-style: none;
+  overflow-y: auto;
+}
+
+/*
+ * De invulregel staat op de plek van een keuzeregel en heeft dezelfde hoogte,
+ * zodat de lijst niet verspringt zodra je iets toevoegt.
+ */
+.invoerrij {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 12px 4px;
+  padding: 0 8px;
+  height: 38px;
+}
+
+.invoerveld {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--vel-lijn);
+  border-radius: var(--radius-klein);
+  background: var(--veld);
+  color: var(--vel-ink);
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.invoerknop {
+  flex: none;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-klein);
+  background: var(--route);
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.invoerknop:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* De cel voor de rijactie is nul breed als er geen actie is. */
+.rijactie-cel {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+/* Een handeling die bij de regel hoort, niet bij de keuze. */
+.rijactie {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-klein);
+  color: var(--vel-zacht);
+  cursor: pointer;
+}
+
+.rijactie svg {
+  width: 14px;
+  height: 14px;
+}
+
+.rijactie:hover {
+  background: var(--vel-hover);
+  color: var(--vel-ink);
+}
+
+.rijactie.gevaarlijk:hover {
+  background: rgba(217, 58, 48, 0.12);
+  color: var(--laat);
+}
+
+.dienstrij[aria-pressed='true'] .rijactie {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* De tweede handeling: naast de hoofdknop, en duidelijk achter hem. */
+/*
+ * Terug staat naast Verder en niet ergens anders op het scherm: het is de
+ * handeling die je na Verder het vaakst doet. Rustiger dan de tweede knop --
+ * geen vel, alleen een rand -- want hij mag nooit lijken op de weg vooruit.
+ */
+.terugknop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 62px;
+  padding: 0 18px;
+  border: 1px solid var(--vel-rand);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--vel-zacht);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  /* Hij staat links; de rest van de rij blijft rechts staan. */
+  margin-right: auto;
+}
+
+.terugknop:hover {
+  border-color: var(--vel-zacht);
+  color: var(--vel-ink);
+}
+
+.terugknop svg {
+  width: 18px;
+  height: 18px;
+}
+
+.tweedeknop {
+  height: 62px;
+  padding: 0 20px;
+  border: 1px solid var(--vel-rand);
+  border-radius: 12px;
+  background: var(--vel);
+  color: var(--vel-ink);
+  box-shadow: var(--vel-schaduw);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Er valt hier niets te kiezen: dan geen lege lijst maar een zin die dat zegt. */
+.vel-leeg {
+  flex: 1;
+  margin: 0;
+  padding: 24px 20px;
+  color: var(--vel-zacht);
+  font-size: 14px;
+}
+
+/*
+ * Namen lopen uit elkaar -- "Citybus by Kajosch" naast "5" -- en een mapnaam is
+ * soms nog langer. Elke cel kapt daarom af in plaats van de rij te laten
+ * groeien; anders schuiven de rijen over elkaar heen zodra er een bus met een
+ * lange naam tussen staat.
+ */
+.dienstrij > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dienstnaam {
+  font-weight: 500;
+}
+
+.dienstrij:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.dienstrij {
+  display: grid;
+  grid-template-columns: 26px 1.25fr 0.85fr 1.25fr auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 38px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-klein);
+  background: transparent;
+  color: var(--vel-ink);
+  font-family: inherit;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums lining-nums;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dienstrij:hover {
+  background: var(--vel-hover);
+}
+
+.dienstrij[aria-pressed='true'] {
+  background: var(--route);
+  color: #ffffff;
+}
+
+.dienstrij[aria-pressed='true'] .dienstduur {
+  color: rgba(255, 255, 255, 0.86);
+}
+
+/* Het keuzerondje: een ring, en gevuld zodra de rij gekozen is. */
+.dienstbol {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--vel-zacht);
+  border-radius: var(--radius-rond);
+}
+
+.dienstrij[aria-pressed='true'] .dienstbol {
+  border-color: #ffffff;
+  background:
+    radial-gradient(circle, #ffffff 0 3.5px, transparent 3.5px) center / 100% 100% no-repeat,
+    var(--route);
+}
+
+.dienstduur {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--vel-zacht);
+}
+
+.dienstduur svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+
+.velvoet {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--vel-lijn);
+  font-size: 13px;
+  color: var(--vel-zacht);
+}
+
+.velvoet svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+/*
+ * De voet zegt normaal iets over de lijst eronder; staat er een fout, dan zegt
+ * hij dat. Dezelfde rode als "te laat" elders in de app -- in deze app betekent
+ * rood dat er iets niet klopt, en dat mag maar een ding tegelijk betekenen.
+ */
+.velvoet.fout {
+  color: var(--laat);
+}
+
+/*
+ * Wat je moet weten voordat je op START drukt. Staat boven de keuze en niet
+ * eronder: het gaat niet over wat je kiest maar over wat er daarna gebeurt.
+ */
+.velwaarschuwing {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--laat);
+  border-radius: var(--radius-klein);
+  color: var(--vel-ink);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.velwaarschuwing p {
+  margin: 0;
+}
+
+.velwaarschuwing label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--vel-zacht);
+  cursor: pointer;
+}
+
+.velwaarschuwing input[type='checkbox'] {
+  accent-color: var(--route);
+}
+
+/* ---- op de kaart ---- */
+
+.kaartknoppen {
+  position: absolute;
+  right: 29px;
+  top: 92px;
+  width: 32px;
+  display: flex;
+  flex-direction: column;
+  background: var(--kaartknop-grond);
+  border: 1px solid var(--kaartknop-lijn);
+  border-radius: 8px;
+  box-shadow: var(--vel-schaduw);
+  overflow: hidden;
+}
+
+.kaartknop {
+  display: grid;
+  place-items: center;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--kaartknop-ink);
+  cursor: pointer;
+}
+
+.kaartknop + .kaartknop {
+  border-top: 1px solid var(--kaartknop-lijn);
+}
+
+.kaartknop svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* ---- de hoofdknop ---- */
+
+/*
+ * De rij rechtsonder. Hij groeit naar links mee met wat erin staat en breekt
+ * af zodra dat niet meer past -- op een smal venster staan de knoppen dan
+ * onder elkaar in plaats van half buiten beeld.
+ */
+.knoppenrij {
+  position: absolute;
+  /*
+   * Van rand tot rand, en de knoppen rechts erin. Met alleen `right` kreeg de
+   * rij de breedte die er toevallig naast het vel overbleef, en dan brak hij af
+   * -- de tweede knop kwam boven de eerste te staan, dwars over de tegels heen.
+   */
+  left: 24px;
+  right: 24px;
+  bottom: 31px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  justify-content: flex-end;
+  gap: 12px;
+  /* De lege ruimte ernaast hoort geen klikken op te vangen; daar ligt de kaart. */
+  pointer-events: none;
+}
+
+.knoppenrij > * {
+  pointer-events: auto;
+}
+
+.startknop {
+  /*
+   * Een ondergrens, geen maat. De tekst bepaalt de breedte: "START" is kort,
+   * "Yes, that is it" en "Wagenparken overzetten" zijn dat niet, en die hoorden
+   * niet over twee regels te breken.
+   */
+  min-width: clamp(150px, 15.3%, 240px);
+  padding: 0 24px;
+  height: 62px;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--route);
+  color: #ffffff;
+  box-shadow: var(--vel-schaduw);
+  font-family: inherit;
+  font-size: clamp(15px, 1.5vw, 20px);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  /* Kapitalen zijn opmaak, geen tekst: in het Duits schrijf je ze niet mee. */
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.startknop:hover:not(:disabled) {
+  background: var(--route-diep);
+}
+
+.startknop:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.startknop svg {
+  width: 18px;
+  height: 18px;
+}
+
+
+/*
+ * De buslijst is de enige waarin de tweede kolom het werk doet: alle bussen
+ * heten hetzelfde en verschillen pas in hun bestandsnaam. Daar -- en alleen
+ * daar -- gaat de breedte naar die kolom. Bij de tijden moet de derde kolom
+ * juist ruim blijven, anders wordt "1h 53m" een "1h 53n".
+ */
+.dienstenvel[data-stap='bus'] .dienstrij,
+.dienstenvel[data-stap='bus'] .kolomkoppen {
+  grid-template-columns: 26px 1.25fr 1.15fr 0.6fr auto;
+}
+
+/*
+ * Een lijst die niets te kiezen geeft heeft geen keuzerondje, en dus ook niet
+ * de kolom ervoor. Zonder deze regel bleven die zesentwintig pixels staan,
+ * schoof alles een kolom op en kwam de busnaam in het hokje van het bolletje
+ * terecht -- "fO...", "H...", "H...".
+ */
+.dienstenvel[data-keuze='nee'] .dienstrij,
+.dienstenvel[data-keuze='nee'] .kolomkoppen {
+  grid-template-columns: 1.6fr 0.7fr 0.7fr;
+}
+
+/* Er valt hier niets te kiezen, dus ook niets op te lichten. */
+.dienstenvel[data-keuze='nee'] .dienstrij {
+  cursor: default;
+}
+
+/* ---- toetsenbord ----
+ *
+ * Dit scherm wordt met muis en toetsenbord bediend, en zonder eigen ring valt
+ * de focus terug op de ring van de oude wereld. Eén ring, overal dezelfde,
+ * in de kleur van de route.
+ */
+
+.setup :focus-visible {
+  outline: 2px solid var(--route);
+  outline-offset: 2px;
+}
+
+.dienstrij:focus-visible {
+  outline-offset: -2px;
+}
+
+/* ---- de schuifbalk van de lijst ----
+ *
+ * De standaardbalk van Windows heeft pijltjes en een grijze goot; naast een
+ * wit vel met haarlijnen is dat het luidste op het scherm.
+ */
+
+.dienstenlijst {
+  scrollbar-width: thin;
+  scrollbar-color: var(--vel-zacht) transparent;
+}
+
+.dienstenlijst::-webkit-scrollbar {
+  width: 10px;
+}
+
+.dienstenlijst::-webkit-scrollbar-thumb {
+  background: var(--vel-zacht);
+  opacity: 0.4;
+  border: 3px solid transparent;
+  border-radius: var(--radius-rond);
+  background-clip: content-box;
+}
+
+.dienstenlijst::-webkit-scrollbar-thumb:hover {
+  background: var(--vel-ink);
+  background-clip: content-box;
+}
+
+/* ---- beweging ----
+ *
+ * EEN beweging, niet overal een andere: iets dat binnenkomt schuift een paar
+ * pixels omhoog terwijl het opkomt, en verder verandert er alleen kleur. Dat is
+ * de hele woordenschat. Alles binnen een vijfde seconde, want dit scherm is een
+ * werktuig en geen etalage -- je gaat er twintig keer per avond doorheen, en
+ * wat de eerste keer aardig is, is de twintigste keer oponthoud.
+ *
+ * Waarom het er wel is: de stappen wisselen zonder dat er iets van plaats
+ * verandert -- hetzelfde vel op dezelfde plek met andere inhoud. Zonder
+ * beweging weet je niet of er iets gebeurd is toen je op Verder drukte. De
+ * beweging zegt "dit is nieuw", en dat is het enige wat ze hoeft te zeggen.
+ *
+ * Wie beweging heeft uitgezet in Windows krijgt er niets van te zien; dat staat
+ * onderaan in een blok bij elkaar in plaats van bij elke regel apart.
+ */
+
+@keyframes vel-op {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/*
+ * Bij elke stap opnieuw, niet alleen de eerste keer.
+ *
+ * Dit stond er al, maar het vel blijft tussen de stappen door hetzelfde
+ * element: React wisselt de inhoud en laat de doos staan, en dan speelt een
+ * animatie op die doos precies een keer af -- bij het openen van de app. De
+ * regel hierboven beloofde iets wat je alleen bij de allereerste stap zag. Het
+ * vel draagt nu een sleutel per stap (zie Setup.tsx), waardoor het werkelijk
+ * opnieuw ter wereld komt en de beweging elke keer loopt.
+ */
+.dienstenvel {
+  animation: vel-op 180ms ease-out;
+}
+
+/*
+ * De regels komen na het vel, en na elkaar.
+ *
+ * Een lijst van veertig diensten die in een keer verschijnt is een muur; komen
+ * ze kort na elkaar, dan lees je van boven naar beneden omdat het scherm dat
+ * voordoet. Vandaar een oplopende vertraging -- maar met een dak erop: bij
+ * driehonderd bussen zou de onderste anders vijf seconden op zich laten
+ * wachten. Na de twaalfde komt alles tegelijk, en dat merkt niemand, want de
+ * twaalfde staat al onder de vouw.
+ */
+@keyframes rij-op {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.dienstenlijst li,
+.tegels .tegel {
+  animation: rij-op 170ms ease-out backwards;
+  animation-delay: calc(min(var(--i, 0), 12) * 16ms);
+}
+
+/*
+ * Het streepje tussen twee stappen loopt vol in plaats van om te springen. Het
+ * is de enige beweging op het scherm die iets meet in plaats van iets aan te
+ * kondigen: hij laat zien dat je een stap verder bent.
+ */
+.stap-streep {
+  background-image: linear-gradient(to right, var(--route) 0 50%, var(--vel-lijn) 50% 100%);
+  background-size: 200% 100%;
+  background-position: 100% 0;
+  transition: background-position 260ms ease-out;
+}
+
+.stap-streep[data-stand='klaar'] {
+  background-position: 0 0;
+}
+
+.dienstrij,
+.startknop,
+.tweedeknop,
+.terugknop,
+.kaartknop,
+.stapknop,
+.tegel {
+  transition:
+    background-color 120ms ease-out,
+    border-color 120ms ease-out,
+    color 120ms ease-out,
+    opacity 120ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dienstenvel,
+  .dienstenlijst li,
+  .tegels .tegel {
+    animation: none;
+  }
+
+  .stap-streep,
+  .dienstrij,
+  .startknop,
+  .tweedeknop,
+  .terugknop,
+  .kaartknop,
+  .stapknop,
+  .tegel {
+    transition: none;
+  }
+}
+
+/* ---- kleinere vensters ----
+ *
+ * Het venster mag tot 720 bij 560. Daar past de stappenbalk niet meer uitgeschreven
+ * naast een vel van een kwart breed, dus vallen eerst de verbindingsstreepjes weg
+ * en daarna de woorden: de icoontjes blijven, met de actieve stap voluit.
+ */
+
+@media (max-width: 1100px) {
+  .stap-streep {
+    min-width: 10px;
+    margin: 0 8px;
+  }
+
+  .stappen {
+    padding-left: 2%;
+  }
+}
+
+@media (max-width: 920px) {
+  .stap-streep {
+    display: none;
+  }
+
+  .stappen {
+    gap: 18px;
+    padding-left: 16px;
+  }
+
+  .stap[data-stand='klaar'] .stapknop,
+  .stap[data-stand='straks'] .stapknop {
+    /* Alleen het icoontje; de naam van de actieve stap blijft wel staan. */
+    font-size: 0;
+    gap: 0;
+  }
+
+  .startknop {
+    /* Een ondergrens, niet een maat: de tekst mag hem breder maken. */
+    min-width: 150px;
+    height: 54px;
+    font-size: 17px;
+  }
+
+  .kaart-leeg {
+    left: 40%;
+  }
+
+  /*
+   * Smal vel: het klokje kost de duur precies de ruimte die hij nodig heeft,
+   * en "1h 59m" half afgekapt leest als een fout. Het klokje gaat weg, de
+   * kolommen worden gelijker.
+   */
+  .dienstduur svg {
+    display: none;
+  }
+
+  .dienstrij,
+  .kolomkoppen {
+    grid-template-columns: 22px 1.2fr 1fr 1fr auto;
+    gap: 6px;
+  }
+
+  .kolomkoppen {
+    letter-spacing: 0.1em;
+  }
+}
+
+@media (max-height: 640px) {
+  .dienstenvel {
+    top: 74px;
+    height: calc(100% - 74px - 22px);
+  }
+
+  .setup-stappen {
+    top: 16px;
+    left: 16px;
+    right: 16px;
+  }
+
+  .velkop {
+    padding: 12px 16px 6px;
+  }
+
+  .veltitel {
+    font-size: 22px;
+  }
+
+  .knoppenrij {
+    bottom: 22px;
+    left: 18px;
+    right: 18px;
+  }
+
+  .startknop,
+  .tweedeknop {
+    height: 52px;
+  }
+
+  .kaartknoppen {
+    top: 80px;
+  }
+}
+
+
+/*
+ * Beeldvullend heeft meer lucht nodig dan een smal vel: daar leest de kop als
+ * een kop, hier als een aankondiging. Titel en uitleg krijgen ruimte, en de
+ * uitleg loopt niet door tot de rand van het scherm.
+ */
+.setup[data-vol='ja'] .velkop {
+  padding: 28px 20px 18px;
+  row-gap: 8px;
+}
+
+.setup[data-vol='ja'] .velonderschrift {
+  max-width: 62ch;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.setup[data-vol='ja'] .invoerrij {
+  margin-top: 8px;
+  margin-bottom: 10px;
+}
+
+/* ---- beeldvullend ----
+ *
+ * De eerste stappen -- wie ben ik, wat doe ik, en de instellingen -- hebben geen
+ * kaart om naast te liggen: er is nog niets gekozen om te tonen. Een smal vel
+ * naast een leeg vlak is dan geen indeling maar een restant. Daar vult het vel
+ * het venster, en pas vanaf de kaartstap schuift hij naar links om de kaart
+ * ernaast te laten zien.
+ */
+
+.setup[data-vol='ja'] .setup-kaart,
+.setup[data-vol='ja'] .kaartknoppen {
+  display: none;
+}
+
+.setup[data-vol='ja'] .dienstenvel {
+  left: 22px;
+  right: 22px;
+  width: auto;
+  /* Ruimte onderaan voor de knoppen, die op hun vaste plek blijven staan. */
+  height: calc(100% - 85px - 115px);
+}
+
+/*
+ * Wel beeldvullend, niet uitgerekt: een regel van veertienhonderd pixels lees je
+ * niet meer als een regel. De inhoud houdt een leesbare breedte en staat in het
+ * midden.
+ */
+.setup[data-vol='ja'] .velkop,
+.setup[data-vol='ja'] .kolomkoppen,
+.setup[data-vol='ja'] .invoerrij,
+.setup[data-vol='ja'] .dienstenlijst,
+.setup[data-vol='ja'] .velvoet {
+  width: 100%;
+  max-width: 760px;
+  margin-inline: auto;
+}
+
+.setup[data-vol='ja'] .veltitel {
+  font-size: 30px;
+}
+
+.setup[data-vol='ja'] .dienstrij {
+  height: 44px;
+}
+
+@media (max-width: 920px) {
+  .setup[data-vol='ja'] .dienstenvel {
+    left: 16px;
+    right: 16px;
+  }
+}
+
+
+/* ---- een formulier in het vel ----
+ *
+ * De instellingen van OMSI komen uit de oude wereld en dragen haar klassen. Ze
+ * hier opnieuw bouwen zou betekenen dat twee schermen hetzelfde doen; in plaats
+ * daarvan krijgen ze binnen het vel de kleuren en letters van deze wereld. Het
+ * blijft hetzelfde formulier, het hoort er alleen bij.
+ */
+
+.velinhoud {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 20px 20px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--vel-zacht) transparent;
+}
+
+/* Het eigen omhulsel van dat scherm mag hier niets meer doen. */
+.velinhoud .app,
+.velinhoud .main {
+  display: block;
+  width: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  background: none;
+  grid-template-columns: none;
+}
+
+/* Kop en balk staan al in het vel; die van het oude scherm zijn dubbelop. */
+.velinhoud .mode-bar,
+.velinhoud > .app > .main > h1,
+.velinhoud .subtitle {
+  display: none;
+}
+
+.velinhoud,
+.velinhoud h2,
+.velinhoud h3,
+.velinhoud label,
+.velinhoud p {
+  color: var(--vel-ink);
+  font-family: var(--letter);
+}
+
+.velinhoud .note,
+.velinhoud .empty {
+  color: var(--vel-zacht);
+}
+
+.velinhoud .card,
+.velinhoud section {
+  background: transparent;
+  border: 1px solid var(--vel-lijn);
+  border-radius: var(--radius-klein);
+  box-shadow: none;
+}
+
+.velinhoud .chip {
+  border: 1px solid var(--vel-lijn);
+  border-radius: var(--radius-rond);
+  background: transparent;
+  color: var(--vel-ink);
+  font-family: var(--letter);
+}
+
+.velinhoud .chip[aria-pressed='true'] {
+  border-color: var(--route);
+  background: var(--route);
+  color: #ffffff;
+}
+
+.velinhoud .btn,
+.velinhoud .link-button {
+  border-radius: var(--radius-klein);
+  font-family: var(--letter);
+  color: var(--route);
+}
+
+/*
+ * De hoofdknop van de oude wereld is geel, en geel is hier van het lijnnummer.
+ * Een dienst afronden is een handeling, geen identiteit, dus hij krijgt de
+ * routekleur -- net als elke andere hoofdknop op dit scherm.
+ */
+.velinhoud .btn.primary,
+.velinhoud .btn:not(.secondary):not(.ghost) {
+  background: var(--route);
+  border-color: var(--route);
+  color: #ffffff;
+}
+
+.velinhoud .btn.secondary,
+.velinhoud .btn.ghost {
+  background: transparent;
+  border: 1px solid var(--vel-lijn);
+  color: var(--vel-ink);
+}
+
+.velinhoud input,
+.velinhoud select,
+.velinhoud textarea {
+  background: var(--veld);
+  color: var(--vel-ink);
+  border: 1px solid var(--vel-lijn);
+  border-radius: var(--radius-klein);
+  font-family: var(--letter);
+}
+
+/*
+ * De schuifjes van de oude wereld dragen haar accentkleur, en dat is het geel
+ * van het lijnnummer. Hier is geel gereserveerd voor identiteit; een instelling
+ * is geen lijn. Ze krijgen de kleur van de route, net als elke andere keuze.
+ */
+.velinhoud input[type='range'] {
+  accent-color: var(--route);
+  background: transparent;
+}
+
+.velinhoud input[type='range']::-webkit-slider-runnable-track {
+  background: var(--vel-lijn);
+  height: 4px;
+  border-radius: var(--radius-rond);
+}
+
+.velinhoud input[type='range']::-webkit-slider-thumb {
+  background: var(--route);
+  border: 0;
+}
+
+.velinhoud input[type='checkbox'] {
+  accent-color: var(--route);
+}
+
+/* Aan/uit-schakelaars dragen dezelfde kleur als de rest van de keuzes. */
+.velinhoud [aria-pressed='true'],
+.velinhoud .aan {
+  border-color: var(--route);
+  color: var(--route);
+}
+
+.velinhoud table {
+  color: var(--vel-ink);
+}
+
+.velinhoud th,
+.velinhoud td {
+  border-color: var(--vel-lijn);
+}
+
+
+/* ---- het tegelrooster ----
+ *
+ * Voor keuzes die je met een blik wilt overzien in plaats van lezen. De tegels
+ * hebben een vaste minimumbreedte en vullen de rij; bij een smal venster worden
+ * het er vanzelf minder per rij in plaats van smallere tegels.
+ */
+
+.kruimels {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 0 20px 12px;
+  font-size: 13px;
+  color: var(--vel-zacht);
+}
+
+.setup[data-vol='ja'] .kruimels {
+  width: 100%;
+  max-width: 1100px;
+  margin-inline: auto;
+}
+
+.kruimel {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.kruimel-scheiding {
+  padding: 0 6px;
+  opacity: 0.6;
+}
+
+.kruimels button {
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--route);
+  font: inherit;
+  cursor: pointer;
+}
+
+.kruimels button:hover {
+  background: var(--vel-hover);
+}
+
+.kruimel-hier {
+  color: var(--vel-ink);
+  font-weight: 600;
+}
+
+.tegels {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 12px;
+  align-content: start;
+  /* Onderaan extra lucht, anders lijkt de laatste rij afgesneden in plaats van door te lopen. */
+  padding: 0 20px 24px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--vel-zacht) transparent;
+}
+
+.setup[data-vol='ja'] .tegels {
+  width: 100%;
+  max-width: 1100px;
+  margin-inline: auto;
+}
+
+.tegel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 132px;
+  padding: 16px;
+  border: 1px solid var(--vel-lijn);
+  border-radius: var(--radius-klein);
+  background: transparent;
+  color: var(--vel-ink);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tegel:hover {
+  background: var(--vel-hover);
+  border-color: var(--vel-zacht);
+}
+
+.tegel[aria-pressed='true'] {
+  border-color: var(--route);
+  background: var(--route);
+  color: #ffffff;
+}
+
+/*
+ * Het monogram van een merk: de initialen in een eigen kleur.
+ *
+ * Met opzet geen nagemaakt merkteken -- dat zijn echte bedrijven. Twee letters
+ * in een vaste vorm doen hier het werk: in een rooster van dertig tegels vind je
+ * MAN terug zonder te lezen.
+ */
+.monogram {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 4px;
+  border-radius: var(--radius-klein);
+  color: #ffffff;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+/* De bus is getekend met lijnen, dus hij neemt de kleur van de tegel over. */
+.busicoon {
+  width: 84px;
+  height: 35px;
+  margin-bottom: 4px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  opacity: 0.85;
+}
+
+.tegel[aria-pressed='true'] .busicoon {
+  opacity: 1;
+}
+
+.tegel-titel {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.tegel-onder {
+  font-size: 13px;
+  color: var(--vel-zacht);
+}
+
+.tegel[aria-pressed='true'] .tegel-onder {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+@media (max-width: 920px) {
+  .tegels {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 10px;
+  }
+
+  .tegel {
+    min-height: 112px;
+    padding: 12px;
+  }
+
+  .busicoon {
+    width: 64px;
+    height: 27px;
+  }
+}
+
+
+/* ---- het wachtvenster ----
+ *
+ * "Moment geduld" komt uit de oude wereld en bracht haar glas mee, precies op
+ * het moment dat je het spel in gaat. Binnen dit scherm draagt het dezelfde
+ * kleuren als de rest.
+ */
+
+.setup .backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(5, 7, 12, 0.72);
+  z-index: 5;
+}
+
+.setup .dialog {
+  width: min(460px, calc(100vw - 48px));
+  padding: 24px;
+  background: var(--vel);
+  color: var(--vel-ink);
+  border: 1px solid var(--vel-rand);
+  border-radius: var(--radius);
+  box-shadow: var(--vel-schaduw);
+  font-family: var(--letter);
+}
+
+/* De gloed van de glaswereld hoort hier niet; die vulde het glas. */
+.setup .dialog .glow {
+  display: none;
+}
+
+.setup .dialog h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.setup .dialog p {
+  margin: 0 0 18px;
+  color: var(--vel-zacht);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.setup .dialog .btn {
+  border: 0;
+  border-radius: var(--radius-klein);
+  background: var(--route);
+  color: #ffffff;
+  font-family: var(--letter);
+  font-weight: 600;
+}
+
+/*
+ * De twee knoppen onder een vraag: weigeren links, doen rechts. De vraag over
+ * het wagenpark schrijft in de spelmap, dus de stille knop mag niet de
+ * opvallende zijn.
+ */
+.setup .dialog .dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.setup .dialog .btn {
+  padding: 10px 18px;
+  cursor: pointer;
+}
+
+.setup .dialog .btn.ghost {
+  border: 1px solid var(--vel-rand);
+  background: transparent;
+  color: var(--vel-ink);
+}
+
+.setup .dialog .btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+
+/*
+ * De vraag boven de lijst: hoe lang mag de dienst duren, en wanneer. Ze staan
+ * in het vel en niet in een eigen kader -- het is dezelfde vraag als de lijst
+ * eronder, alleen het deel dat jij invult.
+ */
+.regelaars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--vel-lijn);
+}
+
+.regelaar {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.regelaar-kop {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.regelaar-kop label {
+  color: var(--vel-zacht);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* De gekozen lengte is het getal waar je naar kijkt terwijl je schuift. */
+.regelaar-waarde {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.regelaar input[type='range'] {
+  width: 100%;
+  height: 4px;
+  margin: 4px 0;
+  border-radius: var(--radius-rond);
+  background: var(--vel-lijn);
+  accent-color: var(--route);
+  appearance: none;
+}
+
+.regelaar input[type='range']::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: var(--radius-rond);
+  background: var(--route);
+  appearance: none;
+  cursor: pointer;
+}
+
+.regelaar-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.regelaar-chips button {
+  padding: 5px 11px;
+  border: 1px solid var(--vel-rand);
+  border-radius: var(--radius-rond);
+  background: transparent;
+  color: var(--vel-zacht);
+  font-family: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.regelaar-chips button[aria-pressed='true'] {
+  border-color: var(--route);
+  background: var(--route);
+  color: #ffffff;
+}
+
+/*
+ * De eerste vraag: waar staat OMSI. Het antwoord is een pad, en een pad is het
+ * enige op dit scherm -- dus groot genoeg om te lezen en niet in een hoekje.
+ */
+.omsivraag {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 640px;
+  padding: 8px 0;
+}
+
+.omsipad {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--vel-rand);
+  border-radius: var(--radius-klein);
+  background: var(--vel-hover);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.omsihint {
+  margin: 0;
+  color: var(--vel-zacht);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+/* Iets klopt er niet aan de keuze; dezelfde rode als bij de tijd. */
+.omsiwaarschuwing {
+  margin: 0;
+  color: #ff5f57;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+/* ---- het welkomstscherm ----
+ *
+ * Eén vel midden in beeld met de knoppen eronder. Het stappenvel van de rest
+ * zet zijn hoofdknop rechtsonder, want daar is het scherm vol en wijst die
+ * plek vooruit. Hier is er niets anders te doen dan antwoorden, en dan hoort
+ * de knop onder de vraag te staan waar hij bij hoort.
+ */
+
+.welkom {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  overflow-y: auto;
+  background: var(--grond);
+  color: var(--vel-ink);
+  font-family: var(--letter);
+}
+
+.welkom-talen {
+  position: fixed;
+  top: 18px;
+  right: 22px;
+  display: flex;
+  gap: 6px;
+}
+
+.welkom-talen button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.55;
+}
+
+.welkom-talen button[aria-pressed='true'] {
+  border-color: var(--route);
+  opacity: 1;
+}
+
+.welkom-vel {
+  width: min(560px, 100%);
+  padding: 34px 36px 28px;
+  border: 1px solid var(--vel-rand);
+  border-radius: var(--radius);
+  background: var(--vel);
+  box-shadow: var(--vel-schaduw);
+  text-align: center;
+}
+
+.welkom-vel h1 {
+  margin: 0 0 10px;
+  font-size: clamp(24px, 3vw, 32px);
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.welkom-intro {
+  margin: 0 0 22px;
+  color: var(--vel-zacht);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.welkom-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--vel-zacht);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Een pad is geen zin: het mag overal afbreken en het mag een schrijfmachine zijn. */
+.welkom-pad {
+  margin: 0;
+  padding: 13px 15px;
+  border: 1px solid var(--vel-rand);
+  border-radius: var(--radius-klein);
+  background: var(--vel-hover);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.welkom-hint {
+  margin: 10px 0 0;
+  color: var(--vel-zacht);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.welkom-waarschuwing {
+  margin: 10px 0 0;
+  color: var(--laat);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.welkom-knoppen {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.welkom-knop {
+  min-width: 150px;
+  padding: 13px 22px;
+  border: 1px solid var(--vel-rand);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--vel-ink);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.welkom-knop.primair {
+  border-color: var(--route);
+  background: var(--route);
+  color: #ffffff;
+}
+
+.welkom-knop.primair:hover:not(:disabled) {
+  background: var(--route-diep);
+}
+
+.welkom-knop:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.welkom-voet {
+  margin: 18px 0 0;
+  color: var(--vel-zacht);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+/*
+ * Het knopje voor dag of nacht. Hij staat naast de vlaggen, want het is
+ * hetzelfde soort keuze: iets van deze computer en niet van deze chauffeur.
+ */
+.themaknop {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--vel-ink, #e8ebf2);
+  cursor: pointer;
+  opacity: 0.55;
+}
+
+.themaknop:hover {
+  opacity: 1;
+}
+
+.themaknop svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* ---- de dienstregeling die meeloopt ----
+ *
+ * De overlay hangt over het spel en is daarom klein. Hier is er plaats voor de
+ * hele dienst tegelijk, en dat is een ander soort kijken: niet "wat komt er nu"
+ * maar "hoe staat de dag ervoor". Kleur betekent ook hier alleen tijd.
+ */
+
+.live {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  /*
+   * Begrensd, zodat alleen de rittenlijst schuift.
+   *
+   * Zonder grens groeide de lijst door en schoof het vel zelf omhoog: de
+   * tegels met de klok en de vertraging stonden dan boven het scherm, terwijl
+   * dat juist is waar je op kijkt. Nu blijft de kop staan en rolt alleen wat
+   * eronder hoort te rollen.
+   */
+  min-height: 0;
+  max-height: min(58vh, 560px);
+}
+
+.live-kop {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.live-tegel {
+  padding: 11px 13px;
+  border: 1px solid var(--vel-rand);
+  border-radius: var(--radius-klein);
+  background: var(--vel-hover);
+}
+
+.live-tegel b {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.live-tegel small {
+  margin-left: 4px;
+  color: var(--vel-zacht);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.live-tegel span {
+  color: var(--vel-zacht);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Zie `src/shared/status.ts` voor waar de grens ligt. */
+.live-tegel b.late {
+  color: var(--laat);
+}
+
+.live-tegel b.ontime {
+  color: var(--optijd);
+}
+
+.live-tegel b.early {
+  color: var(--vroeg);
+}
+
+.live-ritten {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 2px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--vel-zacht) transparent;
+}
+
+.live-rit {
+  padding: 8px 10px;
+  border-radius: var(--radius-klein);
+  border-bottom: 1px solid var(--vel-lijn);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* Wat je gereden hebt mag naar de achtergrond; het staat er om te kloppen. */
+.live-rit.gehad {
+  opacity: 0.45;
+}
+
+.live-rit.nu {
+  background: rgba(42, 117, 247, 0.14);
+  border-bottom-color: transparent;
+}
+
+.live-ritkop {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.live-tijd {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.live-naar {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.live-naar b {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-naar small {
+  color: var(--vel-zacht);
+  font-size: 11.5px;
+}
+
+.live-pauze {
+  display: block;
+  margin-top: 4px;
+  color: var(--lijn);
+  font-size: 11.5px;
+}
+
+/*
+ * De haltes van de rit die loopt, met dezelfde blauwe rail als op de kaart en
+ * in de overlay: een route met punten erop.
+ */
+.live-haltes {
+  margin: 8px 0 2px;
+  padding: 0;
+  list-style: none;
+}
+
+.live-halte {
+  display: grid;
+  grid-template-columns: 14px auto 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  position: relative;
+}
+
+.live-halte i {
+  position: relative;
+  width: 14px;
+  height: 100%;
+  min-height: 20px;
+}
+
+.live-halte i::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+  left: 5px;
+  width: 3px;
+  border-radius: var(--radius-rond);
+  background: rgba(42, 117, 247, 0.26);
+}
+
+.live-halte:first-child i::before {
+  top: 50%;
+}
+
+.live-halte:last-child i::before {
+  bottom: 50%;
+}
+
+.live-halte.gehad i::before,
+.live-halte.hier i::before {
+  background: var(--route);
+}
+
+.live-halte i::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  width: 9px;
+  height: 9px;
+  margin-top: -4.5px;
+  border-radius: var(--radius-rond);
+  background: rgba(42, 117, 247, 0.4);
+}
+
+.live-halte.gehad i::after {
+  background: var(--route);
+}
+
+.live-halte.hier i::after {
+  left: 0;
+  width: 13px;
+  height: 13px;
+  margin-top: -6.5px;
+  background: var(--route);
+  box-shadow: 0 0 0 3px rgba(42, 117, 247, 0.28);
+}
+
+.live-halte.gehad {
+  opacity: 0.5;
+}
+
+.live-haltetijd {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.live-halte.hier .live-haltenaam {
+  font-weight: 600;
+}
+
+.live-haltenaam {
+  overflow: hidden;
+  font-size: 13.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Zie overlay.css: de code blijft voluit, het lijndeel is gedempt. */
+.routekop {
+  color: var(--vel-zacht);
+  font-weight: 400;
+}
+
+/*
+ * Het versienummer in de balk. Het hoort er te staan -- wie een fout meldt moet
+ * kunnen zeggen welke versie hij heeft -- maar het is niets om naar te kijken,
+ * dus draagt het dezelfde gedempte toon als de rest van de balkrand.
+ */
+.versie {
+  margin-right: 4px;
+  color: var(--vel-zacht);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: 0.02em;
+}
+
+.welkom-versie {
+  display: block;
+  margin: -4px 0 12px;
+  color: var(--vel-zacht);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/*
+ * DE RITSTAP VAN VRIJ RIJDEN
+ *
+ * Geen lijst maar een formulier: vier vragen, en de kaart ernaast waarop je
+ * ziet wat je aanwijst. Het staat in dezelfde taal als de rest van het vel --
+ * dezelfde randen, dezelfde kapitaaltjes boven een veld, dezelfde chips voor
+ * het weer als op de dienststap voor het dagdeel -- want het is dezelfde reeks
+ * en niet een formulier dat er toevallig in gevallen is.
+ */
+.vrijerit {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 0 8px;
+}
+
+.vrijveld {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vrijveld > span {
+  color: var(--vel-zacht);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.vrijveld select,
+.vrijveld input {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--vel-rand);
+  border-radius: var(--radius-klein);
+  background: var(--vel-hover);
+  color: var(--vel-ink);
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.vrijveld input[type='date'],
+.vrijveld input[type='time'] {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/*
+ * De agenda- en klokknopjes van Chromium zijn zwart, en zwart op een donker
+ * veld is niets. De app is donker tenzij anders gezegd, dus keren we ze om en
+ * zetten dat in de lichte stand weer terug -- dezelfde volgorde als theme.css
+ * aanhoudt.
+ */
+.vrijveld input::-webkit-calendar-picker-indicator {
+  filter: invert(1) opacity(0.65);
+}
+
+:root[data-thema='licht'] .vrijveld input::-webkit-calendar-picker-indicator {
+  filter: opacity(0.65);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-thema]) .vrijveld input::-webkit-calendar-picker-indicator {
+    filter: opacity(0.65);
+  }
+}
+
+.vrijveld select:focus-visible,
+.vrijveld input:focus-visible {
+  border-color: var(--route);
+  outline: none;
+}
+
+/* Datum en tijd horen bij elkaar en passen samen op een regel. */
+.vrijpaar {
+  display: flex;
+  gap: 12px;
+}
+
+.vrijnoot {
+  margin: 0;
+  color: var(--vel-zacht);
+  font-size: 12.5px;
+  line-height: 1.5;
+}

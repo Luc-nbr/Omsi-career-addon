@@ -37,11 +37,34 @@ interface FoundStop extends StopPoint {
   real: boolean
 }
 
+/**
+ * Een snelheidsbord langs de weg.
+ *
+ * OMSI schrijft nergens op hoe hard je ergens mag; die kennis staat alleen op de
+ * borden zelf, en die zijn gewone objecten met hun snelheid in de bestandsnaam:
+ * `vz_30kmh_mast.sco`. Hohenkirchen zet er tweehonderdvijftig neer, van 30 tot
+ * 80. Een kaart die ze niet gebruikt levert niets op, en dan staat er ook niets
+ * in beeld.
+ */
+export interface SpeedSign {
+  x: number
+  y: number
+  kmh: number
+}
+
 /** Een stuk weg of spoor, als aaneengesloten punten in meters. */
 export interface RoadLine {
   kind: SplineKind
   /** Afwisselend x en y, om het geheel klein te houden. */
   points: number[]
+  /**
+   * Breedte van deze baan in meters, zoals het splinebestand hem opgeeft.
+   *
+   * Daarmee tekent de kaart een doorgaande weg breder dan een woonstraat, zoals
+   * elke navigatiekaart doet. Ontbreekt hij, dan is drieënhalve meter een
+   * gewone rijstrook.
+   */
+  w?: number
 }
 
 export interface MapGeometry {
@@ -49,6 +72,10 @@ export interface MapGeometry {
   heightM: number
   stops: StopPoint[]
   roads: RoadLine[]
+  /** Rivieren en kanalen; `w` is hun breedte in meters. */
+  water?: RoadLine[]
+  /** De snelheidsborden die langs de wegen staan. */
+  limits?: SpeedSign[]
 }
 
 /**
@@ -62,6 +89,17 @@ export interface Lane {
   direction: number
   /** Het spline- of objectbestand, om een haperend net te kunnen nazoeken. */
   source: string
+  /**
+   * Hoogte van het wegdek hier, in meters.
+   *
+   * Niet die van het maaiveld: een weg ligt zelden op de grond. Hij loopt over
+   * een talud, een dijk of een viaduct, en op een heuvelkaart scheelt dat
+   * meters. Wie een bus op de terreinhoogte neerzet, zet hem daar in de berm of
+   * in de grond.
+   *
+   * Leeg als het bestand er geen droeg; dan blijft alleen het terrein over.
+   */
+  height?: number
 }
 
 /** Een gewone OMSI-tegel is 300 meter in het vierkant. */
@@ -158,6 +196,18 @@ export function readTileGrid(mapPath: string): TileGrid | undefined {
 
 const EMPTY: MapGeometry = { widthM: 0, heightM: 0, stops: [], roads: [] }
 
+/*
+ * Water is bij OMSI een spline als elke andere, alleen zonder rijbaan erop -- en
+ * zijn breedte staat in zijn naam: `wasser_50m.sli` is vijftig meter breed. Een
+ * kaartmaker die zich daar niet aan houdt krijgt de standaardbreedte.
+ */
+const WATER = /wasser|water|fluss|bach|kanal|teich/i
+/** Een snelheidsbord: `vz_30kmh_mast.sco`, `Vz-50kmh.sco`, en wat daarop lijkt. */
+const BORD = /vz[_-]?(\d{2,3})\s*kmh/i
+const WATER_BREEDTE = /[_-](\d+)\s*m/i
+const WATER_STANDAARD = 20
+
+
 /**
  * Leest de haltes en het wegennet van een kaart uit de tegels.
  *
@@ -185,6 +235,8 @@ export function readMapData(
 
   const stops: FoundStop[] = []
   const roads: RoadLine[] = []
+  const water: RoadLine[] = []
+  const limits: SpeedSign[] = []
   const lanes: Lane[] = []
   let widthM = 0
   let heightM = 0
@@ -219,11 +271,21 @@ export function readMapData(
         const id = str(lines[i + 3])
         const source = str(lines[i + 2])
         if (!wantedIds.has(id)) {
+          // Een snelheidsbord draagt zijn snelheid in zijn naam.
+          const bord = BORD.exec(source)
+          if (bord) {
+            const kmh = Number.parseInt(bord[1], 10)
+            if (kmh >= 5 && kmh <= 130) {
+              limits.push({ x: dx + num(lines[i + 4]), y: dy + num(lines[i + 5]), kmh })
+            }
+          }
+
           // Geen halte, maar misschien wel een kruising of een stuk straat.
           const paths = objectPaths(omsiPath, source)
           if (paths.length === 0) continue
           const ox = num(lines[i + 4])
           const oy = num(lines[i + 5])
+          const oh = num(lines[i + 6])
           const rot = num(lines[i + 7])
           for (const path of paths) {
             const kind = path.type === PATH_ROAD ? 'road' : path.type === PATH_RAIL ? 'rail' : undefined
@@ -231,8 +293,16 @@ export function readMapData(
             const points = placeObjectPath(ox, oy, rot, path)
             if (points.length < 4) continue
             shift(points)
-            roads.push({ kind, points })
-            if (kind === 'road') lanes.push({ points, direction: path.direction, source })
+            roads.push({ kind, points, w: path.width > 0 ? path.width : undefined })
+            if (kind === 'road') {
+              /*
+               * De baan ligt op de hoogte van het object plus zijn eigen
+               * hoogte binnen dat object -- een oprit van een viaduct ligt
+               * hoger dan de voet ervan.
+               */
+              const hoogte = Number.isFinite(oh) ? oh + (path.height ?? 0) : undefined
+              lanes.push({ points, direction: path.direction, source, height: hoogte })
+            }
           }
           continue
         }
@@ -266,9 +336,19 @@ export function readMapData(
       if (tag !== '[spline]' && tag !== '[spline_h]') continue
       const source = str(lines[i + 2])
       const info = splineInfo(omsiPath, source)
-      if (info.kind !== 'road' && info.kind !== 'rail') continue
+      const isWater = info.kind !== 'road' && info.kind !== 'rail' && WATER.test(source)
+      if (info.kind !== 'road' && info.kind !== 'rail' && !isWater) continue
       const shape = parseSpline(lines, i)
       if (!shape) continue
+      if (isWater) {
+        const maat = WATER_BREEDTE.exec(source)
+        water.push({
+          kind: 'other',
+          points: shift(splinePoints(shape.x, shape.y, shape.rotationDeg, shape.length, shape.radius, 0)),
+          w: maat ? Number.parseInt(maat[1], 10) : WATER_STANDAARD
+        })
+        continue
+      }
       const place = (offset: number): number[] =>
         shift(splinePoints(shape.x, shape.y, shape.rotationDeg, shape.length, shape.radius, offset))
 
@@ -293,9 +373,9 @@ export function readMapData(
         if (!points) {
           points = place(lane.offset)
           drawn.set(key, points)
-          roads.push({ kind: 'road', points })
+          roads.push({ kind: 'road', points, w: path.width > 0 ? path.width : undefined })
         }
-        lanes.push({ points, direction: lane.direction, source })
+        lanes.push({ points, direction: lane.direction, source, height: shape.height })
       }
     }
   }
@@ -320,7 +400,9 @@ export function readMapData(
       widthM,
       heightM,
       stops: [...best.values()].map(({ real: _real, ...stop }) => stop),
-      roads
+      roads,
+      water,
+      limits
     },
     lanes
   }

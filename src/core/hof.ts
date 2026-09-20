@@ -53,9 +53,14 @@ export interface Hof {
  *
  * Let op: OMSI herkent sleutelwoorden aan het regelbegin, met of zonder blokhaken.
  * `stringcount_terminus` staat er zonder.
+ *
+ * `gelezen` is er voor wie het bestand toch al voor zich heeft. `scanHofs` haalt
+ * uit elk wagenpark twee dingen -- de bestemmingen en de veldindeling -- en
+ * haalde het daarvoor twee keer van schijf; over 448 bestanden is dat de helft
+ * van de tijd, en die tijd gaat af van het hoofdproces.
  */
-export function readHof(path: string): Hof {
-  const lines = readOmsiLines(path)
+export function readHof(path: string, gelezen?: string[]): Hof {
+  const lines = gelezen ?? readOmsiLines(path)
   const hof: Hof = { file: path, name: basename(path, extname(path)), termini: [], routes: [] }
 
   let stringCount = 6
@@ -193,16 +198,24 @@ function validFrom(name: string): number | undefined {
  * de codes van een ander jaar krijgen, en dan toetst de chauffeur iets anders in
  * dan er op de film verschijnt.
  */
-export function pickHof(hofs: Hof[], termini: string[], year?: number): HofMatch | undefined {
+/**
+ * Wat één wagenpark van deze eindbestemmingen kent.
+ *
+ * Apart van het kiezen, want wie zelf een wagenpark aanwijst wil dezelfde
+ * gegevens terug: de codes die erbij horen, en hoeveel bestemmingen het kent.
+ */
+export function matchHof(hof: Hof, termini: string[]): HofMatch {
   const wanted = [...new Set(termini.map(normalise))].filter(Boolean)
-  const scored: HofMatch[] = hofs.map((hof) => {
-    const codes = new Map<string, Terminus>()
-    for (const terminus of hof.termini) {
-      const key = normalise(terminus.station)
-      if (!codes.has(key)) codes.set(key, terminus)
-    }
-    return { hof, matched: wanted.filter((name) => codes.has(name)).length, codes }
-  })
+  const codes = new Map<string, Terminus>()
+  for (const terminus of hof.termini) {
+    const key = normalise(terminus.station)
+    if (!codes.has(key)) codes.set(key, terminus)
+  }
+  return { hof, matched: wanted.filter((name) => codes.has(name)).length, codes }
+}
+
+export function pickHof(hofs: Hof[], termini: string[], year?: number): HofMatch | undefined {
+  const scored: HofMatch[] = hofs.map((hof) => matchHof(hof, termini))
 
   const best = Math.max(0, ...scored.map((entry) => entry.matched))
   if (best === 0) return undefined

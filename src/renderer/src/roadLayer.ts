@@ -24,16 +24,81 @@ const CACHE_MAX_PX = 4096
 /** Lucht rond de kaart in de buffer, zodat de stoeprand aan de rand niet wegvalt. */
 const CACHE_PAD_M = 40
 
-const CASING = '#202834'
-const ROAD = '#3b4554'
-const RAIL = '#2d3540'
+/*
+ * De wegen. Het verschil tussen omranding en wegdek doet het werk: daardoor
+ * springt een doorgaande weg eruit tussen de zijstraten, zoals op elke
+ * navigatiekaart.
+ */
+const CASING = '#212833'
+/*
+ * Drie breedtes, en de brede iets lichter dan de smalle. Dat laatste doet meer
+ * dan het lijkt: een doorgaande weg valt dan op tussen de zijstraten zonder dat
+ * er ook maar iets bij staat geschreven.
+ */
+const ROAD = ['#333b47', '#3c4552', '#495261']
+const RAIL = '#2b323c'
+/*
+ * Water ligt onder alles, en met opzet flauw: het zegt waar je bent zonder de
+ * aandacht te trekken. De route is het enige dat mag opvallen.
+ */
+const WATER = '#1d3550'
+
+/**
+ * Dezelfde kaart, twee standen.
+ *
+ * De wegen komen op een canvas en niet in CSS, dus een thema kan er niet bij.
+ * Daarom vraagt de tekening het zelf: staat er een waarde op het canvas, dan
+ * wint die, en anders blijven de kleuren hierboven staan. De overlay zet ze
+ * niet, dus daar verandert er niets.
+ */
+interface Kaartkleuren {
+  casing: string
+  road: string[]
+  rail: string
+  water: string
+}
+
+/*
+ * Van de wortel, niet van het canvas: de tegels worden op een los canvas buiten
+ * de DOM getekend, en daar staan geen eigenschappen op. Het thema staat toch op
+ * de wortel, dus dat is ook de eerlijke bron.
+ */
+function kaartkleuren(): Kaartkleuren {
+  const stijl = getComputedStyle(document.documentElement)
+  const lees = (naam: string, terugval: string): string =>
+    stijl.getPropertyValue(naam).trim() || terugval
+  return {
+    casing: lees('--weg-rand', CASING),
+    road: [lees('--weg-1', ROAD[0]), lees('--weg-2', ROAD[1]), lees('--weg-3', ROAD[2])],
+    rail: lees('--spoor', RAIL),
+    water: lees('--water', WATER)
+  }
+}
+
+/** Ondergrens per klasse, zodat een straat uitgezoomd niet wegvalt. */
+const MIN_PX = [4, 6, 8.5]
+
+/**
+ * Welke van de drie een baan is, naar zijn breedte in meters.
+ *
+ * Een rijstrook van drie meter is een woonstraat, drieënhalf is de gewone maat,
+ * en wat breder is hoort bij een weg waar je doorheen rijdt. Zegt het
+ * splinebestand niets, dan is het de gewone maat.
+ */
+export function roadClass(width: number | undefined): number {
+  if (!width || !(width > 0)) return 1
+  if (width <= 3.1) return 0
+  if (width <= 4.2) return 1
+  return 2
+}
 
 interface Chunk {
   minX: number
   minY: number
   maxX: number
   maxY: number
-  road?: Path2D
+  /** Eén pad per breedteklasse; ze worden apart gestreken. */
+  road?: (Path2D | undefined)[]
   rail?: Path2D
 }
 
@@ -72,6 +137,8 @@ function worldMatrix(view: RoadView): [number, number, number, number, number, n
 
 export class RoadLayer {
   private readonly chunks: Chunk[]
+  /** Rivieren en kanalen; te weinig om te hoeven wegknippen. */
+  private readonly water: { path: Path2D; w: number }[] = []
   private readonly bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
   private cache?: { canvas: HTMLCanvasElement; pxPerM: number }
 
@@ -103,7 +170,14 @@ export class RoadLayer {
       chunk.maxX = Math.max(chunk.maxX, maxX)
       chunk.maxY = Math.max(chunk.maxY, maxY)
 
-      const path = line.kind === 'rail' ? (chunk.rail ??= new Path2D()) : (chunk.road ??= new Path2D())
+      let path: Path2D
+      if (line.kind === 'rail') {
+        path = chunk.rail ??= new Path2D()
+      } else {
+        const klasse = roadClass(line.w)
+        const wegen = (chunk.road ??= [])
+        path = wegen[klasse] ??= new Path2D()
+      }
       path.moveTo(p[0], p[1])
       for (let i = 2; i < p.length; i += 2) path.lineTo(p[i], p[i + 1])
 
@@ -112,6 +186,19 @@ export class RoadLayer {
       this.bounds.maxX = Math.max(this.bounds.maxX, maxX)
       this.bounds.maxY = Math.max(this.bounds.maxY, maxY)
     }
+    /*
+     * Water gaat buiten de vakjes om: een kaart heeft er een handvol, en
+     * veertien lijnen tekenen kost minder dan uitzoeken welke in beeld liggen.
+     */
+    for (const line of geometry.water ?? []) {
+      const p = line.points
+      if (p.length < 4) continue
+      const path = new Path2D()
+      path.moveTo(p[0], p[1])
+      for (let i = 2; i < p.length; i += 2) path.lineTo(p[i], p[i + 1])
+      this.water.push({ path, w: line.w ?? 20 })
+    }
+
     this.chunks = [...cells.values()]
   }
 
@@ -153,7 +240,7 @@ export class RoadLayer {
         chunk.maxY > view.cy - marginY &&
         chunk.minY < view.cy + marginY
     )
-    stroke(ctx, visible, view.mpp)
+    stroke(ctx, visible, view.mpp, this.water)
   }
 
   private render(pxPerM: number, mpp: number, width: number, height: number): { canvas: HTMLCanvasElement; pxPerM: number } {
@@ -165,7 +252,7 @@ export class RoadLayer {
       const left = this.bounds.minX - CACHE_PAD_M
       const top = this.bounds.maxY + CACHE_PAD_M
       ctx.setTransform(pxPerM, 0, 0, -pxPerM, -left * pxPerM, top * pxPerM)
-      stroke(ctx, this.chunks, mpp)
+      stroke(ctx, this.chunks, mpp, this.water)
     }
     return { canvas, pxPerM }
   }
@@ -184,26 +271,58 @@ export class RoadLayer {
   }
 }
 
-/** Spoor onderop, dan alle stoepranden, dan alle wegen: zo lopen kruisingen door. */
-function stroke(ctx: CanvasRenderingContext2D, chunks: Chunk[], mpp: number): void {
-  // Breedtes in meters, maar nooit zo dun dat de lijn verdwijnt.
-  const roadWidth = Math.max(7, mpp * 1.1)
+/**
+ * Spoor onderop, dan alle stoepranden, dan alle wegdekken.
+ *
+ * Die volgorde is het hele trucje: alle omrandingen eerst, daarna alle dekken
+ * eroverheen. Zo loopt een kruising door in plaats van dat er een randje dwars
+ * over de straat ligt. Binnen elke ronde het breedst eerst, zodat een zijstraat
+ * netjes op een doorgaande weg uitkomt.
+ */
+function stroke(
+  ctx: CanvasRenderingContext2D,
+  chunks: Chunk[],
+  mpp: number,
+  water: { path: Path2D; w: number }[]
+): void {
   const railWidth = Math.max(3, mpp * 0.7)
+  const kleur = kaartkleuren()
+
+  // Eerst het water; de wegen komen eroverheen.
+  ctx.strokeStyle = kleur.water
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  for (const stroom of water) {
+    ctx.lineWidth = Math.max(2, stroom.w / mpp)
+    ctx.stroke(stroom.path)
+  }
+  // De baan is in meters bekend; een strook van 3,5 m hoort 3,5 m breed te zijn.
+  const breedte = (klasse: number): number => Math.max(MIN_PX[klasse], (3 + klasse) / mpp)
 
   ctx.lineCap = 'butt'
   ctx.lineJoin = 'miter'
   ctx.setLineDash([7, 6])
-  ctx.strokeStyle = RAIL
+  ctx.strokeStyle = kleur.rail
   ctx.lineWidth = railWidth
   for (const chunk of chunks) if (chunk.rail) ctx.stroke(chunk.rail)
   ctx.setLineDash([])
 
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
-  ctx.strokeStyle = CASING
-  ctx.lineWidth = roadWidth + 2.5
-  for (const chunk of chunks) if (chunk.road) ctx.stroke(chunk.road)
-  ctx.strokeStyle = ROAD
-  ctx.lineWidth = roadWidth
-  for (const chunk of chunks) if (chunk.road) ctx.stroke(chunk.road)
+  ctx.strokeStyle = kleur.casing
+  for (let klasse = 2; klasse >= 0; klasse--) {
+    ctx.lineWidth = breedte(klasse) + 2.5
+    for (const chunk of chunks) {
+      const path = chunk.road?.[klasse]
+      if (path) ctx.stroke(path)
+    }
+  }
+  for (let klasse = 2; klasse >= 0; klasse--) {
+    ctx.strokeStyle = kleur.road[klasse]
+    ctx.lineWidth = breedte(klasse)
+    for (const chunk of chunks) {
+      const path = chunk.road?.[klasse]
+      if (path) ctx.stroke(path)
+    }
+  }
 }

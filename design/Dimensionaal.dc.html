@@ -1,0 +1,79 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #101216; }
+    a { color: #7c5cff; } a:hover { color: #a58bff; }
+  </style>
+</helmet>
+
+<div style="width: 880px; height: 560px; background: #101216; color: #eceef2; font-family: 'Figtree', system-ui, sans-serif; padding: 26px 28px; display: flex; flex-direction: column; gap: 18px;">
+
+  <div style="display: flex; align-items: center; gap: 14px;">
+    <span style="font-weight: 700; font-size: 15px;">OMSI Enhancer</span>
+    <span style="font-size: 13px; color: #868d9c;">Hohenkirchen &ndash; Herrenhof &nbsp;·&nbsp; omloop 08 &nbsp;·&nbsp; rit 1 van 2</span>
+    <span style="margin-left: auto; font-size: 13px; color: #868d9c; font-variant-numeric: tabular-nums;">18:52</span>
+  </div>
+
+  <div style="position: relative; flex-grow: 1; min-height: 0;">
+
+    <div style="position: absolute; left: 0; top: 0; width: 540px; background: #1a1d23; border-radius: 18px; padding: 26px 28px 30px; box-shadow: 0 1px 2px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.45);">
+      <div style="font-size: 13px; color: #868d9c;">Richting</div>
+      <div style="font-size: 38px; font-weight: 700; line-height: 1.08; letter-spacing: -0.028em; margin-top: 6px;">Hohenkirchen,<br>Bahnhof</div>
+      <div style="font-size: 15px; color: #868d9c; margin-top: 10px;">vanaf Herrenhof, am Anger</div>
+      <div style="display: flex; gap: 34px; margin-top: 26px;">
+        <div>
+          <div style="font-size: 12px; color: #868d9c;">Vertrek</div>
+          <div style="font-size: 25px; font-weight: 600; font-variant-numeric: tabular-nums;">18:23</div>
+        </div>
+        <div>
+          <div style="font-size: 12px; color: #868d9c;">Aankomst</div>
+          <div style="font-size: 25px; font-weight: 600; color: #a8afbd; font-variant-numeric: tabular-nums;">18:52</div>
+        </div>
+        <div>
+          <div style="font-size: 12px; color: #868d9c;">Haltes</div>
+          <div style="font-size: 25px; font-weight: 600; font-variant-numeric: tabular-nums;">6 / 18</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="position: absolute; left: 440px; top: 34px; width: 244px; background: #23262e; border-radius: 16px; padding: 20px 22px; box-shadow: 0 2px 4px rgba(0,0,0,0.5), 0 16px 40px rgba(0,0,0,0.55);">
+      <div style="font-size: 12px; color: #a8afbd;">Verschil</div>
+      <div style="font-size: 42px; font-weight: 700; line-height: 1; color: #ff9e64; font-variant-numeric: tabular-nums; letter-spacing: -0.025em; margin-top: 3px;">+2:14</div>
+      <div style="font-size: 14px; color: #ff9e64; margin-top: 2px;">te laat</div>
+    </div>
+
+    <div style="position: absolute; left: 638px; top: 0; width: 214px; background: #7c5cff; color: #ffffff; border-radius: 16px; padding: 18px 20px; box-shadow: 0 3px 6px rgba(0,0,0,0.5), 0 22px 50px rgba(124,92,255,0.28);">
+      <div style="font-size: 12px; opacity: 0.85;">Linie</div>
+      <div style="font-size: 44px; font-weight: 700; line-height: 1; letter-spacing: -0.03em;">X49</div>
+      <div style="font-size: 13px; opacity: 0.85; margin-top: 2px;">route 1</div>
+    </div>
+
+    <div style="position: absolute; left: 508px; top: 196px; width: 344px; background: #1a1d23; border-radius: 16px; padding: 16px 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.5), 0 10px 28px rgba(0,0,0,0.45);">
+      <div style="font-size: 12px; color: #868d9c;">Volgende halte</div>
+      <div style="display: flex; align-items: baseline; gap: 10px; margin-top: 4px;">
+        <span style="flex-grow: 1; font-size: 19px; font-weight: 600; line-height: 1.2;">Herrenhof, St.-Bernhard-Weg</span>
+        <span style="font-size: 20px; font-weight: 700; color: #ff9e64; font-variant-numeric: tabular-nums;">18:53</span>
+      </div>
+    </div>
+
+    <div style="position: absolute; left: 0; bottom: 0; display: flex; align-items: center; gap: 10px;">
+      <button type="button" style="font: inherit; cursor: pointer; border: none; background: #7c5cff; color: #ffffff; padding: 13px 22px; border-radius: 12px; font-size: 15px; font-weight: 600; box-shadow: 0 6px 18px rgba(124,92,255,0.35);">Dienst afronden</button>
+      <button type="button" style="font: inherit; cursor: pointer; border: none; background: #1a1d23; color: #eceef2; padding: 13px 18px; border-radius: 12px; font-size: 15px; font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">Volledige dienst</button>
+      <button type="button" style="font: inherit; cursor: pointer; border: none; background: #1a1d23; color: #eceef2; padding: 13px 18px; border-radius: 12px; font-size: 15px; font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.4);">Route</button>
+      <button type="button" style="font: inherit; cursor: pointer; border: none; background: transparent; color: #868d9c; padding: 13px 8px; font-size: 15px; font-weight: 500;">Annuleren</button>
+    </div>
+
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

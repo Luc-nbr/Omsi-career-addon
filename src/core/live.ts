@@ -12,6 +12,12 @@ export interface LiveData {
   alive: boolean
   /** Bitmasker van de variabelen die OMSI werkelijk heeft doorgegeven. */
   seen: number
+  /**
+   * Idem voor de systeemvariabelen. Ontbreekt bij een plugin van voor
+   * 19-09-2026; dan weten we niet of een nul "geen aanrijding" betekent of
+   * "niet doorgegeven", en houden we het op het eerste.
+   */
+  seenSys?: number
   /** Idem voor de stringvariabelen. */
   seenStr: number
   /** Hoe de tekst binnenkwam: 0 niets, 1 als bytes, 2 als twee bytes per teken. */
@@ -49,6 +55,23 @@ export interface LiveData {
   topSpeed: number
   harshBrakes: number
   harshAccels: number
+  /**
+   * De accu van een elektrische bus, als deel van 0 tot 1. Komt uit het script
+   * van het busmodel; op een dieselbus staat hij er niet.
+   */
+  battery?: number
+  /** Buiten, in graden. Systeemvariabele, dus overal hetzelfde weer. */
+  temperature?: number
+  /**
+   * Aanrijdingen sinds het spel startte, en hoe hard.
+   *
+   * `coll_energy` is een systeemvariabele en bestaat dus op elke bus, ook op
+   * modellen die zelf geen schade bijhouden. De grens waarboven het een
+   * aanrijding heet komt uit OMSI's eigen busscripts; zie de plugin.
+   */
+  collisions?: number
+  collisionEnergy?: number
+  worstCollision?: number
   /** Alleen gevuld op bussen met een IBIS; anders leeg. */
   busstop: string
   delayMin: string
@@ -112,11 +135,29 @@ const BIT = {
   blinkerRight: 19,
   brakeLight: 20,
   engineOn: 21,
-  busstopIndex: 22
+  busstopIndex: 22,
+  battery: 23
+} as const
+
+/** Bitposities in `seenSys`, gelijk aan de volgorde in de systeemlijst. */
+const SYSBIT = {
+  collEnergy: 6,
+  temperature: 7
 } as const
 
 function has(data: LiveData, bit: number): boolean {
   return ((data.seen >>> bit) & 1) === 1
+}
+
+/**
+ * Of OMSI deze systeemvariabele werkelijk heeft doorgegeven.
+ *
+ * Een oudere plugin stuurt geen `seenSys` mee. Die kende de nieuwe namen ook
+ * niet, dus dan is het antwoord nee -- en niet "we weten het niet", want daar
+ * kan de interface niets mee.
+ */
+function hasSys(data: LiveData, bit: number): boolean {
+  return ((( data.seenSys ?? 0) >>> bit) & 1) === 1
 }
 
 /**
@@ -166,6 +207,12 @@ export interface LiveStatus {
   leg?: DutyLeg
   /** Eerstvolgende halte volgens de IBIS; leeg op bussen zonder IBIS. */
   nextStop: string
+  /**
+   * Hoeveel meter er nog tot die halte ligt. Komt uit het geheugen van OMSI en
+   * is er dus alleen als het spel zich laat lezen; zonder dat weet niemand waar
+   * de bus precies staat.
+   */
+  metresToStop?: number
   /** Kilometerstand van de bus; hiermee schatten we hoe ver hij gevorderd is. */
   odometerKm: number
   /** Hoeveelste halte van deze rit, als de bus dat doorgeeft. */
@@ -178,6 +225,24 @@ export interface LiveStatus {
   reportsStops: boolean
   /** Biedt deze bus halte-informatie uberhaupt aan? */
   offersStops: boolean
+  /**
+   * Wat er op de IBIS staat, zoals de bus het zelf doorgeeft: het lijnnummer en
+   * de bestemming op de film. Daarmee is te zien of de chauffeur zijn lijn en
+   * route heeft ingetoetst, zonder dat hij dat hoeft te melden.
+   *
+   * Niet elke bus geeft ze door. Moderne bussen met een eigen scherm laten ze
+   * leeg, ook als de chauffeur alles netjes heeft ingevoerd.
+   */
+  ibisLine: string
+  ibisTerminus: string
+  /**
+   * Komt deze stand uit het dienstregelingsmenu van OMSI zelf?
+   *
+   * Dan weet het spel welke rit er loopt -- lijn, omloop en ritbestand -- en
+   * klopt die met de aangenomen dienst. Dat is een harder bewijs dan wat er op
+   * de film staat, en het werkt bij elke bus.
+   */
+  fromTimetable: boolean
   delayMinutes: number
   delayFromIbis: boolean
   /**
@@ -196,6 +261,25 @@ export interface LiveStatus {
   hasPassengers: boolean
   harshBrakes: number
   harshAccels: number
+  /**
+   * De tank, als deel van 0 tot 1. OMSI houdt dit in elk voertuig bij, dus het
+   * is er altijd -- ook op bussen die zelf geen meter in het dashboard hebben.
+   */
+  fuel: number
+  /** De accu van een elektrische bus, 0 tot 1. Niets op een dieselbus. */
+  battery?: number
+  /** Buiten, in graden. */
+  temperature?: number
+  /** Verkochte kaartjes tijdens deze dienst. */
+  tickets: number
+  /**
+   * Aanrijdingen tijdens deze dienst, en de hardste klap.
+   *
+   * Sinds het begin van de dienst, niet sinds het spel startte: wie vorige week
+   * ergens tegenaan reed, krijgt dat vanavond niet opnieuw voor zijn kiezen.
+   */
+  collisions: number
+  worstCollision: number
   advice: Advice[]
   /** De dienst is uitgereden: eindtijd voorbij en de bus staat stil. */
   dutyComplete: boolean
@@ -369,7 +453,7 @@ function ibisDelay(data: LiveData): number | undefined {
  * lichten niet als variabele aanbiedt staat niet "met het licht uit" — we weten
  * het simpelweg niet, en daar hoort geen waarschuwing bij.
  */
-function buildAdvice(data: LiveData, baseline?: { harshBrakes: number; harshAccels: number }): Advice[] {
+function buildAdvice(data: LiveData, baseline?: { harshBrakes: number; harshAccels: number; tickets?: number; collisions?: number }): Advice[] {
   const advice: Advice[] = []
 
   if (has(data, BIT.lightsLow) && data.brightness < 0.35 && data.lightsLow < 0.5) {
@@ -400,6 +484,40 @@ function buildAdvice(data: LiveData, baseline?: { harshBrakes: number; harshAcce
     advice.push({ id: 'motor', severity: 'info' })
   }
 
+  /*
+   * Een aanrijding is geen tip maar een feit, en hij blijft staan: hij is al
+   * gebeurd en gaat niet meer over. Vandaar de zwaarste soort.
+   */
+  const botsingen = (data.collisions ?? 0) - (baseline?.collisions ?? 0)
+  if (hasSys(data, SYSBIT.collEnergy) && botsingen > 0) {
+    advice.push({ id: 'aanrijding', severity: 'warn', count: botsingen })
+  }
+
+  /*
+   * Bijna leeg. De grens ligt op een tiende: een stadsbus haalt daar nog wel
+   * een rit mee, maar niet een hele dienst, en dit is het moment dat je er nog
+   * iets aan kunt doen.
+   */
+  if (data.tankPercent > 0 && data.tankPercent < 0.1) {
+    advice.push({ id: 'tank', severity: 'warn' })
+  }
+
+  /*
+   * Wegrijden van de halte zonder richting aan te geven. In Duitsland geeft
+   * §20 StVO een bus die de halte verlaat voorrang -- maar alleen als hij
+   * knippert. Wie dat niet doet, heeft die voorrang niet.
+   */
+  if (
+    has(data, BIT.blinkerLeft) &&
+    data.atStation > 0.5 &&
+    data.velocity > 3 &&
+    data.velocity < 20 &&
+    data.blinkerLeft < 0.5 &&
+    data.blinkerRight < 0.5
+  ) {
+    advice.push({ id: 'knipperen', severity: 'info' })
+  }
+
   return advice
 }
 
@@ -413,23 +531,33 @@ function buildAdvice(data: LiveData, baseline?: { harshBrakes: number; harshAcce
 export function describeLive(
   data: LiveData,
   duty?: Duty,
-  baseline?: { harshBrakes: number; harshAccels: number; odometerKm?: number; clockMinutes?: number }
+  baseline?: {
+    harshBrakes: number
+    harshAccels: number
+    odometerKm?: number
+    clockMinutes?: number
+    tickets?: number
+    collisions?: number
+  }
 ): LiveStatus {
   const clockMinutes = data.time / 60
 
+  /*
+   * Welke rit aan de beurt is volgens de klok: de eerste die nog niet is
+   * aangekomen. Dat is de rit die nu rijdt, of -- als de bus op het eindpunt
+   * staat te wachten -- de rit die zo vertrekt.
+   *
+   * Hier stond eerst de laatste rit die al vertrokken was, en die bleef staan
+   * nadat hij was aangekomen. Dan lag de gereden route nog op de kaart terwijl
+   * de chauffeur al aan de volgende begon, met de instructies van een rit van
+   * een half uur geleden erbij.
+   */
   let legIndex = -1
   let leg: DutyLeg | undefined
-  if (duty) {
-    for (let i = 0; i < duty.legs.length; i++) {
-      if (duty.legs[i].departure <= clockMinutes) {
-        legIndex = i
-        leg = duty.legs[i]
-      }
-    }
-    if (legIndex < 0 && duty.legs.length > 0) {
-      legIndex = 0
-      leg = duty.legs[0]
-    }
+  if (duty && duty.legs.length > 0) {
+    const ahead = duty.legs.findIndex((item) => item.arrival > clockMinutes)
+    legIndex = ahead >= 0 ? ahead : duty.legs.length - 1
+    leg = duty.legs[legIndex]
   }
 
   // Wat in OMSI zelf gekozen is, gaat voor de klok: dat is de rit die gereden wordt.
@@ -492,12 +620,19 @@ export function describeLive(
     exitRequest: data.exitRequest > 0.5,
     doorsOpen: data.entryOpen > 0.5 || data.exitOpen > 0.5,
     legIndex,
+    metresToStop:
+      fromMenu && data.mem && data.mem.nextDist >= 0 && data.mem.nextDist < 20000
+        ? Math.round(data.mem.nextDist)
+        : undefined,
     leg,
     nextStop: fromMenu && data.mem ? data.mem.nextStop.trim() : data.busstop.trim(),
     odometerKm: data.km + data.metres / 1000,
     stopIndex,
     stopsTotal: leg?.stops.length ?? 0,
     reportsStops: fromMenu || data.busstop.trim() !== '',
+    fromTimetable: fromMenu,
+    ibisLine: data.line.trim(),
+    ibisTerminus: data.terminus.trim(),
     offersStops: fromMenu || ((data.seenStr >>> 0) & 1) === 1,
     delayMinutes,
     delayFromIbis: fromMenu || fromIbis !== undefined,
@@ -533,6 +668,12 @@ export function describeLive(
     hasPassengers,
     harshBrakes,
     harshAccels,
+    fuel: data.tankPercent,
+    battery: has(data, BIT.battery) ? data.battery : undefined,
+    temperature: hasSys(data, SYSBIT.temperature) ? data.temperature : undefined,
+    tickets: Math.max(0, data.ticket - (baseline?.tickets ?? 0)),
+    collisions: Math.max(0, (data.collisions ?? 0) - (baseline?.collisions ?? 0)),
+    worstCollision: data.worstCollision ?? 0,
     advice: buildAdvice(data, baseline),
     dutyComplete: duty ? isDutyComplete(data, duty, baseline) : false,
     omsiReadable,

@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #ffffff; }
+    a { color: #e8330a; } a:hover { color: #b82708; }
+  </style>
+</helmet>
+
+<div style="width: 880px; height: 560px; background: #ffffff; color: #000000; font-family: 'Archivo', Helvetica, Arial, sans-serif; padding: 34px 40px; display: flex; flex-direction: column;">
+
+  <div style="display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; border-bottom: 1px solid #000000; padding-bottom: 9px;">
+    <span style="grid-column: span 3; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;">OMSI Enhancer</span>
+    <span style="grid-column: span 5; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #6e6e6e;">Hohenkirchen &ndash; Herrenhof</span>
+    <span style="grid-column: span 2; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #6e6e6e;">Omloop 08</span>
+    <span style="grid-column: span 2; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; text-align: right;">Rit 1/2</span>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; margin-top: 30px;">
+    <div style="grid-column: span 2;">
+      <div style="font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #6e6e6e;">Linie</div>
+      <div style="font-size: 62px; font-weight: 700; line-height: 0.85; letter-spacing: -0.045em; margin-top: 8px;">X49</div>
+      <div style="font-size: 15px; margin-top: 10px;">Route 1</div>
+    </div>
+    <div style="grid-column: span 7;">
+      <div style="font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #6e6e6e;">Richting</div>
+      <div style="font-size: 44px; font-weight: 600; line-height: 1.0; letter-spacing: -0.035em; margin-top: 8px;">Hohenkirchen, Bahnhof</div>
+      <div style="font-size: 15px; color: #6e6e6e; margin-top: 12px;">vanaf Herrenhof, am Anger</div>
+    </div>
+    <div style="grid-column: span 3; text-align: right;">
+      <div style="font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #6e6e6e;">Verschil</div>
+      <div style="font-size: 62px; font-weight: 700; line-height: 0.85; letter-spacing: -0.045em; margin-top: 8px; color: #e8330a; font-variant-numeric: tabular-nums;">+2:14</div>
+      <div style="font-size: 15px; margin-top: 10px; color: #e8330a;">te laat</div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; margin-top: 34px; border-top: 1px solid #000000; padding-top: 14px;">
+    <div style="grid-column: span 2;">
+      <div style="font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #6e6e6e;">Vertrek</div>
+      <div style="font-size: 27px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 4px;">18:23</div>
+    </div>
+    <div style="grid-column: span 2;">
+      <div style="font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #6e6e6e;">Aankomst</div>
+      <div style="font-size: 27px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 4px;">18:52</div>
+    </div>
+    <div style="grid-column: span 2;">
+      <div style="font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #6e6e6e;">Haltes</div>
+      <div style="font-size: 27px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 4px;">6/18</div>
+    </div>
+    <div style="grid-column: span 2;">
+      <div style="font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #6e6e6e;">Gereden</div>
+      <div style="font-size: 27px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 4px;">12,4</div>
+    </div>
+    <div style="grid-column: span 4;">
+      <div style="font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #6e6e6e;">Volgende halte</div>
+      <div style="display: flex; align-items: baseline; gap: 12px; margin-top: 4px;">
+        <span style="flex-grow: 1; font-size: 19px; font-weight: 600; line-height: 1.15;">Herrenhof, St.-Bernhard-Weg</span>
+        <span style="font-size: 27px; font-weight: 600; font-variant-numeric: tabular-nums;">18:53</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top: auto; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; border-top: 1px solid #000000; padding-top: 16px; align-items: center;">
+    <button type="button" style="grid-column: span 3; font: inherit; cursor: pointer; border: none; background: #000000; color: #ffffff; padding: 13px 16px; font-size: 15px; font-weight: 600;">Dienst afronden</button>
+    <button type="button" style="grid-column: span 2; font: inherit; cursor: pointer; border: 1px solid #000000; background: transparent; color: #000000; padding: 12px 14px; font-size: 15px; font-weight: 500;">Dienst</button>
+    <button type="button" style="grid-column: span 2; font: inherit; cursor: pointer; border: 1px solid #000000; background: transparent; color: #000000; padding: 12px 14px; font-size: 15px; font-weight: 500;">Route</button>
+    <button type="button" style="grid-column: span 2; font: inherit; cursor: pointer; border: 1px solid #000000; background: transparent; color: #000000; padding: 12px 14px; font-size: 15px; font-weight: 500;">Overlay</button>
+    <span style="grid-column: span 3; text-align: right; font-size: 14px; color: #6e6e6e; text-decoration: underline; cursor: pointer;">Dienst annuleren</span>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

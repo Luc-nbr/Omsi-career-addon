@@ -1,13 +1,63 @@
+/*
+ * De vormtaal van de app.
+ *
+ * Alles ligt op glas: doorschijnende vlakken met een lichte rand, op een donkere
+ * grond waarin een lijnennet staat. Kleur betekent maar twee dingen. Geel is de
+ * lijn -- het nummer op de bus, en de knop die de dienst afmaakt. Rood, groen en
+ * blauw zijn de tijd, en niets anders: te laat, op tijd, te vroeg. Wat vroeger
+ * ook kleur had (de stip "dienst loopt", de rijstijl, de pijl op de kaart) is nu
+ * wit, anders weet je bij groen niet meer of het iets betekent.
+ */
 :root {
-  --bg: #10141b;
-  --panel: #171d27;
-  --panel-2: #1e2632;
-  --line: #2a3441;
-  --text: #e8edf4;
-  --muted: #8d9bad;
-  --accent: #f0b429;
-  --accent-soft: rgba(240, 180, 41, 0.14);
-  --good: #4ec9a5;
+  --grond: #10141a;
+
+  /* Glas: de vlakken waar alles op ligt. */
+  --glas: rgba(255, 255, 255, 0.075);
+  --glas-sterk: rgba(255, 255, 255, 0.12);
+  --glas-rand: rgba(255, 255, 255, 0.18);
+
+  --text: #ffffff;
+  --muted: rgba(255, 255, 255, 0.6);
+  --zacht: rgba(255, 255, 255, 0.42);
+
+  /* De lijn: identiteit, geen waarschuwing. */
+  --lijn: #ffd23f;
+  --op-lijn: #1a1400;
+
+  /* De tweede knoppen: bij elkaar horend, maar duidelijk achter de eerste. */
+  --tint: rgba(109, 141, 255, 0.16);
+  --tint-rand: rgba(147, 170, 255, 0.34);
+  --tint-tekst: #cfd9ff;
+
+  /* De tijd, en alleen de tijd. */
+  --laat: #ff5f57;
+  --optijd: #37d67a;
+  --vroeg: #4da3ff;
+
+  --radius: 22px;
+  --radius-knop: 14px;
+
+  /*
+   * Invulvelden hebben een dekkende kleur nodig, geen glas. De uitklaplijst van
+   * een select wordt niet door de pagina getekend maar door Windows, en die
+   * neemt de kleur van het veld over. Met doorschijnend wit kwam die lijst licht
+   * uit terwijl onze letters wit zijn -- je zag alleen de regel waar de muis op
+   * stond. Deze tint ligt op wat glas boven de ondergrond zou opleveren.
+   */
+  --veld: #262a31;
+
+  /*
+   * De oude namen wijzen naar de nieuwe, zodat het hele scherm in één keer
+   * meeverhuist en er geen half oud, half nieuw ontstaat.
+   */
+  --bg: var(--grond);
+  --panel: var(--glas);
+  --panel-2: var(--glas-sterk);
+  --line: var(--glas-rand);
+  --accent: var(--lijn);
+  --accent-soft: rgba(255, 210, 63, 0.16);
+  --good: var(--optijd);
+
   --mono: ui-monospace, "Cascadia Code", "Consolas", monospace;
 
   color-scheme: dark;
@@ -19,10 +69,32 @@
 
 body {
   margin: 0;
-  background: var(--bg);
+  background: var(--grond);
   color: var(--text);
-  font: 14px/1.5 "Segoe UI", system-ui, sans-serif;
+  font: 14px/1.5 Manrope, "Segoe UI", system-ui, sans-serif;
   overflow: hidden;
+}
+
+/*
+ * Het lijnennet ligt achter alles; zie `Backdrop.tsx` voor wat erop staat en
+ * waarom. Vast in beeld, zodat het niet meescrollt -- een ondergrond hoort stil
+ * te liggen.
+ */
+.backdrop-net {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Alles wat je ziet ligt boven dat net. */
+.app,
+.main,
+.stage {
+  position: relative;
+  z-index: 1;
 }
 
 button {
@@ -36,12 +108,37 @@ button {
 select,
 input {
   font: inherit;
-  color: inherit;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px 10px;
+  color: var(--text);
+  background: var(--veld);
+  border: 1px solid var(--glas-rand);
+  border-radius: 12px;
+  padding: 10px 13px;
   width: 100%;
+}
+
+/*
+ * Een vinkje is geen invulveld. De regel hierboven geeft elk `input` de volle
+ * breedte en een binnenmarge -- bij een tekstveld precies goed, bij een vinkje
+ * een vierkant van tien centimeter met het bijschrift ergens rechts.
+ */
+input[type='checkbox'],
+input[type='radio'] {
+  width: auto;
+  padding: 0;
+  margin: 0;
+  accent-color: var(--lijn);
+}
+
+/* En de regels in die lijst ook, want ze erven niet altijd van het veld. */
+select option,
+select optgroup {
+  background: var(--veld);
+  color: var(--text);
+}
+
+select optgroup {
+  color: var(--muted);
+  font-style: normal;
 }
 
 select:focus-visible,
@@ -53,15 +150,25 @@ button:focus-visible {
 
 /* ---------- geraamte ---------- */
 
+/*
+ * Meeschalen, allebei de kanten op.
+ *
+ * De zijbalk had een vaste breedte en de inhoud een vaste maximumbreedte: in
+ * een klein venster paste het niet en kwam er een schuifbalk onderaan, in een
+ * groot venster bleef alles in een smalle kolom links hangen met een half
+ * scherm leegte ernaast. Nu loopt de zijbalk mee met het venster en vult de
+ * inhoud de ruimte -- tot een grens, want een regel van twee meter lang leest
+ * niemand meer.
+ */
 .app {
   display: grid;
-  grid-template-columns: 300px 1fr;
+  grid-template-columns: clamp(230px, 19vw, 320px) 1fr;
   height: 100vh;
 }
 
 .sidebar {
-  background: var(--panel);
-  border-right: 1px solid var(--line);
+  background: transparent;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
   padding: 20px;
   overflow-y: auto;
   display: flex;
@@ -71,7 +178,12 @@ button:focus-visible {
 
 .main {
   overflow-y: auto;
-  padding: 24px 28px 40px;
+  padding: clamp(14px, 1.8vw, 24px) clamp(14px, 2.2vw, 28px) 40px;
+}
+
+/* De inhoud mag breed worden, maar niet eindeloos. */
+.main > * {
+  max-width: 1500px;
 }
 
 /* ---------- chauffeurskaart ---------- */
@@ -91,7 +203,7 @@ button:focus-visible {
 }
 
 .rank {
-  color: var(--accent);
+  color: var(--muted);
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -131,7 +243,7 @@ button:focus-visible {
 .stat b {
   display: block;
   font-size: 17px;
-  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
   font-weight: 600;
 }
 
@@ -187,12 +299,19 @@ h1 {
   margin: 0 0 24px;
 }
 
+/*
+ * Glas. De vervaging telt alleen waar er iets achter ligt -- in het venster is
+ * dat het lijnennet in de ondergrond, in de overlay het spel zelf.
+ */
 .card {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 20px;
-  margin-bottom: 20px;
+  background: var(--glas);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glas-rand);
+  border-radius: var(--radius);
+  padding: 22px 24px;
+  margin-bottom: 18px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
 }
 
 .field-grid {
@@ -217,26 +336,27 @@ label {
 }
 
 .chip {
-  border: 1px solid var(--line);
-  background: var(--panel-2);
+  border: 1px solid var(--glas-rand);
+  background: var(--glas);
   border-radius: 99px;
-  padding: 7px 13px;
+  padding: 8px 16px;
   font-size: 13px;
   color: var(--muted);
 }
 
+/* De gekozen pil is wit: precies één van de rij is aan. */
 .chip[aria-pressed='true'] {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-  color: var(--accent);
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--grond);
   font-weight: 600;
 }
 
 .length-value {
-  font-family: var(--mono);
   font-size: 26px;
-  font-weight: 600;
-  color: var(--accent);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
 }
 
 input[type='range'] {
@@ -249,23 +369,46 @@ input[type='range'] {
 .actions {
   display: flex;
   gap: 10px;
-  align-items: center;
+  /* Even hoog, ook als de een een rand heeft en de ander niet. */
+  align-items: stretch;
   margin-top: 20px;
   flex-wrap: wrap;
 }
 
+/* De hoofdknop draagt de lijnkleur; er is er één per scherm. */
 .btn {
-  background: var(--accent);
-  color: #22190a;
-  font-weight: 650;
-  border-radius: 9px;
-  padding: 11px 20px;
+  background: var(--lijn);
+  color: var(--op-lijn);
+  font-weight: 800;
+  border-radius: var(--radius-knop);
+  padding: 13px 24px;
+  /*
+   * Een doorzichtige rand van dezelfde dikte als die van de tweede knop. Zonder
+   * dat is de een twee punten hoger dan de ander, en dan staan twee knoppen
+   * naast elkaar nooit op één lijn.
+   */
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
+  min-height: 46px;
 }
 
+/*
+ * De tweede knoppen zijn getint in plaats van grijs: ze horen zichtbaar bij
+ * elkaar en staan even duidelijk achter de hoofdknop.
+ */
 .btn.secondary {
-  background: var(--panel-2);
-  color: var(--text);
-  border: 1px solid var(--line);
+  background: var(--tint);
+  color: var(--tint-tekst);
+  border: 1px solid var(--tint-rand);
+  font-weight: 500;
+}
+
+.btn.secondary:hover {
+  border-color: rgba(147, 170, 255, 0.55);
+  color: #e6ecff;
 }
 
 .btn:disabled {
@@ -294,14 +437,15 @@ input[type='range'] {
   margin-bottom: 4px;
 }
 
+/* Het lijnnummer: de identiteit van de dienst, in de lijnkleur. */
 .badge {
-  background: var(--accent);
-  color: #22190a;
-  font-weight: 700;
-  font-size: 20px;
-  font-family: var(--mono);
-  border-radius: 8px;
-  padding: 6px 14px;
+  background: var(--lijn);
+  color: var(--op-lijn);
+  font-weight: 800;
+  font-size: 22px;
+  border-radius: 12px;
+  padding: 6px 15px;
+  letter-spacing: -0.01em;
 }
 
 .duty-title {
@@ -317,7 +461,7 @@ input[type='range'] {
 .duty-times {
   margin-left: auto;
   text-align: right;
-  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .duty-times b {
@@ -341,12 +485,12 @@ input[type='range'] {
 }
 
 .leg-time {
-  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
   font-size: 14px;
 }
 
 .leg-line {
-  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
   font-weight: 700;
   color: var(--accent);
 }
@@ -365,7 +509,7 @@ input[type='range'] {
 .leg-meta {
   color: var(--muted);
   font-size: 12px;
-  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
@@ -403,9 +547,9 @@ input[type='range'] {
 }
 
 .ibis-field {
-  background: var(--bg);
-  border-radius: 9px;
-  padding: 8px 16px;
+  background: var(--glas-sterk);
+  border-radius: 14px;
+  padding: 10px 18px;
   min-width: 104px;
 }
 
@@ -418,10 +562,10 @@ input[type='range'] {
 }
 
 .ibis-field b {
-  font-family: var(--mono);
   font-size: 23px;
   font-weight: 700;
-  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
   line-height: 1.25;
 }
 
@@ -442,7 +586,7 @@ input[type='range'] {
 }
 
 .ibis-code b {
-  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
   font-weight: 700;
   color: var(--accent);
 }
@@ -462,7 +606,7 @@ input[type='range'] {
 }
 
 .leg-code {
-  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
   font-weight: 700;
   color: var(--text);
   background: var(--panel-2);
@@ -509,6 +653,11 @@ input[type='range'] {
 
 .bus-picker label {
   margin-bottom: 6px;
+}
+
+/* Het wagenpark staat boven de bus: het hoort erbij, maar het is een eigen keuze. */
+.yard-picker {
+  margin-bottom: 12px;
 }
 
 /* ---------- ritinstructies ---------- */
@@ -590,7 +739,7 @@ input[type='range'] {
 .duty-item-line {
   grid-area: line;
   align-self: center;
-  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
   font-weight: 700;
   font-size: 15px;
   color: var(--accent);
@@ -603,7 +752,7 @@ input[type='range'] {
 
 .duty-item-time {
   grid-area: time;
-  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
   font-size: 14px;
   font-weight: 600;
 }
@@ -892,7 +1041,7 @@ input[type='range'] {
 .stop-route {
   margin-left: 6px;
   color: var(--accent);
-  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .stop-list {
@@ -943,7 +1092,7 @@ input[type='range'] {
 
 .welcome-mark {
   display: inline-block;
-  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -1117,6 +1266,67 @@ input[type='range'] {
   border-color: var(--accent);
 }
 
+/*
+ * De kaart van een chauffeur is de knop plus het kruisje ernaast. Het kruisje
+ * staat opzij en niet in de knop: anders verwijder je iemand terwijl je wilde
+ * gaan rijden.
+ */
+.driver-card {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.driver-card .driver-pick {
+  flex: 1;
+  min-width: 0;
+}
+
+.driver-remove {
+  flex-shrink: 0;
+  width: 40px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--zacht, #8d9bad);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.driver-remove:hover {
+  border-color: var(--laat);
+  color: var(--laat);
+}
+
+/* De vraag komt in de plaats van de kaart, zodat je ziet wie het betreft. */
+.driver-pick-ask {
+  display: grid;
+  gap: 10px;
+  cursor: default;
+}
+
+.driver-pick-ask:hover {
+  border-color: var(--line);
+}
+
+.driver-ask-row {
+  display: flex;
+  gap: 8px;
+}
+
+/* Rood is hier geen sier: het is het enige onomkeerbare in dit scherm. */
+.btn.danger {
+  background: var(--laat);
+  border-color: var(--laat);
+  color: #2a0b09;
+}
+
+.btn.danger:hover {
+  filter: brightness(1.08);
+}
+
 .driver-pick-name {
   font-size: 16px;
   font-weight: 600;
@@ -1214,19 +1424,38 @@ input[type='range'] {
   flex-wrap: wrap;
 }
 
+/*
+ * De knoppen in die balk zagen eruit als tekst tussen tekst. Nu dragen ze
+ * dezelfde tint als de tweede knoppen elders: je ziet dat er iets te klikken
+ * valt, zonder dat ze het geel van de hoofdknop komen afpakken.
+ */
+.mode-bar .link-button {
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: var(--tint);
+  border: 1px solid var(--tint-rand);
+  color: var(--tint-tekst);
+  font-size: 13px;
+}
+
+.mode-bar .link-button:hover {
+  border-color: rgba(147, 170, 255, 0.55);
+  color: #e6ecff;
+}
+
 /* De uitkomst van "opnieuw kijken", naast de knop die erom vroeg. */
 .mode-note {
   flex: 1 1 260px;
   min-width: 0;
 }
 
+/* Geen lijnkleur: geel is van het lijnnummer en van de knop die de dienst afmaakt. */
 .mode-tag {
-  font-family: var(--mono);
   font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--accent);
-  border: 1px solid var(--accent);
+  color: var(--text);
+  border: 1px solid var(--glas-rand);
   border-radius: 6px;
   padding: 2px 8px;
 }
@@ -1341,7 +1570,7 @@ input[type='range'] {
 }
 
 .setting-value {
-  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
   color: var(--accent);
   font-size: 14px;
 }
@@ -1397,7 +1626,7 @@ input[type='range'] {
 }
 
 .key-search {
-  width: 260px;
+  width: min(260px, 100%);
   flex: none;
 }
 
@@ -1439,7 +1668,7 @@ input[type='range'] {
   border-radius: 6px;
   padding: 5px 10px;
   color: var(--text);
-  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
   font-size: 12.5px;
   cursor: pointer;
 }
@@ -1461,7 +1690,7 @@ input[type='range'] {
 }
 
 .app.solo .main {
-  max-width: 1100px;
+  max-width: min(1500px, 100%);
   width: 100%;
   margin: 0 auto;
   /* Ruimte onder de laatste kaart: de opslaanknop blijft onderin staan. */
@@ -1558,7 +1787,7 @@ input[type='range'] {
 
 .picker {
   position: relative;
-  width: 260px;
+  width: min(260px, 100%);
 }
 
 .picker input {
@@ -1570,7 +1799,7 @@ input[type='range'] {
   z-index: 5;
   right: 0;
   max-height: 260px;
-  width: 300px;
+  width: min(300px, calc(100vw - 32px));
   overflow-y: auto;
   margin-top: 4px;
   border: 1px solid var(--line);
@@ -1617,7 +1846,7 @@ input[type='range'] {
 }
 
 .wizard-step {
-  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -1637,7 +1866,7 @@ input[type='range'] {
  * blijven staan.
  */
 .dialog.proposal {
-  width: min(980px, calc(100vw - 48px));
+  width: min(1200px, calc(100vw - 32px));
   max-height: calc(100vh - 48px);
   display: flex;
   flex-direction: column;
@@ -1722,12 +1951,179 @@ input[type='range'] {
   color: var(--text);
 }
 
+/*
+ * Het verschil met de dienstregeling: het enige op dit scherm dat kleur krijgt.
+ * Rood te laat, groen op tijd, blauw te vroeg -- zie `src/shared/status.ts`.
+ */
+.running-delta {
+  margin-top: 18px;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  border-radius: 18px;
+  padding: 16px 20px;
+  background: var(--glas-sterk);
+  border: 1px solid var(--glas-rand);
+}
+
+.running-delta b {
+  font-size: 40px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+}
+
+.running-delta span {
+  font-size: 15px;
+}
+
+.running-delta.is-laat {
+  background: rgba(255, 95, 87, 0.15);
+  border-color: rgba(255, 95, 87, 0.42);
+  color: var(--laat);
+}
+
+.running-delta.is-optijd {
+  background: rgba(55, 214, 122, 0.13);
+  border-color: rgba(55, 214, 122, 0.38);
+  color: var(--optijd);
+}
+
+.running-delta.is-vroeg {
+  background: rgba(77, 163, 255, 0.13);
+  border-color: rgba(77, 163, 255, 0.38);
+  color: var(--vroeg);
+}
+
+.running-wait {
+  color: var(--muted);
+  font-size: 14px;
+}
+
 .running-status {
   margin-top: 14px;
   font-size: 13.5px;
 }
 
-/* Annuleren staat apart: dat is de knop die je niet per ongeluk wilt raken. */
+/*
+ * Annuleren hoort bij de rij en niet ernaast. Hij stond rechts geduwd, en zodra
+ * de rij omviel bleef hij alleen op een tweede regel achter -- dat leest als een
+ * fout, niet als nadruk. Nu staat hij gewoon achteraan, maar zachter dan de
+ * rest: het is de knop die je niet per ongeluk wilt raken.
+ */
 .running-cancel {
-  margin-left: auto;
+  background: none;
+  border-color: rgba(255, 255, 255, 0.16);
+  color: var(--zacht);
+}
+
+.running-cancel:hover {
+  border-color: var(--laat);
+  color: var(--laat);
+}
+
+/*
+ * De waarschuwing over volledig scherm. Hij staat boven de kaart en niet erin:
+ * het gaat over hoe OMSI draait, niet over deze dienst.
+ */
+.fullscreen-note p {
+  margin: 0 0 8px;
+}
+
+.fullscreen-keuze {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.fullscreen-note {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 95, 87, 0.35);
+  border-radius: 14px;
+  background: rgba(255, 95, 87, 0.08);
+  max-width: 900px;
+}
+
+/* Het scherm dat vraagt waar OMSI staat: één kaart, midden in beeld. */
+.zoek-omsi {
+  max-width: 620px;
+  margin: 12vh auto 0;
+}
+
+/* Het versienummer onderin de zijbalk: aanwezig, niet aanwezig genoeg om af te leiden. */
+.side-version {
+  margin-top: auto;
+  padding-top: 12px;
+  color: var(--zacht);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- smalle vensters ---------- */
+
+/*
+ * Onder de negenhonderd punten past een zijbalk naast de inhoud niet meer: dan
+ * gaat hij erboven staan in plaats van de inhoud weg te duwen. Dat is het
+ * verschil tussen een venster dat meeschaalt en een venster met een schuifbalk
+ * onderaan.
+ */
+@media (max-width: 900px) {
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .sidebar {
+    border-right: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    max-height: 34vh;
+    padding: 14px 16px;
+    gap: 12px;
+  }
+
+  /* Boven elkaar is er breedte zat: de vier cijfers passen op één regel. */
+  .stats {
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  }
+
+  /* De kaart naast de lijst wordt de kaart onder de lijst. */
+  .map-window-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+/*
+ * En onder de zevenhonderd: de ritregels hebben vier kolommen die elk hun eigen
+ * maat willen. Samen zijn ze breder dan het venster, dus gaan tijd en lijn op
+ * de eerste regel staan en de rest eronder.
+ */
+@media (max-width: 700px) {
+  .leg {
+    grid-template-columns: auto auto 1fr;
+    gap: 4px 10px;
+  }
+
+  .axis-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}
+
+/* Twee knoppen onder elkaar horen even breed te zijn. */
+@media (max-width: 520px) {
+  .actions {
+    flex-direction: column;
+  }
+
+  .actions .btn {
+    width: 100%;
+  }
 }

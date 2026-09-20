@@ -64,6 +64,12 @@ export interface CareerEntry {
   /** Gemeten rijstijl: hoe vaak er hard geremd of opgetrokken is. */
   harshBrakes?: number
   harshAccels?: number
+  /** Verkochte kaartjes tijdens deze dienst. */
+  tickets?: number
+  /** Aanrijdingen tijdens deze dienst. */
+  collisions?: number
+  /** Verbruikte brandstof, als deel van de tank. */
+  fuelUsed?: number
 }
 
 /**
@@ -99,6 +105,18 @@ export interface ActiveDuty {
     clockMinutes: number
     harshBrakes: number
     harshAccels: number
+    /**
+     * Kaartjes en aanrijdingen staan ook in de nulmeting, want de plugin telt
+     * ze sinds het spel startte. Zonder dit zou wie twee diensten achter elkaar
+     * rijdt de eerste nog eens meekrijgen.
+     *
+     * Optioneel: profielen van voor 19-09-2026 hebben ze niet, en dan is nul
+     * het beste dat we kunnen doen.
+     */
+    tickets?: number
+    collisions?: number
+    /** Tankstand bij het begin, om het verbruik van deze dienst te kennen. */
+    fuel?: number
   }
 }
 
@@ -152,9 +170,26 @@ export function saveCareer(file: string, state: CareerState): void {
   writeFileSync(file, JSON.stringify(state, null, 2), 'utf8')
 }
 
-/** Wat een dienst oplevert. */
+/** Wat een hele dienst oplevert. */
 export function dutyPay(duty: Duty): number {
   return Math.round(((duty.durationMinutes / 60) * HOURLY_PAY + duty.totalStops * PAY_PER_STOP) * 100) / 100
+}
+
+/**
+ * En wat een halve dienst oplevert: de helft.
+ *
+ * Betalen naar het aantal haltes dat je gehaald hebt. Anders levert een dienst
+ * die je na één halte afbreekt evenveel op als een dienst die je uitrijdt, en
+ * dat is niet alleen oneerlijk maar ook een uitnodiging.
+ *
+ * Weten we het niet -- het spel draaide niet, of de bus geeft geen haltes door
+ * -- dan telt de dienst voor vol. Wat niet gemeten kon worden mag niet in het
+ * nadeel van de chauffeur uitvallen.
+ */
+export function partialPay(duty: Duty, stopsDone?: number): number {
+  if (stopsDone === undefined || !(duty.totalStops > 0)) return dutyPay(duty)
+  const deel = Math.min(1, Math.max(0, stopsDone / duty.totalStops))
+  return Math.round(dutyPay(duty) * deel * 100) / 100
 }
 
 /** Schrijft een gereden dienst in het logboek. */
@@ -167,6 +202,12 @@ export function completeDuty(
     delayMinutes?: number
     harshBrakes?: number
     harshAccels?: number
+    /** Hoeveel haltes er gehaald zijn; bepaalt wat de dienst oplevert. */
+    stopsDone?: number
+    tickets?: number
+    collisions?: number
+    /** Brandstof bij het begin en aan het eind, als deel van 0 tot 1. */
+    fuelUsed?: number
   }
 ): CareerState {
   const entry: CareerEntry = {
@@ -181,11 +222,14 @@ export function completeDuty(
     legCount: duty.legs.length,
     stopCount: duty.totalStops,
     vehicle,
-    pay: dutyPay(duty),
+    pay: partialPay(duty, measured?.stopsDone),
     drivenKm: measured?.drivenKm,
     delayMinutes: measured?.delayMinutes,
     harshBrakes: measured?.harshBrakes,
-    harshAccels: measured?.harshAccels
+    harshAccels: measured?.harshAccels,
+    tickets: measured?.tickets,
+    collisions: measured?.collisions,
+    fuelUsed: measured?.fuelUsed
   }
   // Afgerond is afgerond: de dienst laat het profiel los.
   return { ...state, entries: [entry, ...state.entries], activeDuty: undefined }
