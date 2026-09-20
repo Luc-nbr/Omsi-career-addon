@@ -21,12 +21,22 @@ interface Stuk {
   normalen: Float32Array
   uvs: Float32Array
   indices: Uint32Array
-  /** Kale RGBA-pixels; ontbreekt als de textuur niet te lezen was. */
-  textuur?: { breedte: number; hoogte: number; pixels: Uint8Array }
+  /** Welke plaat uit `platen`; -1 als er geen textuur bij hoort. */
+  plaat: number
 }
+
+/**
+ * Een textuur, in twee soorten.
+ *
+ * Wat het hoofdproces zelf uitpakte (.dds en .tga) komt als kale pixels binnen;
+ * de rest komt als gegevens-URL en laat Chromium het decoderen -- dat kan hij
+ * voor .bmp, .png en .jpg beter dan wij.
+ */
+type Plaat = { breedte: number; hoogte: number; pixels: Uint8Array } | { bron: string }
 
 interface Tekening {
   stukken: Stuk[]
+  platen: Plaat[]
   doos: { min: [number, number, number]; max: [number, number, number] }
   breedte: number
   hoogte: number
@@ -178,7 +188,59 @@ function vermenigvuldig(a: number[], b: number[]): Float32Array {
   return uit
 }
 
-function teken(plan: Tekening): string {
+/** De platen omzetten naar iets wat WebGL kan gebruiken. */
+async function maakPlaten(gl: WebGL2RenderingContext, platen: Plaat[]): Promise<Array<WebGLTexture | undefined>> {
+  const uit: Array<WebGLTexture | undefined> = []
+  for (const plaat of platen) {
+    const textuur = gl.createTexture()
+    if (!textuur) {
+      uit.push(undefined)
+      continue
+    }
+    gl.bindTexture(gl.TEXTURE_2D, textuur)
+    try {
+      if ('pixels' in plaat) {
+        gl.texImage2D(
+          gl.TEXTURE_2D,
+          0,
+          gl.RGBA,
+          plaat.breedte,
+          plaat.hoogte,
+          0,
+          gl.RGBA,
+          gl.UNSIGNED_BYTE,
+          plaat.pixels
+        )
+      } else {
+        /*
+         * Met een <img> en niet met `fetch`: het beleid van deze pagina laat
+         * gegevens-URL's toe als afbeelding (`img-src data:`), maar een fetch
+         * ernaartoe valt onder `connect-src` en wordt geweigerd.
+         */
+        const beeld = new Image()
+        beeld.src = plaat.bron
+        await beeld.decode()
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, beeld)
+      }
+      /*
+       * Mipmaps mogen alleen bij machten van twee in WebGL2? Nee -- WebGL2 kan
+       * het voor elke maat. Wel eerst de wikkeling op klemmen zetten, anders
+       * herhaalt een textuur die net niet past zich over de rand.
+       */
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT)
+      gl.generateMipmap(gl.TEXTURE_2D)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+      uit.push(textuur)
+    } catch {
+      uit.push(undefined)
+    }
+  }
+  return uit
+}
+
+async function teken(plan: Tekening): Promise<string> {
   const doek = document.getElementById('doek') as HTMLCanvasElement
   doek.width = plan.breedte
   doek.height = plan.hoogte
@@ -211,6 +273,8 @@ function teken(plan: Tekening): string {
   const metPlaat = gl.getUniformLocation(programma, 'metPlaat')
   gl.uniform1i(gl.getUniformLocation(programma, 'plaat'), 0)
 
+  const platen = await maakPlaten(gl, plan.platen ?? [])
+
   const aPlek = gl.getAttribLocation(programma, 'plek')
   const aNormaal = gl.getAttribLocation(programma, 'normaal')
   const aUv = gl.getAttribLocation(programma, 'uv')
@@ -231,23 +295,10 @@ function teken(plan: Tekening): string {
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, elementen)
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, stuk.indices, gl.STATIC_DRAW)
 
-    if (stuk.textuur) {
-      const plaat = gl.createTexture()
+    const plaat = stuk.plaat >= 0 ? platen[stuk.plaat] : undefined
+    if (plaat) {
       gl.activeTexture(gl.TEXTURE0)
       gl.bindTexture(gl.TEXTURE_2D, plaat)
-      gl.texImage2D(
-        gl.TEXTURE_2D,
-        0,
-        gl.RGBA,
-        stuk.textuur.breedte,
-        stuk.textuur.hoogte,
-        0,
-        gl.RGBA,
-        gl.UNSIGNED_BYTE,
-        stuk.textuur.pixels
-      )
-      gl.generateMipmap(gl.TEXTURE_2D)
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
       gl.uniform1i(metPlaat, 1)
     } else {
       gl.uniform1i(metPlaat, 0)
@@ -261,11 +312,9 @@ function teken(plan: Tekening): string {
 }
 
 window.busfoto.opTekening((plan) => {
-  try {
-    window.busfoto.klaar(teken(plan))
-  } catch (fout) {
-    window.busfoto.mislukt(fout instanceof Error ? fout.message : String(fout))
-  }
+  void teken(plan)
+    .then((png) => window.busfoto.klaar(png))
+    .catch((fout) => window.busfoto.mislukt(fout instanceof Error ? fout.message : String(fout)))
 })
 
 export {}

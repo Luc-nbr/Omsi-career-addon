@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, type Dirent } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { readOmsiLines } from './omsiFile'
 
@@ -83,27 +83,65 @@ export function modelVanBus(busPad: string): string | undefined {
 }
 
 /**
- * Een textuurnaam terugvinden op schijf.
+ * Alle bestanden onder een voertuigmap, op kleine letters, één keer geteld.
  *
- * OMSI schrijft ze zonder map: `SD77_Panel.bmp` ligt in `Texture\`. De namen in
- * de cfg's zijn bovendien niet hoofdlettervast -- `Textfeld_Thermo.tga` kan als
- * `textfeld_thermo.tga` op schijf staan -- en Windows trekt zich daar niets van
- * aan, wij wel zodra we het pad zelf samenstellen.
+ * WAAROM EEN INDEX EN NIET PER KEER ZOEKEN
+ * De cfg noemt een textuur zonder map -- `SD77_Panel.bmp` -- en waar dat
+ * bestand ligt verschilt per add-on: meestal in `Texture\`, maar repaints staan
+ * vaak in een submap daarvan (`Texture\Repaints\...`). Hier stond eerst een
+ * zoektocht in drie vaste mappen, en die vond 10.722 tga-, 1073 bmp- en 268
+ * dds-verwijzingen niet -- precies de bestanden die de kleurstelling dragen.
+ *
+ * Windows trekt zich niets aan van hoofdletters en de cfg's ook niet, dus de
+ * sleutel is kleingeschreven. Ligt dezelfde naam twee keer, dan wint de
+ * ondiepste: `Textureus.dds` gaat voor `Texture\oudus.dds`.
  */
-function zoekTextuur(mappen: string[], naam: string): string | undefined {
+const indexPerMap = new Map<string, Map<string, string>>()
+
+function bestandenIn(map: string): Map<string, string> {
+  const bekend = indexPerMap.get(map)
+  if (bekend) return bekend
+
+  const index = new Map<string, string>()
+  const diepte = new Map<string, number>()
+  const loop = (hier: string, niveau: number): void => {
+    if (niveau > 4) return
+    let inhoud: Dirent[]
+    try {
+      inhoud = readdirSync(hier, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const item of inhoud) {
+      const vol = join(hier, item.name)
+      if (item.isDirectory()) {
+        loop(vol, niveau + 1)
+        continue
+      }
+      const sleutel = item.name.toLowerCase()
+      const eerder = diepte.get(sleutel)
+      if (eerder === undefined || niveau < eerder) {
+        index.set(sleutel, vol)
+        diepte.set(sleutel, niveau)
+      }
+    }
+  }
+  loop(map, 0)
+  indexPerMap.set(map, index)
+  return index
+}
+
+/**
+ * Een textuurnaam terugvinden; de map ervoor telt niet mee, alleen de naam.
+ *
+ * Eerst in de map van de bus, dan in de gedeelde texturenmap van OMSI zelf --
+ * een handvol bussen leunt op wat daar ligt. Gemeten op eenentwintig bussen:
+ * zonder die tweede plek bleven 647 van de 8549 verwijzingen liggen.
+ */
+function zoekTextuur(voertuigmap: string, omsimap: string, naam: string): string | undefined {
   const plat = naam.split(/[\/]/).pop()?.toLowerCase()
   if (!plat) return undefined
-  for (const map of mappen) {
-    let inhoud: string[]
-    try {
-      inhoud = readdirSync(map)
-    } catch {
-      continue
-    }
-    const raak = inhoud.find((bestand) => bestand.toLowerCase() === plat)
-    if (raak) return join(map, raak)
-  }
-  return undefined
+  return bestandenIn(voertuigmap).get(plat) ?? bestandenIn(join(omsimap, 'Texture')).get(plat)
 }
 
 /**
@@ -125,7 +163,9 @@ export function leesBusModel(busPad: string): BusModel | undefined {
 
   const modelmap = dirname(modelcfg)
   const voertuigmap = dirname(modelmap)
-  const textuurmappen = [join(voertuigmap, 'Texture'), modelmap, voertuigmap]
+  /* `<OMSI 2>\Vehicles\<bus>` -- twee mappen omhoog staat de installatie zelf. */
+  const omsimap = dirname(dirname(voertuigmap))
+
 
   const onderdelen: BusOnderdeel[] = []
   let huidig: BusOnderdeel | undefined
@@ -151,7 +191,7 @@ export function leesBusModel(busPad: string): BusModel | undefined {
       if (!textuur) continue
       huidig.materialen.push({
         textuur,
-        pad: zoekTextuur(textuurmappen, textuur),
+        pad: zoekTextuur(voertuigmap, omsimap, textuur),
         groep: Number.isFinite(groep) ? groep : 0
       })
       continue

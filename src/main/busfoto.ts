@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { extname, join } from 'node:path'
 import { BrowserWindow, ipcMain } from 'electron'
 import { bouwBusTekening } from '../core/busbeeld'
 import { log, logFout } from '../core/logboek'
+import { leesTextuur, type Textuur } from '../core/textuur'
 
 /**
  * Een foto van een bus maken, in een venster dat niemand ziet.
@@ -143,23 +144,58 @@ function tekenEen(
     }, 20000)
 
     /*
-     * De texturen gaan (nog) niet mee.
+     * De texturen erbij, elk hooguit één keer.
      *
-     * `bouwBusTekening` levert per stuk het *pad* naar de textuur, en het
-     * venster verwacht kale pixels. Zolang die er niet zijn hoort het veld weg
-     * te blijven: stuurden we het pad, dan las WebGL er een lege plaat uit en
-     * kwam de hele bus zwart uit beeld -- precies wat er gebeurde.
+     * Twee soorten. Wat `.dds` of `.tga` is pakken we hier zelf uit -- een
+     * browser kent die formaten niet, en samen zijn ze het leeuwendeel van wat
+     * OMSI gebruikt. De rest (`.bmp`, `.png`, `.jpg`) gaat als bytes mee en
+     * laat Chromium het doen; dat kan hij beter dan wij.
+     *
+     * En ze gaan verkleind mee. De grootste textuur in deze installatie is
+     * 8192 bij 2048 en dat is 64 MB aan pixels; voor een plaatje van 512 bij
+     * 384 is 512 in de lengte ruim genoeg, en het scheelt zestien keer zoveel
+     * kopieerwerk door de IPC.
      */
+    const platen: Array<{ breedte: number; hoogte: number; pixels: Uint8Array } | { bron: string }> = []
+    const perPad = new Map<string, number>()
+    const nummerVoor = (pad: string | undefined): number => {
+      if (!pad) return -1
+      const bekend = perPad.get(pad)
+      if (bekend !== undefined) return bekend
+      let plaat: { breedte: number; hoogte: number; pixels: Uint8Array } | { bron: string } | undefined
+      const soort = extname(pad).toLowerCase()
+      if (soort === '.bmp' || soort === '.png' || soort === '.jpg' || soort === '.jpeg') {
+        try {
+          const type = soort === '.bmp' ? 'image/bmp' : soort === '.png' ? 'image/png' : 'image/jpeg'
+          plaat = { bron: `data:${type};base64,${readFileSync(pad).toString('base64')}` }
+        } catch {
+          plaat = undefined
+        }
+      } else {
+        const gelezen = leesTextuur(pad)
+        if (gelezen) plaat = verklein(gelezen, 512)
+      }
+      if (!plaat) {
+        perPad.set(pad, -1)
+        return -1
+      }
+      const nummer = platen.push(plaat) - 1
+      perPad.set(pad, nummer)
+      return nummer
+    }
+
     const stukken = tekening.stukken.map((stuk) => ({
       posities: stuk.posities,
       normalen: stuk.normalen,
       uvs: stuk.uvs,
-      indices: stuk.indices
+      indices: stuk.indices,
+      plaat: nummerVoor(stuk.textuur)
     }))
 
     const stuur = (): void =>
       paneel.webContents.send('busfoto:teken', {
         stukken,
+        platen,
         doos: tekening.doos,
         breedte: opdracht.breedte ?? 512,
         hoogte: opdracht.hoogte ?? 384
@@ -168,6 +204,35 @@ function tekenEen(
     if (paneel.webContents.isLoading()) paneel.webContents.once('did-finish-load', stuur)
     else stuur()
   })
+}
+
+/**
+ * Een textuur terugbrengen tot hooguit `grens` in de langste richting.
+ *
+ * Grof bemonsterd en niet gemiddeld: het gaat om een plaatje van 512 bij 384,
+ * en een bus die je van vier meter afstand ziet heeft aan een scherpe textuur
+ * niets. Wel scheelt het fors: de zwaarste textuur hier is 8192 bij 2048, en
+ * dat is 64 MB aan pixels tegen 4 MB na het verkleinen.
+ */
+function verklein(textuur: Textuur, grens: number): Textuur {
+  const langste = Math.max(textuur.breedte, textuur.hoogte)
+  if (langste <= grens) return textuur
+  const factor = langste / grens
+  const breedte = Math.max(1, Math.floor(textuur.breedte / factor))
+  const hoogte = Math.max(1, Math.floor(textuur.hoogte / factor))
+  const uit = new Uint8Array(breedte * hoogte * 4)
+  for (let y = 0; y < hoogte; y++) {
+    const bron = Math.min(textuur.hoogte - 1, Math.floor(y * factor)) * textuur.breedte
+    for (let x = 0; x < breedte; x++) {
+      const van = (bron + Math.min(textuur.breedte - 1, Math.floor(x * factor))) * 4
+      const naar = (y * breedte + x) * 4
+      uit[naar] = textuur.pixels[van]
+      uit[naar + 1] = textuur.pixels[van + 1]
+      uit[naar + 2] = textuur.pixels[van + 2]
+      uit[naar + 3] = textuur.pixels[van + 3]
+    }
+  }
+  return { breedte, hoogte, pixels: uit }
 }
 
 /** Het venster opruimen; de app hoeft er niet op te wachten bij het afsluiten. */
