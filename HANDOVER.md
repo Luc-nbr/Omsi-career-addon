@@ -650,7 +650,7 @@ een `gap` bij, en een maatklasse voor het icoontje van een pixel of veertien.
   van het busmodel zelf (optie 3) om bussen in de keuze te laten zien, maar wil
   dat later. Wat er ligt -- een lezer voor OMSI's modelformaat en een meetscript
   -- staat in de kladmap van die sessie:
-  `%TEMP%\claude\C--OMSI-Career--claude-worktrees-ecstatic-noether-2968009453af6-61d8-4662-b5b4-760aa670cb78\scratchpad\o3d-werk`.
+  `%TEMP%\claude\C--OMSI-Career--claude-worktrees-ecstatic-noether-296800\69453af6-61d8-4662-b5b4-760aa670cb78\scratchpad\o3d-werk`.
   Wat er al gemeten is aan het formaat staat hierboven onder "De kaartkeuze in
   twee vormen": kop `84 19 <versie>`, blok 0x17 hoekpunten (uint16 aantal, 8
   floats per punt), 0x49 driehoeken (4 uint16), 0x26 materialen; in deze
