@@ -41,6 +41,14 @@ export interface Rij {
    * hij mag nooit per ongeluk meeliften op het aanklikken van de regel zelf.
    */
   actie?: { label: string; gevaarlijk?: boolean; onDoen: () => void }
+  /**
+   * Wat er onder deze regel komt te staan zodra hij aangewezen is.
+   *
+   * De dienstenlijst zegt alleen hoe laat je begint en hoe lang het duurt; wat
+   * je gaat doen staat hieronder, rit voor rit. Alleen bij de gekozen regel,
+   * want acht van die blokken tegelijk is geen lijst meer.
+   */
+  detail?: ReactNode
 }
 
 /**
@@ -799,6 +807,7 @@ export function Setup({
                     )}
                   </span>
                 </button>
+                {index === gekozen && rij.detail}
               </li>
             ))}
           </ul>

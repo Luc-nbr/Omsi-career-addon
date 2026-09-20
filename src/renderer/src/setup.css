@@ -1677,6 +1677,89 @@
   gap: 2px;
 }
 
+/*
+ * Wat je in de aangewezen dienst gaat doen: de ritten onder de regel.
+ *
+ * Ingesprongen tot voorbij het keuzerondje, zodat het bij die ene regel hoort
+ * en niet bij de lijst eronder. De tijden staan in cijfers van gelijke breedte
+ * -- een kolom tijden hoort een kolom te zijn.
+ */
+.dienstuitleg {
+  padding: 8px 20px 12px 46px;
+  border-bottom: 1px solid var(--vel-lijn);
+  background: var(--vel-hover);
+  animation: uitleg-open 160ms ease-out;
+}
+
+@keyframes uitleg-open {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.dienstuitleg-kop {
+  margin: 0 0 6px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vel-zacht);
+}
+
+.dienstuitleg-ritten {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.dienstuitleg-rit {
+  display: grid;
+  grid-template-columns: 46px 44px 1fr auto;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 13px;
+}
+
+.dienstuitleg-tijd,
+.dienstuitleg-duur {
+  font-variant-numeric: var(--cijfers);
+  color: var(--vel-zacht);
+}
+
+.dienstuitleg-lijn {
+  justify-self: start;
+  padding: 1px 6px;
+  border-radius: var(--radius-rond);
+  background: var(--lijn);
+  color: var(--op-lijn);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dienstuitleg-naar {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dienstuitleg-pauze,
+.dienstuitleg-wissel {
+  display: block;
+  padding: 2px 0 2px 46px;
+  font-size: 12px;
+  color: var(--vel-zacht);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dienstuitleg {
+    animation: none;
+  }
+}
+
+
 .tegelactie {
   display: grid;
   place-items: center;
