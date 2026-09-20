@@ -426,6 +426,23 @@ bottom edge it left half a screen of nothing under the buttons, which reads as
 unfinished. Below 900px wide or 700px tall the tiles lose their minimum height
 and their description clamps to two lines, so all three stay in one view.
 
+### Map tiles (signature)
+The map step can be read two ways, and the user picks with a two-button switch
+above the list: rows (name, tours, era) or tiles carrying the picture OMSI ships
+with every map -- `maps/<map>/picture.jpg`, 370x280, the same image the game's
+own map menu shows. Tiles are at least 232px wide with rows sized to their
+content (`grid-auto-rows: max-content`; an `auto` row inside a fixed-height grid
+is allowed to shrink, which cropped the photo and pushed the name out of the
+tile). The whole photo is shown, never a crop: `object-fit: contain` on the
+monogram tint, so a map that ships a different size gets bars instead of losing
+its title. A map without a picture falls back to the brand monogram.
+
+Choosing is two steps here, unlike a row: the first click selects the map, and
+then the sheet narrows and the map's road network is drawn beside it, the way
+every later step shows its map. A second click on the same tile -- or the main
+button -- moves on. The header carries the chosen map's name, tours and era,
+because three different maps ship a photo that says "Hamburg".
+
 ### Preparing maps
 The last step of installing, and the only screen with a progress bar: one track
 in the sheet's hover tint with a route-blue fill, the map being read named under

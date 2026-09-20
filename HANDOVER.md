@@ -359,6 +359,22 @@ Twee dingen die daarbij hoorden:
   in de schijfcache, met de vingerafdruk van `Vehicles` als sleutel: 604 -> 47 ms
   en 565 -> 80 ms, met dezelfde uitkomst (`probe-wagenpark`).
 
+**De kaartkeuze in twee vormen (20-09-2026)**
+
+De afbeeldingen komen uit OMSI zelf: elke kaartmap heeft een `picture.jpg` van
+370 bij 280, het plaatje uit de kaartkeuze van het spel. Elf van de twaalf
+kaarten hier hebben er een; Vienna 2005 valt terug op het monogram. Ze gaan
+niet als gegevens-URL door de IPC -- 1,3 MB kopieerwerk voor iets dat de schijf
+al heeft -- maar door een eigen schema `omsikaart://`, dat één bestand doorlaat:
+`maps\<kaart>\picture.jpg` binnen de OMSI-map, met de naam uit het pad (de
+hostnaam maakt "Ahlheim 5" kapot).
+
+Voor de bussen bestaat dit niet: van de 166 voertuigmappen heeft er geen één een
+voorbeeldplaatje, alleen Windows' eigen `Thumbs.db`. OMSI tekent daar het
+3D-model live uit de `.o3d`-bestanden. Wie tegels met bussen wil, moet dus of
+dat model tekenen, of iets afleiden uit de texturen (in veertig mappen: 257 dds,
+133 bmp, 108 tga, 40 png) -- of het bij de monogrammen laten.
+
 **Het logboek van een "crash" (20-09-2026)**
 
 Een speler meldde dat de app crashte en stuurde zijn logboek: 28 kaarten op een
@@ -602,14 +618,14 @@ een `gap` bij, en een maatklasse voor het icoontje van een pixel of veertien.
   expliciet ("in vrije modus is er selectie mogelijk per lijn en kunnen handmatig
   meer ritten worden toegevoegd") en het is nooit gebouwd. De ritstap van vrij
   rijden is nu een formulier (waar, wanneer, weer) en kent geen ritten.
-- **Versie 0.3.2 staat nog niet op GitHub.** (0.3.0 evenmin: die is wel getagd,
+- **Versie 0.3.3 staat nog niet op GitHub.** (0.3.0 evenmin: die is wel getagd,
   maar nooit uitgegeven. De notities in `uitgaven/0.3.0.md` dekken dus nog niet
   wat er na die tag bij kwam -- de spiegelingen, de staat van dienst, het
   logboek, de starthub en het werk hierboven aan de snelheid.) Het uitgeefscript werkt; `gh` is in
   de schil van de assistent aangemeld maar niet in het PowerShell-venster van de
   gebruiker (vermoedelijk verhoogd, dus een andere sessie en geen toegang tot de
   sleutelring). Commando:
-  `node scripts/uitgeven.mjs 0.3.2 --publiceer --notities uitgaven/0.3.2.md`.
+  `node scripts/uitgeven.mjs 0.3.3 --publiceer --notities uitgaven/0.3.3.md`.
   De Discord-aankondiging staat klaar in
   `C:\OMSI Enhancer Discord\uitgaven\0.3.0.md` maar de links daarin zijn dood
   tot de release bestaat. **Publiceren doet de gebruiker zelf.**
