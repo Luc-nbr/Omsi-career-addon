@@ -10,6 +10,7 @@ const api: CareerApi = {
   chooseOmsi: () => ipcRenderer.invoke('omsi:choose'),
   version: () => ipcRenderer.invoke('app:version'),
   logboekOpenen: () => ipcRenderer.invoke('logboek:openen'),
+  logboekMelden: (regel) => ipcRenderer.invoke('logboek:melden', regel),
   kaartenStand: () => ipcRenderer.invoke('kaarten:stand'),
   kaartenVoorbereiden: () => ipcRenderer.invoke('kaarten:voorbereiden'),
   /** Meeluisteren met het klaarzetten; geeft een opzegfunctie terug. */
@@ -71,6 +72,8 @@ const api: CareerApi = {
   createProfile: (name) => ipcRenderer.invoke('career:create', name),
   selectProfile: (id) => ipcRenderer.invoke('career:select', id),
   deleteProfile: (id) => ipcRenderer.invoke('career:delete', id),
+  chooseProfilePhoto: (id) => ipcRenderer.invoke('career:photo', id),
+  clearProfilePhoto: (id) => ipcRenderer.invoke('career:photo:clear', id),
   checkSession: () => ipcRenderer.invoke('duty:session'),
   completeDuty: (duty, vehicle, measured) =>
     ipcRenderer.invoke('career:complete', duty, vehicle, measured),

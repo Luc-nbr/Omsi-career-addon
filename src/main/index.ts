@@ -14,13 +14,17 @@ import {
   type GameMode
 } from '../core/career'
 import {
+  clearProfilePhoto,
   createProfile,
   deleteProfile,
   listProfiles,
+  profilePhotoPath,
   readProfile,
   resolveActive,
   setActive,
-  writeProfile
+  setProfilePhoto,
+  writeProfile,
+  PHOTO_EXTENSIONS
 } from '../core/profiles'
 import {
   examTrip,
@@ -1229,6 +1233,19 @@ function registerHandlers(): void {
    * melding is "stuur het logboek mee" dan een zoektocht door AppData. Nu opent
    * de map met het bestand aangewezen.
    */
+  /*
+   * De pagina mag ook iets in het logboek zetten.
+   *
+   * Waarom: het haperen van de kaart is hier niet na te maken -- op deze
+   * machine haalt hij 144 beelden per seconde, ook op de zwaarste kaart. Wat
+   * traag is, is de machine van de speler, en die spreekt alleen via zijn
+   * logboek. Dus meet de tekening zichzelf en meldt het hier, één keer per
+   * kaart, en alleen als het werkelijk hapert.
+   */
+  handle('logboek:melden', (_event, regel: string) => {
+    log(`pagina: ${String(regel).slice(0, 300)}`)
+  })
+
   handle('logboek:openen', (): string | undefined => {
     const bestand = logboekPad()
     if (bestand) shell.showItemInFolder(bestand)
@@ -1982,6 +1999,50 @@ function registerHandlers(): void {
     return careerPayload()
   })
 
+  /*
+   * De foto hoort bij een profiel en niet bij de lopende sessie.
+   *
+   * Je kunt hem op elke tegel zetten, ook op die van een chauffeur die nu niet
+   * rijdt, dus `persist()` kan hier niet: dat schrijft altijd het actieve
+   * profiel. Dit leest het profiel waar het om gaat, zet er de bestandsnaam bij
+   * en schrijft het terug -- en houdt `career` gelijk als het toevallig wel de
+   * actieve is, want anders staat de naam in het bestand en de oude in het
+   * geheugen.
+   */
+  const bewaarFoto = (id: string, naam: string | undefined) => {
+    const profiel = readProfile(userData(), id)
+    if (!profiel) return careerPayload()
+    const bijgewerkt: CareerState = { ...profiel, photo: naam, photoAt: naam ? Date.now() : undefined }
+    writeProfile(userData(), bijgewerkt)
+    if (career?.id === id) career = bijgewerkt
+    return careerPayload()
+  }
+
+  /*
+   * Een foto kiezen. Het venster staat in het hoofdproces, net als bij het
+   * aanwijzen van de OMSI-map: de pagina zelf mag niet bij het bestandssysteem.
+   * Wat eruit komt wordt gekopieerd naar de eigen map -- de oorspronkelijke
+   * plek is vaak een download of een usb-stick en kan morgen weg zijn.
+   */
+  handle('career:photo', async (_event, id: string) => {
+    const keuze = await dialog.showOpenDialog({
+      title: 'Kies een profielfoto',
+      properties: ['openFile'],
+      filters: [{ name: 'Afbeeldingen', extensions: [...PHOTO_EXTENSIONS] }],
+      buttonLabel: 'Deze foto'
+    })
+    const gekozen = keuze.filePaths[0]
+    if (keuze.canceled || !gekozen) return careerPayload()
+    const naam = setProfilePhoto(userData(), id, gekozen)
+    if (!naam) return careerPayload()
+    return bewaarFoto(id, naam)
+  })
+
+  handle('career:photo:clear', (_event, id: string) => {
+    clearProfilePhoto(userData(), id)
+    return bewaarFoto(id, undefined)
+  })
+
   handle('career:complete', (_event, duty, vehicle: string, measured) => {
     // Een afgeronde dienst heeft geen overlay meer nodig.
     closeOverlay()
@@ -2120,7 +2181,8 @@ function adoptOldProfiles(): void {
  * Windows-mapnamen als "Ahlheim 5" en "Hohenkirchen - Herrenhof" kapot.
  */
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'omsikaart', privileges: { standard: true, secure: true, supportFetchAPI: true } }
+  { scheme: 'omsikaart', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  { scheme: 'omsifoto', privileges: { standard: true, secure: true, supportFetchAPI: true } }
 ])
 
 function kaartplaatje(request: Request): Promise<Response> {
@@ -2141,6 +2203,28 @@ function kaartplaatje(request: Request): Promise<Response> {
   const bestand = resolve(kaarten, naam, 'picture.jpg')
   if (!bestand.startsWith(resolve(kaarten) + sep)) return leeg()
   if (!existsSync(bestand)) return leeg()
+  return net.fetch(pathToFileURL(bestand).toString())
+}
+
+/*
+ * De profielfoto van een chauffeur, langs dezelfde weg als de kaartplaatjes.
+ *
+ * Wat er doorheen mag is één map: `<gebruikersgegevens>\profielfotos`. Nooit
+ * een willekeurig pad van de schijf -- de pagina vraagt om een bestandsnaam en
+ * `profilePhotoPath` zegt of die naam binnen die map uitkomt. De naam staat in
+ * het pad en niet in de hostnaam, want die maakt van een hoofdletter een kleine
+ * letter en dan vindt Windows het bestand nog wel, maar Linux-builds niet.
+ */
+function profielfoto(request: Request): Promise<Response> {
+  /*
+   * Alleen het pad telt. Wat er achter het vraagteken hangt is het tijdstip
+   * waarop de foto er kwam: dat staat er zodat een vervangen foto -- die
+   * dezelfde bestandsnaam houdt -- een andere URL krijgt en Chromium hem
+   * werkelijk opnieuw ophaalt. Zie de tegelbouwer in `App.tsx`.
+   */
+  const naam = decodeURIComponent(new URL(request.url).pathname).replace(/^\/+/, '')
+  const bestand = profilePhotoPath(userData(), naam)
+  if (!bestand) return Promise.resolve(new Response(null, { status: 404 }))
   return net.fetch(pathToFileURL(bestand).toString())
 }
 
@@ -2181,6 +2265,7 @@ if (!app.requestSingleInstanceLock()) {
     )
 
     protocol.handle('omsikaart', kaartplaatje)
+    protocol.handle('omsifoto', profielfoto)
 
     adoptOldProfiles()
     try {

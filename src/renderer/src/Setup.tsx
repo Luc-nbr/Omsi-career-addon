@@ -76,17 +76,37 @@ export interface Tegel {
    * monogram; van de twaalf kaarten hier is dat er een.
    */
   beeld?: string
+  /**
+   * De profielfoto van een chauffeur: rond, op de plek van het monogram.
+   *
+   * Niet `beeld`. Dat loopt tot de randen van de tegel en trekt het hele
+   * rooster breder (`.tegels:has(.tegel-beeld)`), wat voor een kaartfoto van
+   * 370 bij 280 klopt maar voor een gezicht niet: één chauffeur hoort groot en
+   * gecentreerd te blijven staan zoals hij nu staat. Rond bijsnijden op de plek
+   * van het monogram houdt beide maten van de chauffeurstegel heel.
+   */
+  foto?: string
   gekozen?: boolean
   /**
-   * Een handeling die bij deze tegel hoort en niet bij de keuze -- een
-   * chauffeur weggooien bijvoorbeeld.
+   * Handelingen die bij deze tegel horen en niet bij de keuze -- een chauffeur
+   * weggooien, zijn foto wisselen.
    *
-   * Staat in de hoek en is een eigen knop, net als achteraan een regel: hij mag
-   * nooit meeliften op het aanklikken van de tegel zelf. Toen de chauffeurs van
-   * regels naar tegels gingen viel deze handeling er stilletjes uit, en toen
+   * Ze staan in de hoek en zijn eigen knoppen, net als achteraan een regel: ze
+   * mogen nooit meeliften op het aanklikken van de tegel zelf. Toen de
+   * chauffeurs van regels naar tegels gingen viel dit er stilletjes uit, en toen
    * was er geen enkele manier meer om een chauffeur te verwijderen.
    */
-  actie?: { label: string; gevaarlijk?: boolean; onDoen: () => void }
+  acties?: Tegelactie[]
+  onDoen: () => void
+}
+
+/** Een handeling in de hoek van een tegel. */
+export interface Tegelactie {
+  label: string
+  /** Rood bij zweven; alleen voor wat je niet terugkrijgt. */
+  gevaarlijk?: boolean
+  /** Het tekentje; standaard het kruis dat iets weggooit. */
+  teken?: 'kruis' | 'foto' | 'fotoweg'
   onDoen: () => void
 }
 
@@ -326,6 +346,22 @@ function Tegelbeeld({ bron, naam }: { bron: string; naam: string }): JSX.Element
   if (mis) return <Monogram tekst={naam} />
   return (
     <img className="tegel-beeld" src={bron} alt="" loading="lazy" onError={() => setMis(true)} />
+  )
+}
+
+/**
+ * De profielfoto van een chauffeur, met dezelfde uitweg.
+ *
+ * Het bestand staat in de map met gebruikersgegevens en komt binnen via het
+ * schema `omsifoto://`. Is het er niet meer -- opgeruimd buiten de app om, een
+ * teruggezette back-up -- dan staat het monogram er weer, precies zoals de
+ * kaarttegel terugvalt als `picture.jpg` ontbreekt.
+ */
+function Tegelfoto({ bron, naam }: { bron: string; naam: string }): JSX.Element {
+  const [mis, setMis] = useState(false)
+  if (mis) return <Monogram tekst={naam} />
+  return (
+    <img className="profielfoto" src={bron} alt="" onError={() => setMis(true)} />
   )
 }
 
@@ -578,7 +614,12 @@ export function Setup({
         {regelaars && <div className="regelaars">{regelaars}</div>}
 
         {tegels && (
-          <div className="tegels">
+          /*
+           * De stap en het aantal staan erbij, zodat de vormgeving weet waar ze
+           * staan en met hoeveel ze zijn: één chauffeur hoort groot in het
+           * midden, en hij krimpt naarmate er meer bij komen.
+           */
+          <div className="tegels" data-stap={stap} data-aantal={Math.min(tegels.length, 4)}>
             {tegels.map((tegel, index) => (
               <button
                 key={tegel.id}
@@ -590,6 +631,8 @@ export function Setup({
               >
                 {tegel.beeld ? (
                   <Tegelbeeld bron={tegel.beeld} naam={tegel.titel} />
+                ) : tegel.foto ? (
+                  <Tegelfoto bron={tegel.foto} naam={tegel.titel} />
                 ) : tegel.icoon === 'hof' ? (
                   <Hoficoon />
                 ) : tegel.monogram ? (
@@ -599,33 +642,42 @@ export function Setup({
                 )}
                 <span className="tegel-titel">{tegel.titel}</span>
                 {tegel.onder && <span className="tegel-onder">{tegel.onder}</span>}
-                {tegel.actie && (
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    className={`tegelactie ${tegel.actie.gevaarlijk ? 'gevaarlijk' : ''}`}
-                    title={tegel.actie.label}
-                    aria-label={tegel.actie.label}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      tegel.actie?.onDoen()
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key !== 'Enter' && e.key !== ' ') return
-                      e.preventDefault()
-                      e.stopPropagation()
-                      tegel.actie?.onDoen()
-                    }}
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path
-                        d="M7 7l10 10M17 7 7 17"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                        strokeLinecap="round"
-                      />
-                    </svg>
+                {tegel.acties && tegel.acties.length > 0 && (
+                  <span className="tegelacties">
+                    {tegel.acties.map((actie) => (
+                      <span
+                        key={actie.label}
+                        role="button"
+                        tabIndex={0}
+                        className={`tegelactie ${actie.gevaarlijk ? 'gevaarlijk' : ''}`}
+                        title={actie.label}
+                        aria-label={actie.label}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          actie.onDoen()
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key !== 'Enter' && e.key !== ' ') return
+                          e.preventDefault()
+                          e.stopPropagation()
+                          actie.onDoen()
+                        }}
+                      >
+                        {actie.teken && actie.teken !== 'kruis' ? (
+                          <Pictogram naam={actie.teken} />
+                        ) : (
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path
+                              d="M7 7l10 10M17 7 7 17"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth={2}
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                        )}
+                      </span>
+                    ))}
                   </span>
                 )}
               </button>
@@ -647,7 +699,13 @@ export function Setup({
           </div>
         )}
 
-        {!inhoud && !tegels && invoer && (
+        {/*
+          Het invulveld hoort er ook te zijn als de stap tegels toont.
+          De chauffeurs werden tegels, en daarmee viel "nieuwe chauffeur" stil:
+          de knop zette het veld open, maar het veld kwam niet in beeld. Vrije
+          inhoud blijft wel uitgesloten -- daar staat een eigen formulier.
+        */}
+        {!inhoud && invoer && (
           <div className="invoerrij">
             <input
               className="invoerveld"

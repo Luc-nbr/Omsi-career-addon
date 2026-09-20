@@ -330,6 +330,8 @@ export interface CareerApi {
   maps(): Promise<MapSummary[]>
   /** Het logboek van de app in de verkenner tonen; geeft het pad terug. */
   logboekOpenen(): Promise<string | undefined>
+  /** Een regel in het logboek zetten; voor metingen die alleen bij de speler optreden. */
+  logboekMelden(regel: string): Promise<void>
   /** Hoe ver de app is met het klaarzetten van de kaarten. */
   kaartenStand(): Promise<KaartenStand>
   /** Begin met klaarzetten (als dat nog niet liep) en geef de stand terug. */
@@ -457,6 +459,17 @@ export interface CareerApi {
   createProfile(name: string): Promise<CareerPayload>
   selectProfile(id: string): Promise<CareerPayload>
   deleteProfile(id: string): Promise<CareerPayload>
+  /**
+   * Opent een bestandsvenster en zet de gekozen afbeelding neer als de foto van
+   * deze chauffeur. Kiest hij niets, dan komt dezelfde stand terug.
+   *
+   * De afbeelding wordt gekopieerd naar `<gebruikersgegevens>\profielfotos`; in
+   * het profiel staat alleen de bestandsnaam, en de pagina komt er via het
+   * schema `omsifoto://` bij. Een pad van de schijf gaat hier nooit doorheen.
+   */
+  chooseProfilePhoto(id: string): Promise<CareerPayload>
+  /** Haalt de foto weer weg; de tegel valt dan terug op het monogram. */
+  clearProfilePhoto(id: string): Promise<CareerPayload>
   /** Leest uit OMSI's eigen situatiebestand wat er van de dienst terechtkwam. */
   checkSession(): Promise<SessionResult>
   completeDuty(

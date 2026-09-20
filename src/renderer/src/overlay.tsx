@@ -179,6 +179,18 @@ function Overlay(): JSX.Element | null {
   const panelRefs = useRef<Partial<Record<PanelId, HTMLElement | null>>>({})
   /** Het vak waar ze samen in passen; het venster wordt precies zo groot. */
   const [box, setBox] = useState<Box>()
+  /*
+   * Wordt er op dit moment gesleept of geschaald?
+   *
+   * Dat is niet alleen iets van het element zelf. Zolang je sleept maakt het
+   * hoofdproces het venster even zo groot als het scherm (`overlayGrab`), want
+   * anders stopt de sleep bij de eigen rand. Maar de pagina schoof intussen
+   * alles op met de hoek van het vak waar de elementen in staan -- en dat vak
+   * verandert juist terwijl je sleept. Gevolg: het element dat je niet
+   * vasthield, schoof mee over het scherm. Met deze vlag schuift er niets
+   * zolang het venster het hele scherm beslaat, net als in de bewerkstand.
+   */
+  const [grijpend, setGrijpend] = useState(false)
 
   const { status, editing } = frame
   /*
@@ -412,7 +424,7 @@ function Overlay(): JSX.Element | null {
    * meer linksboven: het ligt om de inhoud heen. Dus schuiven we alles op met de
    * hoek van dat vak, en blijft alles staan waar de chauffeur het heeft neergezet.
    */
-  const origin = editing || !box ? { x: 0, y: 0 } : box
+  const origin = editing || grijpend || !box ? { x: 0, y: 0 } : box
 
   return (
     <div
@@ -429,6 +441,7 @@ function Overlay(): JSX.Element | null {
           innerRef={(element) => {
             panelRefs.current.dienst = element
           }}
+          onGrab={setGrijpend}
           onChange={(patch) => move('dienst', patch)}
         >
           {/*
@@ -475,6 +488,7 @@ function Overlay(): JSX.Element | null {
           innerRef={(element) => {
             panelRefs.current.navigatie = element
           }}
+          onGrab={setGrijpend}
           onChange={(patch) => move('navigatie', patch)}
         >
           {app !== 'kaart' ? (
@@ -693,6 +707,7 @@ function Panel({
   editing,
   language,
   innerRef,
+  onGrab,
   onChange,
   children
 }: {
@@ -703,6 +718,8 @@ function Panel({
   language: Language
   /** Het element zelf, zodat de overlay kan meten hoe hoog het geworden is. */
   innerRef?(element: HTMLElement | null): void
+  /** Meldt het begin en het eind van slepen of schalen; zie `grijpend`. */
+  onGrab?(bezig: boolean): void
   onChange(patch: Partial<OverlayLayout['dienst']>): void
   /* Sinds er nog maar één element is, draagt het paneel meer dan één blok. */
   children: ReactNode
@@ -720,14 +737,20 @@ function Panel({
     event.currentTarget.setPointerCapture(event.pointerId)
     drag.current = { x: event.clientX, y: event.clientY, ox: state.x, oy: state.y }
     // Het venster even zo groot als het scherm, anders stopt het slepen bij de eigen rand.
-    if (!editing) void window.career.overlayGrab(true)
+    if (!editing) {
+      void window.career.overlayGrab(true)
+      onGrab?.(true)
+    }
   }
 
   const startSize = (event: PointerEvent<HTMLElement>): void => {
     event.stopPropagation()
     event.currentTarget.setPointerCapture(event.pointerId)
     size.current = { x: event.clientX, y: event.clientY, w: state.w, h: state.h }
-    if (!editing) void window.career.overlayGrab(true)
+    if (!editing) {
+      void window.career.overlayGrab(true)
+      onGrab?.(true)
+    }
   }
 
   /** Een stap groter of kleiner, inhoud en al. */
@@ -767,7 +790,10 @@ function Panel({
     drag.current = undefined
     size.current = undefined
     // Losgelaten: het venster krimpt weer om de overlay heen.
-    if (bezig && !editing) void window.career.overlayGrab(false)
+    if (bezig && !editing) {
+      void window.career.overlayGrab(false)
+      onGrab?.(false)
+    }
   }
 
   return (

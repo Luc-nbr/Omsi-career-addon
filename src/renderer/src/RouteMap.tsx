@@ -715,10 +715,65 @@ export function RouteMap({
     [size, view]
   )
 
+  /*
+   * De kaart meet zichzelf terwijl je hem versleept.
+   *
+   * WAAROM
+   * Een speler meldde dat de kaart hapert zodra er een dienst gekozen is, en
+   * hier is dat niet na te maken: op deze machine haalt hij 144 beelden per
+   * seconde, ook op HamburgLi20 met twintigduizend wegen. Wat traag is, is
+   * iemands eigen machine, en die spreekt alleen via het logboek. Dus telt de
+   * kaart tijdens een sleep zijn eigen beelden en meldt hij het als het
+   * werkelijk hapert: één keer per kaart, met de getallen erbij die het
+   * verschil kunnen verklaren -- hoeveel er getekend wordt, hoe groot het
+   * venster is en hoe fijn het scherm.
+   *
+   * Alleen op het grote scherm. In de overlay hoort niets te meten dat zelf
+   * tijd kost terwijl iemand rijdt.
+   */
+  const beelden = useRef<{ vorig: number; duur: number[] } | undefined>(undefined)
+  const gemeld = useRef(false)
+
+  const meetBeeld = (): void => {
+    const staat = beelden.current
+    if (!staat) return
+    const nu = performance.now()
+    if (staat.vorig > 0) staat.duur.push(nu - staat.vorig)
+    staat.vorig = nu
+    requestAnimationFrame(meetBeeld)
+  }
+
+  const meldTraagheid = (): void => {
+    const staat = beelden.current
+    beelden.current = undefined
+    if (!staat || gemeld.current || variant !== 'full') return
+    const duur = staat.duur
+    if (duur.length < 20) return
+    const gemiddeld = duur.reduce((a, b) => a + b, 0) / duur.length
+    const traag = duur.filter((d) => d > 33).length
+    // Pas melden als het echt hapert: een derde van de beelden te laat, of
+    // gemiddeld onder de dertig per seconde.
+    if (traag < duur.length / 3 && gemiddeld < 33) return
+    gemeld.current = true
+    const svg = svgRef.current
+    void window.career.logboekMelden?.(
+      `kaart hapert op ${duty?.mapFolder ?? 'zonder dienst'}: ` +
+        `${Math.round(1000 / gemiddeld)} beelden/s, langste ${Math.round(Math.max(...duur))} ms, ` +
+        `${traag} van ${duur.length} te laat; ` +
+        `${svg?.querySelectorAll('*').length ?? 0} elementen, ` +
+        `venster ${Math.round(size.w)}x${Math.round(size.h)}, ` +
+        `scherm ${window.devicePixelRatio}x`
+    )
+  }
+
   const onPointerDown = (event: ReactPointerEvent<SVGSVGElement>): void => {
     ;(event.target as Element).setPointerCapture?.(event.pointerId)
     markManual()
     dragRef.current = { x: event.clientX, y: event.clientY, cx: view.cx, cy: view.cy }
+    if (variant === 'full' && !gemeld.current) {
+      beelden.current = { vorig: 0, duur: [] }
+      requestAnimationFrame(meetBeeld)
+    }
   }
 
   const onPointerMove = (event: ReactPointerEvent<SVGSVGElement>): void => {
@@ -733,6 +788,7 @@ export function RouteMap({
 
   const endDrag = (): void => {
     dragRef.current = undefined
+    meldTraagheid()
   }
 
   const zoomBy = (factor: number): void => {

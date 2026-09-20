@@ -25,6 +25,8 @@ const args = process.argv.slice(
 )
 const outputDir = args[0] || __dirname
 const modus = args[1] || 'dienst'
+/* Een kaart op naam, om een zware kaart te kunnen meten in plaats van de eerste. */
+const kaartnaam = args[3] || ''
 const MODUSKNOP = { dienst: 'Dienst', carriere: 'Carrière', vrij: 'Vrij rijden' }
 
 app.setPath('userData', mkdtempSync(join(tmpdir(), 'omsi-enhancer-modes-')))
@@ -232,7 +234,19 @@ app.whenReady().then(async () => {
       await shoot(`stap-${naam}-zonder-venstertje`)
     }
     if (stap.toLowerCase().includes('mod')) await clickText(main, MODUSKNOP[modus] ?? 'Dienst')
-    else await js(main, `document.querySelector('.dienstrij, .tegel')?.click()`)
+    else if (kaartnaam && /kaart|map/i.test(stap)) {
+      const raak = await js(
+        main,
+        `(() => {
+           const keuzes = [...document.querySelectorAll('.tegel, .dienstrij')]
+           const goed = keuzes.find((k) => (k.textContent || '').toLowerCase().includes(${JSON.stringify(kaartnaam.toLowerCase())}))
+           if (goed) goed.click()
+           return Boolean(goed)
+         })()`
+      )
+      console.log(`   kaart "${kaartnaam}": ${raak ? 'gekozen' : 'niet gevonden, eerste genomen'}`)
+      if (!raak) await js(main, `document.querySelector('.dienstrij, .tegel')?.click()`)
+    } else await js(main, `document.querySelector('.dienstrij, .tegel')?.click()`)
     await wait(600)
     /*
      * De route tekent zichzelf van begin naar eind. Hier staat of de stukken
@@ -255,6 +269,60 @@ app.whenReady().then(async () => {
          })()`
       )
       console.log(`   route tekenen: ${plan}`)
+
+      /*
+       * En hoe zwaar is die kaart als je hem versleept? Een klacht van Luc:
+       * "wanneer ik een dienst geselecteerd heb is de kaart erg laggy". Hier
+       * staat wat de tekening kost: hoeveel elementen erin staan, en hoeveel
+       * beelden per seconde er overblijven terwijl je sleept.
+       */
+      const zwaarte = await js(
+        main,
+        `(async () => {
+           const svg = document.querySelector('.route-canvas')
+           const doel = svg?.parentElement
+           if (!doel) return 'geen kaart'
+           const telling = {
+             elementen: svg.querySelectorAll('*').length,
+             lijnen: svg.querySelectorAll('polyline').length,
+             tekst: svg.querySelectorAll('text').length,
+             groepen: svg.querySelectorAll('g').length
+           }
+           const r = doel.getBoundingClientRect()
+           const x = r.x + r.width / 2
+           const y = r.y + r.height / 2
+           const maak = (soort, px, py) =>
+             new PointerEvent(soort, { pointerId: 3, isPrimary: true, bubbles: true, clientX: px, clientY: py, buttons: soort === 'pointerup' ? 0 : 1 })
+           const beelden = []
+           let vorig = performance.now()
+           let loopt = true
+           const tel = () => {
+             const nu = performance.now()
+             beelden.push(nu - vorig)
+             vorig = nu
+             if (loopt) requestAnimationFrame(tel)
+           }
+           requestAnimationFrame(tel)
+           doel.dispatchEvent(maak('pointerdown', x, y))
+           for (let i = 1; i <= 36; i++) {
+             doel.dispatchEvent(maak('pointermove', x + Math.sin(i / 4) * 140, y + i * 4))
+             await new Promise((k) => setTimeout(k, 16))
+           }
+           doel.dispatchEvent(maak('pointerup', x, y + 144))
+           loopt = false
+           await new Promise((k) => setTimeout(k, 120))
+           const netto = beelden.slice(2)
+           const gem = netto.reduce((a, b) => a + b, 0) / (netto.length || 1)
+           return JSON.stringify({
+             ...telling,
+             beelden: netto.length,
+             perSeconde: Math.round(1000 / gem),
+             langste: Math.round(Math.max(...netto)),
+             traag: netto.filter((d) => d > 33).length
+           })
+         })()`
+      )
+      console.log(`   kaart slepen: ${zwaarte}`)
     }
 
     // De stappen gaan via de hoofdknop; op de laatste stap drukken we niet.

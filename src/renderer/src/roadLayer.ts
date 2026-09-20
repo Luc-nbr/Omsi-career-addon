@@ -24,6 +24,25 @@ const CACHE_MAX_PX = 4096
 /** Lucht rond de kaart in de buffer, zodat de stoeprand aan de rand niet wegvalt. */
 const CACHE_PAD_M = 40
 
+/**
+ * Hoe ver een weg van de rest van de kaart mag liggen voordat we hem negeren.
+ *
+ * WAAROM DIT BESTAAT
+ * Sommige add-ons dragen kapotte wegvakken: HamburgLi20 heeft een kern van
+ * 7,9 bij 8,3 kilometer, maar 228 van zijn 75.007 punten liggen honderden
+ * kilometers verderop -- de volledige uitgestrektheid is 644 bij 270 km. Op
+ * Hamburg109 is het nog erger: daar trekken drie wegen de hele kaart uit
+ * elkaar. Die punten zijn nergens te zien -- de kaart past zich aan de haltes
+ * aan -- maar ze bepaalden wel de maat van de buffer hierboven, en 644 km door
+ * 8 meter per punt is 80.576 pixels. Daarmee viel de snelle weg weg en werd er
+ * bij elke muisbeweging opnieuw getekend: dat is de klacht "als ik een dienst
+ * heb gekozen is de kaart erg laggy".
+ *
+ * Vijftig kilometer vanaf het midden is royaal: de grootste kaart in deze
+ * installatie meet zeventien kilometer van hoek tot hoek.
+ */
+const VER_WEG_M = 50000
+
 /*
  * De wegen. Het verschil tussen omranding en wegdek doet het werk: daardoor
  * springt een doorgaande weg eruit tussen de zijstraten, zoals op elke
@@ -144,6 +163,23 @@ export class RoadLayer {
 
   constructor(geometry: MapGeometry) {
     const cells = new Map<string, Chunk>()
+    /*
+     * Eerst het midden van de kaart, om de verdwaalde wegen eruit te kunnen
+     * laten; zie `VER_WEG_M`. De mediaan en niet het gemiddelde, want juist die
+     * uitschieters zouden een gemiddelde meesleuren.
+     */
+    const middenX: number[] = []
+    const middenY: number[] = []
+    for (const line of geometry.roads) {
+      if (line.points.length < 4) continue
+      middenX.push(line.points[0])
+      middenY.push(line.points[1])
+    }
+    middenX.sort((a, b) => a - b)
+    middenY.sort((a, b) => a - b)
+    const hartX = middenX[Math.floor(middenX.length / 2)] ?? 0
+    const hartY = middenY[Math.floor(middenY.length / 2)] ?? 0
+
     for (const line of geometry.roads) {
       const p = line.points
       if (p.length < 4) continue
@@ -156,6 +192,13 @@ export class RoadLayer {
         if (p[i] > maxX) maxX = p[i]
         if (p[i + 1] < minY) minY = p[i + 1]
         if (p[i + 1] > maxY) maxY = p[i + 1]
+      }
+      // Ver buiten de kaart: kapotte gegevens, en ze zijn nergens te zien.
+      if (
+        Math.abs((minX + maxX) / 2 - hartX) > VER_WEG_M ||
+        Math.abs((minY + maxY) / 2 - hartY) > VER_WEG_M
+      ) {
+        continue
       }
       // Een lijn hoort bij het vak van zijn midden; het vak groeit mee met wat
       // er uitsteekt, dus wegknippen gebeurt nooit te vroeg.

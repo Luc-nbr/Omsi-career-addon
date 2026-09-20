@@ -1537,6 +1537,93 @@
 }
 
 /*
+ * De profielfoto van een chauffeur.
+ *
+ * Hij staat op de plek van het monogram en loopt met dezelfde maten mee: 44
+ * pixels in het rooster, 56 bij twee of drie chauffeurs en 72 als er één groot
+ * in het midden staat. Die drie maten staan hieronder bij
+ * `.tegels[data-stap='profile']`, op één plek voor de plaat en de foto samen --
+ * anders krimpt de ene wel mee en de andere niet.
+ *
+ * Rond, en `cover`: wat mensen uploaden is een foto uit hun telefoon, geen
+ * pasfoto. Met `contain` zou een liggende foto twee grijze balken krijgen; nu
+ * snijdt hij bij, en een gezicht staat in het midden.
+ */
+.profielfoto {
+  display: block;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 4px;
+  border-radius: var(--radius-rond);
+  object-fit: cover;
+  background: var(--monogram);
+}
+
+/*
+ * Eén chauffeur staat groot in het midden.
+ *
+ * Wens van Luc. Het klopt ook: een rooster van één tegel linksboven is geen
+ * rooster maar een vergissing, en op dit scherm is die ene chauffeur alles wat
+ * er te kiezen valt. Komt er een tweede bij, dan schuiven ze naast elkaar en
+ * worden ze kleiner; vanaf vier staat het gewone rooster er weer. Alleen op de
+ * chauffeursstap: een busstap met toevallig één bus hoort geen reuzentegel te
+ * worden.
+ */
+.tegels[data-stap='profile'] {
+  justify-content: center;
+}
+
+.tegels[data-stap='profile'][data-aantal='1'] {
+  grid-template-columns: minmax(0, 360px);
+  align-content: center;
+  padding-bottom: 40px;
+}
+
+.tegels[data-stap='profile'][data-aantal='1'] .tegel {
+  min-height: 200px;
+  justify-content: center;
+  gap: 10px;
+  padding: 28px;
+}
+
+.tegels[data-stap='profile'][data-aantal='1'] .monogram,
+.tegels[data-stap='profile'][data-aantal='1'] .profielfoto {
+  width: 72px;
+  height: 72px;
+  margin-bottom: 8px;
+  font-size: 28px;
+}
+
+.tegels[data-stap='profile'][data-aantal='1'] .tegel-titel {
+  font-size: 22px;
+}
+
+.tegels[data-stap='profile'][data-aantal='1'] .tegel-onder {
+  font-size: 15px;
+}
+
+.tegels[data-stap='profile'][data-aantal='2'],
+.tegels[data-stap='profile'][data-aantal='3'] {
+  grid-template-columns: repeat(auto-fit, minmax(0, 260px));
+  align-content: center;
+}
+
+.tegels[data-stap='profile'][data-aantal='2'] .tegel,
+.tegels[data-stap='profile'][data-aantal='3'] .tegel {
+  min-height: 160px;
+  justify-content: center;
+}
+
+.tegels[data-stap='profile'][data-aantal='2'] .monogram,
+.tegels[data-stap='profile'][data-aantal='3'] .monogram,
+.tegels[data-stap='profile'][data-aantal='2'] .profielfoto,
+.tegels[data-stap='profile'][data-aantal='3'] .profielfoto {
+  width: 56px;
+  height: 56px;
+  font-size: 21px;
+}
+
+/*
  * Met een afbeelding erin mag een tegel breder: 370 bij 280 op 160 pixels is
  * een postzegel, en dan kun je net zo goed de lijst nemen.
  *
@@ -1574,11 +1661,23 @@
   opacity: 1;
 }
 
-/* De handeling in de hoek van een tegel: klein, en pas zichtbaar bij zweven. */
-.tegelactie {
+/*
+ * De handelingen in de hoek van een tegel: klein, en pas zichtbaar bij zweven.
+ *
+ * Ze staan in een rij en niet gestapeld, want er kunnen er drie zijn (foto
+ * kiezen, foto weghalen, chauffeur verwijderen) en een kolom zou over de naam
+ * heen lopen. Van links naar rechts loopt het van licht naar onomkeerbaar; het
+ * kruis staat het verst van de muis af die de tegel binnenkomt.
+ */
+.tegelacties {
   position: absolute;
   top: 8px;
   right: 8px;
+  display: flex;
+  gap: 2px;
+}
+
+.tegelactie {
   display: grid;
   place-items: center;
   width: 26px;
