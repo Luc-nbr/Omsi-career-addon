@@ -1264,6 +1264,7 @@ function registerHandlers(): void {
         }
       },
       busPad: join(omsi(), relatiefPad),
+      omsiPad: omsi(),
       relatiefPad,
       userData: userData(),
       preload: join(__dirname, '../preload/busfoto.js'),

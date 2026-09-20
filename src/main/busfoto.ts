@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { extname, join } from 'node:path'
 import { BrowserWindow, ipcMain, nativeImage } from 'electron'
 import { verkleinTextuur, type BusTekeningMetPlaten } from '../core/busbeeld'
+import { trailerOf } from '../core/trailer'
 import { log, logFout } from '../core/logboek'
 import { type Textuur } from '../core/textuur'
 
@@ -83,6 +84,8 @@ function maakVenster(preload: string, pagina: { url?: string; bestand?: string }
 interface FotoOpdracht {
   /** Het zware leeswerk; hoort in de werker te gebeuren, niet hier. */
   tekenen(busPad: string): Promise<BusTekeningMetPlaten | undefined>
+  /** De OMSI-map, om de aanhanger van een gelede bus te vinden. */
+  omsiPad: string
   /** Volledig pad naar het .bus-bestand. */
   busPad: string
   /** Pad vanaf de OMSI-map; bepaalt de naam van het plaatje. */
@@ -127,6 +130,30 @@ async function tekenEen(
   if (!tekening) {
     log(`busfoto: geen model voor ${opdracht.relatiefPad}`)
     return undefined
+  }
+
+  /*
+   * Een gelede bus is in OMSI twee voertuigen.
+   *
+   * De voorwagen noemt in `[couple_back]` het bestand van de aanhanger, en de
+   * twee koppelpunten samen geven de afstand -- nagemeten aan OMSI's eigen
+   * situatiebestand: een MAN GN92 komt op 4,331 + 4,169 = 8,5 meter uit tegen
+   * 8,49 in dat bestand. Zonder dit stuk houdt de foto op bij de harmonica, en
+   * dat is precies de bus waar iemand naar kijkt als hij een gelede kiest.
+   */
+  const aanhanger = trailerOf(opdracht.omsiPad, opdracht.relatiefPad)
+  if (aanhanger) {
+    const achterop = await opdracht.tekenen(join(opdracht.omsiPad, aanhanger.relativePath))
+    if (achterop) {
+      for (const stuk of achterop.stukken) {
+        const verzet = new Float32Array(stuk.posities)
+        for (let i = 2; i < verzet.length; i += 3) verzet[i] -= aanhanger.distance
+        tekening.stukken.push({ ...stuk, posities: verzet })
+      }
+      for (const paar of achterop.platen) tekening.platen.push(paar)
+      tekening.doos.min[2] -= aanhanger.distance
+      tekening.driehoeken += achterop.driehoeken
+    }
   }
   const gelezen = Date.now() - begin
 

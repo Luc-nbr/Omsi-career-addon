@@ -79,13 +79,25 @@ in vec3 vNormaal;
 in vec2 vUv;
 uniform sampler2D plaat;
 uniform bool metPlaat;
+uniform vec3 hoofdlicht;
+uniform vec3 bijlicht;
 out vec4 kleur;
 void main() {
   vec3 n = normalize(vNormaal);
   if (dot(n, n) < 0.001) n = vec3(0.0, 1.0, 0.0);
-  float voor = max(dot(n, normalize(vec3(-0.4, 0.75, 0.55))), 0.0);
-  float achter = max(dot(n, normalize(vec3(0.6, 0.3, -0.5))), 0.0) * 0.35;
-  float licht = 0.35 + voor * 0.75 + achter;
+  /*
+   * Het licht komt van achter de camera mee.
+   *
+   * Eerst stonden hier twee vaste richtingen, en die schenen op de flank die je
+   * juist niet ziet: doorgerekend kreeg het dak 1,03 en de zichtbare deurkant
+   * 0,60. Nu draait het hoofdlicht met de camera mee, zodat de kant die je
+   * ziet ook de kant is die licht krijgt. De bodem loopt van 0,28 onderaan naar
+   * 0,50 bovenaan -- lucht van boven, straat van onder.
+   */
+  float voor = max(dot(n, hoofdlicht), 0.0);
+  float achter = max(dot(n, bijlicht), 0.0);
+  float bodem = mix(0.28, 0.50, 0.5 + 0.5 * n.y);
+  float licht = bodem + voor * 0.60 + achter * 0.20;
   vec4 grond = metPlaat ? texture(plaat, vUv) : vec4(0.72, 0.74, 0.78, 1.0);
   /*
    * Niet op alfa wegknippen.
@@ -98,7 +110,16 @@ void main() {
    * onderdelen staat [matl_alpha] in de cfg. Zo verdween 18 tot 52 procent van
    * de driehoeken, de buitenhuid voorop.
    */
-  kleur = vec4(grond.rgb * licht, 1.0);
+  /*
+   * Vermenigvuldigen in lineair licht, niet in schermwaarden.
+   *
+   * Een textuur staat in gamma; er zomaar een lichtfactor overheen leggen
+   * maakt alles te licht en laat de hoge lichten dichtlopen. Gemeten met
+   * dezelfde belichting: bijna-wit zakte van 14,4 naar 8,8 procent van de
+   * pixels, en dichtgelopen kanalen van 0,5 naar 0,0.
+   */
+  vec3 lineair = pow(grond.rgb, vec3(2.2)) * licht;
+  kleur = vec4(pow(lineair, vec3(1.0 / 2.2)), 1.0);
 }`
 
 function maakShader(gl: WebGL2RenderingContext, soort: number, bron: string): WebGLShader {
@@ -119,7 +140,11 @@ function maakShader(gl: WebGL2RenderingContext, soort: number, bron: string): We
  * kijken van links-voor omlaag, en de afstand komt uit de doos: zo vult elke
  * bus het beeld even goed, of hij nu tien of achttien meter lang is.
  */
-function beeldmatrix(doos: Tekening['doos'], breedte: number, hoogte: number): Float32Array {
+function beeldmatrix(
+  doos: Tekening['doos'],
+  breedte: number,
+  hoogte: number
+): { matrix: Float32Array; hoofdlicht: number[]; bijlicht: number[] } {
   const midden = [
     (doos.min[0] + doos.max[0]) / 2,
     (doos.min[1] + doos.max[1]) / 2,
@@ -132,46 +157,105 @@ function beeldmatrix(doos: Tekening['doos'], breedte: number, hoogte: number): F
     1
   )
 
-  const afstand = maat * 1.15
-  const hoek = Math.PI * 0.32
-  const oog = [
-    midden[0] + Math.cos(hoek) * afstand,
-    midden[1] + maat * 0.32,
-    midden[2] + Math.sin(hoek) * afstand
-  ]
-
   /*
-   * OMSI rekent linkshandig: x is de deurkant, y omhoog, z naar voren. Gemeten
-   * aan een bus: het stuur ligt op x -0,96 tot -0,49, de deuren op +0,31 tot
-   * +1,27, en de lijnfilm vooraan op z +5,66. Een gewone (rechtshandige)
-   * lookAt levert daardoor een spiegelbeeld -- opschriften lezen achterstevoren,
-   * en dat krijg je met geen enkele camerastand goed. Vandaar de omgekeerde
-   * volgorde in deze twee kruisproducten.
+   * Een lange lens van schuin voren, niet een groothoek van een hoogwerker.
+   *
+   * Zo staat een bus op een foto: de camera een graad of tien boven de grond,
+   * vijfenveertig graden opzij, en een smalle kijkhoek zodat de voorkant niet
+   * twee keer zo groot wordt als de achterkant. Met de oude stand (45 graden
+   * kijkhoek, camera op 15,5 graden hoogte) stond de dichtstbijzijnde hoek 2,43
+   * keer dichterbij dan de verste en vulde de bus maar twintig procent van het
+   * vlak.
    */
-  const kijk = normaliseer([midden[0] - oog[0], midden[1] - oog[1], midden[2] - oog[2]])
-  const rechts = normaliseer(kruis([0, 1, 0], kijk))
-  const op = kruis(kijk, rechts)
-
-  const zicht = 45 * (Math.PI / 180)
+  const zicht = 24 * (Math.PI / 180)
+  const hoogteHoek = 10 * (Math.PI / 180)
+  const azimut = Math.PI * 0.25
   const f = 1 / Math.tan(zicht / 2)
   const verhouding = breedte / hoogte
-  const dichtbij = 0.1
-  const ver = maat * 8
 
-  // Kijkrichting en projectie in één matrix; kolomgewijs, zoals WebGL wil.
-  const b = [
-    rechts[0], op[0], -kijk[0], 0,
-    rechts[1], op[1], -kijk[1], 0,
-    rechts[2], op[2], -kijk[2], 0,
-    -punt(rechts, oog), -punt(op, oog), punt(kijk, oog), 1
-  ]
-  const p = [
-    f / verhouding, 0, 0, 0,
-    0, f, 0, 0,
-    0, 0, (ver + dichtbij) / (dichtbij - ver), -1,
-    0, 0, (2 * ver * dichtbij) / (dichtbij - ver), 0
-  ]
-  return vermenigvuldig(p, b)
+  const hoeken: number[][] = []
+  for (const x of [doos.min[0], doos.max[0]]) {
+    for (const y of [doos.min[1], doos.max[1]]) {
+      for (const z of [doos.min[2], doos.max[2]]) hoeken.push([x, y, z])
+    }
+  }
+
+  /** Bouwt de matrix voor een afstand, en zegt hoe ver de bus buiten het kader valt. */
+  const probeer = (
+    afstand: number
+  ): { matrix: Float32Array; vulling: number; hoofdlicht: number[]; bijlicht: number[] } => {
+    const vlak = Math.cos(hoogteHoek) * afstand
+    const oog = [
+      midden[0] + Math.cos(azimut) * vlak,
+      midden[1] + Math.sin(hoogteHoek) * afstand,
+      midden[2] + Math.sin(azimut) * vlak
+    ]
+    const kijk = normaliseer([midden[0] - oog[0], midden[1] - oog[1], midden[2] - oog[2]])
+    /* Zie de uitleg hieronder: OMSI rekent linkshandig. */
+    const rechts = normaliseer(kruis([0, 1, 0], kijk))
+    const op = kruis(kijk, rechts)
+    const dichtbij = Math.max(0.05, afstand - maat)
+    const ver = afstand + maat * 2
+
+    const b = [
+      rechts[0], op[0], -kijk[0], 0,
+      rechts[1], op[1], -kijk[1], 0,
+      rechts[2], op[2], -kijk[2], 0,
+      -punt(rechts, oog), -punt(op, oog), punt(kijk, oog), 1
+    ]
+    const p = [
+      f / verhouding, 0, 0, 0,
+      0, f, 0, 0,
+      0, 0, (ver + dichtbij) / (dichtbij - ver), -1,
+      0, 0, (2 * ver * dichtbij) / (dichtbij - ver), 0
+    ]
+    const matrix = vermenigvuldig(p, b)
+
+    let vulling = 0
+    for (const hoek of hoeken) {
+      const w =
+        matrix[3] * hoek[0] + matrix[7] * hoek[1] + matrix[11] * hoek[2] + matrix[15]
+      if (w <= 0.0001) return { matrix, vulling: 99, hoofdlicht: [0, 1, 0], bijlicht: [0, 1, 0] }
+      const x =
+        (matrix[0] * hoek[0] + matrix[4] * hoek[1] + matrix[8] * hoek[2] + matrix[12]) / w
+      const y =
+        (matrix[1] * hoek[0] + matrix[5] * hoek[1] + matrix[9] * hoek[2] + matrix[13]) / w
+      vulling = Math.max(vulling, Math.abs(x), Math.abs(y))
+    }
+
+    /* Het licht komt van linksboven achter de camera vandaan. */
+    const hoofdlicht = normaliseer([
+      rechts[0] * 0.45 + op[0] * 0.78 - kijk[0] * 0.44,
+      rechts[1] * 0.45 + op[1] * 0.78 - kijk[1] * 0.44,
+      rechts[2] * 0.45 + op[2] * 0.78 - kijk[2] * 0.44
+    ])
+    const bijlicht = normaliseer([
+      -rechts[0] * 0.7 + op[0] * 0.2 - kijk[0] * 0.3,
+      -rechts[1] * 0.7 + op[1] * 0.2 - kijk[1] * 0.3,
+      -rechts[2] * 0.7 + op[2] * 0.2 - kijk[2] * 0.3
+    ])
+    return { matrix, vulling, hoofdlicht, bijlicht }
+  }
+
+  /*
+   * De afstand zoeken waarbij de bus het kader net vult: alle acht hoeken van
+   * de doos op 0,93 van de rand. Twintig halveringen is ruim genoeg en kost
+   * niets -- het zijn acht punten.
+   */
+  const DOEL = 0.93
+  let laag = maat * 0.5
+  let hoog = maat * 12
+  let beste = probeer(hoog)
+  for (let i = 0; i < 20; i++) {
+    const midden2 = (laag + hoog) / 2
+    const poging = probeer(midden2)
+    if (poging.vulling > DOEL) laag = midden2
+    else {
+      hoog = midden2
+      beste = poging
+    }
+  }
+  return { matrix: beste.matrix, hoofdlicht: beste.hoofdlicht, bijlicht: beste.bijlicht }
 }
 
 const punt = (a: number[], b: number[]): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
@@ -290,8 +374,10 @@ async function teken(plan: Tekening, tijden: Tijden): Promise<string> {
   gl.viewport(0, 0, plan.breedte, plan.hoogte)
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
-  const beeld = gl.getUniformLocation(programma, 'beeld')
-  gl.uniformMatrix4fv(beeld, false, beeldmatrix(plan.doos, plan.breedte, plan.hoogte))
+  const zicht = beeldmatrix(plan.doos, plan.breedte, plan.hoogte)
+  gl.uniformMatrix4fv(gl.getUniformLocation(programma, 'beeld'), false, zicht.matrix)
+  gl.uniform3fv(gl.getUniformLocation(programma, 'hoofdlicht'), new Float32Array(zicht.hoofdlicht))
+  gl.uniform3fv(gl.getUniformLocation(programma, 'bijlicht'), new Float32Array(zicht.bijlicht))
   const metPlaat = gl.getUniformLocation(programma, 'metPlaat')
   gl.uniform1i(gl.getUniformLocation(programma, 'plaat'), 0)
 
