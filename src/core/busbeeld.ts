@@ -1,4 +1,5 @@
 import { leesBusModel } from './busmodel'
+import { leesTextuur, type Textuur } from './textuur'
 import { leesO3d } from './o3d'
 
 /**
@@ -173,4 +174,92 @@ export function bouwBusTekening(busPad: string): BusTekening | undefined {
     grens(steekproef[2], 0.99)
   ]
   return { stukken, doos: { min, max }, driehoeken, overgeslagen }
+}
+
+/** Een uitgepakte textuur zoals het venster hem wil, of de melding dat het niet lukte. */
+export type BusPlaat = { breedte: number; hoogte: number; pixels: Uint8Array } | null
+
+export interface BusTekeningMetPlaten extends BusTekening {
+  /** Per textuurpad de uitgepakte pixels; `null` voor wat wij niet lezen. */
+  platen: Array<[string, BusPlaat]>
+}
+
+/**
+ * Een textuur terugbrengen tot hooguit `grens` in de langste richting.
+ *
+ * Grof bemonsterd en niet gemiddeld: het gaat om een plaatje van 512 bij 384,
+ * en daar ziet niemand het verschil. Wel scheelt het fors -- de grootste
+ * textuur in deze installatie is 8192 bij 2048, en dat is 64 MB aan pixels
+ * tegen 4 MB na het verkleinen.
+ */
+export function verkleinTextuur(textuur: Textuur, grens: number): Textuur {
+  const langste = Math.max(textuur.breedte, textuur.hoogte)
+  if (langste <= grens) return textuur
+  const factor = langste / grens
+  const breedte = Math.max(1, Math.floor(textuur.breedte / factor))
+  const hoogte = Math.max(1, Math.floor(textuur.hoogte / factor))
+  const uit = new Uint8Array(breedte * hoogte * 4)
+  for (let y = 0; y < hoogte; y++) {
+    const bron = Math.min(textuur.hoogte - 1, Math.floor(y * factor)) * textuur.breedte
+    for (let x = 0; x < breedte; x++) {
+      const van = (bron + Math.min(textuur.breedte - 1, Math.floor(x * factor))) * 4
+      const naar = (y * breedte + x) * 4
+      uit[naar] = textuur.pixels[van]
+      uit[naar + 1] = textuur.pixels[van + 1]
+      uit[naar + 2] = textuur.pixels[van + 2]
+      uit[naar + 3] = textuur.pixels[van + 3]
+    }
+  }
+  return { breedte, hoogte, pixels: uit }
+}
+
+/**
+ * De uitgepakte texturen, over bussen heen.
+ *
+ * De uitvoeringen van één model delen bijna al hun texturen -- dat is juist wat
+ * een uitvoering ís -- en uitpakken kost tijd: zonder dit geheugen duurde elke
+ * volgende uitvoering 1650 ms, met 880. Ze zijn al verkleind tot hooguit 512 in
+ * de lengte, dus een plaat kost hooguit een megabyte; bij tweehonderd platen
+ * valt de oudste eruit.
+ */
+const platenGeheugen = new Map<string, BusPlaat>()
+const PLATEN_GRENS = 200
+
+function onthoudPlaat(pad: string, plaat: BusPlaat): BusPlaat {
+  if (platenGeheugen.size >= PLATEN_GRENS) {
+    const oudste = platenGeheugen.keys().next().value
+    if (oudste !== undefined) platenGeheugen.delete(oudste)
+  }
+  platenGeheugen.set(pad, plaat)
+  return plaat
+}
+
+/**
+ * De tekening plus de texturen die wij zelf kunnen uitpakken.
+ *
+ * `.bmp`, `.png` en `.jpg` blijven liggen: die kan Electron in het hoofdproces
+ * met `nativeImage` beter, en hier -- in een worker -- is dat niet te gebruiken.
+ * Ze komen als `null` terug, zodat de aanroeper weet dat hij ze zelf moet doen.
+ */
+export function bouwBusTekeningMetPlaten(busPad: string): BusTekeningMetPlaten | undefined {
+  const tekening = bouwBusTekening(busPad)
+  if (!tekening) return undefined
+  const platen = new Map<string, BusPlaat>()
+  for (const stuk of tekening.stukken) {
+    const pad = stuk.textuur
+    if (!pad || platen.has(pad)) continue
+    const bekend = platenGeheugen.get(pad)
+    if (bekend !== undefined) {
+      platen.set(pad, bekend)
+      continue
+    }
+    const soort = pad.slice(pad.lastIndexOf('.')).toLowerCase()
+    if (soort === '.dds' || soort === '.tga') {
+      const gelezen = leesTextuur(pad)
+      platen.set(pad, onthoudPlaat(pad, gelezen ? verkleinTextuur(gelezen, 512) : null))
+    } else {
+      platen.set(pad, onthoudPlaat(pad, null))
+    }
+  }
+  return { ...tekening, platen: [...platen] }
 }

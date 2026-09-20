@@ -10,6 +10,7 @@ import {
   suggestFromDepot,
   type FleetIndex
 } from './fleet'
+import { bouwBusTekeningMetPlaten, type BusTekeningMetPlaten } from './busbeeld'
 import { readMapData, type Lane, type MapGeometry } from './geo'
 import { leesUitCache, schrijfInCache, vingerafdruk } from './kaartcache'
 import { LaneNetwork, routeForTrip, type TripRoute } from './routing'
@@ -114,6 +115,12 @@ export interface Kaartlaag {
   wagenparkBestanden(): HofFile[]
   diensten(request: DutyRequest): Assignment[]
   routes(folder: string, legs: Array<{ tripFile: string; stopIds: string[] }>): TripRoute[]
+  /**
+   * De tekening van een bus: zijn onderdelen en de texturen die wij zelf
+   * kunnen uitpakken (.dds en .tga). Het lezen kost 283 tot 1376 ms per bus en
+   * hoort dus niet in het hoofdproces.
+   */
+  bustekening(busPad: string): BusTekeningMetPlaten | undefined
 }
 
 export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
@@ -528,6 +535,10 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
      * uitgerekend; het rijstrokennet wordt pas opgebouwd als een rit geen
      * bruikbare route van OMSI zelf heeft.
      */
+    bustekening(busPad) {
+      return bouwBusTekeningMetPlaten(busPad)
+    },
+
     routes(folder, legs) {
       const loaded = laag.map(folder)
       const geometry = laag.geometrie(folder)

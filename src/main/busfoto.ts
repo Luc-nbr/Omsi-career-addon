@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { extname, join } from 'node:path'
-import { BrowserWindow, ipcMain } from 'electron'
-import { bouwBusTekening } from '../core/busbeeld'
+import { BrowserWindow, ipcMain, nativeImage } from 'electron'
+import { verkleinTextuur, type BusTekeningMetPlaten } from '../core/busbeeld'
 import { log, logFout } from '../core/logboek'
-import { leesTextuur, type Textuur } from '../core/textuur'
+import { type Textuur } from '../core/textuur'
 
 /**
  * Een foto van een bus maken, in een venster dat niemand ziet.
@@ -35,6 +35,18 @@ function bestandsnaam(relatiefPad: string): string {
 let venster: BrowserWindow | undefined
 let bezig: Promise<unknown> = Promise.resolve()
 
+/**
+ * De uitgepakte texturen, over bussen heen.
+ *
+ * De uitvoeringen van één model delen bijna al hun texturen -- dat is juist wat
+ * een uitvoering is -- en uitpakken kost tijd: de eerste bus van een model deed
+ * er 1593 ms over, de tweede 8213 omdat alles opnieuw door de decoder ging.
+ * Hier blijft het antwoord staan zolang de app draait. Ze zijn al verkleind tot
+ * hooguit 512 in de lengte, dus een bus van veertig texturen kost hooguit een
+ * paar tientallen megabytes.
+ */
+const platenGeheugen = new Map<string, { breedte: number; hoogte: number; pixels: Uint8Array } | { bron: string } | null>()
+
 function maakVenster(preload: string, pagina: { url?: string; bestand?: string }): BrowserWindow {
   if (venster && !venster.isDestroyed()) return venster
   venster = new BrowserWindow({
@@ -46,7 +58,19 @@ function maakVenster(preload: string, pagina: { url?: string; bestand?: string }
      * tekent anders niets, en dan komt er een leeg beeld terug.
      */
     paintWhenInitiallyHidden: true,
-    webPreferences: { preload, sandbox: false, offscreen: false }
+    webPreferences: {
+      preload,
+      sandbox: false,
+      offscreen: false,
+      /*
+       * Niet afknijpen. Een venster dat niet in beeld staat zet Chromium op een
+       * laag pitje, en dan wacht elke opdracht aan de tekenkaart op een beeld
+       * dat nooit komt: het klaarzetten van de texturen sprong van 154 ms bij
+       * de eerste bus naar 7300 ms bij elke volgende. Met dit uit blijft het
+       * venster volle snelheid draaien, ook onzichtbaar.
+       */
+      backgroundThrottling: false
+    }
   })
   venster.on('closed', () => {
     venster = undefined
@@ -57,6 +81,8 @@ function maakVenster(preload: string, pagina: { url?: string; bestand?: string }
 }
 
 interface FotoOpdracht {
+  /** Het zware leeswerk; hoort in de werker te gebeuren, niet hier. */
+  tekenen(busPad: string): Promise<BusTekeningMetPlaten | undefined>
   /** Volledig pad naar het .bus-bestand. */
   busPad: string
   /** Pad vanaf de OMSI-map; bepaalt de naam van het plaatje. */
@@ -86,16 +112,21 @@ export function maakBusfoto(opdracht: FotoOpdracht): Promise<string | undefined>
   return beurt
 }
 
-function tekenEen(
+async function tekenEen(
   opdracht: FotoOpdracht,
   map: string,
   doel: string
 ): Promise<string | undefined> {
   const begin = Date.now()
-  const tekening = bouwBusTekening(opdracht.busPad)
+  /*
+   * Het lezen gaat naar de werker. Het kost 283 tot 1376 ms per bus, en het
+   * hoofdproces doet één ding tegelijk: zolang het hier leest, beweegt er geen
+   * knop en geen overlay. Zie `kaartwerker.ts`.
+   */
+  const tekening = await opdracht.tekenen(opdracht.busPad)
   if (!tekening) {
     log(`busfoto: geen model voor ${opdracht.relatiefPad}`)
-    return Promise.resolve(undefined)
+    return undefined
   }
   const gelezen = Date.now() - begin
 
@@ -111,14 +142,18 @@ function tekenEen(
       klaar(uitkomst)
     }
 
-    const opPng = (_gebeurtenis: unknown, png: string): void => {
+    const opPng = (_gebeurtenis: unknown, png: string, tijden?: Record<string, number>): void => {
       try {
         mkdirSync(map, { recursive: true })
         const data = png.replace(/^data:image\/png;base64,/, '')
         writeFileSync(doel, Buffer.from(data, 'base64'))
         log(
           `busfoto ${opdracht.relatiefPad}: ${tekening.driehoeken} driehoeken, ` +
-            `${gelezen} ms lezen, ${Date.now() - begin} ms in totaal`
+            `${tekening.stukken.length} stukken, ${platen.length} platen, ` +
+            `${gelezen} ms lezen, ${klaarzetten} ms klaarzetten, ${Date.now() - begin} ms in totaal` +
+            (tijden
+              ? ` (venster: platen ${tijden.platen}, alles ${tijden.buffers}, tekenen ${tijden.tekenen}, png ${tijden.png})`
+              : '')
         )
         stop(doel)
       } catch (fout) {
@@ -158,23 +193,43 @@ function tekenEen(
      */
     const platen: Array<{ breedte: number; hoogte: number; pixels: Uint8Array } | { bron: string }> = []
     const perPad = new Map<string, number>()
+    /* Wat de werker al uitpakte: .dds en .tga. De rest doen we hier. */
+    const vanDeWerker = new Map(
+      tekening.platen.filter((paar): paar is [string, { breedte: number; hoogte: number; pixels: Uint8Array }] => paar[1] !== null)
+    )
     const nummerVoor = (pad: string | undefined): number => {
       if (!pad) return -1
       const bekend = perPad.get(pad)
       if (bekend !== undefined) return bekend
-      let plaat: { breedte: number; hoogte: number; pixels: Uint8Array } | { bron: string } | undefined
-      const soort = extname(pad).toLowerCase()
-      if (soort === '.bmp' || soort === '.png' || soort === '.jpg' || soort === '.jpeg') {
-        try {
-          const type = soort === '.bmp' ? 'image/bmp' : soort === '.png' ? 'image/png' : 'image/jpeg'
-          plaat = { bron: `data:${type};base64,${readFileSync(pad).toString('base64')}` }
-        } catch {
-          plaat = undefined
+
+      const onthouden = platenGeheugen.get(pad)
+      if (onthouden !== undefined) {
+        if (onthouden === null) {
+          perPad.set(pad, -1)
+          return -1
         }
-      } else {
-        const gelezen = leesTextuur(pad)
-        if (gelezen) plaat = verklein(gelezen, 512)
+        const nummer = platen.push(onthouden) - 1
+        perPad.set(pad, nummer)
+        return nummer
       }
+
+      let plaat: { breedte: number; hoogte: number; pixels: Uint8Array } | { bron: string } | undefined
+      const uitDeWerker = vanDeWerker.get(pad)
+      if (uitDeWerker) plaat = uitDeWerker
+      const soort = extname(pad).toLowerCase()
+      if (plaat) {
+        // al uitgepakt in de werker
+      } else if (soort === '.bmp' || soort === '.png' || soort === '.jpg' || soort === '.jpeg') {
+        /*
+         * Deze drie kent Electron zelf. Eerst gingen ze als gegevens-URL naar
+         * het venster, dat er een <img> van maakte -- en daar stond de tijd:
+         * het klaarzetten van de platen sprong van 154 ms naar 7300 ms zodra er
+         * zulke platen bij zaten. Hier uitpakken kost een fractie daarvan, en
+         * het venster hoeft alleen nog pixels te uploaden.
+         */
+        plaat = viaElectron(pad)
+      }
+      platenGeheugen.set(pad, plaat ?? null)
       if (!plaat) {
         perPad.set(pad, -1)
         return -1
@@ -192,6 +247,7 @@ function tekenEen(
       plaat: nummerVoor(stuk.textuur)
     }))
 
+    const klaarzetten = Date.now() - begin - gelezen
     const stuur = (): void =>
       paneel.webContents.send('busfoto:teken', {
         stukken,
@@ -207,6 +263,32 @@ function tekenEen(
 }
 
 /**
+ * Een .bmp, .png of .jpg uitpakken met wat Electron al meebrengt.
+ *
+ * `getBitmap()` geeft de pixels in de volgorde blauw, groen, rood, alfa; WebGL
+ * wil rood, groen, blauw, alfa. Dat omdraaien kost een doorloop en is de enige
+ * reden dat deze functie meer is dan twee regels.
+ */
+function viaElectron(pad: string): { breedte: number; hoogte: number; pixels: Uint8Array } | undefined {
+  try {
+    const beeld = nativeImage.createFromPath(pad)
+    if (beeld.isEmpty()) return undefined
+    const maat = beeld.getSize()
+    const bgra = beeld.getBitmap()
+    const pixels = new Uint8Array(bgra.length)
+    for (let i = 0; i < bgra.length; i += 4) {
+      pixels[i] = bgra[i + 2]
+      pixels[i + 1] = bgra[i + 1]
+      pixels[i + 2] = bgra[i]
+      pixels[i + 3] = bgra[i + 3]
+    }
+    return verklein({ breedte: maat.width, hoogte: maat.height, pixels }, 512)
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * Een textuur terugbrengen tot hooguit `grens` in de langste richting.
  *
  * Grof bemonsterd en niet gemiddeld: het gaat om een plaatje van 512 bij 384,
@@ -215,24 +297,7 @@ function tekenEen(
  * dat is 64 MB aan pixels tegen 4 MB na het verkleinen.
  */
 function verklein(textuur: Textuur, grens: number): Textuur {
-  const langste = Math.max(textuur.breedte, textuur.hoogte)
-  if (langste <= grens) return textuur
-  const factor = langste / grens
-  const breedte = Math.max(1, Math.floor(textuur.breedte / factor))
-  const hoogte = Math.max(1, Math.floor(textuur.hoogte / factor))
-  const uit = new Uint8Array(breedte * hoogte * 4)
-  for (let y = 0; y < hoogte; y++) {
-    const bron = Math.min(textuur.hoogte - 1, Math.floor(y * factor)) * textuur.breedte
-    for (let x = 0; x < breedte; x++) {
-      const van = (bron + Math.min(textuur.breedte - 1, Math.floor(x * factor))) * 4
-      const naar = (y * breedte + x) * 4
-      uit[naar] = textuur.pixels[van]
-      uit[naar + 1] = textuur.pixels[van + 1]
-      uit[naar + 2] = textuur.pixels[van + 2]
-      uit[naar + 3] = textuur.pixels[van + 3]
-    }
-  }
-  return { breedte, hoogte, pixels: uit }
+  return verkleinTextuur(textuur, grens)
 }
 
 /** Het venster opruimen; de app hoeft er niet op te wachten bij het afsluiten. */

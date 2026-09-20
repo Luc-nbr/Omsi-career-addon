@@ -11,8 +11,8 @@ contextBridge.exposeInMainWorld('busfoto', {
   opTekening: (doen: (plan: unknown) => void): void => {
     ipcRenderer.on('busfoto:teken', (_gebeurtenis, plan) => doen(plan))
   },
-  klaar: (png: string): void => {
-    ipcRenderer.send('busfoto:klaar', png)
+  klaar: (png: string, tijden?: unknown): void => {
+    ipcRenderer.send('busfoto:klaar', png, tijden)
   },
   mislukt: (reden: string): void => {
     ipcRenderer.send('busfoto:mislukt', reden)

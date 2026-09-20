@@ -62,6 +62,7 @@ import { difference, readKnown, writeKnown } from '../core/installed'
 import { readSettings, writeSettings, type Settings } from '../core/settings'
 import { formatTime } from '../shared/format'
 import { busfotoMap, maakBusfoto, sluitBusfotoVenster } from './busfoto'
+import type { BusTekeningMetPlaten } from '../core/busbeeld'
 import { writeSituation } from '../core/situation'
 import { presetStartup } from '../core/startup'
 import { trailerOf } from '../core/trailer'
@@ -1249,6 +1250,19 @@ function registerHandlers(): void {
    */
   handle('bus:foto', async (_event, relatiefPad: string): Promise<string | undefined> => {
     const bestand = await maakBusfoto({
+      /*
+       * Het lezen van het model gaat naar de werker; hier blijft alleen het
+       * tekenen over. Lukt de werker het niet, dan doet het hoofdproces het
+       * zelf -- beter een hapering dan geen plaatje.
+       */
+      tekenen: async (busPad) => {
+        try {
+          return await werkerVraag<BusTekeningMetPlaten | undefined>({ soort: 'bustekening', busPad })
+        } catch (fout) {
+          logFout('bustekening via de werker', fout)
+          return laag().bustekening(busPad)
+        }
+      },
       busPad: join(omsi(), relatiefPad),
       relatiefPad,
       userData: userData(),

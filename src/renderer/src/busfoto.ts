@@ -49,7 +49,7 @@ declare global {
   interface Window {
     busfoto: {
       opTekening(doen: (plan: Tekening) => void): void
-      klaar(png: string): void
+      klaar(png: string, tijden?: unknown): void
       mislukt(reden: string): void
     }
   }
@@ -240,7 +240,15 @@ async function maakPlaten(gl: WebGL2RenderingContext, platen: Plaat[]): Promise<
   return uit
 }
 
-async function teken(plan: Tekening): Promise<string> {
+/* Waar de tijd heen gaat; het hoofdproces zet het in het logboek. */
+export interface Tijden {
+  platen: number
+  buffers: number
+  tekenen: number
+  png: number
+}
+
+async function teken(plan: Tekening, tijden: Tijden): Promise<string> {
   const doek = document.getElementById('doek') as HTMLCanvasElement
   doek.width = plan.breedte
   doek.height = plan.hoogte
@@ -273,15 +281,20 @@ async function teken(plan: Tekening): Promise<string> {
   const metPlaat = gl.getUniformLocation(programma, 'metPlaat')
   gl.uniform1i(gl.getUniformLocation(programma, 'plaat'), 0)
 
+  const tPlaten = performance.now()
   const platen = await maakPlaten(gl, plan.platen ?? [])
+  tijden.platen = Math.round(performance.now() - tPlaten)
+  const tBuffers = performance.now()
 
   const aPlek = gl.getAttribLocation(programma, 'plek')
   const aNormaal = gl.getAttribLocation(programma, 'normaal')
   const aUv = gl.getAttribLocation(programma, 'uv')
 
+  const buffers: WebGLBuffer[] = []
   for (const stuk of plan.stukken) {
     const zet = (data: ArrayBufferView, plaats: number, maat: number): void => {
       const buffer = gl.createBuffer()
+      if (buffer) buffers.push(buffer)
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
       gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW)
       gl.enableVertexAttribArray(plaats)
@@ -292,6 +305,7 @@ async function teken(plan: Tekening): Promise<string> {
     zet(stuk.uvs, aUv, 2)
 
     const elementen = gl.createBuffer()
+    if (elementen) buffers.push(elementen)
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, elementen)
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, stuk.indices, gl.STATIC_DRAW)
 
@@ -307,13 +321,31 @@ async function teken(plan: Tekening): Promise<string> {
     gl.drawElements(gl.TRIANGLES, stuk.indices.length, gl.UNSIGNED_INT, 0)
   }
 
+  tijden.tekenen = Math.round(performance.now() - tBuffers)
   gl.finish()
-  return doek.toDataURL('image/png')
+  const tPng = performance.now()
+  const png = doek.toDataURL('image/png')
+  tijden.png = Math.round(performance.now() - tPng)
+
+  /*
+   * Opruimen. Dit venster blijft staan voor de volgende bus, en zonder dit
+   * blijven de buffers en platen van elke vorige bus in het geheugen van de
+   * tekenkaart hangen -- bij een model met veertig texturen loopt dat hard op.
+   */
+  for (const buffer of buffers) gl.deleteBuffer(buffer)
+  for (const plaat of platen) if (plaat) gl.deleteTexture(plaat)
+  gl.deleteProgram(programma)
+  return png
 }
 
 window.busfoto.opTekening((plan) => {
-  void teken(plan)
-    .then((png) => window.busfoto.klaar(png))
+  const tijden: Tijden = { platen: 0, buffers: 0, tekenen: 0, png: 0 }
+  const begin = performance.now()
+  void teken(plan, tijden)
+    .then((png) => {
+      tijden.buffers = Math.round(performance.now() - begin)
+      window.busfoto.klaar(png, tijden)
+    })
     .catch((fout) => window.busfoto.mislukt(fout instanceof Error ? fout.message : String(fout)))
 })
 
