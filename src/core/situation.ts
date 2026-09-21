@@ -54,7 +54,21 @@ export interface SituationRequest {
      * neer, dan begin je met een halve bus -- de balg achterop en verder niets.
      * Zie `src/core/trailer.ts` voor waar de afstand vandaan komt.
      */
-    trailer?: { relativePath: string; distance: number }
+    trailer?: {
+      relativePath: string
+      distance: number
+      /** Zoals bij de voorwagen; zie `vars` hieronder. */
+      vars?: Array<[string, number]>
+    }
+    /**
+     * Scriptvariabelen die de bus bij het laden meekrijgt.
+     *
+     * Voor de kleurstelling: het nummer in de CTC-variabele (meestal
+     * `Colorscheme`) en de [setvar]-waarden van die kleurstelling, precies wat
+     * OMSI's eigen keuzevenster zet. Zie core/kleurstelling.ts. Wat er niet in
+     * staat, begint met de beginwaarde uit de scripts van de bus.
+     */
+    vars?: Array<[string, number]>
   }
   /**
    * De dienstregeling die OMSI meteen moet klaarzetten. Met dit blok staat de
@@ -98,6 +112,12 @@ export interface SituationResult {
 }
 
 /** Geeft de index van de regel met deze tag, of -1. */
+/** Het `[vars]`-blok: het aantal, dan per variabele de naam en de waarde. */
+function varsBlok(vars: Array<[string, number]> | undefined): string[] {
+  const lijst = vars ?? []
+  return ['[vars]', String(lijst.length), ...lijst.flatMap(([naam, waarde]) => [naam, String(waarde)]), '']
+}
+
 function indexOfTag(lines: string[], tag: string): number {
   return lines.findIndex((line) => line.trim() === tag)
 }
@@ -269,10 +289,8 @@ export function buildSituation(request: SituationRequest): string[] {
       '',
       '[ismyVehicle]',
       '',
-      // Leeg: de bus begint met zijn eigen beginwaarden.
-      '[vars]',
-      '0',
-      '',
+      // Wat hier niet staat, begint met de eigen beginwaarden van de bus.
+      ...varsBlok(vehicle.vars),
       '[stringvars]',
       '3',
       'SetLineTo',
@@ -342,9 +360,7 @@ export function buildSituation(request: SituationRequest): string[] {
         '[coupledwith]',
         '-1',
         '',
-        '[vars]',
-        '0',
-        '',
+        ...varsBlok(trailer.vars),
         '[stringvars]',
         '0',
         ''

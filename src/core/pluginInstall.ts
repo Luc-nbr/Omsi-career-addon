@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { metNieuwePogingen } from './veilig'
 
 /**
  * De overlay-plugin hoort in `OMSI 2\plugins\`. Het installatieprogramma zet hem
@@ -41,7 +42,13 @@ export function pluginSourceDir(resourcesPath: string, packaged: boolean): strin
 export function ensurePlugin(
   omsiPath: string,
   sourceDir: string,
-  fallbackDir?: string
+  fallbackDir?: string,
+  /**
+   * Draait OMSI? Alleen dan klopt de melding dat het spel de plugin vasthoudt.
+   * Op 21-09 kwam die melding terwijl OMSI dicht was: het bestand zat even
+   * vast, waarschijnlijk bij een virusscanner die de verse DLL bekeek.
+   */
+  omsiDraait?: boolean
 ): PluginStatus {
   const target = join(omsiPath, 'plugins')
 
@@ -72,7 +79,8 @@ export function ensurePlugin(
     for (const { name, path } of sources) {
       const destination = join(target, name)
       if (existsSync(destination) && digest(destination) === digest(path!)) continue
-      copyFileSync(path!, destination)
+      // Even vastgehouden door een scanner is geen reden om de update over te slaan.
+      metNieuwePogingen(() => copyFileSync(path!, destination))
       changed = true
     }
     return { installed: true, upToDate: true, changed, target }
@@ -83,10 +91,10 @@ export function ensurePlugin(
       changed: false,
       target,
       error:
-        cause instanceof Error && cause.message.includes('EBUSY')
+        cause instanceof Error && cause.message.includes('EBUSY') && omsiDraait !== false
           ? 'OMSI draait en houdt de plugin vast. Sluit het spel en start deze app opnieuw.'
           : cause instanceof Error
-            ? cause.message
+            ? `De plugin kon niet in de OMSI-map gezet worden: ${cause.message}`
             : String(cause)
     }
   }

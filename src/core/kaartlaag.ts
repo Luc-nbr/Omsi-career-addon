@@ -11,6 +11,8 @@ import {
   type FleetIndex
 } from './fleet'
 import { bouwBusTekeningMetPlaten, type BusTekeningMetPlaten } from './busbeeld'
+import { kleurstellingenVanBus } from './kleurstelling'
+import type { BusKleurstellingen } from '../shared/api'
 import { readMapData, type Lane, type MapGeometry } from './geo'
 import { leesUitCache, schrijfInCache, vingerafdruk } from './kaartcache'
 import { LaneNetwork, routeForTrip, type TripRoute } from './routing'
@@ -120,7 +122,9 @@ export interface Kaartlaag {
    * kunnen uitpakken (.dds en .tga). Het lezen kost 283 tot 1376 ms per bus en
    * hoort dus niet in het hoofdproces.
    */
-  bustekening(busPad: string): BusTekeningMetPlaten | undefined
+  bustekening(busPad: string, kleurstelling?: string): BusTekeningMetPlaten | undefined
+  /** De kleurstellingen van een bus, zonder de texturen; zie kleurstelling.ts. */
+  kleurstellingen(busPad: string): BusKleurstellingen | undefined
 }
 
 export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
@@ -535,8 +539,17 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
      * uitgerekend; het rijstrokennet wordt pas opgebouwd als een rit geen
      * bruikbare route van OMSI zelf heeft.
      */
-    bustekening(busPad) {
-      return bouwBusTekeningMetPlaten(busPad)
+    bustekening(busPad, kleurstelling) {
+      return bouwBusTekeningMetPlaten(busPad, kleurstelling)
+    },
+
+    kleurstellingen(busPad) {
+      const info = kleurstellingenVanBus(busPad)
+      if (!info) return undefined
+      return {
+        variabele: info.variabele,
+        lijst: info.lijst.map(({ index, naam, setvars }) => ({ index, naam, setvars }))
+      }
     },
 
     routes(folder, legs) {

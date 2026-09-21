@@ -103,6 +103,30 @@ const TEXT = {
     fr: 'Vous pouvez passer. Le reste se fait en arrière-plan ; une carte pas encore prête mettra simplement un instant de plus.',
     nl: 'Je mag dit overslaan. De rest gebeurt op de achtergrond, en een kaart die nog niet klaar is duurt dan even wat langer.'
   },
+  'setup.busPickPaint': {
+    en: 'Which livery? {aantal} to choose from — the Appearance list from OMSI.',
+    de: 'Welche Lackierung? {aantal} zur Auswahl — die Appearance-Liste aus OMSI.',
+    fr: 'Quelle livrée ? {aantal} au choix — la liste Appearance d’OMSI.',
+    nl: 'Welke kleurstelling? {aantal} om uit te kiezen — de Appearance-lijst uit OMSI.'
+  },
+  'setup.paintDefault': {
+    en: 'Default',
+    de: 'Standard',
+    fr: 'Par défaut',
+    nl: 'Standaard'
+  },
+  'setup.paintDefaultSub': {
+    en: 'As OMSI places it',
+    de: 'So, wie OMSI ihn hinstellt',
+    fr: 'Comme OMSI le place',
+    nl: 'Zoals OMSI hem neerzet'
+  },
+  'setup.paintCount': {
+    en: '{aantal} liveries',
+    de: '{aantal} Lackierungen',
+    fr: '{aantal} livrées',
+    nl: '{aantal} kleurstellingen'
+  },
   'photos.title': {
     en: 'Pictures of your buses',
     de: 'Bilder deiner Busse',

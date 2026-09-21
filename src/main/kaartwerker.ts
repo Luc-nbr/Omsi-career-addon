@@ -32,7 +32,8 @@ type Opdracht =
   | { id: number; soort: 'hofaanbodvoor'; folder: string; busmap: string }
   | { id: number; soort: 'hofaanbodrit'; termini: string[]; busmap: string }
   | { id: number; soort: 'hofkandidaat'; termini: string[]; busmap: string; kaart?: string }
-  | { id: number; soort: 'bustekening'; busPad: string }
+  | { id: number; soort: 'bustekening'; busPad: string; kleurstelling?: string }
+  | { id: number; soort: 'kleurstellingen'; busPad: string }
   | { id: number; soort: 'diensten'; request: DutyRequest }
   | { id: number; soort: 'routes'; folder: string; legs: Array<{ tripFile: string; stopIds: string[] }> }
 
@@ -81,7 +82,9 @@ parentPort?.on('message', (opdracht: Opdracht) => {
       uitkomst = laag.hofAanbodVoorRit(opdracht.termini, opdracht.busmap)
     else if (opdracht.soort === 'hofkandidaat')
       uitkomst = laag.wagenparkKandidaat(opdracht.termini, opdracht.busmap, opdracht.kaart)
-    else if (opdracht.soort === 'bustekening') uitkomst = laag.bustekening(opdracht.busPad)
+    else if (opdracht.soort === 'bustekening')
+      uitkomst = laag.bustekening(opdracht.busPad, opdracht.kleurstelling)
+    else if (opdracht.soort === 'kleurstellingen') uitkomst = laag.kleurstellingen(opdracht.busPad)
     else if (opdracht.soort === 'diensten') uitkomst = laag.diensten(opdracht.request)
     else uitkomst = laag.routes(opdracht.folder, opdracht.legs)
 

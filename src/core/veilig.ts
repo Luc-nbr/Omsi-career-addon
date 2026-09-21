@@ -37,21 +37,32 @@ export function schrijfVeilig(
   const tijdelijk = `${pad}.${process.pid}.bezig`
   if (typeof inhoud === 'string') writeFileSync(tijdelijk, inhoud, codering)
   else writeFileSync(tijdelijk, inhoud)
+  try {
+    metNieuwePogingen(() => renameSync(tijdelijk, pad))
+  } catch (fout) {
+    try {
+      unlinkSync(tijdelijk)
+    } catch {
+      // Dan blijft er een .bezig liggen; de volgende keer overschrijft hij hem.
+    }
+    throw fout
+  }
+}
+
+/**
+ * Iets met een bestand doen, en het een paar keer opnieuw proberen als Windows
+ * het even vasthoudt (EPERM, EBUSY, EACCES). Een virusscanner die een vers
+ * bestand bekijkt doet daar milliseconden over; een fout die blijft, gaat na de
+ * laatste poging gewoon door naar de aanroeper.
+ */
+export function metNieuwePogingen<T>(doe: () => T): T {
   for (let poging = 1; ; poging++) {
     try {
-      renameSync(tijdelijk, pad)
-      return
+      return doe()
     } catch (fout) {
       const code = (fout as NodeJS.ErrnoException).code
       const tijdelijkeFout = code === 'EPERM' || code === 'EBUSY' || code === 'EACCES'
-      if (!tijdelijkeFout || poging >= POGINGEN) {
-        try {
-          unlinkSync(tijdelijk)
-        } catch {
-          // Dan blijft er een .bezig liggen; de volgende keer overschrijft hij hem.
-        }
-        throw fout
-      }
+      if (!tijdelijkeFout || poging >= POGINGEN) throw fout
       wachtEven(poging * 40)
     }
   }

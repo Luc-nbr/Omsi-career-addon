@@ -386,13 +386,29 @@ app.whenReady().then(async () => {
    * meteen heen. Hier hoort de knop "wagenpark toevoegen" altijd te staan,
    * ook als er niets te halen valt; dan uitgeschakeld met de reden erbij.
    */
-  for (let i = 0; i < 3; i++) {
+  /*
+   * Vier niveaus sinds de kleurstelling erbij kwam: merk, type, uitvoering, en
+   * voor een bus met kleurstellingen "Appearance". Daar is de eerste tegel
+   * "Standaard", dus doorklikken kiest geen kleur.
+   */
+  let kleurGeschoten = false
+  for (let i = 0; i < 4; i++) {
     if (await js(main, `Boolean(document.querySelector('.kruimels'))`)) {
       const remise = await js(
         main,
         `Boolean([...document.querySelectorAll('.kruimel-hier')].some((k) => /remise|depot|dépôt/i.test(k.textContent || '')))`
       )
       if (remise) break
+    }
+    if (!kleurGeschoten && (await js(main, `/Appearance/.test(document.querySelector('.velonderschrift')?.textContent || '')`))) {
+      await waitFor(main, `document.querySelectorAll('.tegel-beeld').length >= Math.min(4, document.querySelectorAll('.tegel').length)`, 120)
+      const tel = await js(
+        main,
+        `document.querySelectorAll('.tegel-beeld').length + ' van ' + document.querySelectorAll('.tegel').length`
+      )
+      console.log(`   kleurstellingen met een foto: ${tel}`)
+      kleurGeschoten = true
+      await shoot('bus-kleurstellingen')
     }
     await js(main, `document.querySelector('.tegel:not([disabled])')?.click()`)
     await wait(1500)

@@ -70,6 +70,7 @@ import {
   sluitBusfotoVenster
 } from './busfoto'
 import type { BusTekeningMetPlaten } from '../core/busbeeld'
+import { kleurstellingenVanBus } from '../core/kleurstelling'
 import { writeSituation } from '../core/situation'
 import { presetStartup } from '../core/startup'
 import { trailerOf } from '../core/trailer'
@@ -84,6 +85,7 @@ import {
   type Assignment,
   type KaartenStand,
   type BusfotoStand,
+  type BusKleurstellingen,
   type BeginRequest,
   type FreeRequest,
   type DutyDate,
@@ -418,13 +420,18 @@ async function warmKaarten(): Promise<void> {
  * terug op het hoofdproces. Driehonderd bussen
  * lang een hapering is geen terugval meer maar een vastgelopen app.
  */
-function busfotoOpdracht(relatiefPad: string, wie: Werksoort): Parameters<typeof maakBusfoto>[0] {
+function busfotoOpdracht(
+  relatiefPad: string,
+  wie: Werksoort,
+  kleurstelling?: string
+): Parameters<typeof maakBusfoto>[0] {
   return {
-    tekenen: async (busPad) => {
+    kleurstelling,
+    tekenen: async (busPad, kleur) => {
       if (wie !== 'voorgrond') {
         try {
           return await werkerVraag<BusTekeningMetPlaten | undefined>(
-            { soort: 'bustekening', busPad },
+            { soort: 'bustekening', busPad, kleurstelling: kleur },
             wie
           )
         } catch {
@@ -435,16 +442,20 @@ function busfotoOpdracht(relatiefPad: string, wie: Werksoort): Parameters<typeof
            * dan weer mis, dan gooit dit, en krijgt de bus geen merkteken.
            */
           return await werkerVraag<BusTekeningMetPlaten | undefined>(
-            { soort: 'bustekening', busPad },
+            { soort: 'bustekening', busPad, kleurstelling: kleur },
             wie
           )
         }
       }
       try {
-        return await werkerVraag<BusTekeningMetPlaten | undefined>({ soort: 'bustekening', busPad })
+        return await werkerVraag<BusTekeningMetPlaten | undefined>({
+          soort: 'bustekening',
+          busPad,
+          kleurstelling: kleur
+        })
       } catch (fout) {
         logFout('bustekening via de werker', fout)
-        return laag().bustekening(busPad)
+        return laag().bustekening(busPad, kleur)
       }
     },
     busPad: join(omsi(), relatiefPad),
@@ -1262,13 +1273,50 @@ export function tripIndexInTour(duty: Duty): number | undefined {
  * bij de eerste halte en de dienstregeling, en daarna het startscherm zo dat die
  * situatie er al staat.
  */
+/**
+ * De scriptvariabelen voor een gekozen kleurstelling: het nummer en de
+ * [setvar]-waarden, zoals OMSI's eigen keuzevenster ze zet. Op naam gezocht,
+ * zodat een aanhanger zijn eigen nummer voor dezelfde kleurstelling krijgt; kent
+ * hij de naam niet, dan blijft hij in zijn eigen kleuren. Leest alleen de
+ * .cti-bestanden van deze ene bus -- een kwestie van milliseconden.
+ */
+function kleurVars(
+  relatiefPad: string,
+  kleurstelling: string | undefined
+): Array<[string, number]> | undefined {
+  if (!kleurstelling) return undefined
+  try {
+    const info = kleurstellingenVanBus(join(omsi(), relatiefPad))
+    const gekozen = info?.lijst.find((item) => item.naam === kleurstelling)
+    if (!info || !gekozen) {
+      log(`kleurstelling "${kleurstelling}" niet gevonden bij ${relatiefPad}`)
+      return undefined
+    }
+    log(`kleurstelling "${kleurstelling}" = ${info.variabele} ${gekozen.index} bij ${relatiefPad}`)
+    return [[info.variabele, gekozen.index], ...Object.entries(gekozen.setvars)]
+  } catch (fout) {
+    logFout('kleurstelling lezen', fout)
+    return undefined
+  }
+}
+
+/** De aanhanger van een gelede bus, in dezelfde kleurstelling. */
+function aanhangerVan(
+  vehiclePath: string,
+  kleurstelling: string | undefined
+): (NonNullable<ReturnType<typeof trailerOf>> & { vars?: Array<[string, number]> }) | undefined {
+  const aanhanger = trailerOf(omsi(), vehiclePath)
+  return aanhanger ? { ...aanhanger, vars: kleurVars(aanhanger.relativePath, kleurstelling) } : aanhanger
+}
+
 function prepareSituation(
   duty: Duty,
   vehiclePath: string | undefined,
   date: DutyDate | undefined,
   lineNumber: string,
   terminus: string,
-  yard?: string
+  yard?: string,
+  kleurstelling?: string
 ) {
   const when = date ?? dutyDate(duty.mapFolder, duty.days | duty.period)
   if (!when) throw new Error('Geen datum gevonden waarop deze omloop rijdt.')
@@ -1290,8 +1338,9 @@ function prepareSituation(
           lineNumber,
           terminus,
           yard,
+          vars: kleurVars(vehiclePath, kleurstelling),
           // Een gelede bus is twee voertuigen; zonder dit begin je met een halve.
-          trailer: trailerOf(omsi(), vehiclePath)
+          trailer: aanhangerVan(vehiclePath, kleurstelling)
         }
       : undefined,
     spawn
@@ -1512,10 +1561,31 @@ function registerHandlers(): void {
    * Een foto van een bus. De eerste keer wordt hij getekend -- lezen en tekenen
    * kostte gemeten 266 tot 1092 ms per bus -- daarna komt hij van schijf.
    */
-  handle('bus:foto', async (_event, relatiefPad: string): Promise<string | undefined> => {
-    const bestand = await maakBusfoto(busfotoOpdracht(relatiefPad, 'voorgrond'))
-    return bestand ? busfotoAdres(bestand) : undefined
-  })
+  handle(
+    'bus:foto',
+    async (_event, relatiefPad: string, kleurstelling?: string): Promise<string | undefined> => {
+      const bestand = await maakBusfoto(
+        busfotoOpdracht(relatiefPad, 'voorgrond', kleurstelling || undefined)
+      )
+      return bestand ? busfotoAdres(bestand) : undefined
+    }
+  )
+
+  /* De lijst uit "Appearance"; het lezen van de .cti-bestanden gaat naar de werker. */
+  handle(
+    'bus:kleurstellingen',
+    async (_event, relatiefPad: string): Promise<BusKleurstellingen | undefined> => {
+      try {
+        return await werkerVraag<BusKleurstellingen | undefined>({
+          soort: 'kleurstellingen',
+          busPad: join(omsi(), relatiefPad)
+        })
+      } catch (fout) {
+        logFout('kleurstellingen via de werker', fout)
+        return laag().kleurstellingen(join(omsi(), relatiefPad))
+      }
+    }
+  )
 
   handle('busfotos:stand', (): Promise<BusfotoStand> => busfotosStand())
 
@@ -1806,13 +1876,15 @@ function registerHandlers(): void {
    * zet hem er neer als het Steam via het register vindt; staat OMSI elders, dan
    * gebeurt het hier alsnog.
    */
-  handle('plugin:status', () => {
+  handle('plugin:status', async () => {
     if (!pluginStatus) {
       pluginStatus = ensurePlugin(
         omsi(),
         pluginSourceDir(process.resourcesPath, app.isPackaged),
-        app.isPackaged ? undefined : join(process.cwd(), 'plugin')
+        app.isPackaged ? undefined : join(process.cwd(), 'plugin'),
+        await isOmsiRunning().catch(() => undefined)
       )
+      if (pluginStatus.error) log(`plugin installeren: ${pluginStatus.error}`)
     }
     return pluginStatus
   })
@@ -2131,8 +2203,9 @@ function registerHandlers(): void {
             lineNumber: duty?.lineNumbers[0] ?? '',
             terminus: duty?.legs[0]?.terminus ?? '',
             yard: request.yard,
+            vars: kleurVars(vehiclePath, request.kleurstelling),
             // Ook bij vrij rijden: een gelede bus is twee voertuigen.
-            trailer: trailerOf(omsi(), vehiclePath)
+            trailer: aanhangerVan(vehiclePath, request.kleurstelling)
           }
         : undefined,
       spawn,
@@ -2221,7 +2294,8 @@ function registerHandlers(): void {
         request.date,
         request.lineNumber,
         request.terminus,
-        request.yard
+        request.yard,
+        request.kleurstelling
       )
     } catch (cause) {
       prepareError = cause instanceof Error ? cause.message : String(cause)

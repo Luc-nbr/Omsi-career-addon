@@ -46,6 +46,18 @@ export interface KaartenStand {
 }
 
 /**
+ * De kleurstellingen van een bus, zoals OMSI ze in "Appearance" aanbiedt.
+ *
+ * `index` is het nummer dat OMSI zelf telt (zie core/kleurstelling.ts); de
+ * volgorde van de lijst is die van OMSI, het scherm sorteert zelf op naam.
+ */
+export interface BusKleurstellingen {
+  /** De scriptvariabele die het nummer draagt, meestal `Colorscheme`. */
+  variabele: string
+  lijst: Array<{ index: number; naam: string; setvars: Record<string, number> }>
+}
+
+/**
  * Hoe ver de app is met het tekenen van de busfoto's.
  *
  * Zelfde vorm als bij de kaarten, met twee dingen erbij: of er een ronde loopt
@@ -123,6 +135,8 @@ export interface FreeRequest {
   /** Optioneel: dan staat het dienstregelingsmenu meteen op deze lijn. */
   lineFile?: string
   vehiclePath?: string
+  /** De kleurstelling op naam, zoals OMSI's "Appearance"; leeg laat OMSI kiezen. */
+  kleurstelling?: string
   /** Waar de bus komt te staan; zonder halte zet de app hem bij de lijn neer. */
   stopId?: string
   yard?: string
@@ -194,6 +208,8 @@ export interface BeginRequest {
   ibis?: IbisPlan
   /** Pad van de bus vanaf de OMSI-map; zonder bus wordt er niets neergezet. */
   vehiclePath?: string
+  /** De kleurstelling op naam, zoals OMSI's "Appearance"; leeg laat OMSI kiezen. */
+  kleurstelling?: string
   date?: DutyDate
   lineNumber: string
   terminus: string
@@ -368,7 +384,9 @@ export interface CareerApi {
    * was. De eerste keer kost het enkele honderden milliseconden; daarna komt
    * het plaatje van schijf.
    */
-  busFoto(relatiefPad: string): Promise<string | undefined>
+  busFoto(relatiefPad: string, kleurstelling?: string): Promise<string | undefined>
+  /** De kleurstellingen van een bus, of niets als hij er geen heeft. */
+  busKleurstellingen(relatiefPad: string): Promise<BusKleurstellingen | undefined>
   /** Hoe ver de app is met het klaarzetten van de kaarten. */
   kaartenStand(): Promise<KaartenStand>
   /** Begin met klaarzetten (als dat nog niet liep) en geef de stand terug. */

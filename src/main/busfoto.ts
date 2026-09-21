@@ -70,9 +70,17 @@ export function ruimOudeFotosOp(userData: string): void {
   }
 }
 
-/** De naam van de foto van deze bus; het pad bepaalt hem, zodat hij terug te vinden is. */
-function bestandsnaam(relatiefPad: string): string {
-  return `${createHash('sha1').update(relatiefPad.toLowerCase()).digest('hex').slice(0, 16)}.png`
+/**
+ * De naam van de foto van deze bus; het pad bepaalt hem, zodat hij terug te
+ * vinden is. Een kleurstelling hoort erbij: dezelfde bus in de kleuren van OVPS
+ * is een andere foto dan in die van de BVG. Zonder kleurstelling blijft de naam
+ * wat hij was, zodat de foto's die er al staan gewoon blijven gelden.
+ */
+function bestandsnaam(relatiefPad: string, kleurstelling?: string): string {
+  const sleutel = kleurstelling
+    ? `${relatiefPad.toLowerCase()}|${kleurstelling}`
+    : relatiefPad.toLowerCase()
+  return `${createHash('sha1').update(sleutel).digest('hex').slice(0, 16)}.png`
 }
 
 /**
@@ -89,15 +97,19 @@ function bestandsnaam(relatiefPad: string): string {
  * de werker of in het venster, dan komt er geen merkteken: dat kan de volgende
  * keer best lukken.
  */
-function merktekenVan(map: string, relatiefPad: string): string {
-  return join(map, bestandsnaam(relatiefPad).replace(/\.png$/, '.geen'))
+function merktekenVan(map: string, relatiefPad: string, kleurstelling?: string): string {
+  return join(map, bestandsnaam(relatiefPad, kleurstelling).replace(/\.png$/, '.geen'))
 }
 
 /** Heeft deze bus al een foto, of staat vast dat hij er geen krijgt? */
-export function busfotoAfgehandeld(userData: string, relatiefPad: string): 'foto' | 'geen' | undefined {
+export function busfotoAfgehandeld(
+  userData: string,
+  relatiefPad: string,
+  kleurstelling?: string
+): 'foto' | 'geen' | undefined {
   const map = busfotoMap(userData)
-  if (existsSync(join(map, bestandsnaam(relatiefPad)))) return 'foto'
-  if (existsSync(merktekenVan(map, relatiefPad))) return 'geen'
+  if (existsSync(join(map, bestandsnaam(relatiefPad, kleurstelling)))) return 'foto'
+  if (existsSync(merktekenVan(map, relatiefPad, kleurstelling))) return 'geen'
   return undefined
 }
 
@@ -156,7 +168,9 @@ function maakVenster(preload: string, pagina: { url?: string; bestand?: string }
 
 interface FotoOpdracht {
   /** Het zware leeswerk; hoort in de werker te gebeuren, niet hier. */
-  tekenen(busPad: string): Promise<BusTekeningMetPlaten | undefined>
+  tekenen(busPad: string, kleurstelling?: string): Promise<BusTekeningMetPlaten | undefined>
+  /** De naam van de kleurstelling, zoals in OMSI's "Appearance"; leeg is standaard. */
+  kleurstelling?: string
   /** De OMSI-map, om de aanhanger van een gelede bus te vinden. */
   omsiPad: string
   /** Volledig pad naar het .bus-bestand. */
@@ -179,9 +193,11 @@ interface FotoOpdracht {
  */
 export function maakBusfoto(opdracht: FotoOpdracht): Promise<string | undefined> {
   const map = busfotoMap(opdracht.userData)
-  const doel = join(map, bestandsnaam(opdracht.relatiefPad))
+  const doel = join(map, bestandsnaam(opdracht.relatiefPad, opdracht.kleurstelling))
   if (existsSync(doel)) return Promise.resolve(doel)
-  if (existsSync(merktekenVan(map, opdracht.relatiefPad))) return Promise.resolve(undefined)
+  if (existsSync(merktekenVan(map, opdracht.relatiefPad, opdracht.kleurstelling))) {
+    return Promise.resolve(undefined)
+  }
 
   /* In de rij: één tekening tegelijk; zie de uitleg bovenaan. */
   const beurt = bezig.then(() => tekenEen(opdracht, map, doel))
@@ -202,7 +218,7 @@ async function tekenEen(
    */
   let tekening: BusTekeningMetPlaten | undefined
   try {
-    tekening = await opdracht.tekenen(opdracht.busPad)
+    tekening = await opdracht.tekenen(opdracht.busPad, opdracht.kleurstelling)
   } catch (fout) {
     // Geen merkteken: dit is pech, geen eigenschap van de bus.
     logFout(`busfoto ${opdracht.relatiefPad} lezen`, fout)
@@ -212,7 +228,7 @@ async function tekenEen(
     log(`busfoto: geen model voor ${opdracht.relatiefPad}`)
     try {
       mkdirSync(map, { recursive: true })
-      writeFileSync(merktekenVan(map, opdracht.relatiefPad), '')
+      writeFileSync(merktekenVan(map, opdracht.relatiefPad, opdracht.kleurstelling), '')
     } catch {
       // Dan probeert de volgende ronde het nog eens; meer kost het niet.
     }
@@ -230,7 +246,11 @@ async function tekenEen(
    */
   const aanhanger = trailerOf(opdracht.omsiPad, opdracht.relatiefPad)
   if (aanhanger) {
-    const achterop = await opdracht.tekenen(join(opdracht.omsiPad, aanhanger.relativePath))
+    // In dezelfde kleurstelling; kent de aanhanger die naam niet, dan in zijn eigen kleuren.
+    const achterop = await opdracht.tekenen(
+      join(opdracht.omsiPad, aanhanger.relativePath),
+      opdracht.kleurstelling
+    )
     if (achterop) {
       for (const stuk of achterop.stukken) {
         const verzet = new Float32Array(stuk.posities)

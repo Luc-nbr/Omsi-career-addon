@@ -17,6 +17,7 @@ import {
   type DutyRequest,
   type KaartenStand,
   type BusfotoStand,
+  type BusKleurstellingen,
   type MapSummary,
   type PrinterInfo,
   type HofOffer,
@@ -245,7 +246,20 @@ export function App(): JSX.Element {
   const [busMerk, setBusMerk] = useState<string>()
   const [busType, setBusType] = useState<string>()
   /** Op de busstap: kies je een bus, het hof-bestand, of zet je hoven over? */
-  const [busScherm, setBusScherm] = useState<'bus' | 'hof' | 'overzetten'>('bus')
+  const [busScherm, setBusScherm] = useState<'bus' | 'kleur' | 'hof' | 'overzetten'>('bus')
+  /*
+   * De kleurstelling: wat OMSI in zijn plaatsingsvenster "Appearance" noemt.
+   *
+   * Luc: "ik mis de appearance feature in de app". Hij hoort bij één bus: kies
+   * je daarna een andere uitvoering, dan geldt hij niet meer. Leeg betekent
+   * standaard -- dan zet de app niets en kiest OMSI zelf, zoals tot nu toe.
+   * `kleurBus` is de uitvoering waarvan het vierde niveau de kleurstellingen
+   * toont; `kleurLijsten` houdt per bus de lijst vast (null: hij heeft er geen).
+   */
+  const [busKleur, setBusKleur] = useState<{ pad: string; naam: string }>()
+  const [kleurBus, setKleurBus] = useState<string>()
+  const [kleurLijsten, setKleurLijsten] = useState<Record<string, BusKleurstellingen | null>>({})
+  const gevraagdeKleuren = useRef(new Set<string>())
   /*
    * Bussen die de kaart van deze dienst niet kennen.
    *
@@ -302,16 +316,31 @@ export function App(): JSX.Element {
   const [busfotosGevraagd, setBusfotosGevraagd] = useState<boolean>()
   const [busfotoScherm, setBusfotoScherm] = useState<'installatie' | 'bijwerken'>()
 
-  const vraagBusfoto = useCallback((relatiefPad: string) => {
-    if (!relatiefPad || gevraagdeFotos.current.has(relatiefPad)) return
-    gevraagdeFotos.current.add(relatiefPad)
+  const vraagBusfoto = useCallback((relatiefPad: string, kleurstelling?: string) => {
+    // Per kleurstelling een eigen foto; zonder kleurstelling de sleutel van altijd.
+    const sleutel = kleurstelling ? `${relatiefPad}|${kleurstelling}` : relatiefPad
+    if (!relatiefPad || gevraagdeFotos.current.has(sleutel)) return
+    gevraagdeFotos.current.add(sleutel)
     void window.career
-      .busFoto(relatiefPad)
+      .busFoto(relatiefPad, kleurstelling)
       .then((adres) => {
-        if (adres) setBusFotos((oud) => ({ ...oud, [relatiefPad]: adres }))
+        if (adres) setBusFotos((oud) => ({ ...oud, [sleutel]: adres }))
       })
       .catch(() => undefined)
   }, [])
+
+  /** De kleurstellingen van een bus, één keer per bus opgevraagd. */
+  const vraagKleurstellingen = useCallback(
+    async (relatiefPad: string): Promise<BusKleurstellingen | null> => {
+      const bekend = kleurLijsten[relatiefPad]
+      if (bekend !== undefined) return bekend
+      gevraagdeKleuren.current.add(relatiefPad)
+      const lijst = (await window.career.busKleurstellingen(relatiefPad).catch(() => undefined)) ?? null
+      setKleurLijsten((oud) => ({ ...oud, [relatiefPad]: lijst }))
+      return lijst
+    },
+    [kleurLijsten]
+  )
 
   const [ritKandidaat, setRitKandidaat] = useState<{
     file: string
@@ -1007,6 +1036,8 @@ export function App(): JSX.Element {
         duty,
         ibis,
         vehiclePath: vehicle?.relativePath,
+        kleurstelling:
+          busKleur && busKleur.pad === vehicle?.relativePath ? busKleur.naam : undefined,
         date: assignment?.date,
         lineNumber: ibis?.line || duty.legs[0]?.lineNumber || '',
         terminus: duty.legs[0]?.terminus ?? '',
@@ -1045,7 +1076,7 @@ export function App(): JSX.Element {
     } finally {
       setBusy(false)
     }
-  }, [duty, confirmed, ibis, vehicle, assignment, language])
+  }, [duty, confirmed, ibis, vehicle, assignment, language, busKleur])
 
   /**
    * Eén druk op START: de dienst aannemen en meteen beginnen.
@@ -1083,6 +1114,7 @@ export function App(): JSX.Element {
         mapFolder,
         lineFile: lineFile || undefined,
         vehiclePath: bus,
+        kleurstelling: busKleur && busKleur.pad === bus ? busKleur.naam : undefined,
         stopId: vrijeHalte || undefined,
         year: wanneer.year,
         dayOfYear: wanneer.dayOfYear,
@@ -1115,7 +1147,8 @@ export function App(): JSX.Element {
     lineFile,
     vrijeHalte,
     vrijWeer,
-    language
+    language,
+    busKleur
   ])
 
   /**
@@ -2516,6 +2549,85 @@ export function App(): JSX.Element {
          * het is een eigen keuze -- vandaar een eigen rooster achter een knop
          * in plaats van een vierde niveau in de bus zelf.
          */
+        /*
+         * Niveau vier: de kleurstelling, wat OMSI "Appearance" noemt.
+         *
+         * Alfabetisch, zoals OMSI ze in zijn eigen venster toont; het nummer
+         * dat OMSI telt is een andere volgorde, en dat regelt het hoofdproces
+         * (zie core/kleurstelling.ts). Vooraan "Standaard": dan zet de app
+         * niets en kiest OMSI zelf. Elke tegel krijgt de bus in die kleuren,
+         * getekend met de texturen van de kleurstelling.
+         */
+        const kleurLijst = kleurBus ? kleurLijsten[kleurBus] : undefined
+        const kleurItem = kleurBus ? ontleed.find((item) => item.bus.relativePath === kleurBus) : undefined
+        if (busScherm === 'kleur' && kleurBus && kleurLijst && kleurItem) {
+          const namen = kleurLijst.lijst
+            .map((item) => item.naam)
+            .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+          for (const naam of namen) vraagBusfoto(kleurBus, naam)
+          const gekozenKleur = busKleur?.pad === kleurBus ? busKleur.naam : undefined
+          return {
+            ...leegBus,
+            regelaars: undefined,
+            stap: 'bus' as Stap,
+            titel: kleurItem.uitvoering,
+            onderschrift: t(language, 'setup.busPickPaint', { aantal: namen.length }),
+            kruimels: [
+              {
+                label: t(language, 'setup.busTitle'),
+                onDoen: () => {
+                  setBusScherm('bus')
+                  setBusMerk(undefined)
+                  setBusType(undefined)
+                }
+              },
+              {
+                label: kleurItem.merk,
+                onDoen: () => {
+                  setBusScherm('bus')
+                  setBusMerk(kleurItem.merk)
+                  setBusType(undefined)
+                }
+              },
+              {
+                label: kleurItem.type,
+                onDoen: () => {
+                  setBusScherm('bus')
+                  setBusMerk(kleurItem.merk)
+                  setBusType(kleurItem.type)
+                }
+              },
+              { label: kleurItem.uitvoering }
+            ],
+            tegels: [
+              {
+                id: '__standaard',
+                titel: t(language, 'setup.paintDefault'),
+                onder: kleurItem.bus.paint || t(language, 'setup.paintDefaultSub'),
+                beeld: busFotos[kleurBus],
+                vorm: busvorm(kleurItem.type + ' ' + kleurItem.uitvoering),
+                gekozen: !gekozenKleur,
+                onDoen: () => {
+                  setBusKleur(undefined)
+                  setBusScherm('hof')
+                }
+              },
+              ...namen.map((naam) => ({
+                id: naam,
+                titel: naam,
+                onder: kleurItem.uitvoering,
+                beeld: busFotos[`${kleurBus}|${naam}`],
+                vorm: busvorm(kleurItem.type + ' ' + kleurItem.uitvoering),
+                gekozen: gekozenKleur === naam,
+                onDoen: () => {
+                  setBusKleur({ pad: kleurBus, naam })
+                  setBusScherm('hof')
+                }
+              }))
+            ]
+          }
+        }
+
         if (busScherm === 'hof') {
           /*
            * De app heeft de remise al gekozen -- `yardOverride` leeg betekent
@@ -2551,6 +2663,15 @@ export function App(): JSX.Element {
                 : []),
               ...(busType
                 ? [{ label: busType, onDoen: () => setBusScherm('bus') }]
+                : []),
+              ...(kleurBus && kleurLijst && kleurBus === vehicle?.relativePath
+                ? [
+                    {
+                      label:
+                        busKleur?.pad === kleurBus ? busKleur.naam : t(language, 'setup.paintDefault'),
+                      onDoen: () => setBusScherm('kleur')
+                    }
+                  ]
                 : []),
               { label: t(language, 'setup.yardTitle') }
             ],
@@ -2728,7 +2849,13 @@ export function App(): JSX.Element {
          * De foto's erbij vragen zodra dit scherm er is. Eén tegelijk, achter
          * elkaar; het hoofdproces zet ze in de rij en bewaart ze op schijf.
          */
-        for (const item of uitvoeringen) vraagBusfoto(item.bus.relativePath)
+        for (const item of uitvoeringen) {
+          vraagBusfoto(item.bus.relativePath)
+          // De lijst met kleurstellingen alvast, voor het aantal op de tegel.
+          if (!gevraagdeKleuren.current.has(item.bus.relativePath)) {
+            void vraagKleurstellingen(item.bus.relativePath)
+          }
+        }
         return {
           ...leegBus,
           stap: 'bus' as Stap,
@@ -2749,7 +2876,11 @@ export function App(): JSX.Element {
             id: item.bus.relativePath,
             titel: item.uitvoering,
             onder: metTip(
-              item.bus.paint,
+              kleurLijsten[item.bus.relativePath]
+                ? t(language, 'setup.paintCount', {
+                    aantal: kleurLijsten[item.bus.relativePath]?.lijst.length ?? 0
+                  })
+                : item.bus.paint,
               item.bus.relativePath === assignment?.vehicle?.relativePath
             ),
             /*
@@ -2765,12 +2896,22 @@ export function App(): JSX.Element {
             gekozen: (vehicleOverride || vehicle?.relativePath) === item.bus.relativePath,
             onDoen: () => {
               /*
-               * De bus vastleggen en meteen door naar de remise. Dat is het
-               * laatste dat nog kan verschillen, en hij staat al goed -- je
-               * ziet hem dus vooral om te weten dat hij klopt.
+               * De bus vastleggen. Heeft hij kleurstellingen, dan eerst die
+               * keuze, zoals "Appearance" in OMSI; anders meteen door naar de
+               * remise, het laatste dat nog kan verschillen.
                */
-              setVehicleOverride(item.bus.relativePath)
-              setBusScherm('hof')
+              const pad = item.bus.relativePath
+              setVehicleOverride(pad)
+              setBusKleur((oud) => (oud?.pad === pad ? oud : undefined))
+              void vraagKleurstellingen(pad).then((lijst) => {
+                if (lijst && lijst.lijst.length > 0) {
+                  setKleurBus(pad)
+                  setBusScherm('kleur')
+                } else {
+                  setKleurBus(undefined)
+                  setBusScherm('hof')
+                }
+              })
             }
           }))
         }
@@ -3310,8 +3451,11 @@ export function App(): JSX.Element {
 
             if (opzetStap === 'bus') {
               if (busScherm === 'hof') {
-                return () => setBusScherm('bus')
+                // Terug naar de kleurstelling als je daarlangs kwam.
+                const viaKleur = kleurBus && kleurBus === vehicle?.relativePath && kleurLijsten[kleurBus]
+                return () => setBusScherm(viaKleur ? 'kleur' : 'bus')
               }
+              if (busScherm === 'kleur') return () => setBusScherm('bus')
               if (busType) return () => setBusType(undefined)
               if (busMerk) return () => setBusMerk(undefined)
             }

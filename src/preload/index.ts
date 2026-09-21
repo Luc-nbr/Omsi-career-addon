@@ -11,7 +11,8 @@ const api: CareerApi = {
   version: () => ipcRenderer.invoke('app:version'),
   logboekOpenen: () => ipcRenderer.invoke('logboek:openen'),
   logboekMelden: (regel) => ipcRenderer.invoke('logboek:melden', regel),
-  busFoto: (relatiefPad) => ipcRenderer.invoke('bus:foto', relatiefPad),
+  busFoto: (relatiefPad, kleurstelling) => ipcRenderer.invoke('bus:foto', relatiefPad, kleurstelling),
+  busKleurstellingen: (relatiefPad) => ipcRenderer.invoke('bus:kleurstellingen', relatiefPad),
   kaartenStand: () => ipcRenderer.invoke('kaarten:stand'),
   kaartenVoorbereiden: () => ipcRenderer.invoke('kaarten:voorbereiden'),
   /** Meeluisteren met het klaarzetten; geeft een opzegfunctie terug. */

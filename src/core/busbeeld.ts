@@ -1,4 +1,5 @@
 import { leesBusModel, zoekTextuurVan } from './busmodel'
+import { kleurstellingenVanBus, textuurSleutel, vervangingen } from './kleurstelling'
 import { leesTextuur, type Textuur } from './textuur'
 import { leesO3dLezing } from './o3d'
 
@@ -91,9 +92,21 @@ function draai(m: number[] | undefined, x: number, y: number, z: number): [numbe
  * met één onleesbaar onderdeel is nog steeds een bus, en een plaatje met een
  * ontbrekende spiegel is beter dan geen plaatje.
  */
-export function bouwBusTekening(busPad: string): BusTekening | undefined {
+export function bouwBusTekening(busPad: string, kleurstelling?: string): BusTekening | undefined {
   const model = leesBusModel(busPad)
   if (!model) return undefined
+
+  /*
+   * De gekozen kleurstelling: welke texturen er anders zijn dan standaard. Zie
+   * kleurstelling.ts. Kent deze bus de naam niet -- een aanhanger met minder
+   * kleurstellingen dan de voorwagen -- dan blijft hij in zijn eigen kleuren.
+   */
+  let vervang: Map<string, string> | undefined
+  if (kleurstelling) {
+    const info = kleurstellingenVanBus(busPad)
+    const gekozen = info?.lijst.find((item) => item.naam === kleurstelling)
+    if (info && gekozen) vervang = vervangingen(info, gekozen)
+  }
 
   const stukken: BusStuk[] = []
   /* Een steekproef van de punten; miljoenen sorteren hoeft niet voor een doos. */
@@ -211,7 +224,8 @@ export function bouwBusTekening(busPad: string): BusTekening | undefined {
         uvs: mesh.uvs,
         indices: Uint32Array.from(indices),
         textuur: naam
-          ? zoekTextuurVan(model.voertuigmap, model.omsimap, naam)
+          ? (vervang?.get(textuurSleutel(naam)) ??
+            zoekTextuurVan(model.voertuigmap, model.omsimap, naam))
           : deel.materialen[groep]?.pad
       })
       driehoeken += indices.length / 3
@@ -319,8 +333,11 @@ function onthoudPlaat(pad: string, plaat: BusPlaat): BusPlaat {
  * met `nativeImage` beter, en hier -- in een worker -- is dat niet te gebruiken.
  * Ze komen als `null` terug, zodat de aanroeper weet dat hij ze zelf moet doen.
  */
-export function bouwBusTekeningMetPlaten(busPad: string): BusTekeningMetPlaten | undefined {
-  const tekening = bouwBusTekening(busPad)
+export function bouwBusTekeningMetPlaten(
+  busPad: string,
+  kleurstelling?: string
+): BusTekeningMetPlaten | undefined {
+  const tekening = bouwBusTekening(busPad, kleurstelling)
   if (!tekening) return undefined
   const platen = new Map<string, BusPlaat>()
   for (const stuk of tekening.stukken) {
