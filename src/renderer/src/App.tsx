@@ -441,6 +441,12 @@ export function App(): JSX.Element {
    * begint de animatie werkelijk opnieuw.
    */
   const [busrit, setBusrit] = useState(0)
+  /*
+   * Wat er te melden valt als je na een dienst in het hoofdmenu terugkomt: de
+   * uitkomst van de rit, of dat hij geannuleerd is. Stond eerst onderaan het vel
+   * van de busstap, en daar bleef je dan hangen met een lege remise.
+   */
+  const [hubMelding, setHubMelding] = useState<string>()
 
 
   // De taalkeuze staat los van de chauffeur; hij hoort bij deze computer.
@@ -1007,6 +1013,26 @@ export function App(): JSX.Element {
     [assignment, confirmed, vehicleOverride, mode]
   )
 
+  /*
+   * Na een dienst -- afgerond of geannuleerd -- terug naar het begin.
+   *
+   * Luc: "wanneer de dienst is afgerond of is geannuleerd moet het bus selectie
+   * menu weer naar het begin gaan, ook wil ik dat de gebruiker weer naar het
+   * hoofdmenu wordt gestuurd". Eerst bleef de busstap op het laatste niveau
+   * staan, de remise, en die was leeg omdat de dienst er niet meer was.
+   */
+  const naarBegin = useCallback((melding?: string) => {
+    setBusScherm('bus')
+    setBusMerk(undefined)
+    setBusType(undefined)
+    setKleurBus(undefined)
+    setBusKleur(undefined)
+    setStap('map')
+    setNote(undefined)
+    setHubMelding(melding)
+    setScreen('modes')
+  }, [])
+
   const cancelDuty = useCallback(async () => {
     if (!confirmed || !window.confirm(t(language, 'act.cancelAsk'))) return
     setCareer(await window.career.cancelDuty())
@@ -1014,8 +1040,8 @@ export function App(): JSX.Element {
     setSelected(undefined)
     setStarted(false)
     setStarting(false)
-    setNote(undefined)
-  }, [confirmed, language])
+    naarBegin(t(language, 'done.cancelled'))
+  }, [confirmed, language, naarBegin])
 
   /**
    * Dienst starten. Dit zet de situatie klaar in OMSI -- datum, tijd, bus bij de
@@ -1321,6 +1347,8 @@ export function App(): JSX.Element {
   const finish = useCallback(async () => {
     if (!duty || !vehicle) return
     setBusy(true)
+    /* Wat er over de rit te zeggen valt; dat komt in het hoofdmenu te staan. */
+    let uitkomst: string | undefined
     try {
       const result = await window.career.checkSession()
       /*
@@ -1343,7 +1371,7 @@ export function App(): JSX.Element {
         )
         setCareer(payload)
         const verdict = payload.state?.exams[0]
-        setNote(
+        uitkomst = (
           verdict?.passed
             ? t(language, 'exam.granted', { line: verdict.lineNumbers.join('/') || verdict.lineFile })
             : t(language, 'exam.again')
@@ -1361,7 +1389,7 @@ export function App(): JSX.Element {
             fuelUsed: result.fuelUsed
           })
         )
-        setNote(
+        uitkomst = (
           /*
            * Zonder gemeten kilometers valt er niets over de rit te zeggen. Dat
            * gebeurt als de kilometerteller van de bus onzin gaf; dan is "je reed
@@ -1394,10 +1422,12 @@ export function App(): JSX.Element {
       setSelected(undefined)
       setStarted(false)
       setOverlayOpen(false)
+      // De uitkomst gaat mee naar het hoofdmenu; zie `naarBegin`.
+      naarBegin(uitkomst)
     } finally {
       setBusy(false)
     }
-  }, [duty, vehicle, exam, language])
+  }, [duty, vehicle, exam, language, naarBegin])
 
   useEffect(() => {
     finishRef.current = finish
@@ -1694,6 +1724,8 @@ export function App(): JSX.Element {
           onInstellingen={() => setScreen('game')}
           onChauffeur={() => setScreen('profiles')}
           onLogboek={() => void window.career.logboekOpenen()}
+          melding={hubMelding}
+          onMeldingWeg={() => setHubMelding(undefined)}
           onBusplaatjes={() => {
             setBusfotoScherm('bijwerken')
             void bijwerkenBusfotos()

@@ -127,6 +127,18 @@ const TEXT = {
     fr: '{aantal} livrées',
     nl: '{aantal} kleurstellingen'
   },
+  'done.cancelled': {
+    en: 'Duty cancelled. Nothing was booked.',
+    de: 'Dienst abgebrochen. Es wurde nichts gebucht.',
+    fr: 'Service annulé. Rien n’a été enregistré.',
+    nl: 'Dienst geannuleerd. Er is niets geboekt.'
+  },
+  'hub.dismiss': {
+    en: 'Close',
+    de: 'Schließen',
+    fr: 'Fermer',
+    nl: 'Sluiten'
+  },
   'photos.title': {
     en: 'Pictures of your buses',
     de: 'Bilder deiner Busse',

@@ -27,6 +27,9 @@ interface Props {
   onLogboek: () => void
   /** Van de bussen die nog geen foto hebben er een maken. */
   onBusplaatjes: () => void
+  /** Wat er na de laatste dienst te melden valt: de uitkomst, of dat hij geannuleerd is. */
+  melding?: string
+  onMeldingWeg?: () => void
 }
 
 const MODI: GameMode[] = ['career', 'service', 'free']
@@ -64,7 +67,9 @@ export function Starthub({
   onInstellingen,
   onChauffeur,
   onLogboek,
-  onBusplaatjes
+  onBusplaatjes,
+  melding,
+  onMeldingWeg
 }: Props): JSX.Element {
   const uren = samenvatting ? formatDuration(samenvatting.minutes, language) : undefined
 
@@ -95,6 +100,18 @@ export function Starthub({
           <h1>{t(language, 'hub.title', { naam: chauffeur })}</h1>
           <p>{t(language, 'hub.intro')}</p>
         </div>
+
+        {/* De uitkomst van de dienst die net klaar is; weg met één klik. */}
+        {melding && (
+          <div className="hub-melding" role="status">
+            <span>{melding}</span>
+            {onMeldingWeg && (
+              <button type="button" onClick={onMeldingWeg} aria-label={t(language, 'hub.dismiss')}>
+                ×
+              </button>
+            )}
+          </div>
+        )}
 
         {/* De hoofdkeuze: drie tegels, en niets anders even groot. */}
         <div className="hub-tegels">

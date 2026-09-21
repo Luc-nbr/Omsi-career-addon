@@ -2929,6 +2929,35 @@
   letter-spacing: -0.01em;
 }
 
+/* De uitkomst van de laatste dienst, tussen de kop en de tegels. */
+.hub-melding {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--vel-rand);
+  border-left: 3px solid var(--route);
+  border-radius: var(--radius-klein);
+  background: var(--vel-hover);
+  color: var(--vel-ink);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.hub-melding span {
+  flex: 1;
+}
+
+.hub-melding button {
+  border: 0;
+  background: transparent;
+  color: var(--vel-zacht);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
 .hub-kop p {
   margin: 4px 0 0;
   color: var(--vel-zacht);
