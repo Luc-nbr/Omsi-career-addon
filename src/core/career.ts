@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
+import { schrijfVeilig } from './veilig'
 import type { ExamCriterion } from './exam'
 import type { Duty } from './types'
 
@@ -162,35 +162,52 @@ export function emptyCareer(driver = 'Nieuwe chauffeur'): CareerState {
   return { driver, startedAt: new Date().toISOString(), entries: [], licences: [], exams: [] }
 }
 
-export function loadCareer(file: string): CareerState {
-  if (!existsSync(file)) return emptyCareer()
+/**
+ * Een loopbaan van schijf, of niets als het bestand er niet is of niet te lezen.
+ *
+ * Het verschil met `loadCareer` is precies het punt: een onleesbaar bestand is
+ * geen nieuwe chauffeur. Wie dit gebruikt, kan dan een kopie terugzetten in
+ * plaats van een lege loopbaan over de oude heen te schrijven. Zie profiles.ts.
+ */
+export function probeerCareer(file: string): CareerState | undefined {
+  if (!existsSync(file)) return undefined
   try {
-    const parsed = JSON.parse(readFileSync(file, 'utf8')) as Partial<CareerState>
-    return {
-      id: parsed.id,
-      driver: parsed.driver ?? 'Nieuwe chauffeur',
-      // Profielen van voor de profielfoto hebben deze velden niet.
-      photo: typeof parsed.photo === 'string' ? parsed.photo : undefined,
-      photoAt: typeof parsed.photoAt === 'number' ? parsed.photoAt : undefined,
-      startedAt: parsed.startedAt ?? new Date().toISOString(),
-      entries: Array.isArray(parsed.entries) ? parsed.entries : [],
-      activeDuty:
-        parsed.activeDuty && typeof parsed.activeDuty === 'object' && parsed.activeDuty.assignment
-          ? parsed.activeDuty
-          : undefined,
-      // Profielen van voor de modi hebben deze lijsten nog niet.
-      licences: Array.isArray(parsed.licences) ? parsed.licences : [],
-      exams: Array.isArray(parsed.exams) ? parsed.exams : []
-    }
+    return uitJson(JSON.parse(readFileSync(file, 'utf8')) as Partial<CareerState>)
   } catch {
-    // Een kapot logboek mag de app niet blokkeren; we beginnen dan opnieuw.
-    return emptyCareer()
+    return undefined
   }
 }
 
+export function loadCareer(file: string): CareerState {
+  // Een kapot logboek mag de app niet blokkeren; wie meer wil, gebruikt probeerCareer.
+  return probeerCareer(file) ?? emptyCareer()
+}
+
+function uitJson(parsed: Partial<CareerState>): CareerState {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('geen loopbaan')
+  }
+  return {
+    id: parsed.id,
+    driver: parsed.driver ?? 'Nieuwe chauffeur',
+    // Profielen van voor de profielfoto hebben deze velden niet.
+    photo: typeof parsed.photo === 'string' ? parsed.photo : undefined,
+    photoAt: typeof parsed.photoAt === 'number' ? parsed.photoAt : undefined,
+    startedAt: parsed.startedAt ?? new Date().toISOString(),
+    entries: Array.isArray(parsed.entries) ? parsed.entries : [],
+    activeDuty:
+      parsed.activeDuty && typeof parsed.activeDuty === 'object' && parsed.activeDuty.assignment
+        ? parsed.activeDuty
+        : undefined,
+    // Profielen van voor de modi hebben deze lijsten nog niet.
+    licences: Array.isArray(parsed.licences) ? parsed.licences : [],
+    exams: Array.isArray(parsed.exams) ? parsed.exams : []
+  }
+}
+
+/** Via een tijdelijke naam, zodat er nooit een half profiel ligt; zie veilig.ts. */
 export function saveCareer(file: string, state: CareerState): void {
-  mkdirSync(dirname(file), { recursive: true })
-  writeFileSync(file, JSON.stringify(state, null, 2), 'utf8')
+  schrijfVeilig(file, JSON.stringify(state, null, 2))
 }
 
 /** Wat een hele dienst oplevert. */

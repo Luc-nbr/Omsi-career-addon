@@ -5,12 +5,20 @@ import {
   readFileSync,
   readdirSync,
   renameSync,
+  rmSync,
   statSync,
-  unlinkSync,
-  writeFileSync
+  unlinkSync
 } from 'node:fs'
 import { extname, join, resolve, sep } from 'node:path'
-import { emptyCareer, loadCareer, saveCareer, summarise, type CareerState } from './career'
+import {
+  emptyCareer,
+  loadCareer,
+  probeerCareer,
+  saveCareer,
+  summarise,
+  type CareerState
+} from './career'
+import { schrijfVeilig, tijdstempel } from './veilig'
 
 /**
  * Elke chauffeur is een eigen profiel met een eigen logboek, lokaal opgeslagen
@@ -45,6 +53,217 @@ export interface ProfileSummary {
 const PROFILE_DIR = 'profiles'
 const ACTIVE_FILE = 'active.json'
 const PHOTO_DIR = 'profielfotos'
+
+/*
+ * Kopieën, en wat er gebeurt als een profiel niet meer te lezen is.
+ *
+ * WAAROM
+ * Een profiel dat niet te lezen was, werd tot nu toe stil een lege "Nieuwe
+ * chauffeur", en de eerste keer opslaan schreef die over het oude heen: een
+ * afgekapt bestand na een crash of een scan van Defender kostte zo een hele
+ * loopbaan. Het schrijven zelf is nu ondeelbaar (veilig.ts), en daarnaast
+ * blijven er kopieën staan. Is een profiel toch onleesbaar, dan gaat het kapotte
+ * bestand opzij -- nooit weg -- en komt de nieuwste goede kopie ervoor in de
+ * plaats, met een melding die zegt welke stand het is.
+ *
+ * Wanneer een kopie: het profiel wordt bij elke wijziging van een lopende dienst
+ * herschreven, en tien kopieën zouden dan binnen één dienst op zijn. Daarom
+ * alleen als de vorige kopie ouder is dan een kwartier, of als er sindsdien een
+ * dienst of vergunning bij kwam of af ging. Er blijven er tien van de laatste
+ * tijd, en daarvoor één per dag over dertig dagen.
+ */
+const KOPIE_DIR = 'kopieen'
+const PRULLENBAK_DIR = 'prullenbak'
+const KOPIE_INTERVAL_MS = 15 * 60 * 1000
+const KOPIEEN_RECENT = 10
+const BEWAAR_DAGEN = 30
+const DAG_MS = 24 * 60 * 60 * 1000
+
+/** Een profiel dat bij het lezen beschadigd bleek, en wat ermee gedaan is. */
+export interface Herstel {
+  id: string
+  driver: string
+  /** De stand die terugkwam, als ISO-tijd; ontbreekt als er geen kopie was. */
+  tijd?: string
+  diensten: number
+  /** Waar het beschadigde bestand nu staat. */
+  beschadigd?: string
+}
+
+const herstellingen: Herstel[] = []
+
+/** Wat er deze sessie is teruggezet; het scherm meldt het tot de speler het gezien heeft. */
+export function herstelMeldingen(): Herstel[] {
+  return herstellingen.slice()
+}
+
+export function vergeetHerstel(): void {
+  herstellingen.length = 0
+}
+
+interface Kopie {
+  pad: string
+  tijd: number
+  diensten: number
+  vergunningen: number
+}
+
+function kopieMap(userData: string, id: string): string {
+  return join(dir(userData), KOPIE_DIR, id)
+}
+
+/** De kopieën van één chauffeur, nieuwste eerst. */
+function kopieenVan(userData: string, id: string): Kopie[] {
+  const map = kopieMap(userData, id)
+  let namen: string[]
+  try {
+    namen = readdirSync(map)
+  } catch {
+    return []
+  }
+  const kopieen: Kopie[] = []
+  for (const naam of namen) {
+    const deel = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})-(\d{3})_(\d+)_(\d+)\.json$/.exec(naam)
+    if (!deel) continue
+    const [, j, m, d, u, mi, s, ms, diensten, vergunningen] = deel
+    kopieen.push({
+      pad: join(map, naam),
+      tijd: new Date(+j, +m - 1, +d, +u, +mi, +s, +ms).getTime(),
+      diensten: Number(diensten),
+      vergunningen: Number(vergunningen)
+    })
+  }
+  return kopieen.sort((a, b) => b.tijd - a.tijd)
+}
+
+/** Een kopie van wat er nu op schijf staat, als dat nodig is; zie de kop hierboven. */
+function maakKopie(userData: string, id: string, file: string): void {
+  try {
+    const huidig = probeerCareer(file)
+    // Wat niet te lezen is, is geen kopie waard; het wordt zo vervangen.
+    if (!huidig) return
+    const kopieen = kopieenVan(userData, id)
+    const nieuwste = kopieen[0]
+    const nodig =
+      !nieuwste ||
+      Date.now() - nieuwste.tijd >= KOPIE_INTERVAL_MS ||
+      nieuwste.diensten !== huidig.entries.length ||
+      nieuwste.vergunningen !== huidig.licences.length
+    if (!nodig) return
+    const map = kopieMap(userData, id)
+    mkdirSync(map, { recursive: true })
+    const naam = `${tijdstempel()}_${huidig.entries.length}_${huidig.licences.length}.json`
+    copyFileSync(file, join(map, naam))
+    snoei(kopieenVan(userData, id))
+  } catch {
+    // Een kopie die niet lukt mag het opslaan zelf niet tegenhouden.
+  }
+}
+
+/** Tien van de laatste tijd houden, en daarvoor de nieuwste van elke dag tot dertig dagen terug. */
+function snoei(kopieen: Kopie[]): void {
+  const dagen = new Set<string>()
+  const grens = Date.now() - BEWAAR_DAGEN * DAG_MS
+  kopieen.forEach((kopie, index) => {
+    if (index < KOPIEEN_RECENT) return
+    const dag = new Date(kopie.tijd).toDateString()
+    if (kopie.tijd >= grens && !dagen.has(dag)) {
+      dagen.add(dag)
+      return
+    }
+    try {
+      unlinkSync(kopie.pad)
+    } catch {
+      // Blijft hij staan, dan ruimt de volgende keer hem op.
+    }
+  })
+}
+
+/** De chauffeursnaam uit een kapot bestand halen, als die nog leesbaar is. */
+function naamUit(file: string): string | undefined {
+  try {
+    const tekst = readFileSync(file, 'utf8')
+    return /"driver"\s*:\s*"([^"\\]{1,60})"/.exec(tekst)?.[1]
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Een profiel dat niet te lezen is: opzij zetten en de nieuwste goede kopie
+ * terugzetten. Terugzetten gebeurt alleen hier, als het bestand zelf onleesbaar
+ * is -- een leesbaar profiel wordt nooit door een oudere kopie vervangen.
+ */
+function herstel(userData: string, id: string, file: string): CareerState {
+  const naam = naamUit(file)
+  const map = kopieMap(userData, id)
+  let beschadigd: string | undefined = join(map, `beschadigd-${tijdstempel()}.json`)
+  try {
+    mkdirSync(map, { recursive: true })
+    renameSync(file, beschadigd)
+  } catch {
+    try {
+      copyFileSync(file, beschadigd)
+    } catch {
+      beschadigd = undefined
+    }
+  }
+
+  for (const kopie of kopieenVan(userData, id)) {
+    const oud = probeerCareer(kopie.pad)
+    if (!oud) continue
+    const state: CareerState = { ...oud, id }
+    saveCareer(file, state)
+    herstellingen.push({
+      id,
+      driver: state.driver,
+      tijd: new Date(kopie.tijd).toISOString(),
+      diensten: state.entries.length,
+      beschadigd
+    })
+    return state
+  }
+
+  const leeg: CareerState = { ...emptyCareer(naam ?? 'Nieuwe chauffeur'), id }
+  saveCareer(file, leeg)
+  herstellingen.push({ id, driver: leeg.driver, diensten: 0, beschadigd })
+  return leeg
+}
+
+/** Een profiel lezen, en terugzetten als het beschadigd is. */
+function laad(userData: string, id: string): CareerState | undefined {
+  const file = fileFor(userData, id)
+  if (!existsSync(file)) return undefined
+  const state = probeerCareer(file)
+  return state ? { ...state, id } : herstel(userData, id, file)
+}
+
+/**
+ * Oude rommel weghalen: wat langer dan dertig dagen in de prullenbak ligt, en de
+ * kopieën van chauffeurs die er niet meer zijn en al dertig dagen niets kregen.
+ */
+function ruimOp(userData: string): void {
+  const grens = Date.now() - BEWAAR_DAGEN * DAG_MS
+  const bak = join(dir(userData), PRULLENBAK_DIR)
+  try {
+    for (const naam of readdirSync(bak)) {
+      const pad = join(bak, naam)
+      if (statSync(pad).mtimeMs < grens) rmSync(pad, { recursive: true, force: true })
+    }
+  } catch {
+    // Geen prullenbak, of niets op te ruimen.
+  }
+  const kopieen = join(dir(userData), KOPIE_DIR)
+  try {
+    for (const id of readdirSync(kopieen)) {
+      if (existsSync(fileFor(userData, id))) continue
+      const pad = join(kopieen, id)
+      if (statSync(pad).mtimeMs < grens) rmSync(pad, { recursive: true, force: true })
+    }
+  } catch {
+    // Idem.
+  }
+}
 
 /**
  * De vormen die een profielfoto mag hebben.
@@ -177,7 +396,8 @@ export function listProfiles(userData: string): ProfileSummary[] {
   const entries: ProfileSummary[] = []
   for (const name of readdirSync(dir(userData))) {
     if (!name.endsWith('.json') || name === ACTIVE_FILE) continue
-    const state = loadCareer(join(dir(userData), name))
+    const state = laad(userData, name.replace(/\.json$/, ''))
+    if (!state) continue
     const summary = summarise(state)
     /*
      * Alleen doorgeven wat er werkelijk ligt. Staat de naam nog in het profiel
@@ -210,25 +430,41 @@ export function createProfile(userData: string, driver: string): CareerState {
 }
 
 export function readProfile(userData: string, id: string): CareerState | undefined {
-  const file = fileFor(userData, id)
-  return existsSync(file) ? { ...loadCareer(file), id } : undefined
+  return laad(userData, id)
 }
 
 export function writeProfile(userData: string, state: CareerState): void {
   if (!state.id) return
-  saveCareer(fileFor(userData, state.id), state)
+  const file = fileFor(userData, state.id)
+  maakKopie(userData, state.id, file)
+  saveCareer(file, state)
 }
 
+/**
+ * Een chauffeur weghalen, naar de prullenbak.
+ *
+ * Een verkeerde klik op "verwijderen" kostte tot nu toe een hele loopbaan. Nu
+ * blijft het profiel dertig dagen in profiles\prullenbak staan, en zijn kopieën
+ * ook zo lang; daarna ruimt de app ze op.
+ */
 export function deleteProfile(userData: string, id: string): void {
   const file = fileFor(userData, id)
-  if (existsSync(file)) unlinkSync(file)
+  if (existsSync(file)) {
+    const bak = join(dir(userData), PRULLENBAK_DIR)
+    mkdirSync(bak, { recursive: true })
+    try {
+      renameSync(file, join(bak, `${id}-${tijdstempel()}.json`))
+    } catch {
+      unlinkSync(file)
+    }
+  }
   // Zijn foto gaat met hem mee; anders blijft er een gezicht in de map staan
   // waar geen chauffeur meer bij hoort.
   clearProfilePhoto(userData, id)
   if (getActive(userData) === id) {
     const first = listProfiles(userData)[0]
     if (first) setActive(userData, first.id)
-    else writeFileSync(join(dir(userData), ACTIVE_FILE), JSON.stringify({ id: null }), 'utf8')
+    else schrijfVeilig(join(dir(userData), ACTIVE_FILE), JSON.stringify({ id: null }))
   }
 }
 
@@ -244,7 +480,7 @@ export function getActive(userData: string): string | undefined {
 }
 
 export function setActive(userData: string, id: string): void {
-  writeFileSync(join(dir(userData), ACTIVE_FILE), JSON.stringify({ id }), 'utf8')
+  schrijfVeilig(join(dir(userData), ACTIVE_FILE), JSON.stringify({ id }))
 }
 
 /**
@@ -252,6 +488,7 @@ export function setActive(userData: string, id: string): void {
  * eerste dat er is. Zijn er helemaal geen, dan vraagt de app om een naam.
  */
 export function resolveActive(userData: string): CareerState | undefined {
+  ruimOp(userData)
   const profiles = listProfiles(userData)
   if (profiles.length === 0) return undefined
   const active = getActive(userData)

@@ -13,7 +13,7 @@
  * dezelfde live.json die de app van de speler leest:
  *
  *   set LOCALAPPDATA=%TEMP%\omsi-proef
- *   gastheer.exe pad\naar\OMSICareerPlugin.dll [voertuig|zonder] [netjes|dll|niets]
+ *   gastheer.exe pad\naar\OMSICareerPlugin.dll [voertuig|zonder] [netjes|dll|niets] [zwaar]
  *
  * `zonder` bootst na dat er geen bus bestuurd wordt: alleen de
  * systeemvariabelen. Het tweede woord zegt hoe het spel afsluit: netjes met
@@ -30,7 +30,7 @@ typedef void(__stdcall *Tekst)(unsigned short, void **, BOOL *);
 
 int main(int argc, char **argv) {
   if (argc < 2) {
-    fprintf(stderr, "gebruik: gastheer.exe plugin.dll [voertuig|zonder] [netjes|dll|niets]\n");
+    fprintf(stderr, "gebruik: gastheer.exe plugin.dll [voertuig|zonder] [netjes|dll|niets] [zwaar]\n");
     return 2;
   }
   const int metVoertuig = argc < 3 || strcmp(argv[2], "zonder") != 0;
