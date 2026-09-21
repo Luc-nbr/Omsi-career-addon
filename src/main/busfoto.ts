@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { extname, join } from 'node:path'
 import { BrowserWindow, ipcMain, nativeImage } from 'electron'
 import { verkleinTextuur, type BusTekeningMetPlaten } from '../core/busbeeld'
@@ -23,9 +23,51 @@ import { type Textuur } from '../core/textuur'
  * niemand sneller, en een tweede venster kost nog eens een tekenkaartcontext.
  */
 
-/** Waar de foto's komen te staan. */
+/**
+ * Welke versie van de tekenaar deze foto's gemaakt heeft.
+ *
+ * WAAROM
+ * Een foto wordt eenmaal gemaakt en daarna van schijf gehaald -- en dat was
+ * precies het probleem. Toen de tekenaar gerepareerd was, bleven de oude,
+ * verminkte plaatjes gewoon staan: Luc zag zijn MAN NG272 nog steeds als een
+ * waaier van driehoeken, terwijl die bus nu helemaal geen foto hoort te krijgen
+ * (hij is volledig versleuteld). "Niks veranderd", terecht.
+ *
+ * Dus hangen de foto's in een map met dit nummer erin. Verandert er iets aan
+ * hoe een bus getekend wordt, dan gaat dit nummer omhoog en worden alle foto's
+ * opnieuw gemaakt; de oude mappen ruimt `ruimOudeFotosOp` op.
+ */
+const FOTO_VORM = 3
+
+/** Waar de foto's komen te staan, per versie van de tekenaar. */
 export function busfotoMap(userData: string): string {
-  return join(userData, 'busfotos')
+  return join(userData, 'busfotos', `v${FOTO_VORM}`)
+}
+
+/**
+ * De foto's van een oudere tekenaar weghalen.
+ *
+ * Alleen wat de app zelf in `busfotos` heeft gezet, en nooit de huidige versie.
+ * Lukt het niet -- een bestand dat vastzit -- dan is dat geen fout: het kost
+ * alleen ruimte, en de volgende start probeert het opnieuw.
+ */
+export function ruimOudeFotosOp(userData: string): void {
+  const wortel = join(userData, 'busfotos')
+  let inhoud: string[]
+  try {
+    inhoud = readdirSync(wortel)
+  } catch {
+    return
+  }
+  for (const naam of inhoud) {
+    if (naam === `v${FOTO_VORM}`) continue
+    try {
+      rmSync(join(wortel, naam), { recursive: true, force: true })
+      log(`busfoto's van een oudere tekenaar weggehaald: ${naam}`)
+    } catch {
+      // Volgende keer weer.
+    }
+  }
 }
 
 /** De naam van de foto van deze bus; het pad bepaalt hem, zodat hij terug te vinden is. */

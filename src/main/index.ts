@@ -61,7 +61,7 @@ import { receiptHeightMicrons, RECEIPT_WIDTH_MICRONS } from '../core/receipt'
 import { difference, readKnown, writeKnown } from '../core/installed'
 import { readSettings, writeSettings, type Settings } from '../core/settings'
 import { formatTime } from '../shared/format'
-import { busfotoMap, maakBusfoto, sluitBusfotoVenster } from './busfoto'
+import { busfotoMap, maakBusfoto, ruimOudeFotosOp, sluitBusfotoVenster } from './busfoto'
 import type { BusTekeningMetPlaten } from '../core/busbeeld'
 import { writeSituation } from '../core/situation'
 import { presetStartup } from '../core/startup'
@@ -2403,6 +2403,8 @@ if (!app.requestSingleInstanceLock()) {
 
     protocol.handle('omsikaart', kaartplaatje)
     protocol.handle('omsibus', busplaatje)
+    // Foto's van een oudere tekenaar horen niet meer getoond te worden.
+    ruimOudeFotosOp(userData())
     protocol.handle('omsifoto', profielfoto)
 
     adoptOldProfiles()
