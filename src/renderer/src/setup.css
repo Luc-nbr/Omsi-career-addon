@@ -2955,6 +2955,31 @@
   letter-spacing: -0.01em;
 }
 
+/* De melding over OMSI in de lopende dienst: gecrasht, vastgelopen, overlays. */
+.omsimelding p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.omsimelding-klein {
+  margin-top: 4px !important;
+  font-size: 12.5px;
+  opacity: 0.85;
+}
+
+.omsimelding-knoppen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.omsimelding-knoppen .btn {
+  min-height: 36px;
+  padding: 8px 14px;
+  font-size: 13px;
+}
+
 /* De uitkomst van de laatste dienst, tussen de kop en de tegels. */
 .hub-melding {
   display: flex;

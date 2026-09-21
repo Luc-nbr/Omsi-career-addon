@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process'
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, net, protocol, screen, shell } from 'electron'
 import { cpSync, existsSync } from 'node:fs'
 import { dirname, join, resolve, sep } from 'node:path'
@@ -71,6 +72,13 @@ import {
 } from './busfoto'
 import type { BusTekeningMetPlaten } from '../core/busbeeld'
 import { kleurstellingenVanBus } from '../core/kleurstelling'
+import {
+  herkenOverlays,
+  leesLogfileStaart,
+  leesOmsiProces,
+  sluitOmsi,
+  type OverlayInOmsi
+} from '../core/omsiProces'
 import { writeSituation } from '../core/situation'
 import { presetStartup } from '../core/startup'
 import { trailerOf } from '../core/trailer'
@@ -86,6 +94,8 @@ import {
   type KaartenStand,
   type BusfotoStand,
   type BusKleurstellingen,
+  type OmsiMelding,
+  type OmsiOverlays,
   type BeginRequest,
   type FreeRequest,
   type DutyDate,
@@ -658,6 +668,162 @@ async function maakAlleBusfotos(): Promise<void> {
   }
 }
 
+/**
+ * De wacht over OMSI tijdens een lopende dienst.
+ *
+ * Luc: "laat de app detecteren wanneer omsi crasht zodat je direct opnieuw kan
+ * launchen vanuit de dienst die je speelt". Elke tien tellen kijkt de app of
+ * Omsi.exe er nog is (tasklist, goedkoop). Is het weg zonder dat logfile.txt op
+ * "OMSI is closing..." eindigt, dan is het gecrasht. Is het er nog maar schrijft
+ * de plugin niet meer terwijl hij dat eerder wel deed, dan vraagt de app aan
+ * Windows of het venster nog reageert (core/omsiProces.ts, anderhalve seconde);
+ * drie keer achter elkaar niet, dan is het vastgelopen. Tijdens het laden van
+ * de kaart reageert OMSI soms ook minuten niet; daarom telt het pas als de
+ * plugin al eens verse gegevens gaf.
+ *
+ * logfile.txt is tijdens het spelen niet te lezen -- OMSI houdt het dicht --
+ * dus "Direct3D-Device lost!" zien we pas achteraf.
+ */
+let omsiMelding: OmsiMelding | undefined
+/*
+ * Welk proces de wacht bewaakt. Altijd Omsi, behalve in een proef: die zet een
+ * eigen programma neer dat vastloopt, zodat er nooit aan het echte spel van de
+ * speler gekomen wordt.
+ */
+const OMSI_PROCES = process.env.OMSI_ENHANCER_PROEFPROCES || 'Omsi'
+const omsiWacht = {
+  bezig: false,
+  draaide: false,
+  /** Sinds wanneer de app dit proces ziet; een ouder logboek hoort bij een vorige sessie. */
+  gezienSinds: 0,
+  /** Heeft de app het vastgelopen spel zelf afgesloten? Dan is het nooit "netjes". */
+  doorOnsGesloten: false,
+  versGezien: false,
+  nietReagerend: 0,
+  laatsteScan: 0,
+  overlaysGemeld: false,
+  vastGemeld: false,
+  overlays: [] as OverlayInOmsi[]
+}
+
+function meldOverOmsi(melding: OmsiMelding): void {
+  omsiMelding = melding
+  log(
+    `OMSI ${melding.soort === 'crash' ? 'gecrasht' : melding.soort === 'vast' ? 'vastgelopen' : 'overlays'}: ` +
+      (melding.overlays.map((item) => item.soort).join(', ') || 'geen overlays bekend')
+  )
+  for (const venster of BrowserWindow.getAllWindows()) {
+    if (!venster.isDestroyed()) venster.webContents.send('omsi:melding', melding)
+  }
+}
+
+/** LosslessScaling en dergelijke: die haken niet in OMSI maar pakken het beeld van buitenaf. */
+async function externeBeeldprogrammas(): Promise<string[]> {
+  return new Promise((klaar) => {
+    const kijk = spawn('tasklist', ['/FO', 'CSV', '/NH'], { windowsHide: true })
+    let uit = ''
+    kijk.stdout.on('data', (stuk) => {
+      uit += String(stuk)
+    })
+    kijk.on('close', () => klaar(/"LosslessScaling\.exe"/i.test(uit) ? ['LosslessScaling'] : []))
+    kijk.on('error', () => klaar([]))
+  })
+}
+
+async function bewaakOmsi(): Promise<void> {
+  if (omsiWacht.bezig) return
+  const dienst = career?.activeDuty
+  if (!dienst?.startedAt) {
+    omsiWacht.draaide = false
+    return
+  }
+  omsiWacht.bezig = true
+  try {
+    const draait = await isOmsiRunning(`${OMSI_PROCES}.exe`)
+    if (!draait) {
+      if (omsiWacht.draaide) {
+        omsiWacht.draaide = false
+        /*
+         * Netjes afgesloten staat als "OMSI is closing..." achteraan logfile.txt.
+         * Maar alleen als dat logboek van dit spel is: een ouder bestand hoort bij
+         * een vorige keer. En wat de app zelf afsloot omdat het vastzat, was nooit
+         * netjes.
+         */
+        const staart = leesLogfileStaart(omsi())
+        const netjes =
+          !omsiWacht.doorOnsGesloten &&
+          staart?.netjesDicht === true &&
+          staart.gewijzigd >= omsiWacht.gezienSinds - 5000
+        if (netjes) log('OMSI tijdens de dienst netjes afgesloten')
+        else meldOverOmsi({ soort: 'crash', tijd: new Date().toISOString(), overlays: omsiWacht.overlays })
+      }
+      return
+    }
+    if (!omsiWacht.draaide) {
+      // Een nieuw OMSI: alles van de vorige keer vergeten.
+      Object.assign(omsiWacht, {
+        draaide: true,
+        gezienSinds: Date.now(),
+        doorOnsGesloten: false,
+        versGezien: false,
+        nietReagerend: 0,
+        laatsteScan: 0,
+        overlaysGemeld: false,
+        vastGemeld: false,
+        overlays: []
+      })
+    }
+
+    const live = readLive()
+    const vers = Boolean(live?.alive && (live.ageMs ?? Infinity) < 15000)
+    if (vers) omsiWacht.versGezien = true
+    const stilGevallen = omsiWacht.versGezien && !vers
+    const eersteScan = vers && omsiWacht.laatsteScan === 0
+    const hoogTijd = omsiWacht.versGezien && Date.now() - omsiWacht.laatsteScan > 90000
+    if (!stilGevallen && !eersteScan && !hoogTijd) {
+      omsiWacht.nietReagerend = 0
+      return
+    }
+
+    const proces = await leesOmsiProces(OMSI_PROCES)
+    omsiWacht.laatsteScan = Date.now()
+    if (!proces) return
+    omsiWacht.overlays = herkenOverlays(proces.modules, omsi())
+
+    if (!omsiWacht.overlaysGemeld) {
+      omsiWacht.overlaysGemeld = true
+      log(`in OMSI: ${omsiWacht.overlays.map((item) => item.soort).join(', ') || 'geen overlays'}`)
+      const keuze = readSettings(userData()).overlayWaarschuwing ?? {}
+      const standaard: Record<string, boolean> = { discord: true, nvidia: true, rtss: true, obs: true }
+      const ongewenst = omsiWacht.overlays.filter(
+        (item) => (keuze as Record<string, boolean | undefined>)[item.soort] ?? standaard[item.soort] ?? false
+      )
+      if (ongewenst.length > 0) {
+        meldOverOmsi({ soort: 'overlays', tijd: new Date().toISOString(), overlays: ongewenst })
+      }
+    }
+
+    if (proces.reageert || !stilGevallen) {
+      omsiWacht.nietReagerend = 0
+      return
+    }
+    omsiWacht.nietReagerend += 1
+    if (omsiWacht.nietReagerend >= 3 && !omsiWacht.vastGemeld) {
+      omsiWacht.vastGemeld = true
+      meldOverOmsi({
+        soort: 'vast',
+        tijd: new Date().toISOString(),
+        pid: proces.pid,
+        overlays: omsiWacht.overlays
+      })
+    }
+  } catch (fout) {
+    logFout('OMSI bewaken', fout)
+  } finally {
+    omsiWacht.bezig = false
+  }
+}
+
 /** Waar de bus bij de eerste halte komt te staan. */
 function spawnFor(folder: string, stopId: string | undefined) {
   if (!stopId) return undefined
@@ -737,7 +903,19 @@ function sessieGegevens(): SessionResult {
   const live = readLive()
   const start = baseline()
   if (!live) return { drivenKm: 0, elapsedMinutes: 0, dutyComplete: false, finished: false }
-  if (!start) return { drivenKm: 0, elapsedMinutes: 0, dutyComplete: false, finished: true }
+  if (!start) {
+    // Net na een herstart, voor de nieuwe nulmeting: dan telt alleen wat er al was.
+    const eerder = career?.activeDuty?.eerder
+    return {
+      drivenKm: eerder?.km ?? 0,
+      elapsedMinutes: eerder?.minuten ?? 0,
+      harshBrakes: eerder?.harshBrakes,
+      harshAccels: eerder?.harshAccels,
+      collisions: eerder?.collisions,
+      dutyComplete: false,
+      finished: true
+    }
+  }
 
   const elapsed = live.time / 60 - start.clockMinutes
   const duty = currentDuty()
@@ -764,16 +942,28 @@ function sessieGegevens(): SessionResult {
   const fuelUsed =
     startTank !== undefined ? Math.max(0, startTank - live.tankPercent) : undefined
 
+  /*
+   * Wat er voor een herstart van OMSI al gereden was, telt mee; zie
+   * `ActiveDuty.eerder`. Zonder herstart is dat alles nul.
+   */
+  const eerder = career?.activeDuty?.eerder
+  const ditDeel = gereden(live.km + live.metres / 1000 - start.odometerKm, elapsed)
+  const minuten = elapsed >= 0 ? elapsed : elapsed + 1440
   return {
     stopsDone,
-    drivenKm: gereden(live.km + live.metres / 1000 - start.odometerKm, elapsed),
-    elapsedMinutes: elapsed >= 0 ? elapsed : elapsed + 1440,
+    drivenKm: eerder
+      ? Math.round(((ditDeel ?? 0) + eerder.km) * 100) / 100
+      : ditDeel,
+    elapsedMinutes: minuten + (eerder?.minuten ?? 0),
     delayMinutes: status.delayMinutes,
-    harshBrakes: status.harshBrakes,
-    harshAccels: status.harshAccels,
+    harshBrakes:
+      status.harshBrakes !== undefined ? status.harshBrakes + (eerder?.harshBrakes ?? 0) : undefined,
+    harshAccels:
+      status.harshAccels !== undefined ? status.harshAccels + (eerder?.harshAccels ?? 0) : undefined,
     topSpeed: live.topSpeed,
     tickets: status.tickets,
-    collisions: status.collisions,
+    collisions:
+      status.collisions !== undefined ? status.collisions + (eerder?.collisions ?? 0) : eerder?.collisions,
     worstCollision: status.worstCollision,
     fuelUsed,
     fuel: live.tankPercent,
@@ -1780,6 +1970,32 @@ function registerHandlers(): void {
    * opnieuw. Draait het spel, dan is alles wat hier verandert straks weg, dus
    * dat melden we erbij in plaats van het stilletjes te laten gebeuren.
    */
+  /* Wat er nu in OMSI hangt; voor het tabblad Overlays in de instellingen. */
+  handle('omsi:overlays', async (): Promise<OmsiOverlays> => {
+    const proces = await leesOmsiProces(OMSI_PROCES)
+    const extern = (await externeBeeldprogrammas()).filter(Boolean)
+    if (!proces) return { draait: false, overlays: [], extern }
+    return {
+      draait: true,
+      reageert: proces.reageert,
+      overlays: herkenOverlays(proces.modules, omsi()),
+      extern
+    }
+  })
+
+  handle('omsi:melding', (): OmsiMelding | undefined => omsiMelding)
+  handle('omsi:melding:weg', () => {
+    omsiMelding = undefined
+  })
+
+  /* Alleen op verzoek van de speler, met het pid uit de melding over de vastloper. */
+  handle('omsi:sluiten', async (_event, pid: number): Promise<boolean> => {
+    if (!omsiMelding || omsiMelding.soort !== 'vast' || omsiMelding.pid !== pid) return false
+    log(`vastgelopen OMSI (pid ${pid}) afgesloten op verzoek van de speler`)
+    omsiWacht.doorOnsGesloten = true
+    return sluitOmsi(pid)
+  })
+
   handle('game:settings', async () => ({
     values: readGameSettings(omsi()),
     omsiRunning: await isOmsiRunning()
@@ -2291,6 +2507,30 @@ function registerHandlers(): void {
     if (career?.activeDuty && !career.activeDuty.startedAt) {
       persist({ ...career, activeDuty: { ...career.activeDuty, startedAt: new Date().toISOString() } })
     }
+    /*
+     * Opnieuw starten na een crash of vastloper: wat er tot nu toe gereden is,
+     * gaat bij de dienst, en de nulmeting gaat weg zodat er bij de herstart een
+     * nieuwe komt. De laatste stand van de plugin staat nog in live.json.
+     */
+    if (request.herstart && career?.activeDuty?.startedAt) {
+      const deel = sessieGegevens()
+      const oud = career.activeDuty.eerder
+      // `sessieGegevens` telt de eerdere delen al mee: dit is het totaal tot nu.
+      const eerder = {
+        km: deel.drivenKm ?? oud?.km ?? 0,
+        minuten: deel.elapsedMinutes,
+        harshBrakes: deel.harshBrakes ?? oud?.harshBrakes ?? 0,
+        harshAccels: deel.harshAccels ?? oud?.harshAccels ?? 0,
+        collisions: deel.collisions ?? oud?.collisions ?? 0,
+        herstarts: (oud?.herstarts ?? 0) + 1
+      }
+      log(
+        `OMSI opnieuw gestart binnen de dienst: tot nu ${eerder.km} km, ` +
+          `${Math.round(eerder.minuten)} min, ${eerder.herstarts}e herstart`
+      )
+      persist({ ...career, activeDuty: { ...career.activeDuty, eerder, baseline: undefined } })
+      omsiMelding = undefined
+    }
 
     /*
      * Eerst klaarzetten, dan pas starten. Andersom heeft geen zin: OMSI leest
@@ -2756,6 +2996,8 @@ if (!app.requestSingleInstanceLock()) {
       logFout('OMSI zoeken', fout)
     }
     meldPluginLogboek('de vorige keer dat OMSI draaide')
+    // De wacht over OMSI tijdens een dienst; zie `bewaakOmsi`.
+    setInterval(() => void bewaakOmsi(), 10000).unref?.()
     career = resolveActive(userData())
     registerHandlers()
     createWindow()

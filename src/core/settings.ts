@@ -69,6 +69,14 @@ export interface Settings {
    */
   languageChosen?: boolean
   /**
+   * Per overlay: waarschuwen als hij in OMSI zit? Zie core/omsiProces.ts.
+   *
+   * Steam staat standaard uit, want die valt niet uit te zetten (Steam zet hem
+   * bij elke start terug) en een waarschuwing waar je niets mee kunt is ruis.
+   * opentrack staat er niet bij: dat wil de speler juist houden.
+   */
+  overlayWaarschuwing?: Partial<Record<'steam' | 'discord' | 'nvidia' | 'rtss' | 'obs' | 'd3d9', boolean>>
+  /**
    * Is de vraag om alle busfoto's in één keer te maken al gesteld?
    *
    * Eén keer, als laatste stap van het installeren -- ook bij wie de app al
@@ -105,7 +113,11 @@ export function readSettings(userDataPath: string): Settings {
           : 'systeem',
       mapView: raw.mapView === 'lijst' ? 'lijst' : 'tegels',
       languageChosen: raw.languageChosen === true,
-      busPhotosOffered: raw.busPhotosOffered === true
+      busPhotosOffered: raw.busPhotosOffered === true,
+      overlayWaarschuwing:
+        raw.overlayWaarschuwing && typeof raw.overlayWaarschuwing === 'object'
+          ? raw.overlayWaarschuwing
+          : undefined
     }
   } catch {
     return {
@@ -153,7 +165,11 @@ export function writeSettings(userDataPath: string, settings: Partial<Settings>)
     busPhotosOffered:
       typeof settings.busPhotosOffered === 'boolean'
         ? settings.busPhotosOffered
-        : current.busPhotosOffered
+        : current.busPhotosOffered,
+    overlayWaarschuwing:
+      settings.overlayWaarschuwing && typeof settings.overlayWaarschuwing === 'object'
+        ? { ...current.overlayWaarschuwing, ...settings.overlayWaarschuwing }
+        : current.overlayWaarschuwing
   }
   const path = settingsPath(userDataPath)
   mkdirSync(dirname(path), { recursive: true })

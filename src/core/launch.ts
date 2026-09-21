@@ -109,14 +109,14 @@ function rechtenProbleem(reden: unknown): boolean {
 }
 
 /** Draait OMSI al? Zo ja, dan starten we er geen tweede naast. */
-export function isOmsiRunning(): Promise<boolean> {
+export function isOmsiRunning(programma = 'Omsi.exe'): Promise<boolean> {
   return new Promise((resolve) => {
-    const check = spawn('tasklist', ['/FI', 'IMAGENAME eq Omsi.exe', '/NH'])
+    const check = spawn('tasklist', ['/FI', `IMAGENAME eq ${programma}`, '/NH'])
     let output = ''
     check.stdout.on('data', (chunk) => {
       output += String(chunk)
     })
-    check.on('close', () => resolve(/omsi\.exe/i.test(output)))
+    check.on('close', () => resolve(output.toLowerCase().includes(programma.toLowerCase())))
     check.on('error', () => resolve(false))
   })
 }

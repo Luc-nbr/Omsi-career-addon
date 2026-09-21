@@ -97,6 +97,22 @@ export interface ActiveDuty {
   /** Wanneer op "Dienst starten" is gedrukt; daarvoor is hij bevestigd maar niet begonnen. */
   startedAt?: string
   /**
+   * Wat er gereden was voordat OMSI opnieuw gestart werd.
+   *
+   * Na een crash zet de app dezelfde situatie opnieuw klaar, en die begint de
+   * kilometerteller van de bus weer bij nul. Zonder dit zou alles van voor de
+   * crash wegvallen, en met de oude nulmeting erbij werd de dienst "niet
+   * gemeten". Hier telt het op; de nieuwe nulmeting begint bij de herstart.
+   */
+  eerder?: {
+    km: number
+    minuten: number
+    harshBrakes: number
+    harshAccels: number
+    collisions: number
+    herstarts: number
+  }
+  /**
    * Stand van kilometerteller en klok bij het begin. Vastgelegd zodra de plugin
    * na het starten verse gegevens geeft; draaide OMSI nog niet, dan iets later.
    */

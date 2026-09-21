@@ -46,6 +46,30 @@ export interface KaartenStand {
 }
 
 /**
+ * Wat de app over het draaiende OMSI te melden heeft; zie core/omsiProces.ts.
+ *
+ * `crash`: OMSI verdween tijdens een dienst zonder netjes af te sluiten.
+ * `vast`: het proces is er nog, maar reageert al een halve minuut niet.
+ * `overlays`: net na het laden zitten er overlays in die de speler weg wil.
+ */
+export interface OmsiMelding {
+  soort: 'crash' | 'vast' | 'overlays'
+  /** ISO-tijd van het moment dat de app het zag. */
+  tijd: string
+  pid?: number
+  overlays: Array<{ soort: string; pad: string }>
+}
+
+/** Het antwoord op "wat zit er nu in OMSI?". */
+export interface OmsiOverlays {
+  draait: boolean
+  reageert?: boolean
+  overlays: Array<{ soort: string; pad: string }>
+  /** Programma's die van buitenaf in het beeld zitten, zoals LosslessScaling. */
+  extern: string[]
+}
+
+/**
  * De kleurstellingen van een bus, zoals OMSI ze in "Appearance" aanbiedt.
  *
  * `index` is het nummer dat OMSI zelf telt (zie core/kleurstelling.ts); de
@@ -210,6 +234,11 @@ export interface BeginRequest {
   vehiclePath?: string
   /** De kleurstelling op naam, zoals OMSI's "Appearance"; leeg laat OMSI kiezen. */
   kleurstelling?: string
+  /**
+   * OMSI opnieuw starten binnen dezelfde dienst, na een crash of vastloper. Wat
+   * er tot dan gereden is telt mee; de meting begint opnieuw bij de herstart.
+   */
+  herstart?: boolean
   date?: DutyDate
   lineNumber: string
   terminus: string
@@ -505,6 +534,16 @@ export interface CareerApi {
   chooseOmsi(): Promise<{ found: boolean; path?: string; chosen?: boolean; wrong?: boolean }>
   /** De instellingen van OMSI zelf. */
   gameSettings(): Promise<GameSettingsPayload>
+  /** Kijken welke overlays er nu in OMSI zitten; kost ongeveer anderhalve seconde. */
+  omsiOverlays(): Promise<OmsiOverlays>
+  /** De laatste melding over OMSI (crash, vastloper, overlays), als die er is. */
+  omsiMelding(): Promise<OmsiMelding | undefined>
+  /** De melding als gezien markeren. */
+  vergeetOmsiMelding(): Promise<void>
+  /** Meeluisteren met meldingen over OMSI; geeft een opzegfunctie terug. */
+  opOmsiMelding(luisteraar: (melding: OmsiMelding) => void): () => void
+  /** Een vastgelopen OMSI afsluiten, alleen op verzoek van de speler. */
+  sluitOmsi(pid: number): Promise<boolean>
   /** Schrijft alleen de instellingen die veranderd zijn terug naar options.cfg. */
   saveGameSettings(changes: Record<string, string>): Promise<Record<string, string>>
   /** De toetsindeling van OMSI, met de namen uit zijn eigen bestanden. */

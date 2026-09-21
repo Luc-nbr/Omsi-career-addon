@@ -18,6 +18,7 @@ import {
   type KaartenStand,
   type BusfotoStand,
   type BusKleurstellingen,
+  type OmsiMelding,
   type MapSummary,
   type PrinterInfo,
   type HofOffer,
@@ -448,6 +449,13 @@ export function App(): JSX.Element {
    * van de busstap, en daar bleef je dan hangen met een lege remise.
    */
   const [hubMelding, setHubMelding] = useState<string>()
+  /*
+   * Wat het hoofdproces over OMSI te melden heeft tijdens een dienst: gecrasht,
+   * vastgelopen, of overlays erin die je weg wilt. Zie `bewaakOmsi`.
+   */
+  const [omsiMelding, setOmsiMelding] = useState<OmsiMelding>()
+  /** Met welk tabblad de instellingen openen; de melding over overlays wijst naar "Overlays". */
+  const [instellingenTab, setInstellingenTab] = useState<'overlays'>()
 
 
   // De taalkeuze staat los van de chauffeur; hij hoort bij deze computer.
@@ -1049,7 +1057,7 @@ export function App(): JSX.Element {
    * halte en de dienstregeling -- en start daarna pas het spel. Er is geen aparte
    * knop meer voor het klaarzetten; dat hoort bij starten.
    */
-  const begin = useCallback(async (alBevestigd = false) => {
+  const begin = useCallback(async (alBevestigd = false, herstart = false) => {
     /*
      * `confirmed` komt uit de loopbaanstatus en die is er pas een tik later. Wie
      * in één druk bevestigt en start, weet zelf dat het net gebeurd is; daarom
@@ -1065,6 +1073,7 @@ export function App(): JSX.Element {
         vehiclePath: vehicle?.relativePath,
         kleurstelling:
           busKleur && busKleur.pad === vehicle?.relativePath ? busKleur.naam : undefined,
+        herstart,
         date: assignment?.date,
         lineNumber: ibis?.line || duty.legs[0]?.lineNumber || '',
         terminus: duty.legs[0]?.terminus ?? '',
@@ -1482,6 +1491,29 @@ export function App(): JSX.Element {
       opzeggen()
     }
   }, [omsi?.confirmed])
+
+  /* Meldingen over OMSI: de laatste bij het openen, en nieuwe zodra ze komen. */
+  useEffect(() => {
+    let geldig = true
+    void window.career.omsiMelding().then((melding) => {
+      if (geldig && melding) setOmsiMelding(melding)
+    })
+    const opzeggen = window.career.opOmsiMelding((melding) => {
+      if (!geldig) return
+      setOmsiMelding(melding)
+      /*
+       * Een crash of vastloper hoort de speler meteen te zien, ook als hij net
+       * in het hoofdmenu of de instellingen staat: dan naar de lopende dienst,
+       * waar de knop om opnieuw te starten staat. Een melding over overlays is
+       * geen haast; die wacht tot hij daar zelf komt.
+       */
+      if (melding.soort !== 'overlays') setScreen('drive')
+    })
+    return () => {
+      geldig = false
+      opzeggen()
+    }
+  }, [])
 
   /*
    * Tellen voor de vraag bij het installeren, en alleen dan.
@@ -1920,11 +1952,92 @@ export function App(): JSX.Element {
       />
     ) : null
 
+    /*
+     * De melding over OMSI, bovenaan de lopende dienst.
+     *
+     * Luc: "laat de app detecteren wanneer omsi crasht zodat je direct opnieuw
+     * kan launchen vanuit de dienst die je speelt". Na een crash: opnieuw
+     * starten met dezelfde dienst, bus, kleurstelling en remise, zonder de
+     * stappen opnieuw. Na een vastloper eerst het hangende spel afsluiten -- dat
+     * doet de app alleen als de speler op de knop drukt. En altijd erbij welke
+     * overlays er in het spel zaten.
+     */
+    const overlayNamen = (omsiMelding?.overlays ?? [])
+      .filter((item) => item.soort !== 'opentrack')
+      .map((item) => t(language, `ovl.naam.${item.soort as 'steam'}` as const))
+      .join(', ')
+    const omsiTijd = omsiMelding
+      ? new Date(omsiMelding.tijd).toLocaleTimeString(language, { hour: '2-digit', minute: '2-digit' })
+      : ''
+    const omsiBanner = omsiMelding ? (
+      <div className="omsimelding">
+        <p>
+          {omsiMelding.soort === 'crash'
+            ? t(language, 'omsi.crash', { tijd: omsiTijd })
+            : omsiMelding.soort === 'vast'
+              ? t(language, 'omsi.vast', { tijd: omsiTijd })
+              : t(language, 'omsi.overlays', { namen: overlayNamen })}
+          {omsiMelding.soort !== 'overlays' && overlayNamen
+            ? ` ${t(language, 'omsi.inHetSpel', { namen: overlayNamen })}`
+            : ''}
+        </p>
+        {omsiMelding.soort === 'crash' && <p className="omsimelding-klein">{t(language, 'omsi.herstartUitleg')}</p>}
+        <div className="omsimelding-knoppen">
+          {omsiMelding.soort === 'crash' && (
+            <button
+              type="button"
+              className="btn"
+              disabled={busy}
+              onClick={() => {
+                setOmsiMelding(undefined)
+                void window.career.vergeetOmsiMelding()
+                void begin(true, true)
+              }}
+            >
+              {t(language, 'omsi.herstart')}
+            </button>
+          )}
+          {omsiMelding.soort === 'vast' && omsiMelding.pid !== undefined && (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => void window.career.sluitOmsi(omsiMelding.pid as number)}
+            >
+              {t(language, 'omsi.afsluiten')}
+            </button>
+          )}
+          {overlayNamen && (
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => {
+                setInstellingenTab('overlays')
+                setScreen('game')
+              }}
+            >
+              {t(language, 'omsi.bekijken')}
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={() => {
+              setOmsiMelding(undefined)
+              void window.career.vergeetOmsiMelding()
+            }}
+          >
+            {t(language, 'omsi.negeren')}
+          </button>
+        </div>
+      </div>
+    ) : undefined
+
     return (
       <LanguageProvider language={language}>
         <Setup
           stap="bus"
           rechtsInBalk={balkRechts}
+          waarschuwing={omsiBanner}
           lijn={duty.lineNumbers[0] ?? duty.legs[0]?.lineNumber}
           /*
            * De dienst erbij, want daar haalt de kaart zijn tegels en zijn route
@@ -3467,7 +3580,14 @@ export function App(): JSX.Element {
           }
           inhoud={
             screen === 'game' ? (
-              <GameSetup language={language} onBack={() => setScreen('modes')} />
+              <GameSetup
+                language={language}
+                onBack={() => {
+                  setInstellingenTab(undefined)
+                  setScreen('modes')
+                }}
+                beginTab={instellingenTab}
+              />
             ) : screen === 'profiel' && career?.state && career.summary ? (
               <Profiel state={career.state} summary={career.summary} />
             ) : (

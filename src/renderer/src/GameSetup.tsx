@@ -9,12 +9,15 @@ import {
   settingKey,
   type SettingSpec
 } from '../../shared/omsiSettings'
+import type { OmsiOverlays } from '../../shared/api'
 import { MODIFIER_CODES, SCANCODES } from '../../shared/scancodes'
 import { ControllersTab } from './Controllers'
 
 interface Props {
   language: Language
   onBack(): void
+  /** Met welk tabblad het scherm opent; de melding over overlays opent "Overlays". */
+  beginTab?: 'settings' | 'keys' | 'controllers' | 'overlays'
 }
 
 /** Shift en Ctrl zitten in het derde veld van een binding; de rest laten we staan. */
@@ -31,8 +34,8 @@ const MOD_CTRL = 4
  * Er wordt niets geschreven tot je op opslaan drukt, en alleen wat je zelf hebt
  * aangeraakt gaat het bestand in.
  */
-export function GameSetup({ language, onBack }: Props): JSX.Element {
-  const [tab, setTab] = useState<'settings' | 'keys' | 'controllers'>('settings')
+export function GameSetup({ language, onBack, beginTab }: Props): JSX.Element {
+  const [tab, setTab] = useState<'settings' | 'keys' | 'controllers' | 'overlays'>(beginTab ?? 'settings')
   return (
     <div className="app solo">
       <main className="main">
@@ -71,13 +74,128 @@ export function GameSetup({ language, onBack }: Props): JSX.Element {
           >
             {t(language, 'cfg.tabControllers')}
           </button>
+          <button
+            type="button"
+            className="chip"
+            aria-pressed={tab === 'overlays'}
+            onClick={() => setTab('overlays')}
+          >
+            {t(language, 'cfg.tabOverlays')}
+          </button>
         </div>
 
         {tab === 'settings' && <SettingsTab language={language} />}
         {tab === 'keys' && <KeysTab language={language} />}
         {tab === 'controllers' && <ControllersTab language={language} />}
+        {tab === 'overlays' && <OverlaysTab language={language} />}
       </main>
     </div>
+  )
+}
+
+/** De overlays waar de app naar kijkt, in de volgorde waarin ze het vaakst voorkomen. */
+const OVERLAYS = ['steam', 'discord', 'nvidia', 'rtss', 'obs', 'd3d9', 'opentrack'] as const
+type Overlay = (typeof OVERLAYS)[number]
+/** Standaard: waarschuwen voor wat je zelf kunt uitzetten; Steam kan dat niet, zie de uitleg. */
+const STANDAARD_WAARSCHUWEN: Partial<Record<Overlay, boolean>> = {
+  discord: true,
+  nvidia: true,
+  rtss: true,
+  obs: true
+}
+
+/**
+ * Welke overlays er in OMSI zitten, en waar je ze uitzet.
+ *
+ * WAAROM
+ * OMSI liep op Lucs pc herhaaldelijk vast op "Direct3D-Device lost!", en in het
+ * hangende spel zaten telkens de overlays van Steam, Discord en NVIDIA. De app
+ * kan ze niet uitzetten: Discord en NVIDIA bewaren hun keuze versleuteld in hun
+ * eigen programma, en Steam zet zijn bestand bij elke start terug (gemeten op
+ * 19-09 en 21-09; zie core/omsiProces.ts). Wat de app wel kan: in het spel
+ * kijken wat erin zit, zeggen waar de schakelaar staat, en waarschuwen als een
+ * overlay die je weg wilt er toch weer in zit.
+ */
+function OverlaysTab({ language }: { language: Language }): JSX.Element {
+  const [stand, setStand] = useState<OmsiOverlays>()
+  const [kijkt, setKijkt] = useState(false)
+  const [keuze, setKeuze] = useState<Partial<Record<Overlay, boolean>>>({})
+
+  useEffect(() => {
+    void window.career.settings().then((instellingen) => setKeuze(instellingen.overlayWaarschuwing ?? {}))
+  }, [])
+
+  const kijk = useCallback(async () => {
+    setKijkt(true)
+    try {
+      setStand(await window.career.omsiOverlays())
+    } finally {
+      setKijkt(false)
+    }
+  }, [])
+  useEffect(() => {
+    void kijk()
+  }, [kijk])
+
+  const zetKeuze = (soort: Overlay, aan: boolean): void => {
+    const nieuw = { ...keuze, [soort]: aan }
+    setKeuze(nieuw)
+    void window.career.saveSettings({ overlayWaarschuwing: nieuw })
+  }
+
+  const gevonden = new Set(stand?.overlays.map((item) => item.soort) ?? [])
+
+  return (
+    <>
+      <p className="subtitle">{t(language, 'ovl.intro')}</p>
+
+      <div className="actions" style={{ marginTop: 0, marginBottom: 16, alignItems: 'center' }}>
+        <button type="button" className="btn secondary" disabled={kijkt} onClick={() => void kijk()}>
+          {t(language, kijkt ? 'ovl.kijkt' : 'ovl.kijk')}
+        </button>
+        <span className="note">
+          {!stand
+            ? ''
+            : !stand.draait
+              ? t(language, 'ovl.omsiUit')
+              : stand.reageert === false
+                ? t(language, 'ovl.omsiVast')
+                : t(language, 'ovl.omsiDraait')}
+        </span>
+      </div>
+      {stand && stand.extern.length > 0 && (
+        <p className="note warn">{t(language, 'ovl.extern', { namen: stand.extern.join(', ') })}</p>
+      )}
+
+      {OVERLAYS.map((soort) => {
+        const zit = gevonden.has(soort)
+        return (
+          <section className="card" key={soort}>
+            <h2 className="section-title">{t(language, `ovl.naam.${soort}` as const)}</h2>
+            <p className={zit && soort !== 'opentrack' ? 'note warn' : 'note'}>
+              {!stand || !stand.draait
+                ? t(language, 'ovl.onbekend')
+                : zit
+                  ? t(language, 'ovl.inOmsi')
+                  : t(language, 'ovl.nietInOmsi')}
+            </p>
+            <p className="note" style={{ marginTop: 8 }}>
+              {t(language, `ovl.uitleg.${soort}` as const)}
+            </p>
+            {soort !== 'opentrack' && (
+              <label className="note" style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10 }}>
+                <input
+                  type="checkbox"
+                  checked={keuze[soort] ?? STANDAARD_WAARSCHUWEN[soort] ?? false}
+                  onChange={(event) => zetKeuze(soort, event.target.checked)}
+                />
+                {t(language, 'ovl.waarschuw')}
+              </label>
+            )}
+          </section>
+        )
+      })}
+    </>
   )
 }
 

@@ -151,6 +151,216 @@ const TEXT = {
     fr: 'Paramètres d’OMSI',
     nl: 'OMSI-instellingen'
   },
+  'cfg.tabOverlays': {
+    en: 'Overlays',
+    de: 'Overlays',
+    fr: 'Overlays',
+    nl: 'Overlays'
+  },
+  'ovl.intro': {
+    en: 'Steam, Discord and NVIDIA quietly hook into every game. OMSI 2 is a DirectX 9 game from 2013 and can freeze on it: logfile.txt then says “Direct3D-Device lost!” and the game stops responding. The app cannot switch them off, but it can see which ones are in OMSI and tell you where the switch is.',
+    de: 'Steam, Discord und NVIDIA hängen sich unsichtbar in jedes Spiel. OMSI 2 ist ein DirectX-9-Spiel von 2013 und kann daran hängen bleiben: In der logfile.txt steht dann „Direct3D-Device lost!“, und das Spiel reagiert nicht mehr. Die App kann sie nicht ausschalten, sieht aber, welche in OMSI stecken, und sagt dir, wo der Schalter ist.',
+    fr: 'Steam, Discord et NVIDIA s’accrochent discrètement à chaque jeu. OMSI 2 est un jeu DirectX 9 de 2013 et peut s’y bloquer : logfile.txt indique alors « Direct3D-Device lost! » et le jeu ne répond plus. L’application ne peut pas les désactiver, mais elle voit lesquels sont dans OMSI et vous dit où se trouve l’interrupteur.',
+    nl: 'Steam, Discord en NVIDIA haken onzichtbaar in elk spel. OMSI 2 is een DirectX 9-spel uit 2013 en kan daarop vastlopen: in logfile.txt staat dan „Direct3D-Device lost!” en daarna reageert het spel niet meer. De app kan ze niet uitzetten, maar ziet wel welke er in OMSI zitten en zegt waar de schakelaar staat.'
+  },
+  'ovl.kijk': {
+    en: 'Look in OMSI now',
+    de: 'Jetzt in OMSI nachsehen',
+    fr: 'Regarder dans OMSI',
+    nl: 'Nu kijken in OMSI'
+  },
+  'ovl.kijkt': {
+    en: 'Looking…',
+    de: 'Sehe nach…',
+    fr: 'Recherche…',
+    nl: 'Kijken…'
+  },
+  'ovl.omsiUit': {
+    en: 'OMSI is not running. Start it and look again — or drive a duty: the app then looks by itself once the map has loaded.',
+    de: 'OMSI läuft nicht. Starte es und sieh noch einmal nach – oder fahre einen Dienst: Dann sieht die App nach dem Laden der Karte selbst nach.',
+    fr: 'OMSI n’est pas lancé. Lancez-le et regardez de nouveau — ou conduisez un service : l’application regarde alors d’elle-même une fois la carte chargée.',
+    nl: 'OMSI draait niet. Start het en kijk nog eens — of rijd een dienst: dan kijkt de app zelf zodra de kaart geladen is.'
+  },
+  'ovl.omsiDraait': {
+    en: 'OMSI is running; this is what is in it now.',
+    de: 'OMSI läuft; das steckt jetzt darin.',
+    fr: 'OMSI est lancé ; voici ce qu’il contient maintenant.',
+    nl: 'OMSI draait; dit zit er nu in.'
+  },
+  'ovl.omsiVast': {
+    en: 'OMSI is not responding right now.',
+    de: 'OMSI reagiert gerade nicht.',
+    fr: 'OMSI ne répond pas en ce moment.',
+    nl: 'OMSI reageert op dit moment niet.'
+  },
+  'ovl.extern': {
+    en: 'Also running: {namen}. It grabs the picture from outside and injects nothing, but it sits in the display path.',
+    de: 'Läuft auch: {namen}. Es greift das Bild von außen ab und injiziert nichts, sitzt aber im Anzeigeweg.',
+    fr: 'Également lancé : {namen}. Il capte l’image de l’extérieur sans rien injecter, mais il se trouve sur le chemin de l’affichage.',
+    nl: 'Draait ook: {namen}. Dat pakt het beeld van buitenaf en stopt niets in OMSI, maar zit wel in de weg naar je scherm.'
+  },
+  'ovl.inOmsi': {
+    en: 'In OMSI.',
+    de: 'Steckt in OMSI.',
+    fr: 'Présent dans OMSI.',
+    nl: 'Zit in OMSI.'
+  },
+  'ovl.nietInOmsi': {
+    en: 'Not in OMSI.',
+    de: 'Nicht in OMSI.',
+    fr: 'Absent d’OMSI.',
+    nl: 'Zit niet in OMSI.'
+  },
+  'ovl.onbekend': {
+    en: 'Not checked yet: OMSI is not running.',
+    de: 'Noch nicht geprüft: OMSI läuft nicht.',
+    fr: 'Pas encore vérifié : OMSI n’est pas lancé.',
+    nl: 'Nog niet bekeken: OMSI draait niet.'
+  },
+  'ovl.waarschuw': {
+    en: 'Warn me when it is in OMSI',
+    de: 'Warnen, wenn es in OMSI steckt',
+    fr: 'M’avertir s’il est dans OMSI',
+    nl: 'Waarschuw als hij in OMSI zit'
+  },
+  'ovl.naam.steam': {
+    en: 'Steam overlay',
+    de: 'Steam-Overlay',
+    fr: 'Overlay Steam',
+    nl: 'Steam-overlay'
+  },
+  'ovl.naam.discord': {
+    en: 'Discord overlay',
+    de: 'Discord-Overlay',
+    fr: 'Overlay Discord',
+    nl: 'Discord-overlay'
+  },
+  'ovl.naam.nvidia': {
+    en: 'NVIDIA overlay',
+    de: 'NVIDIA-Overlay',
+    fr: 'Overlay NVIDIA',
+    nl: 'NVIDIA-overlay'
+  },
+  'ovl.naam.rtss': {
+    en: 'RivaTuner / MSI Afterburner',
+    de: 'RivaTuner / MSI Afterburner',
+    fr: 'RivaTuner / MSI Afterburner',
+    nl: 'RivaTuner / MSI Afterburner'
+  },
+  'ovl.naam.obs': {
+    en: 'OBS game capture',
+    de: 'OBS-Spielaufnahme',
+    fr: 'Capture de jeu OBS',
+    nl: 'OBS-spelopname'
+  },
+  'ovl.naam.d3d9': {
+    en: 'd3d9.dll in the OMSI folder',
+    de: 'd3d9.dll im OMSI-Ordner',
+    fr: 'd3d9.dll dans le dossier OMSI',
+    nl: 'd3d9.dll in de OMSI-map'
+  },
+  'ovl.naam.opentrack': {
+    en: 'opentrack / TrackIR',
+    de: 'opentrack / TrackIR',
+    fr: 'opentrack / TrackIR',
+    nl: 'opentrack / TrackIR'
+  },
+  'ovl.uitleg.steam': {
+    en: 'Cannot be switched off for good. Steam checks its own files at every start and puts the overlay back, and OMSI always starts through Steam. The switch in Steam does not stop it either.',
+    de: 'Lässt sich nicht dauerhaft ausschalten. Steam prüft bei jedem Start seine eigenen Dateien und stellt das Overlay wieder her, und OMSI startet immer über Steam. Auch der Schalter in Steam hält es nicht ab.',
+    fr: 'Impossible à désactiver durablement. Steam vérifie ses propres fichiers à chaque démarrage et remet l’overlay, et OMSI démarre toujours via Steam. L’interrupteur de Steam ne l’empêche pas non plus.',
+    nl: 'Kan niet blijvend uit. Steam controleert bij elke start zijn eigen bestanden en zet de overlay terug, en OMSI start altijd via Steam. De schakelaar in Steam houdt hem ook niet tegen.'
+  },
+  'ovl.uitleg.discord': {
+    en: 'Switch it off in Discord: Settings › Game Overlay.',
+    de: 'Schalte es in Discord aus: Einstellungen › Spiel-Overlay.',
+    fr: 'Désactivez-le dans Discord : Paramètres › Overlay de jeu.',
+    nl: 'Zet hem uit in Discord: Instellingen › Game-overlay.'
+  },
+  'ovl.uitleg.nvidia': {
+    en: 'Switch it off in the NVIDIA app (or GeForce Experience): Settings › in-game overlay.',
+    de: 'Schalte es in der NVIDIA-App (oder GeForce Experience) aus: Einstellungen › In-Game-Overlay.',
+    fr: 'Désactivez-le dans l’application NVIDIA (ou GeForce Experience) : Paramètres › overlay en jeu.',
+    nl: 'Zet hem uit in de NVIDIA-app (of GeForce Experience): Instellingen › in-game-overlay.'
+  },
+  'ovl.uitleg.rtss': {
+    en: 'Close RivaTuner Statistics Server, or add OMSI to its exceptions.',
+    de: 'Beende RivaTuner Statistics Server oder setze OMSI dort auf die Ausnahmeliste.',
+    fr: 'Fermez RivaTuner Statistics Server, ou ajoutez OMSI à ses exceptions.',
+    nl: 'Sluit RivaTuner Statistics Server, of zet OMSI daar bij de uitzonderingen.'
+  },
+  'ovl.uitleg.obs': {
+    en: 'Close OBS, or stop game capture for OMSI.',
+    de: 'Beende OBS oder stoppe die Spielaufnahme für OMSI.',
+    fr: 'Fermez OBS, ou arrêtez la capture de jeu pour OMSI.',
+    nl: 'Sluit OBS, of stop de spelopname voor OMSI.'
+  },
+  'ovl.uitleg.d3d9': {
+    en: 'A replacement for DirectX 9 next to Omsi.exe, from a graphics mod. Not an overlay, but it sits between OMSI and your graphics card.',
+    de: 'Ein Ersatz für DirectX 9 neben der Omsi.exe, von einer Grafik-Mod. Kein Overlay, sitzt aber zwischen OMSI und deiner Grafikkarte.',
+    fr: 'Un remplaçant de DirectX 9 à côté d’Omsi.exe, venant d’un mod graphique. Pas un overlay, mais il se place entre OMSI et votre carte graphique.',
+    nl: 'Een vervanger voor DirectX 9 naast Omsi.exe, van een grafische mod. Geen overlay, maar hij zit wel tussen OMSI en je videokaart.'
+  },
+  'ovl.uitleg.opentrack': {
+    en: 'Head tracking. You want to keep it; the app never warns about it.',
+    de: 'Kopfsteuerung. Die willst du behalten; die App warnt nie davor.',
+    fr: 'Suivi de la tête. Vous voulez le garder ; l’application ne l’avertit jamais.',
+    nl: 'Hoofdbesturing. Die wil je houden; de app waarschuwt er nooit voor.'
+  },
+  'omsi.crash': {
+    en: 'OMSI stopped at {tijd} without closing properly.',
+    de: 'OMSI ist um {tijd} beendet worden, ohne sauber zu schließen.',
+    fr: 'OMSI s’est arrêté à {tijd} sans se fermer correctement.',
+    nl: 'OMSI is om {tijd} gestopt zonder netjes af te sluiten.'
+  },
+  'omsi.vast': {
+    en: 'OMSI has not responded since {tijd}.',
+    de: 'OMSI reagiert seit {tijd} nicht mehr.',
+    fr: 'OMSI ne répond plus depuis {tijd}.',
+    nl: 'OMSI reageert sinds {tijd} niet meer.'
+  },
+  'omsi.overlays': {
+    en: 'Overlays that can freeze OMSI are hooked into the game: {namen}.',
+    de: 'Im Spiel stecken Overlays, die OMSI hängen lassen können: {namen}.',
+    fr: 'Des overlays qui peuvent bloquer OMSI sont accrochés au jeu : {namen}.',
+    nl: 'In OMSI hangen overlays die het spel kunnen laten vastlopen: {namen}.'
+  },
+  'omsi.inHetSpel': {
+    en: 'In the game were: {namen}.',
+    de: 'Im Spiel steckten: {namen}.',
+    fr: 'Dans le jeu se trouvaient : {namen}.',
+    nl: 'In het spel zaten: {namen}.'
+  },
+  'omsi.herstartUitleg': {
+    en: 'What you have driven so far still counts; the bus is back at the start of the duty.',
+    de: 'Was du bisher gefahren bist, zählt weiter; der Bus steht wieder am Anfang des Dienstes.',
+    fr: 'Ce que vous avez déjà conduit compte toujours ; le bus est de nouveau au début du service.',
+    nl: 'Wat je al gereden hebt telt mee; de bus staat weer aan het begin van de dienst.'
+  },
+  'omsi.herstart': {
+    en: 'Restart OMSI with this duty',
+    de: 'OMSI mit diesem Dienst neu starten',
+    fr: 'Relancer OMSI avec ce service',
+    nl: 'OMSI opnieuw starten met deze dienst'
+  },
+  'omsi.afsluiten': {
+    en: 'Close the frozen OMSI',
+    de: 'Hängendes OMSI beenden',
+    fr: 'Fermer l’OMSI bloqué',
+    nl: 'Vastgelopen OMSI afsluiten'
+  },
+  'omsi.bekijken': {
+    en: 'View overlays',
+    de: 'Overlays ansehen',
+    fr: 'Voir les overlays',
+    nl: 'Overlays bekijken'
+  },
+  'omsi.negeren': {
+    en: 'Dismiss',
+    de: 'Ausblenden',
+    fr: 'Ignorer',
+    nl: 'Negeren'
+  },
   'photos.title': {
     en: 'Pictures of your buses',
     de: 'Bilder deiner Busse',

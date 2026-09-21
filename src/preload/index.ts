@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { BusfotoStand, CareerApi, DutyRequest, KaartenStand } from '../shared/api'
+import type { BusfotoStand, CareerApi, DutyRequest, KaartenStand, OmsiMelding } from '../shared/api'
 
 /**
  * De renderer praat alleen via deze brug met het bestandssysteem; er staat geen
@@ -69,6 +69,15 @@ const api: CareerApi = {
   liveStatus: () => ipcRenderer.invoke('live:status'),
   omsiRunning: () => ipcRenderer.invoke('omsi:running'),
   gameSettings: () => ipcRenderer.invoke('game:settings'),
+  omsiOverlays: () => ipcRenderer.invoke('omsi:overlays'),
+  omsiMelding: () => ipcRenderer.invoke('omsi:melding'),
+  vergeetOmsiMelding: () => ipcRenderer.invoke('omsi:melding:weg'),
+  opOmsiMelding: (luisteraar: (melding: OmsiMelding) => void) => {
+    const heen = (_gebeurtenis: unknown, melding: OmsiMelding): void => luisteraar(melding)
+    ipcRenderer.on('omsi:melding', heen)
+    return () => ipcRenderer.removeListener('omsi:melding', heen)
+  },
+  sluitOmsi: (pid) => ipcRenderer.invoke('omsi:sluiten', pid),
   saveGameSettings: (changes) => ipcRenderer.invoke('game:settings:save', changes),
   gameKeys: () => ipcRenderer.invoke('game:keys'),
   gameControllers: () => ipcRenderer.invoke('game:controllers'),
