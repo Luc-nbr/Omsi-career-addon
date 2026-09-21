@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { extname, join } from 'node:path'
+import { basename, extname, join } from 'node:path'
 import { BrowserWindow, ipcMain, nativeImage } from 'electron'
 import { verkleinTextuur, type BusTekeningMetPlaten } from '../core/busbeeld'
 import { trailerOf } from '../core/trailer'
@@ -73,6 +73,37 @@ export function ruimOudeFotosOp(userData: string): void {
 /** De naam van de foto van deze bus; het pad bepaalt hem, zodat hij terug te vinden is. */
 function bestandsnaam(relatiefPad: string): string {
   return `${createHash('sha1').update(relatiefPad.toLowerCase()).digest('hex').slice(0, 16)}.png`
+}
+
+/**
+ * Het merkteken van een bus die geen foto kan krijgen.
+ *
+ * WAAROM
+ * Van de 341 bussen hier zijn er 28 zo versleuteld dat er niets van te tekenen
+ * valt, en een paar hebben geen model dat we kunnen lezen. Zonder merkteken
+ * ging het bijwerken die elke keer opnieuw langs -- elk een halve seconde
+ * lezen voor hetzelfde "nee" -- en bleef de teller op "28 te gaan" staan, ook
+ * als er niets nieuws was. Een leeg bestand naast de foto's zegt: al geprobeerd.
+ *
+ * Alleen voor een bus waarvan vaststaat dat het niet gaat. Liep er iets mis in
+ * de werker of in het venster, dan komt er geen merkteken: dat kan de volgende
+ * keer best lukken.
+ */
+function merktekenVan(map: string, relatiefPad: string): string {
+  return join(map, bestandsnaam(relatiefPad).replace(/\.png$/, '.geen'))
+}
+
+/** Heeft deze bus al een foto, of staat vast dat hij er geen krijgt? */
+export function busfotoAfgehandeld(userData: string, relatiefPad: string): 'foto' | 'geen' | undefined {
+  const map = busfotoMap(userData)
+  if (existsSync(join(map, bestandsnaam(relatiefPad)))) return 'foto'
+  if (existsSync(merktekenVan(map, relatiefPad))) return 'geen'
+  return undefined
+}
+
+/** Het adres waaronder het scherm de foto van deze bus opvraagt. */
+export function busfotoAdres(bestand: string): string {
+  return `omsibus://foto/${basename(bestand)}`
 }
 
 let venster: BrowserWindow | undefined
@@ -150,6 +181,7 @@ export function maakBusfoto(opdracht: FotoOpdracht): Promise<string | undefined>
   const map = busfotoMap(opdracht.userData)
   const doel = join(map, bestandsnaam(opdracht.relatiefPad))
   if (existsSync(doel)) return Promise.resolve(doel)
+  if (existsSync(merktekenVan(map, opdracht.relatiefPad))) return Promise.resolve(undefined)
 
   /* In de rij: één tekening tegelijk; zie de uitleg bovenaan. */
   const beurt = bezig.then(() => tekenEen(opdracht, map, doel))
@@ -168,9 +200,22 @@ async function tekenEen(
    * hoofdproces doet één ding tegelijk: zolang het hier leest, beweegt er geen
    * knop en geen overlay. Zie `kaartwerker.ts`.
    */
-  const tekening = await opdracht.tekenen(opdracht.busPad)
+  let tekening: BusTekeningMetPlaten | undefined
+  try {
+    tekening = await opdracht.tekenen(opdracht.busPad)
+  } catch (fout) {
+    // Geen merkteken: dit is pech, geen eigenschap van de bus.
+    logFout(`busfoto ${opdracht.relatiefPad} lezen`, fout)
+    return undefined
+  }
   if (!tekening) {
     log(`busfoto: geen model voor ${opdracht.relatiefPad}`)
+    try {
+      mkdirSync(map, { recursive: true })
+      writeFileSync(merktekenVan(map, opdracht.relatiefPad), '')
+    } catch {
+      // Dan probeert de volgende ronde het nog eens; meer kost het niet.
+    }
     return undefined
   }
 

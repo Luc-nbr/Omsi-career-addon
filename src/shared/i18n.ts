@@ -103,6 +103,150 @@ const TEXT = {
     fr: 'Vous pouvez passer. Le reste se fait en arrière-plan ; une carte pas encore prête mettra simplement un instant de plus.',
     nl: 'Je mag dit overslaan. De rest gebeurt op de achtergrond, en een kaart die nog niet klaar is duurt dan even wat langer.'
   },
+  'photos.title': {
+    en: 'Pictures of your buses',
+    de: 'Bilder deiner Busse',
+    fr: 'Images de vos bus',
+    nl: 'Plaatjes van je bussen'
+  },
+  'photos.syncTitle': {
+    en: 'Updating bus pictures',
+    de: 'Busbilder aktualisieren',
+    fr: 'Mise à jour des images de bus',
+    nl: 'Busplaatjes bijwerken'
+  },
+  'photos.intro': {
+    en: 'The app draws a picture of every bus from its own 3D model, so you can see which bus and which livery you are choosing. It can do them all now in one go, or one by one whenever you open a bus.',
+    de: 'Die App zeichnet von jedem Bus ein Bild aus seinem eigenen 3D-Modell, damit du bei der Auswahl siehst, welcher Bus und welche Lackierung es ist. Das geht jetzt in einem Rutsch oder einzeln, sobald du einen Bus aufrufst.',
+    fr: 'L’application dessine une image de chaque bus à partir de son propre modèle 3D, pour que vous voyiez quel bus et quelle livrée vous choisissez. Elle peut toutes les faire maintenant, ou une par une quand vous ouvrez un bus.',
+    nl: 'De app tekent van elke bus een plaatje uit zijn eigen 3D-model, zodat je bij het kiezen ziet welke bus en welke kleurstelling het is. Dat kan nu in één keer, of per bus zodra je hem opzoekt.'
+  },
+  'photos.count': {
+    en: '{aantal} buses without a picture · about {minuten} min.',
+    de: '{aantal} Busse ohne Bild · etwa {minuten} Min.',
+    fr: '{aantal} bus sans image · environ {minuten} min',
+    nl: '{aantal} bussen zonder plaatje · ongeveer {minuten} min.'
+  },
+  'photos.start': {
+    en: 'Make them all now',
+    de: 'Jetzt alle erstellen',
+    fr: 'Tout faire maintenant',
+    nl: 'Alles nu maken'
+  },
+  'photos.skip': {
+    en: 'Skip',
+    de: 'Überspringen',
+    fr: 'Passer',
+    nl: 'Overslaan'
+  },
+  'photos.foot': {
+    en: 'You can skip this. A picture then appears when you open that bus, and “Update bus pictures” on the start screen makes all of them later – also for buses you add afterwards.',
+    de: 'Du kannst das überspringen. Ein Bild erscheint dann, sobald du den Bus aufrufst, und „Busbilder aktualisieren“ auf dem Startbildschirm erstellt später alle – auch für Busse, die du danach hinzufügst.',
+    fr: 'Vous pouvez passer. Une image apparaîtra quand vous ouvrirez ce bus, et « Mettre à jour les images » sur l’écran d’accueil les fera toutes plus tard – aussi pour les bus ajoutés ensuite.',
+    nl: 'Je mag dit overslaan. Een plaatje komt dan zodra je de bus opzoekt, en met ‘Busplaatjes bijwerken’ op het startscherm maak je ze later alsnog allemaal – ook voor bussen die je er later bij zet.'
+  },
+  'photos.looking': {
+    en: 'Looking which buses are there',
+    de: 'Nachsehen, welche Busse da sind',
+    fr: 'Recherche des bus installés',
+    nl: 'Kijken welke bussen er zijn'
+  },
+  'photos.first': {
+    en: 'The first picture is on its way',
+    de: 'Das erste Bild ist unterwegs',
+    fr: 'La première image arrive',
+    nl: 'Het eerste plaatje komt eraan'
+  },
+  'photos.progress': {
+    en: '{klaar} of {totaal} buses done',
+    de: '{klaar} von {totaal} Bussen fertig',
+    fr: '{klaar} bus sur {totaal} terminés',
+    nl: '{klaar} van {totaal} bussen klaar'
+  },
+  'photos.rest': {
+    en: 'About {minuten} min. to go',
+    de: 'Noch etwa {minuten} Min.',
+    fr: 'Encore environ {minuten} min',
+    nl: 'Nog ongeveer {minuten} min.'
+  },
+  'photos.restShort': {
+    en: 'Less than a minute to go',
+    de: 'Noch weniger als eine Minute',
+    fr: 'Moins d’une minute restante',
+    nl: 'Nog minder dan een minuut'
+  },
+  'photos.stop': {
+    en: 'Stop',
+    de: 'Anhalten',
+    fr: 'Arrêter',
+    nl: 'Stoppen'
+  },
+  'photos.skipNow': {
+    en: 'Skip and start now',
+    de: 'Überspringen und jetzt starten',
+    fr: 'Passer et commencer',
+    nl: 'Overslaan en nu beginnen'
+  },
+  'photos.footBusy': {
+    en: 'Pictures that are done stay done. If you stop, the next update carries on where this one left off.',
+    de: 'Fertige Bilder bleiben erhalten. Wenn du anhältst, macht die nächste Aktualisierung dort weiter.',
+    fr: 'Les images terminées sont gardées. Si vous arrêtez, la prochaine mise à jour reprend là où celle-ci s’est arrêtée.',
+    nl: 'Wat klaar is blijft klaar. Stop je, dan gaat de volgende keer bijwerken verder waar deze ophield.'
+  },
+  'photos.done': {
+    en: 'Done: {gemaakt} new pictures.',
+    de: 'Fertig: {gemaakt} neue Bilder.',
+    fr: 'Terminé : {gemaakt} nouvelles images.',
+    nl: 'Klaar: {gemaakt} nieuwe plaatjes.'
+  },
+  'photos.doneNone': {
+    en: 'No new pictures this time.',
+    de: 'Diesmal keine neuen Bilder.',
+    fr: 'Aucune nouvelle image cette fois.',
+    nl: 'Er kwamen deze keer geen nieuwe plaatjes bij.'
+  },
+  'photos.stopped': {
+    en: 'Stopped after {gemaakt} new pictures. The rest follows at the next update.',
+    de: 'Angehalten nach {gemaakt} neuen Bildern. Der Rest folgt bei der nächsten Aktualisierung.',
+    fr: 'Arrêté après {gemaakt} nouvelles images. Le reste suivra à la prochaine mise à jour.',
+    nl: 'Gestopt na {gemaakt} nieuwe plaatjes. De rest volgt bij de volgende keer bijwerken.'
+  },
+  'photos.nothing': {
+    en: 'Every bus already has a picture.',
+    de: 'Jeder Bus hat schon ein Bild.',
+    fr: 'Chaque bus a déjà une image.',
+    nl: 'Alle bussen hebben al een plaatje.'
+  },
+  'photos.failed': {
+    en: '{aantal} buses did not work out this time; they get another go at the next update.',
+    de: '{aantal} Busse haben diesmal nicht geklappt; sie kommen bei der nächsten Aktualisierung wieder dran.',
+    fr: '{aantal} bus n’ont pas marché cette fois ; ils seront réessayés à la prochaine mise à jour.',
+    nl: '{aantal} bussen lukten deze keer niet; die komen bij de volgende keer bijwerken weer aan de beurt.'
+  },
+  'photos.none': {
+    en: '{zonder} buses get no picture: their maker protected the model, or it cannot be read. They keep the icon.',
+    de: '{zonder} Busse bekommen kein Bild: Ihr Hersteller hat das Modell geschützt, oder es ist nicht lesbar. Sie behalten das Symbol.',
+    fr: '{zonder} bus n’auront pas d’image : leur auteur a protégé le modèle, ou il est illisible. Ils gardent l’icône.',
+    nl: '{zonder} bussen krijgen geen plaatje: de maker heeft het model beveiligd, of het is niet te lezen. Die houden het icoon.'
+  },
+  'photos.continue': {
+    en: 'Continue',
+    de: 'Weiter',
+    fr: 'Continuer',
+    nl: 'Verder'
+  },
+  'photos.sync': {
+    en: 'Update bus pictures',
+    de: 'Busbilder aktualisieren',
+    fr: 'Mettre à jour les images',
+    nl: 'Busplaatjes bijwerken'
+  },
+  'photos.syncBusy': {
+    en: 'Pictures: {klaar} of {totaal}',
+    de: 'Bilder: {klaar} von {totaal}',
+    fr: 'Images : {klaar} sur {totaal}',
+    nl: 'Plaatjes: {klaar} van {totaal}'
+  },
   'welcome.intro': {
     en: 'OMSI Enhancer turns the maps you already own into a job. Choose how long you want to drive and you get a real duty: the line, the tour, the IBIS codes to key in and the stop where your bus belongs.',
     de: 'OMSI Enhancer macht aus den Karten, die du schon hast, einen Dienst. Du wählst, wie lange du fahren möchtest, und bekommst einen echten Umlauf: Linie, Kurs, die IBIS-Eingaben und die Haltestelle, an der dein Bus stehen muss.',

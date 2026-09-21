@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, net, protocol, screen, shell } from 'electron'
 import { cpSync, existsSync } from 'node:fs'
-import { basename, dirname, join, resolve, sep } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Worker } from 'node:worker_threads'
 import { log, logboekPad, logFout, startLogboek, TRAAG_MS } from '../core/logboek'
@@ -61,7 +61,14 @@ import { receiptHeightMicrons, RECEIPT_WIDTH_MICRONS } from '../core/receipt'
 import { difference, readKnown, writeKnown } from '../core/installed'
 import { readSettings, writeSettings, type Settings } from '../core/settings'
 import { formatTime } from '../shared/format'
-import { busfotoMap, maakBusfoto, ruimOudeFotosOp, sluitBusfotoVenster } from './busfoto'
+import {
+  busfotoAdres,
+  busfotoAfgehandeld,
+  busfotoMap,
+  maakBusfoto,
+  ruimOudeFotosOp,
+  sluitBusfotoVenster
+} from './busfoto'
 import type { BusTekeningMetPlaten } from '../core/busbeeld'
 import { writeSituation } from '../core/situation'
 import { presetStartup } from '../core/startup'
@@ -76,6 +83,7 @@ import { readScreenMode } from '../core/schermmodus'
 import {
   type Assignment,
   type KaartenStand,
+  type BusfotoStand,
   type BeginRequest,
   type FreeRequest,
   type DutyDate,
@@ -179,7 +187,15 @@ interface WerkerAntwoord {
  * de kaarten klaarstaan; zijn caches zijn dan niets meer waard en het geheugen
  * is beter elders op zijn plek.
  */
-type Werksoort = 'voorgrond' | 'achtergrond'
+/*
+ * En een derde voor de busfoto's. Die stonden eerst bij het voorwerk van de
+ * kaarten, en wie het klaarzetten van de kaarten oversloeg en meteen de foto's
+ * liet maken, kreeg ze om beurten met een kaart van twee seconden: 6 seconden
+ * per foto in plaats van 0,85, "nog 37 minuten" in plaats van 6. Een eigen
+ * werker kost een eigen kopie van de caches, maar hij sluit zodra de ronde
+ * klaar is.
+ */
+type Werksoort = 'voorgrond' | 'achtergrond' | 'fotos'
 
 const werkers = new Map<Werksoort, Worker>()
 let volgendeOpdracht = 0
@@ -240,10 +256,10 @@ function kaartWerker(soort: Werksoort): Worker {
 }
 
 /** De werker van het voorwerk wegsturen; het hoofdproces houdt niets van hem. */
-function sluitAchtergrondwerker(): void {
-  const staand = werkers.get('achtergrond')
+function sluitAchtergrondwerker(soort: Werksoort = 'achtergrond'): void {
+  const staand = werkers.get(soort)
   if (!staand) return
-  werkers.delete('achtergrond')
+  werkers.delete(soort)
   staand.terminate().catch(() => undefined)
 }
 
@@ -388,6 +404,234 @@ async function warmKaarten(): Promise<void> {
     logFout('kaarten klaarzetten', fout)
   } finally {
     warmLoopt = false
+  }
+}
+
+/**
+ * Een opdracht voor één busfoto.
+ *
+ * Het lezen van het model gaat naar een werker; hier blijft alleen het tekenen
+ * over. Welke werker hangt af van wie erom vraagt. Een tegel die in beeld komt
+ * gaat voor, en valt als het moet terug op het hoofdproces -- beter een
+ * hapering dan geen plaatje. De ronde die alles maakt krijgt een eigen werker,
+ * zodat een klik van de speler er niet achter hoeft te wachten, en valt nooit
+ * terug op het hoofdproces. Driehonderd bussen
+ * lang een hapering is geen terugval meer maar een vastgelopen app.
+ */
+function busfotoOpdracht(relatiefPad: string, wie: Werksoort): Parameters<typeof maakBusfoto>[0] {
+  return {
+    tekenen: async (busPad) => {
+      if (wie !== 'voorgrond') {
+        try {
+          return await werkerVraag<BusTekeningMetPlaten | undefined>(
+            { soort: 'bustekening', busPad },
+            wie
+          )
+        } catch {
+          /*
+           * Nog één keer, bij een verse werker. De werker kan verdwijnen
+           * terwijl hij leest -- het nakijken van de OMSI-map sluit ze
+           * allemaal -- en dan komt er meteen een nieuwe voor in de plaats. Gaat het
+           * dan weer mis, dan gooit dit, en krijgt de bus geen merkteken.
+           */
+          return await werkerVraag<BusTekeningMetPlaten | undefined>(
+            { soort: 'bustekening', busPad },
+            wie
+          )
+        }
+      }
+      try {
+        return await werkerVraag<BusTekeningMetPlaten | undefined>({ soort: 'bustekening', busPad })
+      } catch (fout) {
+        logFout('bustekening via de werker', fout)
+        return laag().bustekening(busPad)
+      }
+    },
+    busPad: join(omsi(), relatiefPad),
+    omsiPad: omsi(),
+    relatiefPad,
+    userData: userData(),
+    preload: join(__dirname, '../preload/busfoto.js'),
+    pagina: process.env.ELECTRON_RENDERER_URL
+      ? { url: `${process.env.ELECTRON_RENDERER_URL}/busfoto.html` }
+      : { bestand: join(__dirname, '../renderer/busfoto.html') }
+  }
+}
+
+/**
+ * De ronde die van elke bus een foto maakt.
+ *
+ * WAAROM
+ * Een foto kost de eerste keer 0,8 tot 1,4 seconde, en tot nu toe werd hij pas
+ * gemaakt als de tegel in beeld kwam. Bij een merk met twintig uitvoeringen
+ * stond je dan een halve minuut naar iconen te kijken die één voor één
+ * veranderden. Luc: "een wizard met het laden van alle busplaatjes in één
+ * keer", en een knop voor de bussen die later komen. Dit is die ene keer.
+ *
+ * Eén bus tegelijk, via dezelfde rij als de tegels: vraagt het scherm er
+ * tussendoor een, dan wacht die op hooguit de bus die nu getekend wordt.
+ */
+let fotoRonde: { stoppen: boolean; begin: number } | undefined
+let fotoStand: BusfotoStand = {
+  loopt: false,
+  klaar: 0,
+  totaal: 0,
+  resterend: 0,
+  zonder: 0,
+  gemaakt: 0,
+  duur: 0,
+  verwerkt: 0
+}
+
+function meldFotoStand(stand: BusfotoStand): void {
+  fotoStand = stand
+  for (const venster of BrowserWindow.getAllWindows()) {
+    if (!venster.isDestroyed()) venster.webContents.send('busfotos:voortgang', stand)
+  }
+}
+
+/**
+ * Welke bussen er zijn, en hoe ver elk ervan is.
+ *
+ * De lijst komt van de werker van de foto's, niet van die van het scherm.
+ * De vraag komt bij het opstarten, en het doorlezen van Vehicles kost koud ruim
+ * anderhalve seconde: in de werker van het scherm stond hij dan in de rij voor
+ * de kaartenlijst -- precies wat `warmKaarten` vermijdt door hem pas achteraf te
+ * vragen. En een verse werker leest de map opnieuw, dus een bus die er net bij
+ * kwam telt meteen mee.
+ */
+async function fotoTelling(): Promise<{ bussen: Vehicle[]; open: Vehicle[]; zonder: number }> {
+  const vraag = (): Promise<Vehicle[]> => werkerVraag<Vehicle[]>({ soort: 'voertuigen' }, 'fotos')
+  // Twee keer, om dezelfde reden als bij het tekenen: de werker kan net sluiten.
+  const bussen = await vraag()
+    .catch(vraag)
+    .catch((fout) => {
+      logFout('voertuigen voor de busfoto\'s', fout)
+      return [] as Vehicle[]
+    })
+  const open: Vehicle[] = []
+  let zonder = 0
+  for (const bus of bussen) {
+    const stand = busfotoAfgehandeld(userData(), bus.relativePath)
+    if (stand === 'geen') zonder += 1
+    else if (!stand) open.push(bus)
+  }
+  return { bussen, open, zonder }
+}
+
+async function busfotosStand(): Promise<BusfotoStand> {
+  if (fotoRonde) return fotoStand
+  try {
+    const { bussen, open, zonder } = await fotoTelling()
+    // Alleen geteld, niet getekend: dan hoeft de werker niet te blijven.
+    if (!fotoRonde) sluitAchtergrondwerker('fotos')
+    fotoStand = {
+      loopt: false,
+      klaar: bussen.length - open.length,
+      totaal: bussen.length,
+      resterend: open.length,
+      zonder,
+      gemaakt: 0,
+      duur: 0,
+      verwerkt: 0
+    }
+  } catch {
+    // Geen OMSI: dan valt er ook niets te tekenen.
+    fotoStand = {
+      loopt: false,
+      klaar: 0,
+      totaal: 0,
+      resterend: 0,
+      zonder: 0,
+      gemaakt: 0,
+      duur: 0,
+      verwerkt: 0
+    }
+  }
+  return fotoStand
+}
+
+/** Hoe een bus heet in de balk: merk, type en kleurstelling. */
+function fotoNaam(bus: Vehicle): string {
+  return [bus.manufacturer, bus.type, bus.paint].filter(Boolean).join(' ') || bus.folder
+}
+
+async function maakAlleBusfotos(): Promise<void> {
+  if (fotoRonde) return
+  const ronde = { stoppen: false, begin: Date.now() }
+  fotoRonde = ronde
+  let gemaakt = 0
+  let mislukt = 0
+  let laatste: BusfotoStand['laatste']
+  /* De telling van deze ronde; aan het eind is dat meteen de nieuwe stand. */
+  let totaal = 0
+  let klaar = 0
+  let zonder = 0
+  let alZonder = 0
+  const stand = (loopt: boolean, bezig?: string): BusfotoStand => ({
+    loopt,
+    bezig,
+    klaar,
+    totaal,
+    resterend: totaal - klaar,
+    zonder,
+    gemaakt,
+    duur: Date.now() - ronde.begin,
+    verwerkt: gemaakt + mislukt + zonder - alZonder,
+    laatste
+  })
+  try {
+    const telling = await fotoTelling()
+    const open = telling.open
+    totaal = telling.bussen.length
+    klaar = totaal - open.length
+    zonder = telling.zonder
+    alZonder = telling.zonder
+    const melden = (bezig: string | undefined): void => meldFotoStand(stand(true, bezig))
+    melden(open[0] ? fotoNaam(open[0]) : undefined)
+
+    for (const [nummer, bus] of open.entries()) {
+      if (ronde.stoppen) break
+      // Wat het scherm vraagt gaat voor; zie `voorgrondBezig`.
+      while (voorgrondBezig > 0 && !ronde.stoppen) {
+        await new Promise((verder) => setTimeout(verder, 300))
+      }
+      if (ronde.stoppen) break
+
+      const bestand = await maakBusfoto(busfotoOpdracht(bus.relativePath, 'fotos')).catch(
+        () => undefined
+      )
+      if (bestand) {
+        gemaakt += 1
+        klaar += 1
+        laatste = { relativePath: bus.relativePath, adres: busfotoAdres(bestand), naam: fotoNaam(bus) }
+      } else if (busfotoAfgehandeld(userData(), bus.relativePath) === 'geen') {
+        zonder += 1
+        klaar += 1
+      } else {
+        // Pech in de werker of het venster: telt niet als klaar; de volgende ronde probeert hem weer.
+        mislukt += 1
+      }
+      /*
+       * Meteen de naam van de volgende erbij. Eerst stond hier een lege
+       * melding en pas bij het begin van de volgende bus zijn naam; dan
+       * flitste het scherm bij elke bus even "bijna klaar".
+       */
+      const volgende = open[nummer + 1]
+      melden(volgende && !ronde.stoppen ? fotoNaam(volgende) : undefined)
+    }
+    log(
+      `busfoto's: ${gemaakt} gemaakt, ${zonder} zonder model, ${mislukt} mislukt, ` +
+        `${totaal - klaar} nog open, ${Date.now() - ronde.begin} ms` +
+        (ronde.stoppen ? ' (gestopt)' : '')
+    )
+  } catch (fout) {
+    logFout('busfoto\'s maken', fout)
+  } finally {
+    fotoRonde = undefined
+    // De werker houdt nu tweehonderd texturen vast; weg ermee.
+    sluitAchtergrondwerker('fotos')
+    meldFotoStand(stand(false))
   }
 }
 
@@ -1249,31 +1493,23 @@ function registerHandlers(): void {
    * kostte gemeten 266 tot 1092 ms per bus -- daarna komt hij van schijf.
    */
   handle('bus:foto', async (_event, relatiefPad: string): Promise<string | undefined> => {
-    const bestand = await maakBusfoto({
-      /*
-       * Het lezen van het model gaat naar de werker; hier blijft alleen het
-       * tekenen over. Lukt de werker het niet, dan doet het hoofdproces het
-       * zelf -- beter een hapering dan geen plaatje.
-       */
-      tekenen: async (busPad) => {
-        try {
-          return await werkerVraag<BusTekeningMetPlaten | undefined>({ soort: 'bustekening', busPad })
-        } catch (fout) {
-          logFout('bustekening via de werker', fout)
-          return laag().bustekening(busPad)
-        }
-      },
-      busPad: join(omsi(), relatiefPad),
-      omsiPad: omsi(),
-      relatiefPad,
-      userData: userData(),
-      preload: join(__dirname, '../preload/busfoto.js'),
-      pagina: process.env.ELECTRON_RENDERER_URL
-        ? { url: `${process.env.ELECTRON_RENDERER_URL}/busfoto.html` }
-        : { bestand: join(__dirname, '../renderer/busfoto.html') }
-    })
-    if (!bestand) return undefined
-    return `omsibus://foto/${basename(bestand)}`
+    const bestand = await maakBusfoto(busfotoOpdracht(relatiefPad, 'voorgrond'))
+    return bestand ? busfotoAdres(bestand) : undefined
+  })
+
+  handle('busfotos:stand', (): Promise<BusfotoStand> => busfotosStand())
+
+  handle('busfotos:maken', async (): Promise<BusfotoStand> => {
+    if (!fotoRonde) {
+      void maakAlleBusfotos()
+      // De eerste melding van de ronde komt na het tellen; die wachten we niet af.
+    }
+    return { ...fotoStand, loopt: true }
+  })
+
+  handle('busfotos:stoppen', (): BusfotoStand => {
+    if (fotoRonde) fotoRonde.stoppen = true
+    return fotoStand
   })
 
   handle('logboek:melden', (_event, regel: string) => {

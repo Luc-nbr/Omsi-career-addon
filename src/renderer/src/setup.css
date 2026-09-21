@@ -2740,6 +2740,105 @@
   }
 }
 
+/*
+ * De foto die net klaar is, bij het maken van de busplaatjes.
+ *
+ * Even groot als op een bustegel en in dezelfde verhouding (512 bij 384), op
+ * het vlak van de tegel: zo zie je hier precies wat je straks bij het kiezen
+ * ziet. De vaste hoogte houdt het vel stil terwijl de foto's wisselen.
+ */
+.fotovoorbeeld {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: min(100%, 360px);
+  aspect-ratio: 4 / 3;
+  margin: 4px auto 18px;
+  border: 1px solid var(--vel-rand);
+  border-radius: var(--radius-klein);
+  background: var(--vel-hover);
+  overflow: hidden;
+}
+
+.fotovoorbeeld img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  animation: fotovoorbeeld-in 220ms ease-out;
+}
+
+.fotovoorbeeld-naam {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 6px 10px;
+  background: color-mix(in srgb, var(--vel) 82%, transparent);
+  color: var(--vel-ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fotovoorbeeld-wacht {
+  color: var(--vel-zacht);
+  font-size: 13.5px;
+}
+
+.fotoaantal {
+  font-family: inherit;
+  text-align: center;
+}
+
+@keyframes fotovoorbeeld-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fotovoorbeeld img {
+    animation: none;
+  }
+}
+
+/*
+ * Het bijwerken van de busplaatjes op de busstap: een knop, en zolang het
+ * loopt de stand ernaast. Klein, want het is een zijpad en niet de keuze.
+ */
+.fotosync {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--vel-zacht);
+  font-size: 12.5px;
+}
+
+.fotosync button {
+  padding: 6px 12px;
+  border: 1px solid var(--vel-rand);
+  border-radius: var(--radius-rond);
+  background: transparent;
+  color: var(--vel-ink);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.fotosync button:hover:not(:disabled) {
+  background: var(--vel-hover);
+}
+
+.fotosync button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* ---- de starthub ---- */
 
 /*

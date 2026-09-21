@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { CareerApi, DutyRequest, KaartenStand } from '../shared/api'
+import type { BusfotoStand, CareerApi, DutyRequest, KaartenStand } from '../shared/api'
 
 /**
  * De renderer praat alleen via deze brug met het bestandssysteem; er staat geen
@@ -19,6 +19,14 @@ const api: CareerApi = {
     const heen = (_gebeurtenis: unknown, stand: KaartenStand): void => luisteraar(stand)
     ipcRenderer.on('kaarten:warm', heen)
     return () => ipcRenderer.removeListener('kaarten:warm', heen)
+  },
+  busfotosStand: () => ipcRenderer.invoke('busfotos:stand'),
+  busfotosMaken: () => ipcRenderer.invoke('busfotos:maken'),
+  busfotosStoppen: () => ipcRenderer.invoke('busfotos:stoppen'),
+  opBusfotos: (luisteraar: (stand: BusfotoStand) => void) => {
+    const heen = (_gebeurtenis: unknown, stand: BusfotoStand): void => luisteraar(stand)
+    ipcRenderer.on('busfotos:voortgang', heen)
+    return () => ipcRenderer.removeListener('busfotos:voortgang', heen)
   },
   screenMode: () => ipcRenderer.invoke('omsi:screen'),
   maps: () => ipcRenderer.invoke('omsi:maps'),

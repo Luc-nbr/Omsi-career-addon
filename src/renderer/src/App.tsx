@@ -16,6 +16,7 @@ import {
   type CareerPayload,
   type DutyRequest,
   type KaartenStand,
+  type BusfotoStand,
   type MapSummary,
   type PrinterInfo,
   type HofOffer,
@@ -48,6 +49,7 @@ import { Chauffeurstart } from './Chauffeurstart'
 import { Taalkeuze } from './Taalkeuze'
 import { Welkom } from './Welkom'
 import { Klaarzetten } from './Klaarzetten'
+import { Busplaatjes } from './Busplaatjes'
 import { Starthub } from './Starthub'
 import { ThemaKnop, type Thema } from './ThemaKnop'
 import { Versie } from './Versie'
@@ -288,6 +290,18 @@ export function App(): JSX.Element {
   const [busFotos, setBusFotos] = useState<Record<string, string>>({})
   const gevraagdeFotos = useRef(new Set<string>())
 
+  /*
+   * Het maken van alle foto's in één keer: bij het installeren als vraag, en
+   * later via "Busplaatjes bijwerken" voor de bussen die erbij kwamen.
+   *
+   * `busfotosGevraagd` is `undefined` zolang de instellingen er nog niet zijn;
+   * dan komt het scherm er ook niet, anders flitst het even voor wie hem al
+   * gehad heeft. `busfotoScherm` staat open als iemand op de knop drukte.
+   */
+  const [busfotoStand, setBusfotoStand] = useState<BusfotoStand>()
+  const [busfotosGevraagd, setBusfotosGevraagd] = useState<boolean>()
+  const [busfotoScherm, setBusfotoScherm] = useState<'installatie' | 'bijwerken'>()
+
   const vraagBusfoto = useCallback((relatiefPad: string) => {
     if (!relatiefPad || gevraagdeFotos.current.has(relatiefPad)) return
     gevraagdeFotos.current.add(relatiefPad)
@@ -407,6 +421,7 @@ export function App(): JSX.Element {
       setThema(settings.theme ?? 'systeem')
       setKaartweergave(settings.mapView ?? 'tegels')
       setTaalGekozen(settings.languageChosen === true)
+      setBusfotosGevraagd(settings.busPhotosOffered === true)
     })
   }, [])
 
@@ -1194,6 +1209,33 @@ export function App(): JSX.Element {
     }
   }, [language, mapFolder])
 
+  /*
+   * Busplaatjes bijwerken: eerst opnieuw in Vehicles kijken, dan tekenen.
+   *
+   * Het kijken hoort erbij. De lijst met bussen wordt één keer gelezen en dan
+   * vastgehouden, dus een bus die je na het starten in Vehicles zet bestaat
+   * voor de app pas na een herstart -- en dan maakt de knop er ook geen
+   * plaatje van. Het nakijken hier is hetzelfde als de knop op de kaartstap.
+   */
+  const bijwerkenBusfotos = useCallback(async () => {
+    if (busfotoStand?.loopt) return
+    /*
+     * Het nakijken duurt een paar seconden. Zolang staat de ronde al als
+     * lopend, met wat er gebeurt: anders meldt het scherm "alles is klaar"
+     * voordat er ook maar gekeken is.
+     */
+    setBusfotoStand((oud) => ({
+      ...(oud ?? { klaar: 0, totaal: 0, resterend: 0, zonder: 0, gemaakt: 0, duur: 0, verwerkt: 0 }),
+      loopt: true,
+      gemaakt: 0,
+      duur: 0,
+      verwerkt: 0,
+      bezig: t(language, 'photos.looking')
+    }))
+    await checkInstalled()
+    setBusfotoStand(await window.career.busfotosMaken())
+  }, [busfotoStand?.loopt, checkInstalled, language])
+
   const createProfile = useCallback(async (name: string) => {
     setCareer(await window.career.createProfile(name))
     setScreen('modes')
@@ -1349,6 +1391,54 @@ export function App(): JSX.Element {
   }, [omsi?.confirmed])
 
   /*
+   * Hoe ver de busfoto's zijn, en meeluisteren terwijl er getekend wordt.
+   *
+   * Elke foto die klaar komt gaat meteen naar de tegels. Wie tijdens het
+   * bijwerken op de busstap staat, ziet de iconen zo een voor een foto worden
+   * zonder dat die stap er zelf om hoeft te vragen.
+   */
+  useEffect(() => {
+    if (!omsi?.confirmed) return undefined
+    let geldig = true
+    const opzeggen = window.career.opBusfotos((stand) => {
+      if (!geldig) return
+      setBusfotoStand(stand)
+      const laatste = stand.laatste
+      if (laatste) {
+        gevraagdeFotos.current.add(laatste.relativePath)
+        setBusFotos((oud) =>
+          oud[laatste.relativePath] === laatste.adres
+            ? oud
+            : { ...oud, [laatste.relativePath]: laatste.adres }
+        )
+      }
+    })
+    return () => {
+      geldig = false
+      opzeggen()
+    }
+  }, [omsi?.confirmed])
+
+  /*
+   * Tellen voor de vraag bij het installeren, en alleen dan.
+   *
+   * Pas na de kaarten: zolang die klaargezet worden staat dat scherm er, en
+   * tellen kost een werker een doorloop van Vehicles. Wie de
+   * vraag al gehad heeft hoeft niet geteld te worden; de knoppen tellen zelf.
+   */
+  const kaartenBezig = Boolean(kaartenStand && kaartenStand.resterend > 0 && !klaarzettenOverslaan)
+  useEffect(() => {
+    if (!omsi?.confirmed || busfotosGevraagd !== false || kaartenBezig) return undefined
+    let geldig = true
+    void window.career.busfotosStand().then((stand) => {
+      if (geldig) setBusfotoStand((oud) => (oud?.loopt ? oud : stand))
+    })
+    return () => {
+      geldig = false
+    }
+  }, [omsi?.confirmed, busfotosGevraagd, kaartenBezig])
+
+  /*
    * Het eerste dat iemand van deze app ziet: waar staat OMSI?
    *
    * Alles hierna hangt aan die map, dus er valt niets te laden zolang die niet
@@ -1464,6 +1554,65 @@ export function App(): JSX.Element {
     )
   }
 
+  /*
+   * En de busfoto's: bij het installeren één keer de vraag, en via de knop op
+   * het startscherm of de busstap zo vaak als iemand wil.
+   *
+   * Na de kaarten, want die zijn sneller klaar en het kiezen begint ermee. De
+   * vraag komt alleen als er ook iets te maken valt: wie geen bussen heeft of
+   * ze allemaal al heeft, slaat hem ongemerkt over.
+   */
+  const busfotoVraag =
+    busfotosGevraagd === false && Boolean(busfotoStand && busfotoStand.resterend > 0)
+  if (busfotoStand && (busfotoScherm || busfotoVraag)) {
+    const aanleiding = busfotoScherm ?? 'installatie'
+    const afronden = (): void => {
+      setBusfotoScherm(undefined)
+      if (busfotosGevraagd === false) {
+        setBusfotosGevraagd(true)
+        void window.career.saveSettings({ busPhotosOffered: true })
+      }
+    }
+    return (
+      <LanguageProvider language={language}>
+        <Busplaatjes
+          key={aanleiding}
+          language={language}
+          thema={thema}
+          onThema={kiesThema}
+          stand={busfotoStand}
+          aanleiding={aanleiding}
+          onMaken={() => {
+            /*
+             * Het scherm vastzetten. De vraag staat er omdat er bussen zonder
+             * foto zijn; zodra de ronde ze allemaal heeft, zou hij verdwijnen
+             * voordat iemand de uitkomst zag of op Verder drukte -- en dan werd
+             * ook niet onthouden dat de vraag gesteld is.
+             */
+            setBusfotoScherm(aanleiding)
+            // Meteen als lopend, anders staat tot de eerste melding de uitkomst in beeld.
+            setBusfotoStand(
+              (oud) =>
+                oud && {
+                  ...oud,
+                  loopt: true,
+                  bezig: t(language, 'photos.looking'),
+                  gemaakt: 0,
+                  duur: 0,
+                  verwerkt: 0
+                }
+            )
+            void window.career.busfotosMaken().then(setBusfotoStand)
+          }}
+          onStoppen={() => {
+            void window.career.busfotosStoppen()
+          }}
+          onKlaar={afronden}
+        />
+      </LanguageProvider>
+    )
+  }
+
   if (error && !ready) {
     return (
       <div className="main">
@@ -1512,6 +1661,10 @@ export function App(): JSX.Element {
           onInstellingen={() => setScreen('game')}
           onChauffeur={() => setScreen('profiles')}
           onLogboek={() => void window.career.logboekOpenen()}
+          onBusplaatjes={() => {
+            setBusfotoScherm('bijwerken')
+            void bijwerkenBusfotos()
+          }}
         />
       </LanguageProvider>
     )
@@ -1872,6 +2025,36 @@ export function App(): JSX.Element {
       index: 0,
       kies: () => {},
       voet: '',
+      /*
+       * Busplaatjes bijwerken, hier waar de plaatjes staan.
+       *
+       * Loopt het al, dan staat de stand er in plaats van de knop, met een
+       * knop om te stoppen. De tegels krijgen hun foto's ondertussen vanzelf.
+       */
+      regelaars: (
+        <div className="fotosync">
+          {busfotoStand?.loopt ? (
+            <>
+              <span>
+                {/* Zolang er nog gekeken wordt is er niets te tellen: geen "0 van 0". */}
+                {busfotoStand.totaal > 0
+                  ? t(language, 'photos.syncBusy', {
+                      klaar: busfotoStand.klaar,
+                      totaal: busfotoStand.totaal
+                    })
+                  : t(language, 'photos.looking')}
+              </span>
+              <button type="button" onClick={() => void window.career.busfotosStoppen()}>
+                {t(language, 'photos.stop')}
+              </button>
+            </>
+          ) : (
+            <button type="button" disabled={checking} onClick={() => void bijwerkenBusfotos()}>
+              {t(language, 'photos.sync')}
+            </button>
+          )}
+        </div>
+      ),
       /* Zie `plaatsWagenpark`: op elk busscherm bereikbaar, niet alleen op de remise. */
       tweede: vehicle
         ? {
@@ -2341,6 +2524,8 @@ export function App(): JSX.Element {
            */
           return {
             ...leegBus,
+            // Over het hof-bestand, niet over plaatjes: de knop hoort hier niet.
+            regelaars: undefined,
             stap: 'bus' as Stap,
             titel: t(language, 'setup.yardTitle'),
             onderschrift: t(language, 'setup.yardIntro'),

@@ -69,6 +69,14 @@ export interface Settings {
    */
   languageChosen?: boolean
   /**
+   * Is de vraag om alle busfoto's in één keer te maken al gesteld?
+   *
+   * Eén keer, als laatste stap van het installeren -- ook bij wie de app al
+   * had, want die heeft ze evenmin. Wie ja zegt of overslaat krijgt hem niet
+   * meer; voor bussen die later komen staat er een knop op het startscherm.
+   */
+  busPhotosOffered?: boolean
+  /**
    * Dag of nacht. `systeem` volgt wat Windows zegt en is de beginstand.
    *
    * Los van Windows, want de app wordt 's avonds in een donkere kamer gebruikt
@@ -96,7 +104,8 @@ export function readSettings(userDataPath: string): Settings {
           ? raw.theme
           : 'systeem',
       mapView: raw.mapView === 'lijst' ? 'lijst' : 'tegels',
-      languageChosen: raw.languageChosen === true
+      languageChosen: raw.languageChosen === true,
+      busPhotosOffered: raw.busPhotosOffered === true
     }
   } catch {
     return {
@@ -105,7 +114,8 @@ export function readSettings(userDataPath: string): Settings {
       windowedOmsi: true,
       theme: 'systeem',
       mapView: 'tegels',
-      languageChosen: false
+      languageChosen: false,
+      busPhotosOffered: false
     }
   }
 }
@@ -139,7 +149,11 @@ export function writeSettings(userDataPath: string, settings: Partial<Settings>)
     languageChosen:
       typeof settings.languageChosen === 'boolean'
         ? settings.languageChosen
-        : current.languageChosen
+        : current.languageChosen,
+    busPhotosOffered:
+      typeof settings.busPhotosOffered === 'boolean'
+        ? settings.busPhotosOffered
+        : current.busPhotosOffered
   }
   const path = settingsPath(userDataPath)
   mkdirSync(dirname(path), { recursive: true })

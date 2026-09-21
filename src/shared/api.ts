@@ -46,6 +46,35 @@ export interface KaartenStand {
 }
 
 /**
+ * Hoe ver de app is met het tekenen van de busfoto's.
+ *
+ * Zelfde vorm als bij de kaarten, met twee dingen erbij: of er een ronde loopt
+ * (die kun je stoppen, een kaart niet), en welke foto net klaar is -- die laat
+ * het scherm zien, en de bustegels krijgen hem meteen.
+ */
+export interface BusfotoStand {
+  /** Loopt er nu een ronde? */
+  loopt: boolean
+  /** De bus die nu getekend wordt. */
+  bezig?: string
+  /** Bussen met een foto, of waarvan vaststaat dat ze er geen krijgen. */
+  klaar: number
+  totaal: number
+  /** Bussen die nog nooit geprobeerd zijn. */
+  resterend: number
+  /** Bussen waar geen foto van te maken is: een versleuteld of onleesbaar model. */
+  zonder: number
+  /** Hoeveel foto's deze ronde gemaakt heeft. */
+  gemaakt: number
+  /** Hoe lang deze ronde al loopt, in milliseconden; voor de schatting van de rest. */
+  duur: number
+  /** Hoeveel bussen deze ronde al langs is geweest, gelukt of niet. */
+  verwerkt: number
+  /** De foto die het laatst klaar kwam. */
+  laatste?: { relativePath: string; adres: string; naam: string }
+}
+
+/**
  * Wat er in de OMSI-map staat, en wat er nieuw is sinds de vorige keer kijken.
  *
  * Kaarten en bussen zet je erbij door een map neer te zetten; niets meldt dat
@@ -346,6 +375,18 @@ export interface CareerApi {
   kaartenVoorbereiden(): Promise<KaartenStand>
   /** Meeluisteren met het klaarzetten; geeft een opzegfunctie terug. */
   opKaartenWarm(luisteraar: (stand: KaartenStand) => void): () => void
+  /** Hoeveel bussen er al een foto hebben. */
+  busfotosStand(): Promise<BusfotoStand>
+  /**
+   * Van elke bus zonder foto er een maken, één voor één.
+   *
+   * Loopt er al een ronde, dan gebeurt er niets nieuws; de stand komt terug.
+   */
+  busfotosMaken(): Promise<BusfotoStand>
+  /** De lopende ronde afbreken na de bus die nu getekend wordt. */
+  busfotosStoppen(): Promise<BusfotoStand>
+  /** Meeluisteren met het tekenen; geeft een opzegfunctie terug. */
+  opBusfotos(luisteraar: (stand: BusfotoStand) => void): () => void
   /** Opnieuw in de OMSI-map kijken en melden wat erbij is gekomen. */
   checkInstalled(): Promise<InstalledCheck>
   vehicles(): Promise<Vehicle[]>

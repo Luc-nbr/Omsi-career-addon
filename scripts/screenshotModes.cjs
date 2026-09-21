@@ -160,6 +160,17 @@ app.whenReady().then(async () => {
     await waitFor(main, `!document.querySelector('.klaarbalk')`, 600)
   }
 
+  /*
+   * Daarna de vraag over de busplaatjes. Vastleggen en overslaan: alle bussen
+   * tekenen kost minuten, en de schermen hierna gaan niet over de foto's.
+   */
+  if (await waitFor(main, `document.querySelector('.fotoaantal')`, 40)) {
+    await wait(600)
+    await shoot('busplaatjes-vraag')
+    await js(main, `document.querySelector('.welkom-knoppen .welkom-knop:not(.primair)')?.click()`)
+    await wait(800)
+  }
+
   // Staat er al een chauffeur (geen verse map), dan die kiezen.
   if (await waitFor(main, `document.querySelector('.setup')`, 80)) {
     await wait(1200)
