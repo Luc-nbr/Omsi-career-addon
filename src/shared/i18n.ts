@@ -1446,6 +1446,12 @@ const TEXT = {
     fr: 'En attente d’OMSI — choisissez le service dans le jeu et la surcouche prend le relais.',
     nl: 'Wacht op OMSI — kies de dienst in het spel, dan neemt de overlay het over.'
   },
+  'run.loading': {
+    en: 'OMSI is running and loading the map. Once your bus is there, the timetable follows along.',
+    de: 'OMSI läuft und lädt die Karte. Sobald dein Bus da ist, läuft der Fahrplan mit.',
+    fr: 'OMSI est lancé et charge la carte. Dès que votre bus est là, l’horaire suit.',
+    nl: 'OMSI draait en laadt de kaart. Zodra je bus er staat, loopt de dienstregeling mee.'
+  },
   'run.live': { en: '{km} km driven, {delay}', de: '{km} km gefahren, {delay}', fr: '{km} km parcourus, {delay}', nl: '{km} km gereden, {delay}' },
   'run.onTime': { en: 'on time', de: 'pünktlich', fr: 'à l’heure', nl: 'op tijd' },
   'run.late': { en: '{minutes} min late', de: '{minutes} Min Verspätung', fr: '{minutes} min de retard', nl: '{minutes} min te laat' },
@@ -2003,6 +2009,12 @@ const TEXT = {
     de: 'Warte auf OMSI…',
     fr: 'En attente d’OMSI…',
     nl: 'Wacht op OMSI…'
+  },
+  'ovl.loading': {
+    en: 'OMSI is running — loading the map…',
+    de: 'OMSI läuft — die Karte lädt…',
+    fr: 'OMSI est lancé — chargement de la carte…',
+    nl: 'OMSI draait — de kaart laadt…'
   },
   'ovl.noData': { en: 'No data', de: 'Keine Daten', fr: 'Aucune donnée', nl: 'Geen gegevens' },
   'ovl.ontime': { en: 'on time', de: 'pünktlich', fr: 'à l’heure', nl: 'op tijd' },

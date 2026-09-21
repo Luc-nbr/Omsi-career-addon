@@ -15,6 +15,8 @@ interface Props {
   session?: SessionResult
   /** Geeft de plugin gegevens door? Dan draait het spel echt. */
   connected: boolean
+  /** OMSI staat open maar laadt de kaart nog; de plugin zegt dan nog niets. */
+  laadt?: boolean
   busy: boolean
   /** Een examenrit gaat naar de examencommissie, niet naar het logboek. */
   exam?: boolean
@@ -40,6 +42,7 @@ export function RunningDuty({
   ibis,
   session,
   connected,
+  laadt,
   busy,
   exam,
   overlayOpen,
@@ -131,7 +134,7 @@ export function RunningDuty({
             </span>
           </>
         ) : (
-          <span className="running-wait">{tr('run.waiting')}</span>
+          <span className="running-wait">{tr(laadt ? 'run.loading' : 'run.waiting')}</span>
         )}
       </div>
 

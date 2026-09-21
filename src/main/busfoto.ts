@@ -212,6 +212,14 @@ async function tekenEen(
 ): Promise<string | undefined> {
   const begin = Date.now()
   /*
+   * Met de kleurstelling erbij. Zonder die naam stond dezelfde MAN_12C_3door_Voith
+   * zeventien keer achter elkaar in het logboek -- zeventien kleurstellingen,
+   * maar het las als een app die steeds dezelfde foto overdeed.
+   */
+  const wat = opdracht.kleurstelling
+    ? `${opdracht.relatiefPad} in "${opdracht.kleurstelling}"`
+    : opdracht.relatiefPad
+  /*
    * Het lezen gaat naar de werker. Het kost 283 tot 1376 ms per bus, en het
    * hoofdproces doet één ding tegelijk: zolang het hier leest, beweegt er geen
    * knop en geen overlay. Zie `kaartwerker.ts`.
@@ -221,11 +229,11 @@ async function tekenEen(
     tekening = await opdracht.tekenen(opdracht.busPad, opdracht.kleurstelling)
   } catch (fout) {
     // Geen merkteken: dit is pech, geen eigenschap van de bus.
-    logFout(`busfoto ${opdracht.relatiefPad} lezen`, fout)
+    logFout(`busfoto ${wat} lezen`, fout)
     return undefined
   }
   if (!tekening) {
-    log(`busfoto: geen model voor ${opdracht.relatiefPad}`)
+    log(`busfoto: geen model voor ${wat}`)
     try {
       mkdirSync(map, { recursive: true })
       writeFileSync(merktekenVan(map, opdracht.relatiefPad, opdracht.kleurstelling), '')
@@ -282,7 +290,7 @@ async function tekenEen(
         const data = png.replace(/^data:image\/png;base64,/, '')
         writeFileSync(doel, Buffer.from(data, 'base64'))
         log(
-          `busfoto ${opdracht.relatiefPad}: ${tekening.driehoeken} driehoeken, ` +
+          `busfoto ${wat}: ${tekening.driehoeken} driehoeken, ` +
             `${tekening.stukken.length} stukken, ${platen.length} platen, ` +
             `${gelezen} ms lezen, ${klaarzetten} ms klaarzetten, ${Date.now() - begin} ms in totaal` +
             (tijden
@@ -296,7 +304,7 @@ async function tekenEen(
       }
     }
     const opFout = (_gebeurtenis: unknown, reden: string): void => {
-      log(`busfoto ${opdracht.relatiefPad} mislukt: ${reden}`)
+      log(`busfoto ${wat} mislukt: ${reden}`)
       stop(undefined)
     }
 
@@ -308,7 +316,7 @@ async function tekenEen(
      * de tekening zelf een fractie daarvan.
      */
     const wekker = setTimeout(() => {
-      log(`busfoto ${opdracht.relatiefPad}: geen antwoord binnen twintig seconden`)
+      log(`busfoto ${wat}: geen antwoord binnen twintig seconden`)
       stop(undefined)
     }, 20000)
 

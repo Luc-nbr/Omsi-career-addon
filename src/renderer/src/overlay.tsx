@@ -108,6 +108,8 @@ interface Frame {
   vehicle?: { x: number; y: number; heading: number; headingFromMotion: boolean }
   /** Draait OMSI met onze plugin? */
   connected: boolean
+  /** OMSI staat open, maar de kaart laadt nog: de plugin geeft pas daarna iets door. */
+  laadt?: boolean
   /** In de bewerkstand neemt de overlay muisklikken aan. */
   editing: boolean
 }
@@ -532,10 +534,21 @@ function Overlay(): JSX.Element | null {
                   Waar de kaart op wacht verschilt per stap: eerst de dienst in
                   OMSI, daarna de IBIS. "Kies je dienst" blijven zeggen terwijl
                   die al gekozen is, stuurt de chauffeur het verkeerde menu in.
+                  Zolang OMSI niets doorgeeft is er nog geen stap: dan zegt de
+                  kaart of OMSI er al is en de kaart laadt, of dat het er nog
+                  niet is.
                 */
                 waiting: t(
                   language,
-                  ibisLoaded ? 'ovl.mapIbis' : readable ? 'ovl.mapSelect' : 'ovl.mapWaiting'
+                  !frame.connected
+                    ? frame.laadt
+                      ? 'ovl.loading'
+                      : 'ovl.waiting'
+                    : ibisLoaded
+                      ? 'ovl.mapIbis'
+                      : readable
+                        ? 'ovl.mapSelect'
+                        : 'ovl.mapWaiting'
                 ),
                 busNote: t(language, 'ovl.busHere'),
                 centre: t(language, 'ovl.centre')
@@ -1221,7 +1234,8 @@ function DutyPanel({
   if (!status) {
     return (
       <div className="waiting">
-        <span className="dot" /> {tr(connected ? 'ovl.noData' : 'ovl.waiting')}
+        <span className="dot" />{' '}
+        {tr(connected ? 'ovl.noData' : frame.laadt ? 'ovl.loading' : 'ovl.waiting')}
       </div>
     )
   }

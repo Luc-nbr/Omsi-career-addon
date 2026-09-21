@@ -122,7 +122,16 @@ contextBridge.exposeInMainWorld('receipt', {
 })
 
 contextBridge.exposeInMainWorld('overlay', {
-  onFrame: (handler: (frame: unknown) => void) =>
-    ipcRenderer.on('overlay:frame', (_event, frame) => handler(frame)),
+  /*
+   * Luisteren, en dan meteen om een beeld vragen. Het hoofdproces stuurt een
+   * beeld alleen als er iets veranderd is, en het eerste ging weg voordat de
+   * overlay luisterde: zolang OMSI niets doorgaf bleef hij dan in zijn
+   * beginstand hangen, zonder dienst -- "Wacht op OMSI…" en "kaart wordt
+   * geladen…", terwijl er wel degelijk een dienst liep.
+   */
+  onFrame: (handler: (frame: unknown) => void) => {
+    ipcRenderer.on('overlay:frame', (_event, frame) => handler(frame))
+    ipcRenderer.send('overlay:luistert')
+  },
   onCycle: (handler: () => void) => ipcRenderer.on('overlay:cycle', () => handler())
 })

@@ -1169,6 +1169,36 @@ function vehicleOnMap(live: ReturnType<typeof readLive>, duty: Duty | undefined)
  */
 let lastFrame: string | undefined
 
+/**
+ * Draait OMSI al, ook al geeft de plugin nog niets door?
+ *
+ * De plugin schrijft pas als OMSI hem de eerste waarden geeft, en dat is als
+ * de kaart geladen is. Op 21-09 laadde OMSI de plugin om 21:33:20 en kwam het
+ * eerste live.json om 21:36:48: drie en een halve minuut waarin de overlay
+ * "Wacht op OMSI" zei terwijl OMSI al lang openstond -- en dat las als "de app
+ * ziet OMSI niet". In die tijd zegt de overlay nu dat de kaart laadt.
+ *
+ * Het kijken is `tasklist` (89 ms), dus niet bij elk beeld: hooguit om de vijf
+ * seconden, en alleen zolang er geen verse gegevens zijn.
+ */
+let omsiLaadt = false
+let omsiLaadtGekeken = 0
+
+function laadtOmsi(verbonden: boolean): boolean {
+  if (verbonden) {
+    omsiLaadt = false
+    return false
+  }
+  const nu = Date.now()
+  if (nu - omsiLaadtGekeken >= 5000) {
+    omsiLaadtGekeken = nu
+    void isOmsiRunning(`${OMSI_PROCES}.exe`).then((draait) => {
+      omsiLaadt = draait
+    })
+  }
+  return omsiLaadt
+}
+
 function pushFrame(): void {
   if (!overlayWindow || overlayWindow.isDestroyed()) return
   /*
@@ -1183,6 +1213,7 @@ function pushFrame(): void {
   const duty = currentDuty()
   const frame = {
     connected: Boolean(live?.alive),
+    laadt: laadtOmsi(Boolean(live?.alive)),
     status: live ? describeLive(live, duty, baseline()) : undefined,
     vehicle: vehicleOnMap(live, duty),
     duty,
@@ -2607,6 +2638,18 @@ function registerHandlers(): void {
   })
 
   handle('overlay:isOpen', () => overlayIsOpen())
+
+  /*
+   * De overlay luistert nu; stuur hem het beeld dat er is, ook als het niet
+   * veranderd is. Het beeld dat bij het openen al verstuurd was kwam aan
+   * voordat er iemand luisterde -- zie de preload.
+   */
+  ipcMain.on('overlay:luistert', (event) => {
+    if (!overlayWindow || overlayWindow.isDestroyed()) return
+    if (event.sender !== overlayWindow.webContents) return
+    lastFrame = undefined
+    pushFrame()
+  })
 
   /** De overlay sluit zichzelf, met de knop in de bewerkstand. */
   handle('overlay:close', () => closeOverlay())

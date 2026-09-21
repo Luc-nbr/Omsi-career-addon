@@ -382,6 +382,8 @@ export function App(): JSX.Element {
   /** Waar de bus op de kaart staat; hiermee wordt het venster een navigatie. */
   const [liveBus, setLiveBus] = useState<VehiclePosition>()
   const [connected, setConnected] = useState(false)
+  /** OMSI staat open maar de plugin zegt nog niets: de kaart laadt. */
+  const [omsiLaadt, setOmsiLaadt] = useState(false)
   /** Wat de laatste keer kijken opleverde; staat in de balk bovenaan. */
   const [checked, setChecked] = useState<string>()
   const [checking, setChecking] = useState(false)
@@ -1323,6 +1325,7 @@ export function App(): JSX.Element {
     if (!started) {
       setSession(undefined)
       setConnected(false)
+      setOmsiLaadt(false)
       return
     }
     const look = (): void => {
@@ -1330,7 +1333,16 @@ export function App(): JSX.Element {
         setSession(result)
         if (result.dutyComplete) void finishRef.current?.()
       })
-      void window.career.liveConnected().then(setConnected)
+      void window.career.liveConnected().then((verbonden) => {
+        setConnected(verbonden)
+        /*
+         * Nog geen gegevens: staat OMSI dan al open? De kaart laden duurde op
+         * Lucs pc drie en een halve minuut, en al die tijd zei dit scherm "Wacht
+         * op OMSI". Alleen zolang er niets binnenkomt, want het is `tasklist`.
+         */
+        if (verbonden) setOmsiLaadt(false)
+        else void window.career.omsiRunning().then(setOmsiLaadt)
+      })
     }
     // Meteen kijken, anders staat het scherm de eerste vijf seconden leeg.
     look()
@@ -2094,6 +2106,7 @@ export function App(): JSX.Element {
                 ibis={ibis}
                 session={session}
                 connected={connected}
+                laadt={omsiLaadt}
                 busy={busy}
                 exam={Boolean(exam)}
                 overlayOpen={overlayOpen}
