@@ -139,6 +139,18 @@ const TEXT = {
     fr: 'Fermer',
     nl: 'Sluiten'
   },
+  'nav.home': {
+    en: 'Main menu',
+    de: 'Hauptmenü',
+    fr: 'Menu principal',
+    nl: 'Hoofdmenu'
+  },
+  'nav.settings': {
+    en: 'OMSI settings',
+    de: 'OMSI-Einstellungen',
+    fr: 'Paramètres d’OMSI',
+    nl: 'OMSI-instellingen'
+  },
   'photos.title': {
     en: 'Pictures of your buses',
     de: 'Bilder deiner Busse',

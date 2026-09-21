@@ -165,6 +165,8 @@ export const ICONEN = {
       ' M17.5 4.7 19 6.2l-2.1 2.1-1.5-1.5Z',
     vulling: 'nonzero' as const
   },
+  /* Een huis: het hoofdmenu, bereikbaar vanuit elk scherm. */
+  thuis: { d: 'M12 3.2 2.8 11h2.7v9.3h5v-5.7h3v5.7h5V11h2.7Z' },
   /* Een stuur: de ring met de naaf en drie spaken. */
   stuur: {
     d:

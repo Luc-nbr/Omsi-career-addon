@@ -51,6 +51,7 @@ import { Taalkeuze } from './Taalkeuze'
 import { Welkom } from './Welkom'
 import { Klaarzetten } from './Klaarzetten'
 import { Busplaatjes } from './Busplaatjes'
+import { Icoon } from './Icoon'
 import { Starthub } from './Starthub'
 import { ThemaKnop, type Thema } from './ThemaKnop'
 import { Versie } from './Versie'
@@ -1490,6 +1491,58 @@ export function App(): JSX.Element {
    * vraag al gehad heeft hoeft niet geteld te worden; de knoppen tellen zelf.
    */
   const kaartenBezig = Boolean(kaartenStand && kaartenStand.resterend > 0 && !klaarzettenOverslaan)
+
+  /*
+   * Rechts in de bovenbalk, op elk scherm met de stappen: het hoofdmenu en de
+   * instellingen van OMSI, dan versie, thema en talen.
+   *
+   * Luc: "Ik wil het hoofdmenu en de settings altijd kunnen bereiken vanuit elk
+   * menu." Tot nu toe kwam je alleen terug in het hoofdmenu via de stappen, en
+   * bij de instellingen alleen vanuit het hoofdmenu; tijdens een lopende dienst
+   * stond de balk er helemaal niet. Wat je in de stappen koos blijft staan: wie
+   * vanuit het hoofdmenu weer een modus kiest, gaat verder waar hij was.
+   */
+  const balkRechts = (
+    <>
+      {career?.state && (
+        <button
+          type="button"
+          className="balk-knop"
+          aria-label={t(language, 'nav.home')}
+          title={t(language, 'nav.home')}
+          onClick={() => setScreen('modes')}
+        >
+          <Icoon naam="thuis" />
+        </button>
+      )}
+      {omsi?.confirmed && (
+        <button
+          type="button"
+          className="balk-knop"
+          aria-label={t(language, 'nav.settings')}
+          title={t(language, 'nav.settings')}
+          aria-current={screen === 'game' ? 'page' : undefined}
+          onClick={() => setScreen('game')}
+        >
+          <Icoon naam="stuur" />
+        </button>
+      )}
+      <Versie />
+      <ThemaKnop language={language} thema={thema} onThema={kiesThema} />
+      {LANGUAGES.map((taal) => (
+        <button
+          key={taal.code}
+          type="button"
+          aria-pressed={taal.code === language}
+          aria-label={taal.native}
+          title={taal.native}
+          onClick={() => chooseLanguage(taal.code)}
+        >
+          <Flag code={taal.code} />
+        </button>
+      ))}
+    </>
+  )
   useEffect(() => {
     if (!omsi?.confirmed || busfotosGevraagd !== false || kaartenBezig) return undefined
     let geldig = true
@@ -1818,24 +1871,7 @@ export function App(): JSX.Element {
               })
               .finally(() => setHofBezig(false))
           }}
-          rechtsInBalk={
-            <>
-              <Versie />
-              <ThemaKnop language={language} thema={thema} onThema={kiesThema} />
-              {LANGUAGES.map((taal) => (
-                <button
-                  key={taal.code}
-                  type="button"
-                  aria-pressed={taal.code === language}
-                  aria-label={taal.native}
-                  title={taal.native}
-                  onClick={() => chooseLanguage(taal.code)}
-                >
-                  <Flag code={taal.code} />
-                </button>
-              ))}
-            </>
-          }
+          rechtsInBalk={balkRechts}
         />
       </LanguageProvider>
     )
@@ -1888,6 +1924,7 @@ export function App(): JSX.Element {
       <LanguageProvider language={language}>
         <Setup
           stap="bus"
+          rechtsInBalk={balkRechts}
           lijn={duty.lineNumbers[0] ?? duty.legs[0]?.lineNumber}
           /*
            * De dienst erbij, want daar haalt de kaart zijn tegels en zijn route
@@ -3447,24 +3484,7 @@ export function App(): JSX.Element {
            * van die kaart ernaast hoort te staan.
            */
           metKaart={Boolean(vel.vrij)}
-          rechtsInBalk={
-            <>
-              <Versie />
-              <ThemaKnop language={language} thema={thema} onThema={kiesThema} />
-              {LANGUAGES.map((taal) => (
-                <button
-                  key={taal.code}
-                  type="button"
-                  aria-pressed={taal.code === language}
-                  aria-label={taal.native}
-                  title={taal.native}
-                  onClick={() => chooseLanguage(taal.code)}
-                >
-                  <Flag code={taal.code} />
-                </button>
-              ))}
-            </>
-          }
+          rechtsInBalk={balkRechts}
           /*
            * Een stap terug, en binnen de busstap een niveau terug.
            *
