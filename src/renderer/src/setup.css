@@ -1331,20 +1331,40 @@
  * van het lijnnummer. Hier is geel gereserveerd voor identiteit; een instelling
  * is geen lijn. Ze krijgen de kleur van de route, net als elke andere keuze.
  */
+/*
+ * Het bolletje op de lijn.
+ *
+ * Eerst had het spoor een eigen hoogte van 4 px en bleef het bolletje de
+ * standaardvorm van Chromium houden. Dat bolletje gaat uit van zijn eigen, veel
+ * dikkere spoor en hing daardoor onder de lijn (Luc: "zorg dat in de settings
+ * het bolletje op de lijn zit"). Nu is het schuifje zelf de lijn, net als de
+ * regelaars op de dienststap: dan zet Chromium het bolletje vanzelf midden op
+ * de hoogte van het element, in beide thema's en bij elke schaal.
+ *
+ * Het gevulde stuk links van het bolletje komt uit `--deel`, dat de schuif zelf
+ * meegeeft (GameSetup.tsx); zonder waarde is de lijn gewoon leeg.
+ */
 .velinhoud input[type='range'] {
-  accent-color: var(--route);
-  background: transparent;
-}
-
-.velinhoud input[type='range']::-webkit-slider-runnable-track {
-  background: var(--vel-lijn);
   height: 4px;
+  margin: 8px 0;
   border-radius: var(--radius-rond);
+  background: linear-gradient(
+    to right,
+    var(--route) 0 var(--deel, 0%),
+    var(--vel-lijn) var(--deel, 0%) 100%
+  );
+  accent-color: var(--route);
+  appearance: none;
 }
 
 .velinhoud input[type='range']::-webkit-slider-thumb {
-  background: var(--route);
+  width: 16px;
+  height: 16px;
   border: 0;
+  border-radius: var(--radius-rond);
+  background: var(--route);
+  appearance: none;
+  cursor: pointer;
 }
 
 .velinhoud input[type='checkbox'] {

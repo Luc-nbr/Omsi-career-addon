@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type JSX } from 'react'
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type JSX } from 'react'
 import type { KeyBinding } from '../../core/omsiKeys'
 import { loose, t, type Language } from '../../shared/i18n'
 import {
@@ -277,6 +277,18 @@ function SettingRow({
         max={spec.max}
         step={spec.step}
         value={current}
+        // Hoe ver de lijn gevuld is; zie `.velinhoud input[type='range']` in setup.css.
+        style={
+          {
+            '--deel': `${Math.min(
+              100,
+              Math.max(
+                0,
+                ((current - (spec.min ?? 0)) / Math.max(1e-9, (spec.max ?? 1) - (spec.min ?? 0))) * 100
+              )
+            )}%`
+          } as CSSProperties
+        }
         onChange={(event) => write(Number(event.target.value))}
       />
       {hint && <p className="setting-hint">{hint}</p>}

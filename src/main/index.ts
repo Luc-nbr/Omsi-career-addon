@@ -359,8 +359,19 @@ async function warmKaarten(): Promise<void> {
   warmLoopt = true
   try {
     const folders = listMaps(omsi())
+    /*
+     * Wat er echt nog ingelezen moet worden, en niet wat er nog langs moet.
+     *
+     * Hier stond `folders.length - klaar`: bij elke start liep de teller van 12
+     * naar 0 terwijl alle kaarten al klaarstonden. Het scherm toont het
+     * klaarzetten zolang er iets resteert, en dus flitste het bij elke start een
+     * paar milliseconden in beeld -- en bouwde het wat eronder stond opnieuw op.
+     * Luc zag het als een tabblad in de instellingen dat terugsprong en een
+     * lijst die opnieuw laadde, 2,3 s na het starten (probe-remount.cjs).
+     */
+    const teLezen = new Set(folders.filter((folder) => !laag().kaartStaatKlaar(folder)))
     const melden = (bezig: string | undefined, klaar: number): void => {
-      warmStand = { bezig, klaar, totaal: folders.length, resterend: folders.length - klaar }
+      warmStand = { bezig, klaar, totaal: folders.length, resterend: teLezen.size }
       for (const venster of BrowserWindow.getAllWindows()) {
         if (!venster.isDestroyed()) venster.webContents.send('kaarten:warm', warmStand)
       }
@@ -387,6 +398,7 @@ async function warmKaarten(): Promise<void> {
         }
         await new Promise((verder) => setTimeout(verder, 150))
       }
+      teLezen.delete(folder)
       klaar += 1
       melden(undefined, klaar)
     }
