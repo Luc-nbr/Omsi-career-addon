@@ -18,10 +18,14 @@
  */
 
 #include <windows.h>
+#include <shlobj.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+
+#pragma comment(lib, "shell32.lib")
 
 /* Volgorde gelijk aan [systemvarlist] in de .opl. */
 enum {
@@ -211,6 +215,73 @@ static wchar_t g_path[MAX_PATH];
 static wchar_t g_temp[MAX_PATH];
 static ULONGLONG g_lastWrite;
 static int g_ready;
+
+/*
+ * Het eigen logboek van de plugin: plugin.log naast live.json.
+ *
+ * WAAROM
+ * Op 21-09 laadde OMSI de plugin (logfile.txt meldt hem), reed Luc een uur op
+ * Ahlheim 5 en sloot OMSI netjes af -- en live.json bleef op 19-09 staan, zonder
+ * zelfs een live.tmp. Met een nagebootst OMSI (plugin/proef) schrijft deze
+ * zelfde DLL in elk geval: met en zonder bus, netjes afgesloten of niet, met de
+ * grootste berichten die kunnen ontstaan. Wat er in het spel anders was, viel
+ * achteraf niet meer te zien. Dit logboek zegt het de volgende keer wel: of de
+ * DLL geladen werd, of PluginStart kwam, waar hij wilde schrijven, of OMSI hem
+ * gegevens gaf, en met welke Windows-fout het schrijven eventueel mislukte.
+ *
+ * Kort gehouden: hooguit MAX_MELDINGEN regels per start, en elke fout maar een
+ * keer. De vorige start blijft staan als plugin.vorige.log.
+ */
+#define MAX_MELDINGEN 80
+#define LEVENSTEKEN_MS (10u * 60u * 1000u)
+static wchar_t g_logPath[MAX_PATH];
+static int g_meldingen;
+static int g_gestart;
+static ULONGLONG g_sysAanroepen, g_varAanroepen;
+static DWORD g_geschreven, g_mislukt;
+static DWORD g_laatsteFout;
+static ULONGLONG g_levensteken;
+
+static void meld(const char *formaat, ...) {
+  if (!g_logPath[0] || g_meldingen >= MAX_MELDINGEN) return;
+  g_meldingen++;
+  char regel[600];
+  SYSTEMTIME nu;
+  GetLocalTime(&nu);
+  int kop = _snprintf_s(regel, sizeof(regel), _TRUNCATE, "%02u:%02u:%02u.%03u  ", nu.wHour,
+                        nu.wMinute, nu.wSecond, nu.wMilliseconds);
+  if (kop < 0) return;
+  va_list rest;
+  va_start(rest, formaat);
+  int tekst = _vsnprintf_s(regel + kop, sizeof(regel) - kop - 2, _TRUNCATE, formaat, rest);
+  va_end(rest);
+  size_t lengte = strlen(regel);
+  (void)tekst;
+  regel[lengte++] = '\r';
+  regel[lengte++] = '\n';
+  HANDLE bestand = CreateFileW(g_logPath, FILE_APPEND_DATA,
+                               FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
+                               OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+  if (bestand == INVALID_HANDLE_VALUE) return;
+  DWORD geschreven = 0;
+  WriteFile(bestand, regel, (DWORD)lengte, &geschreven, NULL);
+  CloseHandle(bestand);
+}
+
+/*
+ * De map voor live.json. Eerst de omgevingsvariabele, zoals altijd; ontbreekt
+ * die in het proces van OMSI, dan vraagt de plugin het Windows zelf. Vanuit
+ * DllMain mag alleen de eerste weg (de tweede laadt shell32 en dat mag daar
+ * niet), dus die geeft `metShell` = 0 mee.
+ */
+static int lokale_map(wchar_t *map, int metShell) {
+  DWORD lengte = GetEnvironmentVariableW(L"LOCALAPPDATA", map, MAX_PATH);
+  if (lengte > 0 && lengte < MAX_PATH) return 1;
+  map[0] = 0;
+  if (metShell && SHGetFolderPathW(NULL, CSIDL_LOCAL_APPDATA, NULL, SHGFP_TYPE_CURRENT, map) == S_OK)
+    return 2;
+  return 0;
+}
 
 /* Rijstijl: opgeteld over de sessie, de app trekt het begin van het eind af. */
 static double g_prevSpeed;      /* m/s */
@@ -567,15 +638,34 @@ static void flush_state(int alive) {
       g_collisions, g_collisionEnergy, g_worstCollision,
       g_str[STR_BUSSTOP], g_str[STR_DELAY_MIN], g_str[STR_DELAY_SEC],
       g_str[STR_LINE], g_str[STR_TERMINUS], g_str[STR_MATRIX], mem);
-  if (length <= 0) return;
+  if (length <= 0) {
+    g_mislukt++;
+    if (g_laatsteFout != 0xFFFFFFFFu) meld("bericht past niet in de buffer: nu niet geschreven");
+    g_laatsteFout = 0xFFFFFFFFu;
+    return;
+  }
 
   HANDLE file = CreateFileW(g_temp, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
                             FILE_ATTRIBUTE_NORMAL, NULL);
-  if (file == INVALID_HANDLE_VALUE) return;
+  if (file == INVALID_HANDLE_VALUE) {
+    DWORD fout = GetLastError();
+    g_mislukt++;
+    if (fout != g_laatsteFout) meld("live.tmp openen mislukt: Windows-fout %lu", fout);
+    g_laatsteFout = fout;
+    return;
+  }
   DWORD written = 0;
   WriteFile(file, body, (DWORD)length, &written, NULL);
   CloseHandle(file);
-  MoveFileExW(g_temp, g_path, MOVEFILE_REPLACE_EXISTING);
+  if (!MoveFileExW(g_temp, g_path, MOVEFILE_REPLACE_EXISTING)) {
+    DWORD fout = GetLastError();
+    g_mislukt++;
+    if (fout != g_laatsteFout) meld("live.json vervangen mislukt: Windows-fout %lu", fout);
+    g_laatsteFout = fout;
+    return;
+  }
+  if (g_geschreven++ == 0) meld("eerste live.json geschreven (%d bytes)", length);
+  g_laatsteFout = 0;
 }
 
 /* Wordt na de laatste variabele van een beeld aangeroepen. */
@@ -589,10 +679,16 @@ static void maybe_flush(void) {
 
 __declspec(dllexport) void __stdcall PluginStart(void *owner) {
   (void)owner;
+  g_gestart = 1;
+  meld("PluginStart");
 
   wchar_t base[MAX_PATH];
-  DWORD length = GetEnvironmentVariableW(L"LOCALAPPDATA", base, MAX_PATH);
-  if (length == 0 || length >= MAX_PATH) return;
+  const int bron = lokale_map(base, 1);
+  if (!bron) {
+    meld("geen map voor live.json: LOCALAPPDATA ontbreekt en Windows gaf er ook geen");
+    return;
+  }
+  if (bron == 2) meld("LOCALAPPDATA ontbreekt in dit proces; de map komt van Windows zelf");
 
   _snwprintf_s(g_path, MAX_PATH, _TRUNCATE, L"%s\\OMSI Career", base);
   CreateDirectoryW(g_path, NULL);
@@ -621,6 +717,8 @@ __declspec(dllexport) void __stdcall PluginStart(void *owner) {
   memset(&g_mem, 0, sizeof(g_mem));
   detect_version();
   g_ready = 1;
+  g_levensteken = GetTickCount64();
+  meld("klaar om te schrijven naar %ls (OMSI %s)", g_path, g_exeVersion);
 }
 
 __declspec(dllexport) void __stdcall PluginFinalize(void) {
@@ -632,6 +730,8 @@ __declspec(dllexport) void __stdcall PluginFinalize(void) {
    */
   flush_state(0);
   g_ready = 0;
+  meld("afgesloten: %I64u systeemaanroepen, %I64u voertuigaanroepen, %lu keer geschreven, %lu keer mislukt",
+       g_sysAanroepen, g_varAanroepen, g_geschreven, g_mislukt);
 }
 
 __declspec(dllexport) void __stdcall AccessSystemVariable(unsigned short index,
@@ -639,8 +739,19 @@ __declspec(dllexport) void __stdcall AccessSystemVariable(unsigned short index,
                                                          bool *write) {
   (void)write;
   if (!value || index >= SYS_COUNT) return;
+  if (g_sysAanroepen++ == 0) meld("eerste systeemvariabele van OMSI (index %u)", index);
   g_sys[index] = *value;
   g_seenSys |= (1u << index);
+
+  /* Elke tien minuten een teken van leven, zodat te zien is of de stroom opdroogt. */
+  if (index == 0 && g_ready) {
+    ULONGLONG nu = GetTickCount64();
+    if (nu - g_levensteken >= LEVENSTEKEN_MS) {
+      g_levensteken = nu;
+      meld("loopt: %I64u systeemaanroepen, %I64u voertuigaanroepen, %lu keer geschreven, %lu keer mislukt",
+           g_sysAanroepen, g_varAanroepen, g_geschreven, g_mislukt);
+    }
+  }
 
   if (index == SYS_COLL_ENERGY) track_collision((double)*value);
 
@@ -656,6 +767,7 @@ __declspec(dllexport) void __stdcall AccessVariable(unsigned short index,
                                                     float *value, bool *write) {
   (void)write;
   if (!value || index >= VAR_COUNT) return;
+  if (g_varAanroepen++ == 0) meld("eerste voertuigvariabele van OMSI (index %u)", index);
   g_var[index] = *value;
   g_seen |= (1u << index);
 
@@ -676,9 +788,50 @@ __declspec(dllexport) void __stdcall AccessStringVariable(unsigned short index,
   copy_string(index, *value);
 }
 
+/*
+ * Het logboek openen zodra de DLL geladen is, nog voor PluginStart: bleef die
+ * weg, dan hoort dat er ook te staan. Hier alleen kernel32 -- geen shell32, geen
+ * andere DLL's laden terwijl Windows de laadvergrendeling vasthoudt. Is er geen
+ * LOCALAPPDATA, dan komt het logboek naast de DLL in de plugins-map.
+ */
+static void logboek_openen(HINSTANCE instance) {
+  wchar_t map[MAX_PATH];
+  if (lokale_map(map, 0)) {
+    wchar_t submap[MAX_PATH];
+    _snwprintf_s(submap, MAX_PATH, _TRUNCATE, L"%s\\OMSI Career", map);
+    CreateDirectoryW(submap, NULL);
+    _snwprintf_s(g_logPath, MAX_PATH, _TRUNCATE, L"%s\\plugin.log", submap);
+  } else {
+    wchar_t eigen[MAX_PATH];
+    DWORD lengte = GetModuleFileNameW(instance, eigen, MAX_PATH);
+    if (lengte == 0 || lengte >= MAX_PATH) return;
+    wchar_t *streep = wcsrchr(eigen, L'\\');
+    if (streep) *streep = 0;
+    _snwprintf_s(g_logPath, MAX_PATH, _TRUNCATE, L"%s\\OMSICareer.log", eigen);
+  }
+
+  /* De vorige start bewaren, deze begint leeg. */
+  wchar_t vorige[MAX_PATH];
+  _snwprintf_s(vorige, MAX_PATH, _TRUNCATE, L"%s", g_logPath);
+  wchar_t *punt = wcsrchr(vorige, L'.');
+  if (punt) *punt = 0;
+  wcscat_s(vorige, MAX_PATH, L".vorige.log");
+  MoveFileExW(g_logPath, vorige, MOVEFILE_REPLACE_EXISTING);
+
+  wchar_t exe[MAX_PATH];
+  if (!GetModuleFileNameW(NULL, exe, MAX_PATH)) exe[0] = 0;
+  wchar_t werkmap[MAX_PATH];
+  if (!GetCurrentDirectoryW(MAX_PATH, werkmap)) werkmap[0] = 0;
+  meld("geladen in %ls (werkmap %ls)%s", exe, werkmap,
+       lokale_map(map, 0) ? "" : " -- LOCALAPPDATA ontbreekt");
+}
+
 BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
-  (void)instance;
   (void)reserved;
-  if (reason == DLL_PROCESS_DETACH && g_ready) PluginFinalize();
+  if (reason == DLL_PROCESS_ATTACH) logboek_openen(instance);
+  if (reason == DLL_PROCESS_DETACH) {
+    if (g_ready) PluginFinalize();
+    else if (!g_gestart) meld("ontladen zonder dat OMSI PluginStart aanriep");
+  }
   return TRUE;
 }

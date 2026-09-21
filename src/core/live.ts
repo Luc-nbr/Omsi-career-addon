@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { Duty, DutyLeg } from './types'
 
 /**
@@ -169,6 +169,24 @@ function hasSys(data: LiveData, bit: number): boolean {
  */
 export function livePath(): string {
   return join(process.env.LOCALAPPDATA ?? '', 'OMSI Career', 'live.json')
+}
+
+/**
+ * Het eigen logboek van de plugin, van de laatste keer dat OMSI draaide.
+ *
+ * De plugin zet daarin of hij geladen werd, of OMSI PluginStart aanriep, waar
+ * hij schrijft, of er gegevens binnenkwamen en of het schrijven lukte. Zie de
+ * kop van `g_logPath` in plugin/omsicareer.c voor waarom dat er is.
+ */
+export function pluginLogboek(): { regels: string[]; tijd: number } | undefined {
+  const file = join(dirname(livePath()), 'plugin.log')
+  try {
+    const tijd = statSync(file).mtimeMs
+    const regels = readFileSync(file, 'utf8').split(/\r?\n/).filter(Boolean).slice(-40)
+    return { regels, tijd }
+  } catch {
+    return undefined
+  }
 }
 
 /** Leest de laatste stand. Geeft `undefined` als OMSI niet draait. */

@@ -52,7 +52,7 @@ import { readTileGrid, type MapGeometry } from '../core/geo'
 import { LaneNetwork, type TripRoute } from '../core/routing'
 import { VehicleTracker, type VehiclePosition } from '../core/vehicle'
 import { buildIbisPlan, type IbisPlan } from '../core/ibis'
-import { describeLive, readLive } from '../core/live'
+import { describeLive, pluginLogboek, readLive } from '../core/live'
 import { findOmsiInstall, hasMaps, isOmsiInstall, resolveOmsiFolder } from '../core/install'
 import { isOmsiRunning, launchOmsi } from '../core/launch'
 import { ensurePlugin, pluginSourceDir, type PluginStatus } from '../core/pluginInstall'
@@ -823,6 +823,25 @@ let omsiDraaide = false
 /** Wanneer we voor het laatst naar de proceslijst keken. */
 let laatsteProcesKijk = 0
 
+/**
+ * Het logboek van de plugin overnemen in dat van de app.
+ *
+ * Wie een probleem meldt, stuurt het logboek van de app. Wat de plugin in OMSI
+ * zag -- geladen, gestart, gegevens, schrijffouten -- stond tot nu toe nergens,
+ * en daardoor viel op 21-09 niet meer na te gaan waarom live.json bleef staan.
+ * Eén keer per versie van het bestand, zodat het niet bij elke start herhaald
+ * wordt.
+ */
+let pluginLogGemeld = 0
+
+function meldPluginLogboek(aanleiding: string): void {
+  const boek = pluginLogboek()
+  if (!boek || boek.tijd === pluginLogGemeld) return
+  pluginLogGemeld = boek.tijd
+  log(`plugin-logboek (${aanleiding}), ${new Date(boek.tijd).toLocaleString('nl-NL')}:`)
+  for (const regel of boek.regels) log(`  plugin ${regel}`)
+}
+
 async function herstelStartscherm(): Promise<void> {
   /*
    * `tasklist` is een proces starten, en dat elke vijf tellen doen terwijl er
@@ -836,6 +855,7 @@ async function herstelStartscherm(): Promise<void> {
   const draait = await isOmsiRunning()
   const netAf = omsiDraaide && !draait
   omsiDraaide = draait
+  if (netAf) meldPluginLogboek('OMSI is net afgesloten')
   if (!netAf || !klaargezet) return
   try {
     presetStartup(omsi(), klaargezet.mapFolder, klaargezet.file)
@@ -2649,6 +2669,7 @@ if (!app.requestSingleInstanceLock()) {
     } catch (fout) {
       logFout('OMSI zoeken', fout)
     }
+    meldPluginLogboek('de vorige keer dat OMSI draaide')
     career = resolveActive(userData())
     registerHandlers()
     createWindow()
