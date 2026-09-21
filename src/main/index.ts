@@ -53,7 +53,7 @@ import { readTileGrid, type MapGeometry } from '../core/geo'
 import { LaneNetwork, type TripRoute } from '../core/routing'
 import { VehicleTracker, type VehiclePosition } from '../core/vehicle'
 import { buildIbisPlan, type IbisPlan } from '../core/ibis'
-import { describeLive, pluginLogboek, readLive } from '../core/live'
+import { describeLive, liveMap, pluginLogboek, readLive, stelLiveMappenIn } from '../core/live'
 import { findOmsiInstall, hasMaps, isOmsiInstall, resolveOmsiFolder } from '../core/install'
 import { isOmsiRunning, launchOmsi } from '../core/launch'
 import { ensurePlugin, pluginSourceDir, type PluginStatus } from '../core/pluginInstall'
@@ -3011,6 +3011,17 @@ if (!app.requestSingleInstanceLock()) {
     )
     log(`gebruikersgegevens: ${userData()}`)
     if (pad) log(`logboek: ${pad}`)
+    /*
+     * Waar de plugin schrijft, niet alleen volgens %LOCALAPPDATA%: in Lucs app
+     * stond die niet goed, en dan kwam er nooit verbinding. De lokale AppData
+     * staat naast AppData\Roaming, en die haalt Electron bij Windows zelf op.
+     * Zie `liveMap`; het eerste gebruik schrijft de keuze in het logboek.
+     */
+    stelLiveMappenIn([
+      join(dirname(app.getPath('appData')), 'Local'),
+      join(app.getPath('home'), 'AppData', 'Local')
+    ])
+    liveMap()
 
     /*
      * Wat de app onderuit haalt hoort in het logboek te staan, niet alleen in

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { log } from './logboek'
 import type { Duty, DutyLeg } from './types'
 
 /**
@@ -161,14 +162,83 @@ function hasSys(data: LiveData, bit: number): boolean {
 }
 
 /**
- * Waar de plugin zijn gegevens neerzet.
+ * Waar de plugin zijn gegevens neerzet: `OMSI Career` in de lokale AppData.
  *
  * De map heet nog naar de oude naam van de app. Dat pad zit ingebakken in de
  * DLL die in OMSI draait; meeveranderen betekent de plugin opnieuw bouwen en
  * bij iedereen vervangen, en daar wint niemand iets mee.
+ *
+ * WAAROM NIET ALLEEN %LOCALAPPDATA%
+ * Lucs app kreeg op 21-09 nooit verbinding, met de oude en met de nieuwe
+ * versie, terwijl de plugin vanaf 22:57:58 gewoon naar
+ * C:\Users\lucru\AppData\Local\OMSI Career schreef. De app vond daar zelfs het
+ * plugin-logboek niet: bij de start om 22:46 ontbrak de regel "plugin-logboek",
+ * die elke proefstart van dezelfde bouw wel schreef. Zijn app, geopend vanuit
+ * het Startmenu, zocht dus op een andere plek dan de plugin schrijft. Een
+ * proefstart vanaf de opdrachtregel kreeg de variabele goed mee, en daarom
+ * werkte het daar wel.
+ *
+ * Dus kijkt de app op meer plekken: de variabele, en de lokale AppData die
+ * Windows zelf opgeeft (naast AppData\Roaming, uit `stelLiveMappenIn`). Waar de
+ * plugin het laatst iets schreef, daar is hij. Een proef kan de map vastzetten
+ * met OMSI_ENHANCER_LIVEMAP, zodat een nep-live.json niet wedijvert met het
+ * echte spel.
  */
+let andereMappen: string[] = []
+let gekozenMap: string | undefined
+let gekozenOp = 0
+
+export function stelLiveMappenIn(lokaleAppData: string[]): void {
+  andereMappen = lokaleAppData.filter(Boolean)
+  gekozenMap = undefined
+}
+
+function kandidaten(): string[] {
+  const alle = [process.env.LOCALAPPDATA ?? '', ...andereMappen].filter(Boolean)
+  const gezien = new Set<string>()
+  return alle.filter((map) => {
+    const sleutel = map.toLowerCase().replace(/[\\/]+$/, '')
+    if (gezien.has(sleutel)) return false
+    gezien.add(sleutel)
+    return true
+  })
+}
+
+/** Welke map `OMSI Career` de plugin gebruikt. Eens per vijf tellen opnieuw bekeken. */
+export function liveMap(): string {
+  const vast = process.env.OMSI_ENHANCER_LIVEMAP
+  if (vast) return vast
+  const nu = Date.now()
+  if (gekozenMap && nu - gekozenOp < 5000) return gekozenMap
+  gekozenOp = nu
+  let beste: string | undefined
+  let besteTijd = -Infinity
+  for (const basis of kandidaten()) {
+    const map = join(basis, 'OMSI Career')
+    for (const naam of ['live.json', 'plugin.log']) {
+      try {
+        const tijd = statSync(join(map, naam)).mtimeMs
+        if (tijd > besteTijd) {
+          besteTijd = tijd
+          beste = map
+        }
+      } catch {
+        // Niet hier.
+      }
+    }
+  }
+  const keus = beste ?? join(kandidaten()[0] ?? '', 'OMSI Career')
+  if (keus !== gekozenMap) {
+    log(
+      `plugin-map: ${keus} (LOCALAPPDATA in dit proces: ${process.env.LOCALAPPDATA ?? 'ontbreekt'})`
+    )
+  }
+  gekozenMap = keus
+  return keus
+}
+
 export function livePath(): string {
-  return join(process.env.LOCALAPPDATA ?? '', 'OMSI Career', 'live.json')
+  return join(liveMap(), 'live.json')
 }
 
 /**
