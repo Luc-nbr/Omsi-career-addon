@@ -286,11 +286,16 @@ const TEXT = {
     fr: 'Steam a désactivé son overlay pour tous les jeux. Pour l’avoir dans OMSI, réactivez-le dans Steam › Paramètres › En jeu — l’application ne touche pas à ce réglage, car il vaut pour tous les jeux.',
     nl: 'Steam heeft zijn overlay voor alle spellen uitgezet. Wil je hem in OMSI, zet hem dan aan in Steam › Instellingen › In-game — de app blijft van die schakelaar af, want hij geldt voor elk spel.'
   },
+  /*
+   * Het blok voor OMSI zet de app nu zelf erbij als Steam het nog niet had. Deze
+   * reden komt alleen nog als het bestand van een account niet in de vorm staat
+   * waarin de app het veilig kan aanvullen; dan blijft dat bestand onaangeroerd.
+   */
   'ovl.knop.reden.geenblok': {
-    en: 'Steam has no OMSI settings yet for at least one of your accounts, so the app cannot switch it off for OMSI alone there. Do it in Steam: right-click OMSI 2 › Properties.',
-    de: 'Für mindestens eines deiner Steam-Konten gibt es noch keine OMSI-Einstellungen, also kann die App es dort nicht nur für OMSI ausschalten. Mach es in Steam: Rechtsklick auf OMSI 2 › Eigenschaften.',
-    fr: 'pour au moins un de vos comptes Steam, il n’y a pas encore de réglages OMSI : l’application ne peut donc pas la désactiver pour OMSI seul. Faites-le dans Steam : clic droit sur OMSI 2 › Propriétés.',
-    nl: 'voor minstens één van je Steam-accounts staan er nog geen instellingen voor OMSI, dus kan de app hem daar niet alleen voor OMSI uitzetten. Doe het in Steam: rechtsklik op OMSI 2 › Eigenschappen.'
+    en: 'The Steam settings file of at least one of your accounts is not laid out the way the app can safely edit, so the app left that file alone and the overlay stays on there. Do it in Steam: right-click OMSI 2 › Properties.',
+    de: 'Die Steam-Einstellungsdatei von mindestens einem deiner Konten ist nicht so aufgebaut, dass die App sie sicher ändern kann. Die App hat sie darum nicht angerührt, und dort bleibt das Overlay an. Mach es in Steam: Rechtsklick auf OMSI 2 › Eigenschaften.',
+    fr: 'le fichier de réglages Steam d’au moins un de vos comptes n’est pas écrit sous une forme que l’application sait modifier sans risque : elle n’y a donc pas touché, et l’overlay y reste actif. Faites-le dans Steam : clic droit sur OMSI 2 › Propriétés.',
+    nl: 'het Steam-instellingenbestand van minstens één van je accounts staat niet in de vorm waarin de app het veilig kan aanpassen. Dat bestand heeft de app daarom laten staan, en daar blijft de overlay aan. Doe het in Steam: rechtsklik op OMSI 2 › Eigenschappen.'
   },
   'ovl.knop.reden.nietgevonden': {
     en: 'Steam’s settings file was not found.',
@@ -1088,6 +1093,13 @@ const TEXT = {
     de: 'Einrichten nicht möglich: {reason}',
     fr: 'Préparation impossible : {reason}',
     nl: 'Klaarzetten lukte niet: {reason}'
+  },
+  // Het klaarzetten lukte wel; alleen het spel kwam niet op (UAC geweigerd, geen Omsi.exe).
+  'start.notLaunched': {
+    en: 'OMSI did not start. Everything is set up: try again, or start the game yourself.',
+    de: 'OMSI ist nicht gestartet. Alles ist eingerichtet: versuch es noch einmal oder starte das Spiel selbst.',
+    fr: 'OMSI n’a pas démarré. Tout est prêt : réessayez, ou lancez le jeu vous-même.',
+    nl: 'OMSI is niet opgestart. Alles staat klaar: probeer het opnieuw, of start het spel zelf.'
   },
 
   // ---------- instellingen van OMSI ----------

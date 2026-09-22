@@ -76,8 +76,10 @@ function wachtEven(ms: number): void {
 }
 
 /*
- * Waar kopieën van bestanden van andere programma's komen: de OMSI-map, en
- * Steams localconfig.vdf (zie core/overlayknop.ts).
+ * Waar kopieën van bestanden van andere programma's komen. Nu is dat alleen
+ * Steams localconfig.vdf (core/overlayknop.ts); de bestanden in de OMSI-map
+ * gaan niet via `bewaarKopie` -- startup.ts zet laststn.osn één keer opzij als
+ * .voor-omsi-enhancer, en options.cfg schrijft hij zonder kopie.
  *
  * De modules die zulke bestanden schrijven kennen alleen hun eigen pad. De
  * kopieën horen daar niet -- dat is de map van het spel of van Steam -- maar bij
@@ -98,10 +100,11 @@ const KOPIEEN_PER_BESTAND = 10
 /**
  * Een kopie van een bestand bewaren voordat de app het verandert.
  *
- * Voor de instellingen van OMSI: "mijn toetsen zijn weg" is dan terug te zetten
- * vanuit de laatste tien versies. Is het bestand gelijk aan de nieuwste kopie,
- * dan komt er geen nieuwe bij: het startscherm schrijft options.cfg bij elke
- * dienst, en tien keer dezelfde kopie beschermt niets.
+ * Voor Steams localconfig.vdf, per account (zie `kopieMapNaam`): gaat er iets
+ * mis met de overlayknop, dan is het bestand terug te zetten vanuit de laatste
+ * tien versies. Is het bestand gelijk aan de nieuwste kopie, dan komt er geen
+ * nieuwe bij: een knop die twee keer faalt en het bestand terugzet, zou anders
+ * twee keer dezelfde kopie maken en een oudere, andere versie eruit duwen.
  */
 export function bewaarKopie(bestand: string): void {
   if (!kopieMap || !existsSync(bestand)) return

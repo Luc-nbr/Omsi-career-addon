@@ -34,9 +34,9 @@ import { bewaarKopie, schrijfVeilig } from './veilig'
  * WAT DEZE MODULE AANRAAKT
  * Bestanden van andere programma's, en dat is nieuw voor deze app. Daarom: nooit
  * schrijven terwijl het programma in kwestie draait, altijd eerst een kopie
- * bewaren, en alleen de regel veranderen die het betreft -- de rest van het
- * bestand komt er byte voor byte hetzelfde uit (`probe-overlayknop.ts` rekent
- * dat na).
+ * bewaren, en alleen de regel veranderen die het betreft, of de paar regels
+ * erbij zetten die Steam zelf ook zou schrijven -- de rest van het bestand komt
+ * er byte voor byte hetzelfde uit (`probe-overlayknop.ts` rekent dat na).
  */
 
 /** Wat de app werkelijk kan omzetten. */
@@ -60,6 +60,10 @@ export type Belet = 'steam' | 'allespellen'
 /**
  * Waarom omzetten niet lukte; ook vaste codes, om dezelfde reden als
  * {@link Belet}. De foutmelding zelf gaat het logboek in.
+ *
+ * `geenblok` heet nog naar wat het eerst betekende, geen blok voor OMSI. Dat
+ * zet de app nu zelf erbij; de code zegt nu dat een bestand niet in de vorm
+ * staat waarin de app het veilig kan aanvullen (zie {@link zetVlag}).
  */
 export type Reden =
   | Belet
@@ -164,11 +168,73 @@ const OMSI_APPID = '252530'
  */
 const PAD_ALGEMEEN = ['UserLocalConfigStore', 'system']
 const PAD_PER_SPEL = ['UserLocalConfigStore', 'apps', OMSI_APPID]
+/** Het buitenste blok. Zonder dat is het bestand niet heel, of niet van Steam. */
+const PAD_WORTEL = ['UserLocalConfigStore']
 
 /** Waar een blok begint en eindigt: de indexen van zijn accolades. */
 interface Blokspan {
   open: number
   sluit: number
+}
+
+/** Een tekst tussen aanhalingstekens of een accolade, zoals ze in het bestand staan. */
+interface Stuk {
+  soort: '"' | '{' | '}'
+  /** Index van het aanhalingsteken vooraan, of van de accolade. */
+  begin: number
+  /** Index net na het aanhalingsteken achteraan, of na de accolade. */
+  eind: number
+  /** Bij een accolade: waar in de lijst de accolade staat die erbij hoort. */
+  paar: number
+}
+
+/**
+ * Het bestand in stukken, of niets als het niet klopt.
+ *
+ * WAAROM DE TEKSTEN EROMHEEN GAAN
+ * Accolades tellen over het hele bestand telde ook die ín een waarde mee, en
+ * daar staan er in dit bestand ruim duizend: WebStorage bewaart JSON als tekst,
+ * en onder friends staan de Steam-namen van vrienden (`name`, `NameHistory`), en
+ * die kiezen ze zelf. Eén '}' in zo'n naam, en `UserLocalConfigStore` leek al bij
+ * friends te eindigen; het blok van OMSI kwam dan middenin friends te staan, de
+ * knop zei "uit" en Steam liet de overlay gewoon zien. Dus wordt elke tekst tussen
+ * aanhalingstekens in zijn geheel overgeslagen, met de backslash ervoor zoals
+ * Steam hem schrijft (`\"` in die JSON, `\\` voor een backslash).
+ *
+ * Buiten de teksten hoort er alleen witruimte en accolades te staan. Iets anders
+ * -- een tekst die niet sluit, een accolade te veel of te weinig, een woord
+ * zonder aanhalingstekens -- en de app weet niet meer zeker waar een blok
+ * begint of eindigt. Dan liever niets dan raden.
+ */
+function stukken(tekst: string): Stuk[] | undefined {
+  const uit: Stuk[] = []
+  const nogOpen: number[] = []
+  let i = 0
+  while (i < tekst.length) {
+    const c = tekst[i]
+    if (c === '"') {
+      let j = i + 1
+      while (j < tekst.length && tekst[j] !== '"') j += tekst[j] === '\\' ? 2 : 1
+      if (j >= tekst.length) return undefined
+      uit.push({ soort: '"', begin: i, eind: j + 1, paar: -1 })
+      i = j + 1
+    } else if (c === '{') {
+      nogOpen.push(uit.length)
+      uit.push({ soort: '{', begin: i, eind: i + 1, paar: -1 })
+      i++
+    } else if (c === '}') {
+      const open = nogOpen.pop()
+      if (open === undefined) return undefined
+      uit[open].paar = uit.length
+      uit.push({ soort: '}', begin: i, eind: i + 1, paar: open })
+      i++
+    } else if (c === ' ' || c === '\t' || c === '\r' || c === '\n') {
+      i++
+    } else {
+      return undefined
+    }
+  }
+  return nogOpen.length === 0 ? uit : undefined
 }
 
 /**
@@ -181,45 +247,45 @@ interface Blokspan {
  *     UserLocalConfigStore / apps                               de vlaggen
  *
  * Zoeken binnen het blok zonder op diepte te letten vindt de eerste, want die
- * ligt er nu eenmaal eerder in. Een direct kind is te herkennen aan zijn
- * inspringing: precies één tab dieper dan de accolade van zijn ouder.
+ * ligt er nu eenmaal eerder in. Daarom slaat elke stap de blokken die geen
+ * treffer zijn in hun geheel over, tot hun eigen sluitaccolade. Eerder ging dat
+ * op inspringing -- een direct kind staat één tab dieper -- maar dan moest ook
+ * het tellen van accolades kloppen, en dat deed het niet; zie `stukken`.
+ *
+ * Hoofdletters tellen niet mee, want bij Steam ook niet: die leest "Apps" en
+ * "apps" als dezelfde sleutel. Zocht de app alleen op "apps", dan zag hij een
+ * "Apps" over het hoofd en zette hij er een tweede naast.
  */
 export function zoekBlok(tekst: string, pad: readonly string[]): Blokspan | undefined {
-  let begin = 0
-  let eind = tekst.length
-  let diepteVanOuder = -1
+  const lijst = stukken(tekst)
+  if (!lijst) return undefined
 
+  let van = 0
+  let tot = lijst.length
+  let span: Blokspan | undefined
   for (const sleutel of pad) {
-    const wil = diepteVanOuder + 1
-    // De sleutel staat alleen op zijn regel, met precies zoveel tabs ervoor.
-    const zoek = new RegExp(`^\t{${wil}}"${sleutel}"[ \t]*$`, 'm')
-    const binnen = tekst.slice(begin, eind)
-    const hit = binnen.search(zoek)
+    const naam = sleutel.toLowerCase()
+    let hit = -1
+    for (let i = van; i < tot; i++) {
+      const stuk = lijst[i]
+      // Een sleutel met een blok erachter; een waarde heeft nooit een accolade na zich.
+      const blok = stuk.soort === '"' ? lijst[i + 1] : stuk
+      if (blok?.soort !== '{') continue
+      if (blok !== stuk && tekst.slice(stuk.begin + 1, stuk.eind - 1).toLowerCase() === naam) {
+        hit = i + 1
+        break
+      }
+      // Het hele blok over, zodat alleen de directe kinderen meetellen.
+      i = blok.paar
+    }
     if (hit < 0) return undefined
 
-    const open = tekst.indexOf('{', begin + hit)
-    if (open < 0) return undefined
-
-    let diepte = 0
-    let sluit = -1
-    for (let i = open; i < eind; i++) {
-      if (tekst[i] === '{') diepte++
-      else if (tekst[i] === '}') {
-        diepte--
-        if (diepte === 0) {
-          sluit = i
-          break
-        }
-      }
-    }
-    if (sluit < 0) return undefined
-
-    begin = open
-    eind = sluit + 1
-    diepteVanOuder = wil
+    const open = lijst[hit]
+    span = { open: open.begin, sluit: lijst[open.paar].begin }
+    van = hit + 1
+    tot = open.paar
   }
-
-  return { open: begin, sluit: eind - 1 }
+  return span
 }
 
 /** De inhoud van een blok, om er iets in op te zoeken. */
@@ -233,18 +299,28 @@ interface SteamVlaggen {
   perSpel?: boolean
 }
 
-function leesSteamVlaggen(tekst: string): SteamVlaggen {
-  const alg = inhoudVan(tekst, PAD_ALGEMEEN)?.match(/"EnableGameOverlay"\s+"(\d)"/)
-  const spel = inhoudVan(tekst, PAD_PER_SPEL)?.match(/"OverlayAppEnable"\s+"(\d)"/)
+/**
+ * De twee vlaggen van één account; `undefined` als het bestand niet in de vorm
+ * staat die de app kan lezen (zie `stukken`).
+ *
+ * Een vlag die ontbreekt is geen "weet niet" maar Steams standaard, en die is
+ * aan. Steam schrijft ze pas als iemand de schakelaar een keer omzet: in de
+ * kopie die deze gebruiker op 13-09 van zijn bestand maakte, heeft `system`
+ * geen EnableGameOverlay. Eerder sloeg `leesSteam` zo'n account over; bij wie
+ * nooit aan de schakelaars had gezeten stond er dan "niet te lezen" en geen knop,
+ * en bij twee accounts kon het samen "uit" worden terwijl hij bij dat ene in OMSI
+ * gewoon verscheen.
+ *
+ * Hoofdletters tellen ook hier niet mee, om dezelfde reden als in `zoekBlok`.
+ */
+function leesSteamVlaggen(tekst: string): SteamVlaggen | undefined {
+  if (!zoekBlok(tekst, PAD_WORTEL)) return undefined
+  const alg = inhoudVan(tekst, PAD_ALGEMEEN)?.match(/"EnableGameOverlay"\s+"(\d)"/i)
+  const spel = inhoudVan(tekst, PAD_PER_SPEL)?.match(/"OverlayAppEnable"\s+"(\d)"/i)
   return {
     algemeen: alg ? alg[1] === '1' : undefined,
     perSpel: spel ? spel[1] === '1' : undefined
   }
-}
-
-/** Staat er in dit bestand iets over de overlay? Zonder vlaggen valt er niets te zeggen. */
-function heeftVlag(vlaggen: SteamVlaggen): boolean {
-  return vlaggen.algemeen !== undefined || vlaggen.perSpel !== undefined
 }
 
 /**
@@ -272,14 +348,18 @@ export function leesSteam(): KnopStand {
   let gezien = false
   let algemeenOveralUit = true
   for (const cfg of configs) {
-    let vlaggen: SteamVlaggen
+    let vlaggen: SteamVlaggen | undefined
     try {
       vlaggen = leesSteamVlaggen(readFileSync(cfg, 'latin1'))
     } catch {
       // Een bestand dat niet te lezen is, zegt niets over de overlay.
       continue
     }
-    if (!heeftVlag(vlaggen)) continue
+    /*
+     * Alleen een bestand dat niet in Steams vorm staat valt af. Eén zonder
+     * vlaggen telt mee, als aan; zie `leesSteamVlaggen`.
+     */
+    if (!vlaggen) continue
     gezien = true
     if (zichtbaar(vlaggen)) aan = true
     if (vlaggen.algemeen !== false) algemeenOveralUit = false
@@ -300,10 +380,45 @@ export function leesSteam(): KnopStand {
 /**
  * Een vlag in het blok op dit pad zetten, of hem erbij zetten als hij ontbreekt.
  *
- * Alleen de regel zelf verandert; de inspringing en de rest van het bestand
- * blijven zoals ze waren. Ontbreekt de sleutel, dan komt hij als eerste regel in
- * het blok te staan, met dezelfde inspringing als wat daar al staat -- Steam
- * leest het bestand op sleutel en niet op volgorde.
+ * Staat de vlag er al, dan verandert alleen zijn cijfer; de rest van het bestand
+ * blijft byte voor byte zoals het was. Ontbreekt de vlag, het blok, of een deel
+ * van het pad ernaartoe, dan komt wat ontbreekt erbij, achteraan in het diepste
+ * blok dat er al is.
+ *
+ * WAAROM DE BLOKKEN ERBIJ
+ * Steam maakt `apps` / 252530 pas aan als iemand de schakelaar van OMSI in Steam
+ * een keer heeft omgezet. In het bestand van deze gebruiker staan 140 spellen
+ * met hun speeltijd, en is 252530 het enige blok onder `apps`. Zonder dat blok
+ * gaf "uit" bij een gewone Steam `geenblok` en veranderde er niets, terwijl het
+ * tabblad dezelfde knop bleef aanbieden.
+ *
+ * Wat erbij komt staat er zoals Steam het in dat bestand schrijft: sleutel en
+ * accolades elk op een eigen regel, per niveau één tab, twee tabs tussen sleutel
+ * en waarde, en het regeleinde van de rest van het bestand:
+ *
+ *     \t"apps"
+ *     \t{
+ *     \t\t"252530"
+ *     \t\t{
+ *     \t\t\t"OverlayAppEnable"\t\t"0"
+ *     \t\t}
+ *     \t}
+ *
+ * Achteraan, omdat Steam `apps` daar ook als laatste blok zette; verder leest
+ * Steam het bestand op sleutel en niet op volgorde.
+ *
+ * WANNEER NIET
+ * Dan blijft de tekst zoals hij was, en dat ziet `zetSteam` als `geenblok`:
+ * - als `stukken` het bestand niet rond krijgt, of het buitenste blok er niet is;
+ * - als niet elke regel met tabs en dan een sleutel of accolade begint. Wat erbij
+ *   komt is met tabs ingesprongen, en tussen spaties hoort het niet;
+ * - als de sluitaccolade van het blok waar het in komt niet alleen op zijn regel
+ *   staat, met precies zoveel tabs als dat blok diep is. Hier werd eerst alleen
+ *   gekeken of er vóór die accolade niets dan tabs stond, en toen het tellen van
+ *   accolades nog misging (zie `stukken`) gold dat ook voor de sluitaccolade van
+ *   friends, één tab diep, die toen voor die van UserLocalConfigStore doorging;
+ *   die van UserLocalConfigStore heeft er geen. Staat hij waar Steam hem zet, dan
+ *   klopt ook de rest; staat hij ergens anders, dan klopt er iets niet.
  */
 export function zetVlag(
   tekst: string,
@@ -311,24 +426,46 @@ export function zetVlag(
   sleutel: string,
   aan: boolean
 ): string {
-  const span = zoekBlok(tekst, pad)
-  if (!span) return tekst
-  const inhoud = tekst.slice(span.open, span.sluit + 1)
-
   const waarde = aan ? '1' : '0'
-  const bestaand = new RegExp(`("${sleutel}"\\s+")\\d(")`)
 
-  let nieuw: string
-  if (bestaand.test(inhoud)) {
-    nieuw = inhoud.replace(bestaand, `$1${waarde}$2`)
-  } else {
-    // De inspringing van de eerste regel ín het blok overnemen.
-    const eerste = inhoud.match(/\{\r?\n([ \t]*)/)
-    const tab = eerste ? eerste[1] : '\t\t'
-    nieuw = inhoud.replace(/\{(\r?\n)/, `{$1${tab}"${sleutel}"\t\t"${waarde}"$1`)
+  const span = zoekBlok(tekst, pad)
+  if (span) {
+    const inhoud = tekst.slice(span.open, span.sluit + 1)
+    // Zonder hoofdletters, om dezelfde reden als in `zoekBlok`: anders kwam er een tweede.
+    const bestaand = new RegExp(`("${sleutel}"\\s+")\\d(")`, 'i')
+    if (bestaand.test(inhoud)) {
+      const nieuw = inhoud.replace(bestaand, `$1${waarde}$2`)
+      return tekst.slice(0, span.open) + nieuw + tekst.slice(span.sluit + 1)
+    }
   }
 
-  return tekst.slice(0, span.open) + nieuw + tekst.slice(span.sluit + 1)
+  // Elke regel begint met tabs en dan een sleutel of een accolade, zoals bij Steam.
+  if (/^(?!\t*["{}]).+$/m.test(tekst)) return tekst
+
+  // Het diepste blok van het pad dat er al is; `diepte` is hoeveel stappen dat zijn.
+  let diepte = pad.length
+  let ouder = span
+  while (!ouder && diepte > 1) {
+    diepte--
+    ouder = zoekBlok(tekst, pad.slice(0, diepte))
+  }
+  if (!ouder) return tekst
+
+  const tabs = (n: number): string => '\t'.repeat(n)
+
+  // Vóór de regel met de sluitaccolade van dat blok: alleen, en met zijn eigen diepte.
+  const regelBegin = tekst.lastIndexOf('\n', ouder.sluit) + 1
+  const regelEind = tekst.indexOf('\n', ouder.sluit)
+  const regel = tekst.slice(regelBegin, regelEind < 0 ? tekst.length : regelEind)
+  if (regel.replace(/\r$/, '') !== `${tabs(diepte - 1)}}`) return tekst
+
+  const nl = tekst.includes('\r\n') ? '\r\n' : '\n'
+  const regels: string[] = []
+  for (let i = diepte; i < pad.length; i++) regels.push(`${tabs(i)}"${pad[i]}"`, `${tabs(i)}{`)
+  regels.push(`${tabs(pad.length)}"${sleutel}"\t\t"${waarde}"`)
+  for (let i = pad.length - 1; i >= diepte; i--) regels.push(`${tabs(i)}}`)
+
+  return tekst.slice(0, regelBegin) + regels.map((r) => r + nl).join('') + tekst.slice(regelBegin)
 }
 
 export interface Uitkomst {
@@ -370,22 +507,37 @@ export function zetSteam(aan: boolean): Uitkomst {
       return { gelukt: false, reden: 'lezen' }
     }
     const vlaggen = leesSteamVlaggen(oud)
-    let nieuw = oud
-    if (zoekBlok(oud, PAD_PER_SPEL)) {
-      // Aanzetten hoeft alleen waar hij uit staat; een ontbrekende vlag is al aan.
-      if (!aan || vlaggen.perSpel === false) {
-        nieuw = zetVlag(oud, PAD_PER_SPEL, 'OverlayAppEnable', aan)
-      }
-    } else if (!aan && heeftVlag(vlaggen) && zichtbaar(vlaggen)) {
-      /*
-       * Zonder blok voor OMSI valt er voor dit account alleen iets uit te zetten
-       * met de algemene vlag, en die is niet van ons. Een blok erbij verzinnen
-       * in Steams bestand doet de app niet; de schakelaar in Steam kan het wel.
-       */
+    /*
+     * Niet te lezen, dan ook niet aan te passen -- ook niet bij aanzetten. Dat
+     * meldde eerst "gelukt" terwijl dit account bleef staan zoals het stond.
+     */
+    if (!vlaggen) {
       geenBlok = true
+      continue
+    }
+    let nieuw = oud
+    /*
+     * Aanzetten hoeft alleen waar hij uit staat; een ontbrekende vlag is al aan.
+     * Uitzetten zet het blok van OMSI erbij als Steam het nog niet had; zie
+     * `zetVlag`.
+     */
+    if (!aan || vlaggen.perSpel === false) {
+      nieuw = zetVlag(oud, PAD_PER_SPEL, 'OverlayAppEnable', aan)
     }
     const na = leesSteamVlaggen(nieuw)
-    if (heeftVlag(na)) {
+    if (!aan && (!na || zichtbaar(na))) {
+      /*
+       * Dan kon het blok er niet bij: het bestand staat niet in de vorm waarin
+       * de app het veilig kan aanvullen (zie `zetVlag`). Aan de algemene vlag
+       * komt de app niet, want die is niet van ons; de schakelaar in Steam kan
+       * het wel. En wat `zetVlag` er dan toch van maakte gaat het bestand niet
+       * in: leest de app zelf niet terug dat hij uit staat, dan is elke regel
+       * die in Steams bestand verandert er één te veel.
+       */
+      geenBlok = true
+      continue
+    }
+    if (na) {
       gezien = true
       if (zichtbaar(na)) ergensZichtbaar = true
     }
@@ -413,7 +565,7 @@ export function zetSteam(aan: boolean): Uitkomst {
     }
   }
 
-  if (!aan && geenBlok) return { gelukt: false, reden: 'geenblok', aantal }
+  if (geenBlok) return { gelukt: false, reden: 'geenblok', aantal }
   if (aan && gezien && !ergensZichtbaar) return { gelukt: false, reden: 'allespellen', aantal }
   return { gelukt: true, aantal }
 }
