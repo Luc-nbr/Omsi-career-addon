@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX } from "react";
+import { useEffect, useMemo, useState, type JSX } from "react";
 import { createRoot } from "react-dom/client";
 import type { MapGeometry } from "../../core/geo";
 import type { TripRoute } from "../../core/routing";
@@ -6,14 +6,15 @@ import type { CareerApi } from "../../shared/api";
 import { DEFAULT_LANGUAGE, t, type Language } from "../../shared/i18n";
 import { zetAnimaties, type Animaties } from "./animaties";
 import { LanguageProvider } from "./language";
+import { useRitStand, useStable } from "./navigatie";
 import {
-  NavKaart,
-  dutyKeyOf,
-  useRitStand,
-  useStable,
-  type NavFrame,
-} from "./navigatie";
-import type { Manoeuvre } from "./RouteMap";
+  LEGE_TELEFOON,
+  Telefoon,
+  type TelefoonActies,
+  type TelefoonFrame,
+} from "./telefoon";
+import { dutyKeyOf } from "../../shared/telefoon";
+import type { AanmeldUitslag } from "../../shared/telefoon";
 import "@fontsource/hanken-grotesk/400.css";
 import "@fontsource/hanken-grotesk/500.css";
 import "@fontsource/hanken-grotesk/700.css";
@@ -51,6 +52,21 @@ window.career = {
   logboekMelden: async () => undefined,
 } as unknown as CareerApi;
 
+/**
+ * Wat je op de telefoon doet -- aanmelden, tekenen, pauze, IBIS -- gaat naar de
+ * pc, die het nakijkt en bewaart. Daardoor ziet de overlay het ook, en hoeft je
+ * pincode niet over het netwerk: je toetst hem in, de pc zegt of hij klopt.
+ */
+async function stuur(opdracht: Record<string, unknown>): Promise<unknown> {
+  const antwoord = await fetch("api/telefoon", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(opdracht),
+  });
+  if (!antwoord.ok) throw new Error(`telefoon: ${antwoord.status}`);
+  return antwoord.json();
+}
+
 /** De manifest voor "Zet op beginscherm"; zie de server. */
 const manifest = document.createElement("link");
 manifest.rel = "manifest";
@@ -60,11 +76,22 @@ document.head.appendChild(manifest);
 type Lijn = "bezig" | "ja" | "kwijt" | "verlopen";
 
 function Apparaat(): JSX.Element {
-  const [frame, setFrame] = useState<NavFrame>({ connected: false });
+  const [frame, setFrame] = useState<TelefoonFrame>({ connected: false });
   const [lijn, setLijn] = useState<Lijn>("bezig");
   const [taal, setTaal] = useState<Language>(DEFAULT_LANGUAGE);
-  const [manoeuvre, setManoeuvre] = useState<Manoeuvre>();
-  const [limit, setLimit] = useState<number>();
+  const acties = useMemo<TelefoonActies>(
+    () => ({
+      aanmelden: (nummer, pin) =>
+        stuur({ wat: "aanmelden", nummer, pin }).then(
+          (uitkomst) => (uitkomst as { uitslag: AanmeldUitslag }).uitslag,
+        ),
+      overslaan: () => void stuur({ wat: "overslaan" }).catch(() => undefined),
+      aanvaarden: () => void stuur({ wat: "aanvaard" }).catch(() => undefined),
+      pauze: (vanaf) => void stuur({ wat: "pauze", vanaf }).catch(() => undefined),
+      ibisKlaar: (tripKey) => void stuur({ wat: "ibis", tripKey }).catch(() => undefined),
+    }),
+    [],
+  );
 
   useEffect(() => {
     void haal<{ taal: Language; animaties?: Animaties }>("api/start")
@@ -88,7 +115,7 @@ function Apparaat(): JSX.Element {
       setLijn(stroom.readyState === EventSource.CLOSED ? "verlopen" : "kwijt");
     stroom.onmessage = (bericht) => {
       try {
-        setFrame(JSON.parse(bericht.data as string) as NavFrame);
+        setFrame(JSON.parse(bericht.data as string) as TelefoonFrame);
       } catch {
         // Een half bericht; het volgende komt zo.
       }
@@ -121,10 +148,12 @@ function Apparaat(): JSX.Element {
   const geometry = geo && geo.kaart === kaart ? geo.geometrie : undefined;
 
   /*
-   * `true`: de knop "IBIS ingevoerd" staat in de overlay en niet hier. Zodra
-   * het spel zegt dat de rit geladen is, loopt hij ook op dit toestel.
+   * `true`: de knop "IBIS ingevoerd" staat in het dienstpaneel van de overlay,
+   * en dat paneel staat hier niet. Zodra het spel zegt dat de rit geladen is,
+   * loopt hij op dit toestel.
    */
   const rit = useRitStand(frame, duty, true);
+  const stand = frame.telefoon ?? LEGE_TELEFOON;
 
   return (
     <LanguageProvider language={taal}>
@@ -142,18 +171,23 @@ function Apparaat(): JSX.Element {
           </div>
         )}
         {duty ? (
-          <NavKaart
-            frame={frame}
-            duty={duty}
-            geometry={geometry}
-            rit={rit}
-            pixelScale={1}
-            language={taal}
-            manoeuvre={manoeuvre}
-            onManoeuvre={setManoeuvre}
-            limit={limit}
-            onSpeedLimit={setLimit}
-          />
+          /*
+           * Het hele toestel, niet alleen de kaart: aanmelden, de
+           * dienstopdracht, en daarna de apps met het balkje onderin. Precies
+           * wat er in de overlay staat, want het is hetzelfde onderdeel.
+           */
+          <div className="apparaat-telefoon">
+            <Telefoon
+              frame={frame}
+              duty={duty}
+              geometry={geometry}
+              rit={rit}
+              stand={stand}
+              acties={acties}
+              pixelScale={1}
+              language={taal}
+            />
+          </div>
         ) : (
           <div className="apparaat-leeg">
             <b>OMSI Enhancer</b>

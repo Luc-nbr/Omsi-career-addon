@@ -69,6 +69,7 @@ import { HervatDialog } from "./HervatDialog";
 import { ThemaKnop, type Thema } from "./ThemaKnop";
 import { wisselThema } from "./themaOvergang";
 import { Rondleiding } from "./Rondleiding";
+import { ApparaatDialoog } from "./ApparaatDialoog";
 import { zetAnimaties } from "./animaties";
 import { Versie } from "./Versie";
 import {
@@ -361,6 +362,8 @@ export function App(): JSX.Element {
    */
   const [rondleidingGezien, setRondleidingGezien] = useState<boolean>();
   const [rondleidingOpen, setRondleidingOpen] = useState(false);
+  /** De QR-code voor een telefoon of tablet; zie ApparaatDialoog. */
+  const [apparaatOpen, setApparaatOpen] = useState(false);
   const [busfotoScherm, setBusfotoScherm] = useState<
     "installatie" | "bijwerken"
   >();
@@ -2191,6 +2194,7 @@ export function App(): JSX.Element {
           melding={hubMelding}
           onMeldingWeg={() => setHubMelding(undefined)}
           onRondleiding={() => setRondleidingOpen(true)}
+          onApparaat={() => setApparaatOpen(true)}
           onBusplaatjes={() => {
             setBusfotoScherm("bijwerken");
             void bijwerkenBusfotos();
@@ -2239,6 +2243,8 @@ export function App(): JSX.Element {
                 }
                 onStaatVanDienst={() => setScreen("profiel")}
               />
+            ) : apparaatOpen ? (
+              <ApparaatDialoog onClose={() => setApparaatOpen(false)} />
             ) : rondleidingOpen ||
               /*
                * Vanzelf alleen bij wie nieuw is: de rondleiding nog nooit gezien,

@@ -10,6 +10,19 @@ body,
   height: 100%;
 }
 
+/*
+ * Beeldvullend, ook als de adresbalk van de telefoon wegschuift. `100%` is op
+ * iOS de grote weergave, en dan valt het balkje met apps onder de rand van het
+ * scherm; `dvh` is precies wat je op dat moment ziet.
+ */
+@supports (height: 100dvh) {
+  html,
+  body,
+  #root {
+    height: 100dvh;
+  }
+}
+
 .apparaat-body {
   margin: 0;
   background: #0e1522;
@@ -85,8 +98,87 @@ body,
   text-align: center;
 }
 
-/* Op een tablet mag het groter: hij staat verder weg dan een scherm voor je neus. */
+/*
+ * De hele telefoon op het scherm: de kaart of een app bovenin, het balkje
+ * onderin. In de overlay zit dit in een paneel met een rand eromheen; hier is
+ * het scherm zelf het toestel.
+ */
+.apparaat-telefoon {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px 10px;
+}
+
+/* De kaart loopt tot de rand; de apps houden hun marge. */
+.apparaat-telefoon > .nav-wrap {
+  margin: -8px -12px 0;
+}
+
+/*
+ * Aanmelden en de dienstopdracht staan midden op het scherm en worden niet
+ * breder dan een hand: op een tablet is een cijferblok over de volle breedte
+ * niet te bedienen.
+ */
+.apparaat-telefoon .aanmelden,
+.apparaat-telefoon .opdracht {
+  margin: auto;
+  width: 100%;
+  max-width: 400px;
+}
+
+/* Vingers, geen muis. */
+.apparaat-telefoon .cijferblok button {
+  padding: 18px 0;
+  font-size: 24px;
+}
+
+.apparaat-telefoon .dock-knop {
+  height: 46px;
+}
+
+.apparaat-telefoon .app-knop,
+.apparaat-telefoon .aanmeld-door,
+.apparaat-telefoon .opdracht-teken {
+  padding: 14px 18px;
+  font-size: 15px;
+}
+
+/*
+ * Op een tablet mag het groter: hij staat verder weg dan een scherm voor je
+ * neus, en een telefoonschermpje midden op een iPad is zonde van de ruimte.
+ */
 @media (min-width: 700px) {
+  .apparaat-telefoon {
+    padding: 12px 18px 14px;
+  }
+
+  .apparaat-telefoon > .nav-wrap {
+    margin: -12px -18px 0;
+  }
+
+  /* Het cijferblok mag meegroeien, maar niet breder dan een hand of twee. */
+  .apparaat-telefoon .aanmelden,
+  .apparaat-telefoon .opdracht {
+    max-width: 520px;
+    font-size: 16px;
+  }
+
+  .apparaat-telefoon .cijferblok button {
+    padding: 24px 0;
+    font-size: 30px;
+  }
+
+  .apparaat-telefoon .aanmeld-vakjes span {
+    padding: 16px 0;
+    font-size: 28px;
+  }
+
+  .apparaat-telefoon .opdracht-lijst {
+    font-size: 17px;
+  }
+
   .apparaat .navbar {
     top: 12px;
     left: 12px;
@@ -127,5 +219,13 @@ body,
   /* De balk is hier hoger; de regel eronder schuift mee. */
   .apparaat .nav-wrap .map-note-quiet {
     top: 112px;
+  }
+
+  .apparaat-telefoon .app-scherm {
+    font-size: 15px;
+  }
+
+  .apparaat-telefoon .dock-knop {
+    height: 54px;
   }
 }

@@ -28,13 +28,17 @@ import type { ApparaatStand } from '../shared/api'
  * - Alles staat achter een geheime sleutel in het pad (`/n/<sleutel>/`), 128
  *   bits uit `randomBytes`. Zonder sleutel antwoordt de server 404, ook op de
  *   pagina zelf -- hij zegt niet eens dat hij bestaat.
- * - Alleen lezen. Er is geen enkel adres dat iets verandert.
  * - Geen paden van buitenaf. De kaart en de routes zijn die van de dienst die
  *   nu loopt; de telefoon kan niet om een andere kaart of een ander bestand
  *   vragen. Wat er aan bestanden geserveerd wordt, komt uit de map met de
  *   gebouwde pagina's en nergens anders vandaan.
  * - Het personeelsnummer en de pincode gaan niet mee; zie `frameVoorApparaat`
- *   in index.ts.
+ *   in index.ts. Aanmelden kan wel: het toestel stuurt wat er ingetoetst is
+ *   naar de pc, en die kijkt na (`telefoonAanmelden`), met een rem op het
+ *   aantal pogingen.
+ * - Veranderen kan alleen via `POST api/telefoon`, en alleen de vijf dingen die
+ *   op de telefoon zitten: aanmelden, overslaan, tekenen, pauze en IBIS. Er is
+ *   geen adres dat aan je profiel, je kaarten of OMSI komt.
  */
 
 /** Wat de server van het hoofdproces nodig heeft. */
@@ -49,7 +53,18 @@ export interface ApparaatBronnen {
   geometrie(): Promise<unknown | undefined>
   /** De routes van de ritten van de lopende dienst, of niets. */
   routes(): Promise<unknown | undefined>
+  /** Wat de telefoon op het toestel doet; zie `TelefoonOpdracht`. */
+  telefoon(opdracht: TelefoonOpdracht): unknown
   log(regel: string): void
+}
+
+/** Wat een toestel mag vragen. Alles wat er niet in staat, wordt geweigerd. */
+export interface TelefoonOpdracht {
+  wat: 'aanmelden' | 'overslaan' | 'aanvaard' | 'pauze' | 'ibis'
+  nummer?: string
+  pin?: string
+  vanaf?: number
+  tripKey?: string
 }
 
 /** Een eigen poort, zodat een bladwijzer op de telefoon blijft werken. */
@@ -255,8 +270,31 @@ function nietGevonden(antwoord: ServerResponse): void {
   antwoord.end('Niet gevonden')
 }
 
+/**
+ * Het lijf van een POST, met een grens eraan: wat de telefoon stuurt past in
+ * een paar honderd tekens, en een onbegrensde stroom is een manier om het
+ * geheugen van de app vol te laten lopen.
+ */
+function leesLijf(vraag: IncomingMessage): Promise<string> {
+  return new Promise((klaar, mis) => {
+    let lijf = ''
+    vraag.on('data', (stuk: Buffer) => {
+      lijf += stuk
+      if (lijf.length > 2048) {
+        vraag.destroy()
+        mis(new Error('te lang'))
+      }
+    })
+    vraag.on('end', () => klaar(lijf))
+    vraag.on('error', mis)
+  })
+}
+
 async function behandel(vraag: IncomingMessage, antwoord: ServerResponse): Promise<void> {
-  if (!bronnen || (vraag.method !== 'GET' && vraag.method !== 'HEAD')) return nietGevonden(antwoord)
+  const methode = vraag.method
+  if (!bronnen || (methode !== 'GET' && methode !== 'HEAD' && methode !== 'POST')) {
+    return nietGevonden(antwoord)
+  }
   const pad = decodeURIComponent(new URL(vraag.url ?? '/', 'http://x').pathname)
   const voor = `/n/${sleutel}/`
   // Zonder de juiste sleutel bestaat er niets; ook `/n/<sleutel>` zonder schuine streep niet.
@@ -268,6 +306,29 @@ async function behandel(vraag: IncomingMessage, antwoord: ServerResponse): Promi
     return nietGevonden(antwoord)
   }
   const rest = pad.slice(voor.length)
+
+  /*
+   * Het enige adres dat iets verandert. De opdracht wordt hier niet uitgevoerd
+   * maar doorgegeven aan het hoofdproces, dat hem nakijkt; wat er niet in de
+   * lijst staat, komt niet verder dan deze regel.
+   */
+  if (methode === 'POST') {
+    if (rest !== 'api/telefoon') return nietGevonden(antwoord)
+    let opdracht: TelefoonOpdracht
+    try {
+      opdracht = JSON.parse(await leesLijf(vraag)) as TelefoonOpdracht
+    } catch {
+      antwoord.writeHead(400, VEILIG)
+      return void antwoord.end()
+    }
+    const soorten = ['aanmelden', 'overslaan', 'aanvaard', 'pauze', 'ibis']
+    if (!opdracht || !soorten.includes(opdracht.wat)) {
+      antwoord.writeHead(400, VEILIG)
+      return void antwoord.end()
+    }
+    return stuurJson(vraag, antwoord, bronnen.telefoon(opdracht) ?? { ok: true })
+  }
+  if (methode !== 'GET' && methode !== 'HEAD') return nietGevonden(antwoord)
 
   if (rest === 'api/stroom') {
     antwoord.writeHead(200, {

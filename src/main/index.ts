@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, net, protocol, screen, shell } from 'electron'
-import { cpSync, existsSync, readdirSync } from 'node:fs'
+import { cpSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Worker } from 'node:worker_threads'
@@ -63,12 +63,20 @@ import { receiptHeightMicrons, RECEIPT_WIDTH_MICRONS } from '../core/receipt'
 import { difference, readKnown, writeKnown } from '../core/installed'
 import { readSettings, writeSettings, type Settings } from '../core/settings'
 import {
+  LEGE_TELEFOON,
+  aanmeldSleutelVan,
+  type AanmeldUitslag,
+  type TelefoonStand
+} from '../shared/telefoon'
+import {
   apparaatBeeld,
+  apparaatKijkt,
   apparaatStand,
   nieuweSleutel,
   startApparaat,
   stopApparaat,
-  type ApparaatBronnen
+  type ApparaatBronnen,
+  type TelefoonOpdracht
 } from './apparaat'
 import { formatTime } from '../shared/format'
 import {
@@ -863,6 +871,12 @@ function omsiLanguage(): string {
  */
 let overlayWindow: BrowserWindow | null = null
 let overlayTimer: NodeJS.Timeout | undefined
+/*
+ * De klok voor wie op een telefoon of tablet meekijkt. De overlay heeft zijn
+ * eigen klok die met het venster komt en gaat; deze loopt zolang er gedeeld
+ * wordt, zodat het toestel ook werkt met de overlay dicht.
+ */
+let apparaatTimer: NodeJS.Timeout | undefined
 let overlayDuty: Duty | undefined
 /** Het IBIS-plan bij die dienst; de overlay toont het tot de IBIS gevuld is. */
 let overlayIbis: IbisPlan | undefined
@@ -1232,8 +1246,152 @@ function kaartsetVoorOverlay(mapFolder: string | undefined): Kaartset | undefine
   return kaartsetCache.get(mapFolder)
 }
 
+/*
+ * DE STAND VAN DE TELEFOON
+ *
+ * Aanmelden, tekenen, pauze en "IBIS ingevoerd" stonden in het overlayvenster.
+ * Dat kan niet meer: dezelfde telefoon staat nu ook op een echte telefoon of
+ * tablet, en wie zich daar aanmeldt hoort in de overlay aangemeld te zijn. Dus
+ * staat de stand hier, gaat hij mee in elk beeld, en veranderen de vensters hem
+ * via het hoofdproces.
+ *
+ * Het nakijken van nummer en pincode gebeurt ook hier. Daardoor hoeft de
+ * pincode niet mee in het beeld dat een toestel op het netwerk krijgt -- alleen
+ * hoeveel cijfers hij telt, zodat het cijferblok zijn vakjes kan tekenen.
+ */
+let telefoon: TelefoonStand & { sleutel: string } = { ...LEGE_TELEFOON, sleutel: '' }
+/*
+ * Hoeveel vrije ritten er deze sessie gestart zijn.
+ *
+ * Een vrije rit wordt niet in het profiel vastgelegd, dus er is niets dat de
+ * ene van de andere onderscheidt: dezelfde kaart, dezelfde omloop, dezelfde
+ * vertrektijd. Zonder deze teller kwam een tweede vrije rit op dezelfde lijn al
+ * aangemeld op, omdat hij op de vorige leek.
+ */
+let vrijeRitten = 0
+/** Verkeerde pogingen achter elkaar, en sinds wanneer; zie `telefoonAanmelden`. */
+let misTellen = 0
+let misSinds = 0
+
+function telefoonPad(): string {
+  return join(userData(), 'telefoon.json')
+}
+
+/**
+ * Voor welke dienst de aanmelding geldt.
+ *
+ * Bij een aangenomen dienst: de chauffeur, de dienst en het moment waarop hij
+ * is aangenomen -- wie dezelfde omloop een dag later opnieuw aanneemt, begint
+ * weer met aanmelden. Bij vrij rijden telt de teller mee, zodat elke vrije rit
+ * zijn eigen aanmelding heeft.
+ */
+function telefoonSleutel(): string {
+  const duty = currentDuty()
+  if (!duty) return ''
+  const aangenomen = (career?.activeDuty?.assignment as Assignment | undefined)?.duty
+  const zelfde = aangenomen && aanmeldSleutelVan(aangenomen) === aanmeldSleutelVan(duty)
+  return zelfde
+    ? `${career?.id ?? ''}|${aanmeldSleutelVan(duty)}|${career?.activeDuty?.confirmedAt ?? ''}`
+    : `vrij${vrijeRitten}|${aanmeldSleutelVan(duty)}`
+}
+
+/*
+ * De stand die bij deze dienst hoort. Een aangenomen dienst haalt hem van
+ * schijf: de app kan midden in een dienst herstarten, en dan hoor je niet
+ * opnieuw te moeten tekenen. Een vrije rit staat nergens vast.
+ */
+function telefoonVoor(sleutel: string): TelefoonStand & { sleutel: string } {
+  const leeg = { ...LEGE_TELEFOON, sleutel }
+  if (!sleutel || sleutel.startsWith('vrij')) return leeg
+  try {
+    const bewaard = JSON.parse(readFileSync(telefoonPad(), 'utf8')) as {
+      sleutel?: string
+      aangemeld?: boolean
+      aanvaard?: boolean
+    }
+    if (bewaard?.sleutel !== sleutel) return leeg
+    return { ...leeg, aangemeld: bewaard.aangemeld === true, aanvaard: bewaard.aanvaard === true }
+  } catch {
+    return leeg
+  }
+}
+
+function bewaarTelefoon(): void {
+  if (!telefoon.sleutel || telefoon.sleutel.startsWith('vrij')) return
+  try {
+    writeFileSync(
+      telefoonPad(),
+      JSON.stringify({
+        sleutel: telefoon.sleutel,
+        aangemeld: telefoon.aangemeld,
+        aanvaard: telefoon.aanvaard
+      })
+    )
+  } catch {
+    // Lukt bewaren niet, dan meld je je na een herstart opnieuw aan.
+  }
+}
+
+/** De stand voor in het beeld; een andere dienst begint met een lege stand. */
+function telefoonBeeld(): TelefoonStand {
+  const sleutel = telefoonSleutel()
+  if (sleutel !== telefoon.sleutel) telefoon = telefoonVoor(sleutel)
+  return {
+    aangemeld: telefoon.aangemeld,
+    aanvaard: telefoon.aanvaard,
+    pauzeVanaf: telefoon.pauzeVanaf,
+    ibisReady: telefoon.ibisReady,
+    nummerLengte: career?.personeelsnummer?.length ?? 0,
+    pinLengte: career?.pincode?.length ?? 0
+  }
+}
+
+/** Wat er op de telefoon gebeurt, hoort meteen in de overlay en op het toestel te staan. */
+function telefoonGewijzigd(): void {
+  bewaarTelefoon()
+  lastFrame = undefined
+  pushFrame()
+}
+
+/**
+ * Nummer en pincode nakijken.
+ *
+ * Zonder pincode gaat het alleen om het nummer; dat is de eerste stap op het
+ * cijferblok. Tien misslagen in een minuut en het antwoord blijft even "fout":
+ * een pincode van vier cijfers is over het netwerk anders zo geraden, en dit
+ * kost een chauffeur die zich vertikt niets.
+ */
+function telefoonAanmelden(nummer: string, pin?: string): AanmeldUitslag {
+  telefoonBeeld()
+  const nu = Date.now()
+  if (nu - misSinds > 60000) {
+    misSinds = nu
+    misTellen = 0
+  }
+  if (misTellen >= 10) return 'fout'
+  if (!career?.personeelsnummer || nummer !== career.personeelsnummer) {
+    misTellen += 1
+    return 'fout'
+  }
+  if (pin === undefined) return 'nummer'
+  if (!career.pincode || pin !== career.pincode) {
+    misTellen += 1
+    return 'fout'
+  }
+  misTellen = 0
+  telefoon.aangemeld = true
+  telefoonGewijzigd()
+  return 'aangemeld'
+}
+
 function pushFrame(): void {
-  if (!overlayWindow || overlayWindow.isDestroyed()) return
+  /*
+   * Beelden maken heeft zin zolang er iemand kijkt. Dat is de overlay, maar ook
+   * een telefoon of tablet: wie de overlay dichtdoet en alleen zijn iPad
+   * gebruikt, hoort daar geen stilstaande kaart te krijgen.
+   */
+  const overlayOpen = Boolean(overlayWindow && !overlayWindow.isDestroyed())
+  if (!overlayOpen && !apparaatKijkt()) return
   /*
    * Alleen verse gegevens. Een live.json van een vorige keer blijft op schijf
    * staan met alive:true, en dan bleef de overlay een dienst tonen die allang
@@ -1271,13 +1429,15 @@ function pushFrame(): void {
           pincode: career.pincode
         }
       : undefined,
+    // Aanmelden, tekenen, pauze en IBIS; zie "DE STAND VAN DE TELEFOON".
+    telefoon: telefoonBeeld(),
     editing: overlayEditing
   }
 
   const signature = JSON.stringify(frame)
   if (signature === lastFrame) return
   lastFrame = signature
-  overlayWindow.webContents.send('overlay:frame', frame)
+  if (overlayOpen) overlayWindow?.webContents.send('overlay:frame', frame)
   apparaatBeeld(frameVoorApparaat(frame))
 }
 
@@ -1296,6 +1456,8 @@ function frameVoorApparaat(frame: {
   vehicle?: unknown
   duty?: unknown
   ibis?: unknown
+  kaartjes?: unknown
+  telefoon: TelefoonStand
 }): unknown {
   return {
     connected: frame.connected,
@@ -1303,7 +1465,9 @@ function frameVoorApparaat(frame: {
     status: frame.status,
     vehicle: frame.vehicle,
     duty: frame.duty,
-    ibis: frame.ibis
+    ibis: frame.ibis,
+    kaartjes: frame.kaartjes,
+    telefoon: frame.telefoon
   }
 }
 
@@ -1759,6 +1923,43 @@ function apparaatBronnen(): ApparaatBronnen {
         dienst.legs.map(({ tripFile, stopIds }) => ({ tripFile, stopIds }))
       )
     },
+    /*
+     * Wat er op de telefoon van het toestel gebeurt. Dezelfde wegen als de
+     * overlay gebruikt; het toestel krijgt er niets bij dat de overlay niet ook
+     * mag, en het nakijken van nummer en pincode gebeurt hier.
+     */
+    telefoon: (opdracht: TelefoonOpdracht) => {
+      telefoonBeeld()
+      switch (opdracht.wat) {
+        case 'aanmelden':
+          return {
+            uitslag: telefoonAanmelden(
+              String(opdracht.nummer ?? ''),
+              opdracht.pin === undefined ? undefined : String(opdracht.pin)
+            )
+          }
+        case 'overslaan':
+          if (career?.personeelsnummer && career?.pincode) return { ok: false }
+          telefoon.aangemeld = true
+          telefoonGewijzigd()
+          return { ok: true }
+        case 'aanvaard':
+          telefoon.aanvaard = true
+          telefoonGewijzigd()
+          return { ok: true }
+        case 'pauze':
+          telefoon.pauzeVanaf =
+            typeof opdracht.vanaf === 'number' && Number.isFinite(opdracht.vanaf)
+              ? opdracht.vanaf
+              : undefined
+          telefoonGewijzigd()
+          return { ok: true }
+        case 'ibis':
+          telefoon.ibisReady = String(opdracht.tripKey ?? '')
+          telefoonGewijzigd()
+          return { ok: true }
+      }
+    },
     log
   }
 }
@@ -2141,6 +2342,32 @@ function registerHandlers(): void {
    * De sleutel en de poort worden bewaard, zodat een bladwijzer of een icoon op
    * het beginscherm van de telefoon na een herstart van de app nog werkt.
    */
+  handle('telefoon:aanmelden', (_event, nummer: string, pin?: string) =>
+    telefoonAanmelden(String(nummer ?? ''), pin === undefined ? undefined : String(pin))
+  )
+  /* Alleen zinnig als er geen nummer en pincode zijn; anders meld je je gewoon aan. */
+  handle('telefoon:overslaan', () => {
+    telefoonBeeld()
+    if (career?.personeelsnummer && career?.pincode) return
+    telefoon.aangemeld = true
+    telefoonGewijzigd()
+  })
+  handle('telefoon:aanvaard', () => {
+    telefoonBeeld()
+    telefoon.aanvaard = true
+    telefoonGewijzigd()
+  })
+  handle('telefoon:pauze', (_event, vanaf?: number) => {
+    telefoonBeeld()
+    telefoon.pauzeVanaf = typeof vanaf === 'number' && Number.isFinite(vanaf) ? vanaf : undefined
+    telefoonGewijzigd()
+  })
+  handle('telefoon:ibis', (_event, tripKey: string) => {
+    telefoonBeeld()
+    telefoon.ibisReady = String(tripKey ?? '')
+    telefoonGewijzigd()
+  })
+
   handle('apparaat:start', async () => {
     const nu = readSettings(userData())
     const sleutel = nu.apparaatSleutel ?? nieuweSleutel()
@@ -2149,6 +2376,9 @@ function registerHandlers(): void {
       writeSettings(userData(), { apparaatSleutel: sleutel, apparaatPoort: poort })
     }
     if (stand.fout) log(`apparaat: starten mislukt: ${stand.fout}`)
+    if (stand.aan && !apparaatTimer) {
+      apparaatTimer = setInterval(pushFrame, OVERLAY_RATES[readSettings(userData()).overlayRate])
+    }
     // Meteen een beeld, anders ziet een telefoon die nu scant pas iets als er iets verandert.
     lastFrame = undefined
     pushFrame()
@@ -2156,6 +2386,8 @@ function registerHandlers(): void {
   })
   handle('apparaat:stop', () => {
     stopApparaat()
+    if (apparaatTimer) clearInterval(apparaatTimer)
+    apparaatTimer = undefined
     return apparaatStand()
   })
   handle('apparaat:stand', () => apparaatStand())
@@ -2666,6 +2898,8 @@ function registerHandlers(): void {
 
     const startup = presetStartup(omsi(), request.mapFolder, result.file)
     klaargezet = { mapFolder: request.mapFolder, file: result.file }
+    // Elke vrije rit begint met aanmelden, ook als hij op de vorige lijkt.
+    vrijeRitten += 1
     if (duty) openOverlay(duty)
 
     let launched = false
@@ -3337,6 +3571,8 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on('before-quit', () => {
     stopApparaat()
+    if (apparaatTimer) clearInterval(apparaatTimer)
+    apparaatTimer = undefined
     sluitBusfotoVenster()
     closeOverlay()
     sluitLopendeDienstAf()

@@ -61,12 +61,6 @@ export function useStable<T>(value: T | undefined, key: string): T | undefined {
   return held.current.value;
 }
 
-/** Waaraan je een dienst herkent: welke ritten, in welke volgorde. */
-export function dutyKeyOf(duty: Duty | undefined): string {
-  if (!duty) return "";
-  return `${duty.mapFolder}|${duty.legs.map((leg) => `${leg.tripFile}@${leg.departure}`).join(";")}`;
-}
-
 /** Hoeveel haltes de bus gehad heeft, of niets als hij het niet doorgeeft. */
 export function walkedStops(status?: LiveStatus): number | undefined {
   if (!status?.leg || !status.reportsStops || status.stopIndex === undefined)

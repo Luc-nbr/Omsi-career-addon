@@ -44,6 +44,8 @@ interface Props {
   onMeldingWeg?: () => void;
   /** De rondleiding opnieuw laten zien; zie Rondleiding.tsx. */
   onRondleiding?: () => void;
+  /** De QR-code voor je telefoon of tablet; zie ApparaatDialoog. */
+  onApparaat?: () => void;
 }
 
 const MODI: GameMode[] = ["career", "service", "free"];
@@ -97,6 +99,7 @@ export function Starthub({
   melding,
   onMeldingWeg,
   onRondleiding,
+  onApparaat,
   dialoog,
 }: Props): JSX.Element {
   /*
@@ -129,6 +132,24 @@ export function Starthub({
         <span className="hub-merk">OMSI Enhancer</span>
         <Versie klasse="hub-versie" />
         <div className="balk-rechts">
+          {onApparaat && (
+            <button
+              type="button"
+              className="hub-hulp hub-apparaat"
+              title={t(language, "dev.title")}
+              aria-label={t(language, "dev.title")}
+              onClick={onApparaat}
+            >
+              {/* Een tablet met een telefoon ervoor, net als in het dock van de overlay. */}
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M4 3h12a2 2 0 0 1 2 2v1.5h-1.8V4.8H3.8v12.4h7.4V19H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm11 5h5a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-5a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2Zm-.2 2v8.2h5.4V10Zm2.1 9.1h1.4v1h-1.4Z"
+                  fill="currentColor"
+                  fillRule="evenodd"
+                />
+              </svg>
+            </button>
+          )}
           {onRondleiding && (
             <button
               type="button"

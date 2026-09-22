@@ -4176,3 +4176,51 @@
   outline: 2px solid var(--route);
   outline-offset: 2px;
 }
+
+/* ---------- de QR-code voor telefoon en tablet ---------- */
+
+/*
+ * Het venster met de code. Hij moet van een armlengte afstand door een
+ * telefooncamera gelezen worden, dus groot en met witte rand; de uitleg
+ * eronder is klein, want die lees je één keer.
+ */
+.apparaat-venster {
+  text-align: center;
+}
+
+.apparaat-venster .app-apparaat-qr {
+  width: min(100%, 230px);
+  height: auto;
+  margin: 4px auto 2px;
+  border-radius: 10px;
+}
+
+.apparaat-venster-url {
+  display: block;
+  margin: 0 auto 4px;
+  color: var(--vel-zacht);
+  font: 12px/1.4 ui-monospace, Consolas, monospace;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.apparaat-venster .note {
+  margin: 4px 0 0;
+  color: var(--vel-zacht);
+  font-size: 12.5px;
+  line-height: 1.45;
+  text-align: left;
+}
+
+/* Er kijkt iemand mee: dan werkt het, en dat mag je zien. */
+.apparaat-venster .note.kijkt {
+  color: #2f9e60;
+  font-weight: 650;
+  text-align: center;
+}
+
+/* Het knopje in de balk van het hoofdmenu. */
+.hub-apparaat svg {
+  width: 15px;
+  height: 15px;
+}

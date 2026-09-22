@@ -9,6 +9,7 @@ import type { MapGeometry } from '../core/geo'
 import type { IbisPlan } from '../core/ibis'
 import type { TripRoute } from '../core/routing'
 import type { PluginStatus } from '../core/pluginInstall'
+import type { AanmeldUitslag } from './telefoon'
 import type { Duty } from '../core/types'
 import type { Vehicle } from '../core/vehicles'
 import type { LiveStatus } from '../core/live'
@@ -477,6 +478,23 @@ export interface ApparaatStand {
 
 export interface CareerApi {
   status(): Promise<OmsiStatus>
+  /**
+   * De telefoon: aanmelden met je personeelsnummer en pincode.
+   *
+   * Het nakijken gebeurt in het hoofdproces, niet in het venster. Zo kan een
+   * telefoon of tablet op het netwerk zich ook aanmelden zonder dat de pincode
+   * die kant op gaat, en zien de overlay en het toestel dezelfde stand.
+   * Zonder `pin` wordt alleen het nummer nagekeken.
+   */
+  telefoonAanmelden(nummer: string, pin?: string): Promise<AanmeldUitslag>
+  /** Geen nummer en geen pincode bekend: dan zonder aanmelden verder. */
+  telefoonOverslaan(): Promise<void>
+  /** De dienstopdracht aanvaarden ("tekenen"). */
+  telefoonAanvaard(): Promise<void>
+  /** Pauze begonnen (speltijd) of afgelopen (niets). */
+  telefoonPauze(vanaf?: number): Promise<void>
+  /** "IBIS ingevoerd" voor deze rit. */
+  telefoonIbis(tripKey: string): Promise<void>
   /** De navigatie op een telefoon of tablet: de server aan, en het adres voor de QR-code. */
   apparaatStart(): Promise<ApparaatStand>
   apparaatStop(): Promise<ApparaatStand>

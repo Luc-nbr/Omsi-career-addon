@@ -11,15 +11,21 @@ import {
   type PointerEvent,
 } from "react";
 import { createRoot } from "react-dom/client";
-import qrcode from "qrcode-generator";
 import type { MapGeometry } from "../../core/geo";
 import type { IbisPlan } from "../../core/ibis";
-import { wisselgeld, type Kaartje, type Kaartset } from "../../shared/kaartjes";
 import type { LiveStatus } from "../../core/live";
 import type { Duty, DutyLeg } from "../../core/types";
-import type { ApparaatStand, CareerApi } from "../../shared/api";
+import type { CareerApi } from "../../shared/api";
 import { formatTime } from "../../shared/format";
 import { RouteCode } from "./RouteCode";
+import { ApparaatApp } from "./apparaatdeel";
+import {
+  LEGE_TELEFOON,
+  Telefoon,
+  type TelefoonActies,
+  type TelefoonFrame,
+} from "./telefoon";
+import { dutyKeyOf } from "../../shared/telefoon";
 import { punctuality } from "../../shared/status";
 import { DEFAULT_LANGUAGE, loose, t, type Language } from "../../shared/i18n";
 import {
@@ -36,16 +42,7 @@ import {
   type PanelId,
   type PanelInfo,
 } from "../../shared/overlay";
-import type { Manoeuvre } from "./RouteMap";
-import {
-  NavKaart,
-  dutyKeyOf,
-  stopName,
-  useRitStand,
-  useStable,
-  walkedStops,
-  type NavFrame,
-} from "./navigatie";
+import { stopName, useRitStand, useStable, walkedStops } from "./navigatie";
 /*
  * Dezelfde letter als het hoofdvenster. Manrope blijft erbij staan omdat delen
  * van de overlay hem nog noemen; wat de nieuwe wereld tekent gebruikt Hanken.
@@ -123,18 +120,7 @@ function same(a: Box | undefined, b: Box | undefined): boolean {
   );
 }
 
-/** De apps op het toestel, in de volgorde van het balkje onderin. */
-type OverlayApp =
-  | "kaart"
-  | "dienst"
-  | "pauze"
-  | "rit"
-  | "kaartjes"
-  | "apparaat";
-
-interface Frame extends NavFrame {
-  /** Wie er rijdt, met zijn dienstgegevens om mee aan te melden. */
-  chauffeur?: { naam: string; personeelsnummer?: string; pincode?: string };
+interface Frame extends TelefoonFrame {
   /** In de bewerkstand neemt de overlay muisklikken aan. */
   editing: boolean;
 }
@@ -150,129 +136,15 @@ declare global {
   }
 }
 
-/*
- * Voor welke dienst je tekent; zie `dienstSleutel` in `Overlay`. Een functie,
- * want de aangenomen dienst uit het profiel moet op precies dezelfde manier
- * herkend worden als die in het beeld -- zie het terughalen van de handtekening.
- */
-function dienstSleutelVan(duty: Duty | undefined): string {
-  return duty ? `${duty.mapFolder}|${duty.tourNumber}|${duty.start}` : "";
-}
-
-/*
- * Voor welke dienst je je aanmeldt: de dienstsleutel plus alle ritten. Kaart,
- * omloop en vertrektijd alleen zijn te grof: een aangenomen dienst kan daarin
- * gelijk zijn aan de vrije rit die in hetzelfde venster voor hem liep, en dan
- * zag de overlay geen andere dienst en bleef de aanmelding van die rit staan.
- * Ook dit is een functie, om de dienst uit het profiel net zo te herkennen.
- */
-function aanmeldSleutelVan(duty: Duty | undefined): string {
-  return duty ? `${dienstSleutelVan(duty)}#${dutyKeyOf(duty)}` : "";
-}
-
-/*
- * Waar de handtekening van de telefoon bewaard blijft als de overlay dicht gaat.
- *
- * Het hoofdproces gooit het overlayvenster weg bij "Overlay verbergen" en bouwt
- * bij het openen een vers venster (`closeOverlay` / `openOverlay`). Wat alleen in
- * de state stond was dan weg, en midden in je dienst moest je opnieuw nummer,
- * pincode en handtekening geven. De localStorage van deze pagina blijft staan:
- * elk overlayvenster laadt dezelfde pagina, dus dezelfde herkomst. Eén regel die
- * steeds overschreven wordt -- er loopt maar één dienst tegelijk.
- */
-const HANDTEKENING = "overlay.handtekening";
-
-interface Handtekening {
-  /** Chauffeur, dienst en het moment waarop hij is aangenomen; zie `Overlay`. */
-  sleutel: string;
-  /** Voor welke dienst de opdracht aanvaard is; leeg als je alleen aangemeld bent. */
-  aanvaardVoor?: string;
-}
-
-function leesHandtekening(): Handtekening | undefined {
-  try {
-    const tekst = window.localStorage.getItem(HANDTEKENING);
-    const waarde = tekst
-      ? (JSON.parse(tekst) as Partial<Handtekening> | null)
-      : undefined;
-    if (typeof waarde?.sleutel !== "string") return undefined;
-    return {
-      sleutel: waarde.sleutel,
-      aanvaardVoor:
-        typeof waarde.aanvaardVoor === "string"
-          ? waarde.aanvaardVoor
-          : undefined,
-    };
-  } catch {
-    return undefined;
-  }
-}
-
-function bewaarHandtekening(waarde: Handtekening): void {
-  try {
-    window.localStorage.setItem(HANDTEKENING, JSON.stringify(waarde));
-  } catch {
-    // Geen opslag: dan teken je na het heropenen opnieuw, zoals voorheen.
-  }
-}
-
 function Overlay(): JSX.Element | null {
   const [frame, setFrame] = useState<Frame>({
     connected: false,
     editing: false,
   });
-  /*
-   * De navigatie staat al staand en smal, als een telefoon in een houder op het
-   * dashboard. Die vorm helemaal doortrekken: onderin een balkje waarmee je van
-   * app wisselt, en de kaart is er daar een van. Wat je tijdens het rijden nodig
-   * hebt staat op de kaart; de rest kijk je op als je stilstaat.
-   */
-  const [app, setApp] = useState<OverlayApp>("kaart");
-  /** Wanneer de pauze begon, in speltijd. Leeg betekent: geen pauze bezig. */
-  const [pauzeVanaf, setPauzeVanaf] = useState<number>();
   /** Staat de navigatie open voor een telefoon of tablet? Zie `ApparaatApp`. */
   const [deelt, setDeelt] = useState(false);
   const [layout, setLayout] = useState<OverlayLayout>();
-  /*
-   * Welke rit de chauffeur zelf heeft afgemeld met "IBIS ingevoerd". Per rit,
-   * want elke rit heeft zijn eigen route: bij de volgende hoort de vraag opnieuw
-   * gesteld te worden. Deze haak staat hier en niet verderop: onder de vroege
-   * return zou React hem bij het eerste beeld overslaan en daarna verwachten.
-   */
-  const [ibisReady, setIbisReady] = useState<string>();
-  /*
-   * Aanmelden en de dienst aanvaarden.
-   *
-   * Een dienst begint met jezelf aanmelden, en dat is het punt van deze stap.
-   * Maar de overlay gaat tussendoor dicht en open, en je hoort niet halverwege
-   * opnieuw te moeten tekenen voor dezelfde dienst. Alleen in de state was dat
-   * wel zo: het venster wordt bij het sluiten weggegooid. Daarom gaat de
-   * handtekening ook naar `HANDTEKENING`, onder `tekenSleutel` -- zie hieronder.
-   *
-   * Beide horen bij één dienst, niet bij het venster. `free:start` hergebruikt
-   * een overlay die al open staat en zet er alleen een andere dienst in
-   * (`openOverlay` in het hoofdproces). Met een vlag voor het hele venster kwam
-   * een tweede vrije rit daardoor al aangemeld op, en sloeg een loopbaandienst
-   * na een vrije rit het aanmelden over -- en bewaarde die geërfde handtekening
-   * dan ook nog onder zijn eigen sleutel. Daarom staat hier voor welke dienst
-   * je je aanmeldde (`aanmeldSleutel`), en begint elke andere dienst opnieuw.
-   */
-  const [aangemeldVoor, setAangemeldVoor] = useState<string>();
-  const [aanvaardVoor, setAanvaardVoor] = useState<string>();
-  /*
-   * Onder welke sleutel de handtekening bewaard wordt: de chauffeur, de dienst en
-   * het moment waarop hij in het profiel is aangenomen. Leeg zolang dat nog niet
-   * gelezen is; tot dan wordt er niets bewaard, anders overschrijft een vers
-   * venster de handtekening voordat hij hem heeft kunnen teruglezen. Bij vrij
-   * rijden blijft hij leeg, en dan blijft de handtekening in dit venster, tot
-   * er een andere dienst in beeld komt.
-   */
-  const [tekenSleutel, setTekenSleutel] = useState<string>();
   const [geometry, setGeometry] = useState<MapGeometry>();
-  /** Wat er aan bocht voor je ligt; de kaart rekent het uit, de balk tekent het. */
-  const [manoeuvre, setManoeuvre] = useState<Manoeuvre>();
-  /** Wat het laatste bord langs de route zei; niets als er geen bord stond. */
-  const [limit, setLimit] = useState<number>();
   const [language, setLanguage] = useState<Language>(DEFAULT_LANGUAGE);
   /** Hoe vaak de overlay wordt bijgewerkt; in de sleepbalk te kiezen. */
   const [rate, setRate] = useState<OverlayRate>("rustig");
@@ -299,24 +171,27 @@ function Overlay(): JSX.Element | null {
    * door de brug. Vasthouden scheelt de kaart een hoop nutteloos rekenwerk.
    */
   const duty = useStable(frame.duty, dutyKeyOf(frame.duty));
+  /*
+   * Aangemeld, getekend, pauze en IBIS komen uit het hoofdproces: dezelfde
+   * stand als op een telefoon of tablet, zodat aanmelden op je iPad hier ook
+   * telt. Een beeld van voor die verandering heeft hem niet; dan staat alles
+   * op af.
+   */
+  const stand = frame.telefoon ?? LEGE_TELEFOON;
+  const acties = useMemo<TelefoonActies>(
+    () => ({
+      aanmelden: (nummer, pin) => window.career.telefoonAanmelden(nummer, pin),
+      overslaan: () => void window.career.telefoonOverslaan(),
+      aanvaarden: () => void window.career.telefoonAanvaard(),
+      pauze: (vanaf) => void window.career.telefoonPauze(vanaf),
+      ibisKlaar: (tripKey) => void window.career.telefoonIbis(tripKey),
+    }),
+    [],
+  );
   const ibis = useStable(
     frame.ibis,
     frame.ibis ? `${frame.ibis.line}|${frame.ibis.tour}` : "",
   );
-  /*
-   * Welke dienst dit is. Niet de rit maar de hele dienst: je tekent er één keer
-   * voor en niet bij elke rit opnieuw. Hij staat boven de vroege return omdat het
-   * bewaren van de handtekening hieronder eraan hangt.
-   */
-  const dienstSleutel = dienstSleutelVan(duty);
-  const aanmeldSleutel = aanmeldSleutelVan(duty);
-  /*
-   * Aangemeld voor de dienst die nu in beeld staat. Een vergelijking en geen
-   * vlag: komt er een andere dienst in beeld, dan staat de telefoon meteen op
-   * aanmelden, nog voordat het terughalen hieronder alles heeft rechtgezet.
-   */
-  const aangemeld = aangemeldVoor === aanmeldSleutel;
-
   useEffect(() => {
     window.overlay.onFrame(setFrame);
     void window.career.overlayLayout().then(setLayout);
@@ -343,70 +218,6 @@ function Overlay(): JSX.Element | null {
       current = false;
     };
   }, [duty?.mapFolder]);
-
-  /*
-   * De handtekening terughalen die een vorig overlayvenster voor deze dienst
-   * bewaarde.
-   *
-   * De dienst alleen is geen goede sleutel: wie dezelfde omloop een dag later
-   * opnieuw aanneemt, heeft een nieuwe dienst met dezelfde kaart, omloop en
-   * vertrektijd -- en die hoort weer met aanmelden te beginnen. Daarom tellen de
-   * chauffeur en het moment van aannemen mee (profiel-id en `confirmedAt`), net
-   * als in de sleutel waarmee App.tsx een aangenomen dienst herkent. Een herstart
-   * midden in de dienst houdt dat moment, en dus de handtekening.
-   *
-   * Vrij rijden wordt niet bewaard, alleen in dit venster. Daar staat niets van
-   * in het profiel, en het beeld draagt niets dat per start verschilt:
-   * `free:start` trekt een omloop die tussen een halfuur voor en twee uur na je
-   * tijd vertrekt, dus een volgende vrije rit op dezelfde lijn krijgt al gauw
-   * dezelfde kaart, omloop en vertrektijd. Met alleen die als sleutel kwam hij
-   * al aangemeld en getekend op -- ook voor een andere chauffeur, want de
-   * localStorage overleeft het wisselen van profiel. Dan liever na het heropenen
-   * opnieuw aanmelden. Een vrije rit terwijl er nog een dienst aangenomen staat
-   * telt ook zo: bewaard wordt alleen een dienst die tot op de ritten gelijk is
-   * aan die in het profiel (`aanmeldSleutelVan`).
-   *
-   * Dit loopt bij elke andere dienst in beeld, niet alleen bij het openen: het
-   * hoofdproces zet bij `free:start` en bij het beginnen van een dienst de
-   * nieuwe dienst in een venster dat al open staat. Eerst gaat alles terug naar
-   * af -- aanmelden, aanvaarden en de sleutel -- en daarna komt alleen terug
-   * wat een vorig venster voor precies deze aangenomen dienst bewaarde.
-   */
-  useEffect(() => {
-    setAangemeldVoor(undefined);
-    setAanvaardVoor(undefined);
-    setTekenSleutel(undefined);
-    if (!aanmeldSleutel) return;
-    let current = true;
-    void window.career
-      .career()
-      .then((payload) => {
-        if (!current) return;
-        const actief = payload.state?.activeDuty;
-        const aangenomen = (actief?.assignment as { duty?: Duty } | undefined)
-          ?.duty;
-        if (!actief || aanmeldSleutelVan(aangenomen) !== aanmeldSleutel) return;
-        const sleutel = `${payload.state?.id ?? ""}|${dienstSleutel}|${actief.confirmedAt}`;
-        const bewaard = leesHandtekening();
-        // Alleen erbij, nooit eraf: wie in dit venster al getekend heeft, houdt dat.
-        if (bewaard?.sleutel === sleutel) {
-          setAangemeldVoor(aanmeldSleutel);
-          if (bewaard.aanvaardVoor === dienstSleutel)
-            setAanvaardVoor(dienstSleutel);
-        }
-        setTekenSleutel(sleutel);
-      })
-      .catch(() => undefined);
-    return () => {
-      current = false;
-    };
-  }, [aanmeldSleutel, dienstSleutel]);
-
-  // En elke stap die je op de telefoon zet meteen bewaren; zie `HANDTEKENING`.
-  useEffect(() => {
-    if (!tekenSleutel || !aangemeld) return;
-    bewaarHandtekening({ sleutel: tekenSleutel, aanvaardVoor });
-  }, [tekenSleutel, aangemeld, aanvaardVoor]);
 
   // Slepen levert een stroom wijzigingen op; pas als de muis stilligt naar schijf.
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -437,7 +248,7 @@ function Overlay(): JSX.Element | null {
   useEffect(() => window.overlay.onCycle(cycle), [cycle]);
 
   // Waar de dienst staat; dezelfde som als op de webpagina, zie navigatie.tsx.
-  const rit = useRitStand(frame, duty, ibisReady);
+  const rit = useRitStand(frame, duty, stand.ibisReady);
 
   /*
    * Buiten de bewerkstand laat het venster muisklikken door naar het spel. Dat
@@ -557,7 +368,7 @@ function Overlay(): JSX.Element | null {
    * Klaar om te rijden: aangemeld, en getekend voor deze dienst. Zonder dienst
    * -- vrij rijden -- is aanmelden genoeg; er valt dan niets te aanvaarden.
    */
-  const getekend = aangemeld && (!duty || aanvaardVoor === dienstSleutel);
+  const getekend = stand.aangemeld && (!duty || stand.aanvaard);
 
   /*
    * De elementen staan op hun plek op het scherm, maar het venster begint niet
@@ -641,13 +452,13 @@ function Overlay(): JSX.Element | null {
                 language={language}
               />
             )
-          ) : duty && ibisCapable && !ibisTyped && ibisReady !== tripKey ? (
+          ) : duty && ibisCapable && !ibisTyped && stand.ibisReady !== tripKey ? (
             <IbisStep
               leg={upcoming}
               ibis={ibis}
               legIndex={upcomingIndex}
               language={language}
-              onDone={() => setIbisReady(tripKey)}
+              onDone={() => acties.ibisKlaar(tripKey)}
             />
           ) : (
             <DutyPanel
@@ -679,69 +490,28 @@ function Overlay(): JSX.Element | null {
             geen balk onderin. Een telefoon waarop je nog niet aangemeld bent laat
             je ook geen dienstregeling zien.
           */}
-          {!aangemeld ? (
-            <AanmeldPaneel
-              chauffeur={frame.chauffeur}
-              language={language}
-              onAangemeld={() => setAangemeldVoor(aanmeldSleutel)}
-            />
-          ) : duty && aanvaardVoor !== dienstSleutel ? (
-            <DienstOpdracht
-              duty={duty}
-              chauffeur={frame.chauffeur}
-              language={language}
-              onAanvaard={() => setAanvaardVoor(dienstSleutel)}
-            />
-          ) : (
-            <>
-              {app !== "kaart" ? (
-                <div className="app-scherm">
-                  {app === "dienst" ? (
-                    <DienstApp
-                      duty={duty}
-                      status={status}
-                      language={language}
-                    />
-                  ) : app === "pauze" ? (
-                    <PauzeApp
-                      duty={duty}
-                      status={status}
-                      language={language}
-                      vanaf={pauzeVanaf}
-                      onVanaf={setPauzeVanaf}
-                    />
-                  ) : app === "apparaat" ? (
-                    <ApparaatApp language={language} onStand={setDeelt} />
-                  ) : app === "kaartjes" ? (
-                    <KaartjesApp set={frame?.kaartjes} language={language} />
-                  ) : (
-                    <RitApp status={status} language={language} />
-                  )}
-                </div>
-              ) : (
-                <NavKaart
-                  frame={frame}
-                  duty={duty}
-                  geometry={geometry}
-                  rit={rit}
-                  pixelScale={layout.navigatie.scale}
-                  language={language}
-                  manoeuvre={manoeuvre}
-                  onManoeuvre={setManoeuvre}
-                  limit={limit}
-                  onSpeedLimit={setLimit}
-                />
-              )}
-
-              <Dock
-                app={app}
-                onApp={setApp}
-                language={language}
-                pauze={pauzeVanaf !== undefined}
-                deelt={deelt}
-              />
-            </>
-          )}
+          <Telefoon
+            frame={frame}
+            duty={duty}
+            geometry={geometry}
+            rit={rit}
+            stand={stand}
+            acties={acties}
+            pixelScale={layout.navigatie.scale}
+            language={language}
+            /*
+             * De QR-code staat alleen in de overlay: op het toestel zelf heb je
+             * er niets aan. Het stipje zegt dat er gedeeld wordt.
+             */
+            extra={{
+              id: "apparaat",
+              label: "ovl.appDevice",
+              // Een tablet met een telefoon ervoor: de navigatie op een ander toestel.
+              pad: "M4 3h12a2 2 0 0 1 2 2v1.5h-1.8V4.8H3.8v12.4h7.4V19H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm11 5h5a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-5a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2Zm-.2 2v8.2h5.4V10Zm2.1 9.1h1.4v1h-1.4Z",
+              stip: deelt,
+              scherm: <ApparaatApp language={language} onStand={setDeelt} />,
+            }}
+          />
         </Panel>
       )}
 
@@ -1045,376 +815,6 @@ function Panel({
         onPointerDown={startSize}
       />
     </section>
-  );
-}
-
-/**
- * Het balkje onderin: waarmee je van app wisselt.
- *
- * Vaste plekken, altijd dezelfde volgorde. Tijdens het rijden wil je niet
- * zoeken, dus de kaart staat vooraan en verandert nooit van plaats. Loopt er een
- * pauze, dan blijft dat zichtbaar ook als je ergens anders kijkt.
- */
-function Dock({
-  app,
-  onApp,
-  language,
-  pauze,
-  deelt,
-}: {
-  app: OverlayApp;
-  onApp(app: OverlayApp): void;
-  language: Language;
-  pauze: boolean;
-  /** Kijkt er een telefoon of tablet mee? */
-  deelt: boolean;
-}): JSX.Element {
-  const apps: Array<{
-    id: OverlayApp;
-    label: Parameters<typeof t>[1];
-    pad: string;
-  }> = [
-    {
-      id: "kaart",
-      label: "ovl.appMap",
-      pad: "M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Zm0 2.2 6 2v11.6l-6-2V6.2Z",
-    },
-    {
-      id: "dienst",
-      label: "ovl.appDuty",
-      pad: "M5 3h14v18l-7-4-7 4V3Zm2 2v12.2l5-2.9 5 2.9V5H7Z",
-    },
-    {
-      id: "pauze",
-      label: "ovl.appBreak",
-      pad: "M8 5h2v14H8V5Zm6 0h2v14h-2V5Z",
-    },
-    {
-      id: "rit",
-      label: "ovl.appTrip",
-      pad: "M4 20V10h4v10H4Zm6 0V4h4v16h-4Zm6 0v-7h4v7h-4Z",
-    },
-    {
-      id: "kaartjes",
-      label: "ovl.appTickets",
-      // Een kaartje met een knip in de zijkant, zoals in Icoon.tsx.
-      pad: "M3 6.5h18v4a2 2 0 0 0 0 3.8v4H3v-4a2 2 0 0 0 0-3.8ZM5 8.5v1.1a4 4 0 0 1 0 5.4v1.1h14v-1.1a4 4 0 0 1 0-5.4V8.5Zm4 1.6h1.6v4.6H9Zm4 0h1.6v4.6H13Z",
-    },
-    {
-      id: "apparaat",
-      label: "ovl.appDevice",
-      // Een tablet met een telefoon ervoor: de navigatie op een ander toestel.
-      pad: "M4 3h12a2 2 0 0 1 2 2v1.5h-1.8V4.8H3.8v12.4h7.4V19H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm11 5h5a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-5a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2Zm-.2 2v8.2h5.4V10Zm2.1 9.1h1.4v1h-1.4Z",
-    },
-  ];
-  return (
-    <nav className="dock" data-hit>
-      {apps.map((item) => (
-        <button
-          key={item.id}
-          type="button"
-          className="dock-knop"
-          aria-pressed={app === item.id}
-          title={t(language, item.label)}
-          aria-label={t(language, item.label)}
-          onClick={() => onApp(item.id)}
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d={item.pad} fill="currentColor" fillRule="evenodd" />
-          </svg>
-          {((item.id === "pauze" && pauze) ||
-            (item.id === "apparaat" && deelt)) && (
-            <i className="dock-stip" aria-hidden="true" />
-          )}
-        </button>
-      ))}
-    </nav>
-  );
-}
-
-/**
- * De hele dienst: elke rit met zijn tijden, en waar je pauze hebt.
- *
- * Een dienst is ook een route -- door de dag heen in plaats van door de stad --
- * en de overlay heeft voor een route al een vorm: de blauwe lijn met een punt
- * op elke halte, zoals op de kaart. Die lijn loopt hier langs de ritten, vol
- * waar je al geweest bent en flauw voor wat nog komt, zodat je in een oogopslag
- * ziet hoever de dag is. Een tweede kleur is er niet bij nodig.
- */
-function DienstApp({
-  duty,
-  status,
-  language,
-}: {
-  duty?: Duty;
-  status?: LiveStatus;
-  language: Language;
-}): JSX.Element {
-  if (!duty) return <div className="empty">{t(language, "ovl.appNoDuty")}</div>;
-  const nuIndex = status?.legIndex;
-  return (
-    <div className="app-lijst met-rail">
-      {duty.legs.map((leg, index) => (
-        <div
-          key={`${leg.tripFile}-${index}`}
-          className={`app-rit ${nuIndex === index ? "nu" : ""} ${
-            nuIndex !== undefined && index < nuIndex ? "gereden" : ""
-          }`}
-        >
-          <i className="app-punt" aria-hidden="true" />
-          <span className="app-rit-tijd">{formatTime(leg.departure)}</span>
-          <span className="app-rit-naar">
-            <b>{leg.terminus}</b>
-            <small>
-              {t(language, "ovl.appLine", { line: leg.lineNumber })} ·{" "}
-              {t(language, "ovl.appStops", { count: leg.stops.length })}
-            </small>
-          </span>
-          <span className="app-rit-aan">{formatTime(leg.arrival)}</span>
-          {leg.layoverBefore > 0 && (
-            <span className="app-pauzeblok">
-              {t(language, "ovl.appLayover", { minutes: leg.layoverBefore })}
-            </span>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/**
- * Pauze houden, met de tijd die er volgens de dienstregeling voor staat.
- *
- * Niets verzonnen: elke rit draagt in `layoverBefore` hoeveel minuten er op het
- * eindpunt tussen zit. De klok loopt op speltijd en niet op die van Windows --
- * OMSI kan sneller of langzamer lopen, en dan is een pauze van tien minuten op
- * je polshorloge geen pauze van tien minuten in de dienst.
- */
-function PauzeApp({
-  duty,
-  status,
-  language,
-  vanaf,
-  onVanaf,
-}: {
-  duty?: Duty;
-  status?: LiveStatus;
-  language: Language;
-  vanaf?: number;
-  onVanaf(vanaf: number | undefined): void;
-}): JSX.Element {
-  const klok = status?.clockMinutes;
-  const volgende = duty?.legs[(status?.legIndex ?? 0) + 1];
-  const staat = volgende?.layoverBefore ?? 0;
-  const bezig =
-    vanaf !== undefined && klok !== undefined
-      ? Math.max(0, klok - vanaf)
-      : undefined;
-  const over = bezig !== undefined ? staat - bezig : undefined;
-
-  /*
-   * Twee grote getallen naast elkaar zeiden allebei half zo veel. Nu is er er
-   * een: een ring die volloopt zoals de pauze volloopt. Groen zolang je binnen
-   * de tijd zit, rood zodra je eroverheen gaat -- dezelfde twee kleuren waarmee
-   * de overlay verderop over tijd praat, en geen andere. In de ring staat hoe
-   * lang je staat, eronder wat dat betekent.
-   */
-  const deel =
-    staat > 0 && bezig !== undefined ? Math.min(1, bezig / staat) : 0;
-  const stand =
-    bezig === undefined
-      ? "stil"
-      : over !== undefined && over < 0
-        ? "late"
-        : "ontime";
-
-  return (
-    // data-hit om dezelfde reden als bij de kaartjes: anders gaat "Pauze
-    // starten" door de telefoon heen naar OMSI en begint er niets.
-    <div className="app-pauze" data-hit>
-      <div
-        className={`pauze-ring ${stand}`}
-        style={{ "--deel": deel } as CSSProperties}
-      >
-        <b>{bezig ?? staat}</b>
-        <span>min</span>
-      </div>
-
-      <span className="app-label">
-        {over === undefined
-          ? t(language, "ovl.appBreakDue")
-          : over >= 0
-            ? t(language, "ovl.appBreakLeft", { minutes: over })
-            : t(language, "ovl.appBreakOver", { minutes: -over })}
-      </span>
-
-      {bezig !== undefined ? (
-        <button
-          type="button"
-          className="app-knop"
-          onClick={() => onVanaf(undefined)}
-        >
-          {t(language, "ovl.appBreakStop")}
-        </button>
-      ) : (
-        <button
-          type="button"
-          className="app-knop primair"
-          disabled={klok === undefined}
-          onClick={() => onVanaf(klok)}
-        >
-          {t(language, "ovl.appBreakStart")}
-        </button>
-      )}
-
-      {/*
-        Waar je voor staat te wachten. Een pauze is geen doel op zich -- je houdt
-        hem om op tijd aan de volgende rit te beginnen -- dus staat die rit
-        eronder, in dezelfde regel als in de dienst.
-      */}
-      {volgende && (
-        <div className="app-volgende">
-          <span className="app-label">{t(language, "ovl.appNextTrip")}</span>
-          <div className="app-lijst">
-            <div className="app-rit">
-              <span className="app-rit-tijd">
-                {formatTime(volgende.departure)}
-              </span>
-              <span className="app-rit-naar">
-                <b>{volgende.terminus}</b>
-                <small>
-                  {t(language, "ovl.appLine", { line: volgende.lineNumber })} ·{" "}
-                  {t(language, "ovl.appStops", {
-                    count: volgende.stops.length,
-                  })}
-                </small>
-              </span>
-              <span className="app-rit-aan">
-                {formatTime(volgende.arrival)}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
- * Hoe deze rit loopt: wat de bus doorgeeft, in cijfers.
- *
- * Dit was een lijst label-waarde, en die las braaf: vijf grijze regels die er
- * allemaal even belangrijk uitzagen. Het dienstpaneel heeft al een vorm voor
- * een getal dat ertoe doet -- de tegel met een groot cijfer en een klein
- * onderschrift -- en die vorm hoort hier net zo goed. Geen nieuw middel dus,
- * hetzelfde middel op volle sterkte. De vertraging staat bovenaan en over de
- * hele breedte, want dat is het getal waar het om draait, en hij draagt de
- * tijdkleur: de enige kleur die in deze overlay iets betekent.
- */
-function RitApp({
-  status,
-  language,
-}: {
-  status?: LiveStatus;
-  language: Language;
-}): JSX.Element {
-  if (!status) return <div className="empty">{t(language, "ovl.noData")}</div>;
-  const stand = punctuality(status.deltaSeconds);
-  const klasse =
-    stand === "laat" ? "late" : stand === "vroeg" ? "early" : "ontime";
-  const minuten = Math.round(status.delayMinutes);
-  const leg = status.leg;
-  const at = status.stopIndex;
-  return (
-    <div className="app-ritscherm">
-      <div className="app-tegels">
-        <div className="breed">
-          <b className={klasse}>
-            {minuten > 0 ? `+${minuten}` : minuten}
-            <small>min</small>
-          </b>
-          <span>{t(language, "ovl.appDelay")}</span>
-        </div>
-        <div>
-          <b>
-            {Math.max(0, Math.round(status.speedKmh))}
-            <small>km/u</small>
-          </b>
-          <span>{t(language, "ovl.appSpeed")}</span>
-        </div>
-        <div>
-          <b>{status.passengers}</b>
-          <span>{t(language, "ovl.appPassengers")}</span>
-        </div>
-        <div>
-          <b>
-            {status.stopIndex ?? 0}
-            <small>/ {status.stopsTotal}</small>
-          </b>
-          <span>{t(language, "ovl.appStopsDone")}</span>
-        </div>
-        <div>
-          <b>
-            {Math.round(status.odometerKm)}
-            <small>km</small>
-          </b>
-          <span>{t(language, "ovl.appOdometer")}</span>
-        </div>
-        {/*
-          Tank of accu, niet allebei. Een elektrische bus heeft geen tank en een
-          dieselbus geen accustand; wat de bus doorgeeft bepaalt wat er staat. De
-          kleur is dezelfde rode als bij de tijd -- ook hier betekent hij "je
-          gaat het niet halen".
-
-          Geeft de bus geen van beide door, dan staat er niets. Een tegel met
-          een streepje erin is erger dan een tegel minder.
-        */}
-        {Number.isFinite(status.battery ?? status.fuel) && (
-          <div>
-            <b
-              className={
-                (status.battery ?? status.fuel) < 0.1 ? "late" : undefined
-              }
-            >
-              {Math.round((status.battery ?? status.fuel) * 100)}
-              <small>%</small>
-            </b>
-            <span>
-              {t(
-                language,
-                status.battery !== undefined ? "ovl.appBattery" : "ovl.appFuel",
-              )}
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/*
-        En dan waar je langs komt. Dezelfde rail als bij de dienst, want het is
-        hetzelfde soort ding: een route met punten erop. Wat je gehad hebt vervaagt,
-        de halte waar je heen rijdt draagt de dikke punt.
-      */}
-      {leg && leg.stops.length > 0 && (
-        <div className="app-haltes">
-          <div className="app-lijst met-rail">
-            {leg.stops.map((naam, index) => (
-              <div
-                key={`${naam}-${index}`}
-                className={`app-rit halte ${at === index ? "nu" : ""} ${
-                  at !== undefined && index < at ? "gereden" : ""
-                }`}
-              >
-                <i className="app-punt" aria-hidden="true" />
-                <span className="app-rit-tijd">
-                  {formatTime(leg.stopTimes[index])}
-                </span>
-                <span className="app-halte-naam">{naam}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -2099,134 +1499,6 @@ function clamp(value: number, low: number, high: number): number {
 createRoot(document.getElementById("root")!).render(<Overlay />);
 
 /**
- * Aanmelden op de telefoon.
- *
- * WAAROM DIT ER IS
- * Een dienst begon met een venster dat opengaat. Nu begint hij zoals hij bij een
- * echte remise begint: je meldt je aan met je personeelsnummer, je tekent voor
- * je dienst, en pas daarna krijg je te horen welke omloop je moet kiezen en
- * welke codes in de IBIS moeten. De volgorde is het hele punt -- de codes stonden
- * eerst in beeld voordat je wist of je ze nodig had.
- *
- * WAAROM ER NIETS BEVEILIGD WORDT
- * Het nummer en de pincode staan gewoon in het profiel en gaan gewoon mee in het
- * beeld. Er valt hier niets te beschermen: het is je eigen pc en je eigen
- * profiel. Zie `core/career.ts`. Wie zijn code kwijt is, leest hem terug in de
- * app -- en daarom staat er bij een verkeerde invoer ook gewoon "onbekend
- * nummer" en geen ontmoedigende stilte.
- *
- * Het cijferblok is groot met opzet. Dit gebeurt terwijl je al in de bus zit.
- */
-function AanmeldPaneel({
-  chauffeur,
-  language,
-  onAangemeld,
-}: {
-  chauffeur?: { naam: string; personeelsnummer?: string; pincode?: string };
-  language: Language;
-  onAangemeld: () => void;
-}): JSX.Element {
-  const [stap, setStap] = useState<"nummer" | "pin">("nummer");
-  const [ingevoerd, setIngevoerd] = useState("");
-  const [fout, setFout] = useState(false);
-
-  const verwacht =
-    stap === "nummer" ? chauffeur?.personeelsnummer : chauffeur?.pincode;
-  const lengte = verwacht?.length ?? 0;
-
-  /*
-   * Zodra er genoeg cijfers staan wordt er gekeken. Geen bevestigknop: op een
-   * terminal met een vaste codelengte is die overbodig, en je hebt één hand aan
-   * het stuur.
-   */
-  useEffect(() => {
-    if (!verwacht || ingevoerd.length < lengte) return;
-    if (ingevoerd === verwacht) {
-      setFout(false);
-      setIngevoerd("");
-      if (stap === "nummer") setStap("pin");
-      else onAangemeld();
-    } else {
-      setFout(true);
-      setIngevoerd("");
-    }
-  }, [ingevoerd, verwacht, lengte, stap, onAangemeld]);
-
-  /* Zonder gegevens valt er niets na te kijken; dan maar door. */
-  if (!chauffeur?.personeelsnummer || !chauffeur?.pincode) {
-    return (
-    /*
-     * data-hit, anders gebeurt er niets als je drukt.
-     *
-     * Het overlayvenster laat muisklikken door naar OMSI -- het ligt over het
-     * hele scherm, dus een venster dat klikken opvangt vangt ze overal op.
-     * Alleen waar `data-hit` staat wordt de muis even opgevraagd. Dat stond er
-     * niet, en dus was dit een plaatje van een cijferblok: de klik ging dwars
-     * door de toetsen heen naar de bus erachter.
-     */
-      <div className="aanmelden" data-hit>
-        <p className="aanmeld-uitleg">{t(language, "ovl.signonNone")}</p>
-        <button type="button" className="aanmeld-door" onClick={onAangemeld}>
-          {t(language, "ovl.signonSkip")}
-        </button>
-      </div>
-    );
-  }
-
-  const toets = (cijfer: string): void => {
-    setFout(false);
-    setIngevoerd((huidig) =>
-      huidig.length >= lengte ? huidig : huidig + cijfer,
-    );
-  };
-
-  return (
-    <div className="aanmelden" data-hit>
-      <p className="aanmeld-kop">{t(language, "ovl.signonTitle")}</p>
-      <p className="aanmeld-uitleg">
-        {t(language, stap === "nummer" ? "ovl.signonNumber" : "ovl.signonPin")}
-      </p>
-
-      <div className={`aanmeld-vakjes ${fout ? "fout" : ""}`}>
-        {Array.from({ length: lengte }, (_, i) => (
-          <span key={i} className={i < ingevoerd.length ? "vol" : ""}>
-            {/* Het nummer lees je terug, de pincode niet -- die typ je blind. */}
-            {i < ingevoerd.length
-              ? stap === "nummer"
-                ? ingevoerd[i]
-                : "•"
-              : ""}
-          </span>
-        ))}
-      </div>
-
-      {fout && <p className="aanmeld-fout">{t(language, "ovl.signonWrong")}</p>}
-
-      <div className="cijferblok">
-        {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((cijfer) => (
-          <button key={cijfer} type="button" onClick={() => toets(cijfer)}>
-            {cijfer}
-          </button>
-        ))}
-        <button type="button" className="leeg" onClick={() => setIngevoerd("")}>
-          {t(language, "ovl.signonClear")}
-        </button>
-        <button type="button" onClick={() => toets("0")}>
-          0
-        </button>
-        <button
-          type="button"
-          className="leeg"
-          onClick={() => setIngevoerd((h) => h.slice(0, -1))}
-        >
-          ←
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/**
  * Je dienstpas: personeelsnummer en pincode.
  *
  * Ze stonden alleen in de app, bij de staat van dienst en op het rijscherm --
@@ -2269,362 +1541,3 @@ function Dienstpas({
   );
 }
 
-/**
- * De dienstopdracht: wat je gaat rijden, en je handtekening eronder.
- *
- * Alles wat je nodig hebt om te weten of dit jouw dienst is -- lijn, omloop,
- * vertrek, duur -- en verder niets. De codes voor de IBIS komen op het volgende
- * scherm, want die heb je pas nodig als je hebt getekend.
- */
-function DienstOpdracht({
-  duty,
-  chauffeur,
-  language,
-  onAanvaard,
-}: {
-  duty: Duty;
-  chauffeur?: { naam: string };
-  language: Language;
-  onAanvaard: () => void;
-}): JSX.Element {
-  const klok = (minuten: number): string => formatTime(minuten);
-  return (
-    <div className="opdracht" data-hit>
-      <p className="opdracht-kop">{t(language, "ovl.dutyOrder")}</p>
-      {chauffeur && <p className="opdracht-naam">{chauffeur.naam}</p>}
-
-      <dl className="opdracht-lijst">
-        <div>
-          <dt>{t(language, "ovl.dutyLine")}</dt>
-          <dd>
-            {duty.lineNumbers.join(" / ") || duty.legs[0]?.lineNumber || "—"}
-          </dd>
-        </div>
-        <div>
-          <dt>{t(language, "ovl.dutyTour")}</dt>
-          <dd>{duty.tourNumber || "—"}</dd>
-        </div>
-        <div>
-          <dt>{t(language, "ovl.dutyStart")}</dt>
-          <dd>{klok(duty.start)}</dd>
-        </div>
-        <div>
-          <dt>{t(language, "ovl.dutyEnd")}</dt>
-          <dd>{klok(duty.end)}</dd>
-        </div>
-        <div>
-          <dt>{t(language, "ovl.dutyTrips")}</dt>
-          <dd>{duty.legs.length}</dd>
-        </div>
-      </dl>
-
-      <button type="button" className="opdracht-teken" onClick={onAanvaard}>
-        {t(language, "ovl.dutyAccept")}
-      </button>
-    </div>
-  );
-}
-
-/**
- * De kaartjes-app: wat kost dit kaartje, en wat krijgt hij terug.
- *
- * WAAROM DIT ZO WEINIG WEET
- * OMSI vertelt niet dat er iemand een kaartje wil, welk kaartje, of hoeveel geld
- * hij aangeeft. Nagemeten: geen enkele systeemvariabele gaat over kaartjes of
- * geld, de `PAX_`-variabelen gaan alleen over deuren, en het kaartprinterscript
- * van een bus krijgt van buiten alleen IBIS-timing, stroomrails en taal binnen.
- * Het spel zegt wat iemand wil met een geluidje en verder niets. Zie
- * `core/kaartjes.ts`.
- *
- * Wat de app dus niet doet: raden wat er gevraagd wordt. Wat hij wel doet: de
- * kaartsoorten van deze kaart met hun prijzen tonen, en het rekenwerk uit handen
- * nemen -- want dát is wat je achter het stuur niet wilt doen.
- *
- * Het wisselgeld staat uitgesplitst in munten en biljetten, grootste eerst. "Een
- * van twee euro, een van twintig cent" is bruikbaar terwijl je rijdt; "2,20"
- * moet je alsnog zelf uit de lade puzzelen.
- */
-/**
- * De navigatie op een telefoon of tablet.
- *
- * Deze app openen is de vraag om te delen: de server gaat aan (zie
- * main/apparaat.ts) en de QR-code verschijnt. Hij blijft aan als je naar een
- * andere app gaat -- de telefoon op het dashboard moet blijven werken terwijl
- * de overlay de kaart laat zien, of helemaal niets -- tot je hier op stoppen
- * drukt of de app afsluit.
- *
- * Elke twee tellen kijkt hij hoeveel toestellen er meekijken. Dat is ook het
- * antwoord op "doet hij het?": staat er een toestel, dan komt de kaart aan.
- */
-function ApparaatApp({
-  language,
-  onStand,
-}: {
-  language: Language;
-  onStand(aan: boolean): void;
-}): JSX.Element {
-  const [stand, setStand] = useState<ApparaatStand>();
-  const [bezig, setBezig] = useState(false);
-
-  useEffect(() => {
-    let actief = true;
-    const zet = (nieuw: ApparaatStand): void => {
-      if (!actief) return;
-      setStand(nieuw);
-      onStand(nieuw.aan);
-    };
-    void window.career.apparaatStart().then(zet).catch(() => undefined);
-    const klok = setInterval(
-      () => void window.career.apparaatStand().then(zet).catch(() => undefined),
-      2000,
-    );
-    return () => {
-      actief = false;
-      clearInterval(klok);
-    };
-  }, [onStand]);
-
-  const doe = (werk: () => Promise<ApparaatStand>): void => {
-    setBezig(true);
-    void werk()
-      .then((nieuw) => {
-        setStand(nieuw);
-        onStand(nieuw.aan);
-      })
-      .finally(() => setBezig(false));
-  };
-
-  if (!stand) return <div className="empty">{t(language, "dev.starting")}</div>;
-
-  return (
-    // data-hit om dezelfde reden als bij de pauze: anders gaat een klik door de telefoon heen naar OMSI.
-    <div className="app-apparaat" data-hit>
-      <b className="app-apparaat-kop">{t(language, "dev.title")}</b>
-      {!stand.aan ? (
-        <>
-          <p className="app-label">
-            {stand.fout
-              ? t(language, "dev.error", { fout: stand.fout })
-              : t(language, "dev.stopped")}
-          </p>
-          <button
-            type="button"
-            className="app-knop primair"
-            disabled={bezig}
-            onClick={() => doe(() => window.career.apparaatStart())}
-          >
-            {t(language, "dev.start")}
-          </button>
-        </>
-      ) : !stand.url ? (
-        <p className="app-label">{t(language, "dev.noAddress")}</p>
-      ) : (
-        <>
-          <QrCode tekst={stand.url} label={t(language, "dev.qr")} />
-          <span className="app-apparaat-uitleg">{t(language, "dev.scan")}</span>
-          {/*
-            Het adres er ook in letters bij: voor een camera die de code niet
-            pakt, en om te zien of het wel het goede netwerk is.
-          */}
-          <code className="app-apparaat-url">{stand.url}</code>
-          <span
-            className={
-              stand.kijkers > 0 ? "app-apparaat-kijkers aan" : "app-apparaat-kijkers"
-            }
-          >
-            {stand.kijkers > 0
-              ? t(language, "dev.watching", { count: stand.kijkers })
-              : t(language, "dev.nobody")}
-          </span>
-          <p className="app-apparaat-noot">{t(language, "dev.wifi")}</p>
-          <p className="app-apparaat-noot">{t(language, "dev.firewall")}</p>
-          <div className="app-apparaat-knoppen">
-            <button
-              type="button"
-              className="app-knop"
-              disabled={bezig}
-              title={t(language, "dev.newLinkHint")}
-              onClick={() => doe(() => window.career.apparaatNieuw())}
-            >
-              {t(language, "dev.newLink")}
-            </button>
-            <button
-              type="button"
-              className="app-knop"
-              disabled={bezig}
-              onClick={() => doe(() => window.career.apparaatStop())}
-            >
-              {t(language, "dev.stop")}
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-/**
- * Een QR-code als SVG: zwart op wit met vier vakjes witte rand, want zo lezen
- * alle camera's hem -- ook in de donkere stand, waar een omgekeerde code door
- * een deel van de telefoons niet herkend wordt. Correctieniveau M: een
- * vlekje of een weerspiegeling op het scherm mag.
- */
-function QrCode({ tekst, label }: { tekst: string; label: string }): JSX.Element {
-  const { maat, pad } = useMemo(() => {
-    const code = qrcode(0, "M");
-    code.addData(tekst);
-    code.make();
-    const aantal = code.getModuleCount();
-    const delen: string[] = [];
-    for (let rij = 0; rij < aantal; rij += 1) {
-      for (let kolom = 0; kolom < aantal; kolom += 1) {
-        if (code.isDark(rij, kolom)) delen.push(`M${kolom + 4} ${rij + 4}h1v1h-1z`);
-      }
-    }
-    return { maat: aantal + 8, pad: delen.join("") };
-  }, [tekst]);
-  return (
-    <svg
-      className="app-apparaat-qr"
-      viewBox={`0 0 ${maat} ${maat}`}
-      role="img"
-      aria-label={label}
-      shapeRendering="crispEdges"
-    >
-      <rect width={maat} height={maat} fill="#ffffff" />
-      <path d={pad} fill="#000000" />
-    </svg>
-  );
-}
-
-function KaartjesApp({
-  set,
-  language,
-}: {
-  set?: Kaartset;
-  language: Language;
-}): JSX.Element {
-  const [gekozen, setGekozen] = useState<Kaartje>();
-  /** Wat de passagier tot nu toe heeft aangegeven, in centen. */
-  const [gegeven, setGegeven] = useState(0);
-
-  /* Wisselt de kaart, dan slaat de vorige keuze nergens meer op. */
-  useEffect(() => {
-    setGekozen(undefined);
-    setGegeven(0);
-  }, [set?.naam]);
-
-  if (!set || set.kaartjes.length === 0) {
-    return <p className="app-leeg">{t(language, "ovl.ticketsNone")}</p>;
-  }
-
-  const prijs = gekozen ? Math.round(gekozen.prijs * 100) : 0;
-  const terug = gegeven - prijs;
-  const munten = terug > 0 ? wisselgeld(terug) : [];
-  const euro = (cent: number): string => (cent / 100).toFixed(2);
-
-  /* De coupures waarmee een passagier betaalt; grootste eerst zoals in de lade. */
-  const COUPURES = [2000, 1000, 500, 200, 100, 50, 20, 10];
-
-  return (
-    /*
-     * data-hit op het hele blok, net als het cijferblok: buiten de bewerkstand
-     * vraagt de overlay de muis alleen op boven `[data-hit]`. Dat stond nergens
-     * in deze app of erboven, en dus ging elke tik op een kaartje, een munt of
-     * "Wissen" dwars door de telefoon heen de bus in. Het blok en niet alleen de
-     * knoppen, want een lange lijst kaartsoorten wil je ook kunnen scrollen.
-     */
-    <div className="kaartjes" data-hit>
-      {!gekozen ? (
-        <ul className="kaartlijst">
-          {set.kaartjes.map((kaartje) => (
-            <li key={kaartje.naam}>
-              <button type="button" onClick={() => setGekozen(kaartje)}>
-                <span className="kaartnaam">{kaartje.naam}</span>
-                <span className="kaartprijs">{kaartje.prijs.toFixed(2)}</span>
-              </button>
-              {kaartje.maxHaltes > 0 && (
-                <small>
-                  {t(language, "ovl.ticketStops", { count: kaartje.maxHaltes })}
-                </small>
-              )}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <>
-          <div className="kaartkop">
-            <button
-              type="button"
-              className="kaartterug"
-              onClick={() => {
-                setGekozen(undefined);
-                setGegeven(0);
-              }}
-            >
-              ‹
-            </button>
-            <span className="kaartnaam">{gekozen.naam}</span>
-            <span className="kaartprijs">{euro(prijs)}</span>
-          </div>
-
-          {/*
-            Tik aan wat hij geeft. Optellen en niet vervangen: iemand geeft
-            twee euro en dan nog een vijftig, en dat is drie handelingen aan
-            de balie maar één bedrag.
-          */}
-          <div className="coupures">
-            {COUPURES.map((cent) => (
-              <button
-                key={cent}
-                type="button"
-                onClick={() => setGegeven((t) => t + cent)}
-              >
-                {euro(cent)}
-              </button>
-            ))}
-          </div>
-
-          <div className="kaartsom">
-            <span>{t(language, "ovl.ticketGiven")}</span>
-            <b>{euro(gegeven)}</b>
-            <button
-              type="button"
-              className="kaartwis"
-              onClick={() => setGegeven(0)}
-            >
-              {t(language, "ovl.ticketClear")}
-            </button>
-          </div>
-
-          {gegeven > 0 && (
-            <div className={`kaartterugbedrag ${terug < 0 ? "tekort" : ""}`}>
-              {terug < 0 ? (
-                <>
-                  <span>{t(language, "ovl.ticketShort")}</span>
-                  <b>{euro(-terug)}</b>
-                </>
-              ) : (
-                <>
-                  <span>{t(language, "ovl.ticketChange")}</span>
-                  <b>{euro(terug)}</b>
-                  <div className="kaartmunten">
-                    {munten.length === 0 ? (
-                      <em>{t(language, "ovl.ticketExact")}</em>
-                    ) : (
-                      munten.map((m) => (
-                        <span key={m.cent}>
-                          {m.aantal}&times;&nbsp;{euro(m.cent)}
-                        </span>
-                      ))
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
