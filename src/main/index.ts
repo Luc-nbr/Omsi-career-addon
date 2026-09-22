@@ -2605,7 +2605,16 @@ function registerHandlers(): void {
    * gebeurt het hier alsnog.
    */
   handle('plugin:status', async () => {
-    if (!pluginStatus) {
+    /*
+     * Een mislukte poging wordt niet onthouden.
+     *
+     * Wie de app start terwijl OMSI draait, kan de plugin niet vervangen -- het
+     * spel houdt het bestand vast. Dat antwoord bleef hangen tot de app opnieuw
+     * startte, en intussen reed de speler met een oude plugin terwijl de nieuwe
+     * al klaarstond. Nu probeert elke volgende vraag het opnieuw, en zodra OMSI
+     * dicht is staat hij er.
+     */
+    if (!pluginStatus || pluginStatus.error || !pluginStatus.upToDate) {
       pluginStatus = ensurePlugin(
         omsi(),
         pluginSourceDir(process.resourcesPath, app.isPackaged),

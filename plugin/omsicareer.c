@@ -101,6 +101,19 @@ enum {
 
 #define STR_MAX 96
 #define WRITE_INTERVAL_MS 100
+/*
+ * WIE DEZE PLUGIN IS
+ *
+ * OMSI laadt de DLL uit zijn eigen `plugins`-map. De app zet hem daar neer,
+ * maar alleen met het spel dicht -- draait OMSI, dan blijft de oude staan en
+ * mist de app stilletjes alles wat er sindsdien bij gekomen is. Daarom noemt
+ * de plugin zijn nummer in elk beeld, en zegt de app het als dat te oud is.
+ *
+ * 1  eerste versie met live.json
+ * 2  positie en dienstregeling uit het geheugen
+ * 3  de kaartverkoop aan de deur, en toetsen die de app laat indrukken
+ */
+#define PLUGIN_VERSIE 3
 
 /*
  * Drempels voor hard remmen en optrekken, in meter per seconde kwadraat.
@@ -775,7 +788,7 @@ static void flush_state(int alive) {
 
   int length = _snprintf_s(
       body, sizeof(body), _TRUNCATE,
-      "{\"alive\":%s,\"seen\":%u,\"seenSys\":%u,\"seenStr\":%u,\"strKind\":%d,"
+      "{\"alive\":%s,\"plugin\":%d,\"seen\":%u,\"seenSys\":%u,\"seenStr\":%u,\"strKind\":%d,"
       "\"time\":%.3f,\"day\":%.0f,\"month\":%.0f,\"year\":%.0f,"
       "\"velocity\":%.2f,\"passengers\":%.0f,\"scheduleActive\":%.0f,"
       "\"targetIndex\":%.0f,\"tankPercent\":%.3f,\"km\":%.0f,\"metres\":%.1f,"
@@ -790,7 +803,7 @@ static void flush_state(int alive) {
       "\"collisions\":%d,\"collisionEnergy\":%.1f,\"worstCollision\":%.1f,"
       "\"busstop\":\"%s\",\"delayMin\":\"%s\",\"delaySec\":\"%s\","
       "\"line\":\"%s\",\"terminus\":\"%s\",\"matrix\":\"%s\"%s",
-      alive ? "true" : "false", g_seen, g_seenSys, g_seenStr, g_strKind,
+      alive ? "true" : "false", PLUGIN_VERSIE, g_seen, g_seenSys, g_seenStr, g_strKind,
       g_sys[SYS_TIME], g_sys[SYS_DAY], g_sys[SYS_MONTH], g_sys[SYS_YEAR],
       g_var[VAR_VELOCITY], g_var[VAR_HUMANS], g_var[VAR_SCHEDULE_ACTIVE],
       g_var[VAR_TARGET_INDEX], g_var[VAR_TANK], g_var[VAR_KM], g_var[VAR_M],

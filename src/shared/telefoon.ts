@@ -62,6 +62,16 @@ export interface TelefoonStand {
  */
 export type OmsiToets = 'kaartje' | 'wisselgeld'
 
+/**
+ * Welke plugin de app verwacht in OMSI.
+ *
+ * Staat er een oudere in het spel, dan mist de app dingen zonder dat iemand het
+ * ziet: de kaartverkoop komt niet door, en een toets die de app laat indrukken
+ * gebeurt nooit. De telefoon zegt het dan. Hier en niet in core/live.ts, omdat
+ * de vensters dit nummer ook nodig hebben en core/live bestanden leest.
+ */
+export const PLUGIN_VERSIE = 3
+
 /** Wat er van een poging tot aanmelden terugkomt. */
 export type AanmeldUitslag = 'nummer' | 'aangemeld' | 'fout'
 

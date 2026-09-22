@@ -3541,6 +3541,24 @@ const TEXT = {
     fr: 'Touchez ce que vous rendez',
     nl: 'Tik aan wat je teruggeeft'
   },
+  'ovl.saleMachine': {
+    en: 'Pick number {nummer} on the ticket machine in the bus.',
+    de: 'Wähle Nummer {nummer} an der Fahrscheinmaschine im Bus.',
+    fr: 'Choisissez le numéro {nummer} sur la billetterie du bus.',
+    nl: 'Kies nummer {nummer} op de kaartautomaat in de bus.'
+  },
+  'ovl.salePriceOff': {
+    en: 'The ticket pack of this map says {prijs} for this one. The name may belong to another ticket.',
+    de: 'Im Fahrscheinpaket dieser Karte steht {prijs} dafür. Der Name gehört vielleicht zu einem anderen Fahrschein.',
+    fr: 'Le pack de billets de cette carte indique {prijs}. Le nom appartient peut-être à un autre billet.',
+    nl: 'Het kaartpakket van deze kaart zegt {prijs} voor dit kaartje. De naam hoort misschien bij een ander.'
+  },
+  'ovl.salePluginOld': {
+    en: 'OMSI is running an older plugin, so it does not tell the app what the passenger wants. Close OMSI, let the app update the plugin, and start the game again.',
+    de: 'OMSI läuft mit einem älteren Plugin und sagt der App deshalb nicht, was der Fahrgast möchte. Schließe OMSI, lass die App das Plugin erneuern und starte das Spiel neu.',
+    fr: 'OMSI utilise un ancien plugin et ne dit donc pas à l’application ce que veut le passager. Fermez OMSI, laissez l’application mettre à jour le plugin et relancez le jeu.',
+    nl: 'OMSI draait met een oudere plugin en vertelt de app daarom niet wat de passagier wil. Sluit OMSI, laat de app de plugin vernieuwen, en start het spel opnieuw.'
+  },
   'ovl.saleTake': {
     en: 'Tap away what he hands you',
     de: 'Tippe weg, was er dir gibt',

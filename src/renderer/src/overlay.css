@@ -1480,6 +1480,14 @@
   color: var(--lijn, #ffd23f);
 }
 
+/* Welke knop je op de automaat in de bus kiest; dat is de volgende handeling. */
+.verkoop-automaat {
+  margin: 0;
+  color: var(--lijn, #ffd23f);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
 .verkoop-mopper {
   margin: 0;
   color: #ff8a80;

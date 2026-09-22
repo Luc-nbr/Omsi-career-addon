@@ -11,6 +11,8 @@ import type { Duty, DutyLeg } from './types'
  */
 export interface LiveData {
   alive: boolean
+  /** Welke plugin dit schreef; ontbreekt bij een plugin van voor 22-09-2026. */
+  plugin?: number
   /** Bitmasker van de variabelen die OMSI werkelijk heeft doorgegeven. */
   seen: number
   /**
@@ -339,6 +341,11 @@ export interface LiveStatus {
   ticketKeuze?: number
   /** Wie er aan de deur een kaartje koopt, en waarvoor; zie `Verkoop`. */
   verkoop?: Verkoop
+  /**
+   * De plugin die OMSI nu geladen heeft. Lager dan `PLUGIN_VERSIE` betekent dat
+   * OMSI nog met een oude draait: sluiten, de app laten bijwerken, opnieuw starten.
+   */
+  pluginVersie: number
   /**
    * De laatste toets die de app in OMSI liet indrukken: welk nummer, en of het
    * lukte. Ging het mis, dan stond OMSI niet vooraan.
@@ -785,6 +792,7 @@ export function describeLive(
     ticketKeuze:
       has(data, BIT.ticket) && data.ticket >= 0 ? Math.round(data.ticket) : undefined,
     verkoop: verkoopVan(data),
+    pluginVersie: data.plugin ?? 1,
     opdracht:
       data.mem && (data.mem.opdracht ?? 0) > 0
         ? { nr: data.mem.opdracht ?? 0, fout: (data.mem.opdrachtFout ?? 0) > 0 }

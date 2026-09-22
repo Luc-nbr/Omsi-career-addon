@@ -173,6 +173,7 @@ app.whenReady().then(async () => {
     scherm: Boolean(document.querySelector('.verkoop')),
     geld: [...document.querySelectorAll('.geld button')].map((b) => b.textContent),
     kaartje: document.querySelector('.verkoop-kaartje b')?.textContent ?? null,
+    automaat: document.querySelector('.verkoop-automaat')?.textContent ?? null,
     prijs: document.querySelector('.verkoop-kaartje span')?.textContent ?? null,
     bedragen: [...document.querySelectorAll('.verkoop-geld dd')].map((d) => d.textContent),
     munten: [...document.querySelectorAll('.wisselaar button')].map((b) => b.textContent),
@@ -235,6 +236,7 @@ app.whenReady().then(async () => {
     tegels.lijst === 0 &&
     verkoop.scherm &&
     verkoop.kaartje !== null &&
+    /2/.test(verkoop.automaat ?? '') &&
     verkoop.bedragen[0] === '10.00' &&
     verkoop.bedragen[1] === (10 - prijs).toFixed(2) &&
     naTeruggeven.terug === '0.00' &&

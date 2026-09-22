@@ -15,6 +15,7 @@ import { punctuality } from "../../shared/status";
 import { t, type Language, type TextKey } from "../../shared/i18n";
 import {
   LEGE_TELEFOON,
+  PLUGIN_VERSIE,
   type AanmeldUitslag,
   type OmsiToets,
   type TelefoonStand,
@@ -175,6 +176,15 @@ export function Telefoon({
               keuze={frame.status?.ticketKeuze}
               verkoop={frame.status?.verkoop}
               opdracht={frame.status?.opdracht}
+              /*
+               * Draait OMSI nog met een oudere plugin, dan komt de verkoop
+               * helemaal niet door. Dat hoort de telefoon te zeggen in plaats
+               * van stil te blijven.
+               */
+              pluginOud={
+                frame.connected &&
+                (frame.status?.pluginVersie ?? PLUGIN_VERSIE) < PLUGIN_VERSIE
+              }
               acties={acties}
               language={language}
             />
@@ -828,16 +838,17 @@ function Verkoopscherm({
   const [aangenomen, setAangenomen] = useState(0);
   const prijs = Math.round(verkoop.prijs * 100);
   /*
-   * De naam komt uit het kaartpakket van de kaart, de prijs uit het spel. Ze
-   * horen gelijk te zijn; is dat niet zo, dan wijst de plek in het pakket naar
-   * iets anders dan wat er verkocht wordt en noemen we liever geen naam dan de
-   * verkeerde.
+   * Welk kaartje de klant wil. De naam komt uit het kaartpakket van de kaart,
+   * de prijs uit het spel; het nummer erbij is de plek in dat pakket, en dat is
+   * de knop die je op de automaat in de bus kiest.
+   *
+   * Kloppen de twee prijzen niet met elkaar, dan staat de naam er nog steeds --
+   * je hebt op dat moment iets nodig -- maar met de waarschuwing erbij dat ze
+   * uiteenlopen.
    */
-  const uitHetPak = set.kaartjes[verkoop.kaartje];
-  const kaartje =
-    uitHetPak && Math.abs(Math.round(uitHetPak.prijs * 100) - prijs) <= 1
-      ? uitHetPak
-      : undefined;
+  const kaartje = set.kaartjes[verkoop.kaartje];
+  const prijsWijktAf =
+    kaartje !== undefined && Math.abs(Math.round(kaartje.prijs * 100) - prijs) > 1;
   const gegeven = Math.round(verkoop.gegeven * 100);
   const terug = Math.max(0, gegeven - prijs);
   const rest = Math.max(0, terug - teruggegeven);
@@ -864,6 +875,19 @@ function Verkoopscherm({
         <b>{kaartje?.naam ?? t(language, "ovl.saleUnknown")}</b>
         <span>{euro(prijs)}</span>
       </div>
+
+      {/* Welke knop je op de automaat in de bus kiest. */}
+      <p className="verkoop-automaat">
+        {t(language, "ovl.saleMachine", { nummer: verkoop.kaartje + 1 })}
+      </p>
+
+      {prijsWijktAf && (
+        <p className="verkoop-mopper">
+          {t(language, "ovl.salePriceOff", {
+            prijs: (kaartje?.prijs ?? 0).toFixed(2)
+          })}
+        </p>
+      )}
 
       <dl className="verkoop-geld">
         <div>
@@ -974,6 +998,7 @@ function KaartjesApp({
   keuze,
   verkoop,
   opdracht,
+  pluginOud,
   acties,
   language,
 }: {
@@ -984,6 +1009,8 @@ function KaartjesApp({
   verkoop?: Verkoop;
   /** Hoe het de laatste toets in OMSI verging. */
   opdracht?: { nr: number; fout: boolean };
+  /** OMSI draait met een plugin van voor de kaartverkoop. */
+  pluginOud?: boolean;
   acties: TelefoonActies;
   language: Language;
 }): JSX.Element {
@@ -1060,6 +1087,9 @@ function KaartjesApp({
      * knoppen, want een lange lijst kaartsoorten wil je ook kunnen scrollen.
      */
     <div className="kaartjes" data-hit>
+      {pluginOud && (
+        <p className="verkoop-mopper">{t(language, "ovl.salePluginOld")}</p>
+      )}
       {!gekozen ? (
         /*
          * Tegels en geen lijst: je zoekt met een blik en je tikt met een duim,
