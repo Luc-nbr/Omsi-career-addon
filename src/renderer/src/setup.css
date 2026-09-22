@@ -3163,22 +3163,30 @@
  * knoppen, en dat leest als een scherm dat nog niet af is. Nu ligt het vel op
  * de grond zoals elk ander vel in deze wereld, en blijft de rest ondergrond.
  */
+/*
+ * Groter en in het midden. Op een breed scherm liep het vel van rand tot rand
+ * en hing het bovenaan, met de onderste helft van het venster leeg: op Lucs
+ * scherm van 2000 punten breed werden de tegels lange stroken van 640 bij 165.
+ * Nu is het vel hooguit 1400 breed en staat het midden in de ruimte onder de
+ * balk (die begint op 85 en laat onderaan 22 vrij, vandaar de 31 extra).
+ */
 .hub-vel {
   position: absolute;
-  left: 22px;
-  right: 22px;
-  top: 85px;
+  left: 50%;
+  top: calc(50% + 31px);
+  transform: translate(-50%, -50%);
+  width: min(1400px, calc(100% - 44px));
   max-height: calc(100% - 107px);
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 22px;
+  gap: 24px;
+  padding: 32px;
   overflow: auto;
 }
 
 .hub-kop h1 {
   margin: 0;
-  font-size: 26px;
+  font-size: 34px;
   font-weight: 700;
   letter-spacing: -0.01em;
 }
@@ -3238,9 +3246,9 @@
 }
 
 .hub-kop p {
-  margin: 4px 0 0;
+  margin: 6px 0 0;
   color: var(--vel-zacht);
-  font-size: 13px;
+  font-size: 15px;
 }
 
 /*
@@ -3250,7 +3258,7 @@
 .hub-tegels {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
+  gap: 18px;
 }
 
 @media (max-width: 900px) {
@@ -3259,58 +3267,146 @@
   }
 }
 
+/*
+ * Een tegel is een foto met de tekst erover.
+ *
+ * De foto's zijn banners van 2000 breed met links een rustig blauw vlak en
+ * rechts het tafereel; in een tegel van ongeveer anderhalf keer zo breed als
+ * hoog past daar een derde tot de helft van. Welk stuk, staat per modus
+ * hieronder -- op de bus. De tekst staat onderaan op een donker verloop, dus
+ * wit, in de lichte stand net zo goed als in de donkere: het ligt op een foto,
+ * niet op het vel.
+ */
 .hub-tegel {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  min-height: 210px;
-  padding: 22px;
+  justify-content: flex-end;
+  min-height: clamp(240px, 36vh, 400px);
+  padding: 0;
   border: 1px solid var(--vel-rand);
   border-radius: var(--radius);
-  background: var(--vel-hover);
-  color: var(--vel-ink);
+  background: #0e1a2f;
+  color: #ffffff;
   font-family: inherit;
   text-align: left;
   cursor: pointer;
   transition:
-    background-color 120ms ease-out,
-    border-color 120ms ease-out;
+    border-color 120ms ease-out,
+    box-shadow 120ms ease-out;
+}
+
+.hub-tegel-foto {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 78% 50%;
+  pointer-events: none;
+  user-select: none;
+  transition: transform 400ms ease-out;
+}
+
+/* Op de bus: bij de remise om 80%, onder de klok om 75%, in het groen om 82%. */
+.hub-tegel[data-modus='career'] .hub-tegel-foto {
+  object-position: 80% 50%;
+}
+
+.hub-tegel[data-modus='service'] .hub-tegel-foto {
+  object-position: 75% 50%;
+}
+
+.hub-tegel[data-modus='free'] .hub-tegel-foto {
+  object-position: 82% 50%;
+}
+
+/* Het verloop dat de tekst leesbaar houdt: onderaan bijna dicht, bovenaan open. */
+.hub-tegel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    to top,
+    rgba(5, 9, 20, 0.92) 0%,
+    rgba(5, 9, 20, 0.7) 32%,
+    rgba(5, 9, 20, 0.18) 62%,
+    rgba(5, 9, 20, 0) 80%
+  );
+}
+
+.hub-tegel-tekst {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 26px 26px 24px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 
 .hub-tegel:hover {
-  border-color: var(--vel-zacht);
+  border-color: rgba(255, 255, 255, 0.35);
 }
 
-/* De aangewezen modus draagt het accent, zoals elke keuze in deze wereld. */
+.hub-tegel:hover .hub-tegel-foto {
+  transform: scale(1.04);
+}
+
+.hub-tegel:focus-visible {
+  outline: 3px solid var(--route);
+  outline-offset: 3px;
+}
+
+/*
+ * De aangewezen modus draagt het accent, zoals elke keuze in deze wereld. Het
+ * vlak kan niet meer blauw worden -- dan was de foto weg -- dus is het de rand:
+ * de blauwe van de route, dik genoeg om van drie meter afstand te zien.
+ */
 .hub-tegel[aria-pressed='true'] {
   border-color: var(--route);
+  box-shadow:
+    0 0 0 2px var(--route),
+    0 12px 32px rgba(42, 117, 247, 0.28);
+}
+
+.hub-tegel-icoon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(6px);
+}
+
+.hub-tegel[aria-pressed='true'] .hub-tegel-icoon {
   background: var(--route);
-  color: #ffffff;
 }
 
 .hub-tegel-icoon svg {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
 }
 
 .hub-tegel-naam {
-  font-size: 20px;
+  font-size: 26px;
   font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .hub-tegel-uitleg {
-  color: var(--vel-zacht);
-  font-size: 13px;
-  line-height: 1.35;
-}
-
-.hub-tegel[aria-pressed='true'] .hub-tegel-uitleg {
-  color: rgba(255, 255, 255, 0.86);
+  max-width: 44ch;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 15px;
+  line-height: 1.45;
 }
 
 .hub-tegel-stand {
-  margin-top: auto;
+  margin-top: 4px;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.16em;
@@ -3320,13 +3416,18 @@
 /*
  * "Verder rijden" is geen stand maar een uitnodiging, en hoort er dus ook uit te
  * zien als iets waar je heen gaat: de blauwe van de route, met het pijltje dat
- * op elke hoofdknop in deze app staat.
+ * op elke hoofdknop in deze app staat. Op een foto als een knopje, want blauwe
+ * letters op een avondlucht vallen weg.
  */
 .hub-tegel-stand.loopt {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--route);
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: var(--route);
+  color: #ffffff;
+  text-shadow: none;
 }
 
 .hub-tegel-stand.loopt::after {
@@ -3353,8 +3454,8 @@
 .hub-paneel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 18px 20px;
+  gap: 12px;
+  padding: 22px 24px;
   border: 1px solid var(--vel-rand);
   border-radius: var(--radius);
   background: transparent;
@@ -3387,12 +3488,12 @@
   display: flex;
   flex-direction: column;
   color: var(--vel-zacht);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .hub-cijfers b {
   color: var(--vel-ink);
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 700;
   font-variant-numeric: tabular-nums lining-nums;
 }
@@ -3402,23 +3503,35 @@
   font-size: 13px;
 }
 
+/*
+ * Twee aan twee in plaats van vier onder elkaar. Onder elkaar maakten ze de
+ * onderste rij 270 punten hoog, en in een laag, breed venster -- zoals dat van
+ * Luc, 2000 bij 680 -- bleef er dan voor de tegels een strook van 150 over.
+ */
 .hub-knoppen {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
   gap: 10px;
+}
+
+@media (max-width: 560px) {
+  .hub-knoppen {
+    grid-template-columns: 1fr;
+  }
 }
 
 .hub-knop {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 16px 18px;
+  padding: 18px 20px;
   border: 1px solid var(--vel-rand);
   border-radius: var(--radius);
   background: transparent;
   color: var(--vel-ink);
   font-family: inherit;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   text-align: left;
   cursor: pointer;
@@ -3437,9 +3550,14 @@
 
 @media (prefers-reduced-motion: reduce) {
   .hub-tegel,
+  .hub-tegel-foto,
   .hub-paneel,
   .hub-knop {
     transition: none;
+  }
+
+  .hub-tegel:hover .hub-tegel-foto {
+    transform: none;
   }
 }
 
@@ -3461,25 +3579,71 @@
     font-size: 22px;
   }
 
+  /*
+   * Een foto heeft hoogte nodig om iets te laten zien. In een laag venster krijgt
+   * de tegel een derde van de hoogte, en nooit minder dan 150 -- lager wordt het
+   * een streep.
+   */
   .hub-tegel {
-    min-height: 0;
+    min-height: clamp(150px, 34vh, 400px);
+  }
+
+  .hub-tegel-tekst {
     gap: 6px;
     padding: 14px 16px;
   }
 
+  .hub-tegel-icoon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+  }
+
   .hub-tegel-icoon svg {
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
   }
 
   .hub-tegel-naam {
-    font-size: 17px;
+    font-size: 19px;
   }
 
   .hub-tegel-uitleg {
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
+    font-size: 13px;
+  }
+
+}
+
+/* Onder elkaar gestapeld: dan is elke regel uitleg een regel minder van de andere tegels. */
+@media (max-width: 900px) {
+  .hub-tegel {
+    min-height: 150px;
+  }
+
+  .hub-tegel-uitleg {
+    -webkit-line-clamp: 2;
+  }
+}
+
+/*
+ * Smal en laag tegelijk, tot 720 bij 560 (de ondergrens uit DESIGN.md): dan
+ * moeten drie gestapelde tegels in één blik passen. Het icoon kan eraf -- de
+ * foto zegt al welke het is -- en de uitleg wordt één regel.
+ */
+@media (max-width: 900px) and (max-height: 700px) {
+  .hub-tegel {
+    min-height: 104px;
+  }
+
+  .hub-tegel-icoon {
+    display: none;
+  }
+
+  .hub-tegel-uitleg {
+    -webkit-line-clamp: 1;
   }
 }

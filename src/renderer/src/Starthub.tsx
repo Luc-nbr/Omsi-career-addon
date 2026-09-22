@@ -6,6 +6,9 @@ import { Flag } from "./Flag";
 import { Icoon } from "./Icoon";
 import { ThemaKnop, type Thema } from "./ThemaKnop";
 import { Versie } from "./Versie";
+import carriereFoto from "./assets/modi/carriere.webp";
+import dienstFoto from "./assets/modi/dienst.webp";
+import vrijFoto from "./assets/modi/vrij.webp";
 
 interface Props {
   /**
@@ -41,6 +44,18 @@ interface Props {
 }
 
 const MODI: GameMode[] = ["career", "service", "free"];
+
+/**
+ * Een foto per manier van spelen, gekozen door Luc: het gouden avondlicht bij de
+ * remise voor de loopbaan, de klok boven de stad voor een dienst, het groene
+ * land voor vrij rijden. Het zijn brede banners; welk deel in de tegel komt,
+ * staat in de CSS bij `data-modus`.
+ */
+const FOTO: Record<GameMode, string> = {
+  career: carriereFoto,
+  service: dienstFoto,
+  free: vrijFoto,
+};
 
 /**
  * Het hoofdscherm: waar je binnenkomt en waar je kiest wat je gaat doen.
@@ -135,38 +150,52 @@ export function Starthub({
               key={naam}
               type="button"
               className="hub-tegel"
+              data-modus={naam}
               aria-pressed={naam === modus}
               onClick={() => onModus(naam)}
             >
-              <span className="hub-tegel-icoon">
-                <Icoon
-                  naam={
-                    naam === "career"
-                      ? "licence"
-                      : naam === "service"
-                        ? "duty"
-                        : "map"
-                  }
-                />
-              </span>
-              <span className="hub-tegel-naam">
-                {t(language, `mode.${naam}` as const)}
-              </span>
-              <span className="hub-tegel-uitleg">
-                {t(language, `mode.${naam}Intro` as const)}
-              </span>
               {/*
-                De tegel van de modus waarin je rijdt is de weg terug.
-
-                Er stond "loopt", en dat is een mededeling; je moest zelf bedenken
-                dat je erop kon drukken om verder te gaan. Nu staat er wat het
-                doet. De tegel zelf is altijd al een knop geweest.
+                De foto ligt onder de tekst, met een donker verloop ertussen:
+                wit op een zonsondergang is anders niet te lezen. De naam van
+                de modus staat al in de tegel, dus de foto zelf zegt niets.
               */}
-              {lopend === naam && (
-                <span className="hub-tegel-stand loopt">
-                  {t(language, "hub.resume")}
+              <img
+                className="hub-tegel-foto"
+                src={FOTO[naam]}
+                alt=""
+                draggable={false}
+              />
+              <span className="hub-tegel-tekst">
+                <span className="hub-tegel-icoon">
+                  <Icoon
+                    naam={
+                      naam === "career"
+                        ? "licence"
+                        : naam === "service"
+                          ? "duty"
+                          : "map"
+                    }
+                  />
                 </span>
-              )}
+                <span className="hub-tegel-naam">
+                  {t(language, `mode.${naam}` as const)}
+                </span>
+                <span className="hub-tegel-uitleg">
+                  {t(language, `mode.${naam}Intro` as const)}
+                </span>
+                {/*
+                  De tegel van de modus waarin je rijdt is de weg terug.
+
+                  Er stond "loopt", en dat is een mededeling; je moest zelf
+                  bedenken dat je erop kon drukken om verder te gaan. Nu staat
+                  er wat het doet. De tegel zelf is altijd al een knop geweest.
+                */}
+                {lopend === naam && (
+                  <span className="hub-tegel-stand loopt">
+                    {t(language, "hub.resume")}
+                  </span>
+                )}
+              </span>
             </button>
           ))}
         </div>
