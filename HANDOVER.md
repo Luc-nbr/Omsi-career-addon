@@ -684,6 +684,12 @@ De chips hebben nog geen ruimte voor een icoon in `setup.css` (`.regelaar-chips
 button` is `padding: 5px 11px`, tekst alleen). Daar moet een `display:flex` met
 een `gap` bij, en een maatklasse voor het icoontje van een pixel of veertien.
 
+**De telefoon is het toestel geworden waar je je dienst mee begint.** Aanmelden en
+tekenen staan sinds 22-09-2026 in het navigatiepaneel en niet meer in het
+dienstpaneel -- zie "Een dienst begint met aanmelden" in §5.2. Het zat er eerst
+naast: een los cijferblok rechtsboven in beeld, terwijl de telefoon linksonder
+zei dat de kaart aan het laden was.
+
 **Verder open:**
 
 - **In vrije modus zelf ritten aan je dienst toevoegen.** De gebruiker vroeg dit
@@ -868,6 +874,33 @@ In de overlay: het dienstpaneel toont "kies je dienst in OMSI" (lijn, omloop,
 vertrektijd) tot die in het menu gekozen is; de kaart toont de bus altijd en de
 route pas daarna, en rijdt mee als een navigatiesysteem (rijrichting boven,
 glijdend tussen metingen, uitzoomen met de snelheid).
+
+**Een dienst begint met aanmelden** (sinds 22-09-2026). De volgorde in de overlay
+is nu die van een remise, en hij speelt zich helemaal op de telefoon af -- dat is
+het navigatiepaneel, `PANELS[1]`, het paneel met de appbalk eronder:
+
+1. `AanmeldPaneel` -- personeelsnummer, dan pincode, op een cijferblok. De
+   getallen komen uit het profiel (`nieuweDienstgegevens()` in `core/career.ts`,
+   aangevuld door `zorgVoorDienstgegevens()` in `core/profiles.ts`) en reizen mee
+   in het beeld als `frame.chauffeur`. Ze staan ook gewoon in het
+   chauffeursoverzicht onder "je dienstgegevens", want wie ze kwijt is moet ze
+   ergens terug kunnen lezen. Er wordt niets beveiligd en niets bewaard: dit is je
+   eigen pc, en dat je je aanmeldt is het punt, niet dat iemand buitengesloten
+   wordt. Een chauffeur zonder gegevens krijgt een doorgaan-knop.
+2. `DienstOpdracht` -- lijn, omloop, vertrek, terug om, aantal ritten, en
+   "dienst aanvaarden". Wat aanvaard is wordt onthouden per dienst
+   (`aanvaardVoor === dienstSleutel`), want de overlay gaat tussendoor dicht en
+   open en je hoort niet halverwege opnieuw te tekenen.
+3. Pas daarna het gewone toestel: de kaart, de apps en de balk. En pas daarna
+   vult het dienstpaneel zich met welke omloop je in OMSI moet kiezen en welke
+   codes in de IBIS; tot die tijd staat daar alleen "meld je eerst aan op de
+   telefoon" (`ovl.signonFirst`).
+
+Nagerekend met `scripts/probe-aanmelden.cjs`: het telt de toetsen per paneel (12
+in het navigatiepaneel, 0 in het dienstpaneel), kijkt of de appbalk en de kaart
+er zolang niet zijn, tikt een verkeerd nummer in, dan het goede, dan de pincode,
+en drukt op "dienst aanvaarden" om te zien of de balk en de IBIS-stap terugkomen.
+Met een uitvoermap erachter schrijft hij er twee plaatjes bij.
 
 Nog niet gebouwd:
 
