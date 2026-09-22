@@ -170,6 +170,17 @@ function dienstSleutelVan(duty: Duty | undefined): string {
 }
 
 /*
+ * Voor welke dienst je je aanmeldt: de dienstsleutel plus alle ritten. Kaart,
+ * omloop en vertrektijd alleen zijn te grof: een aangenomen dienst kan daarin
+ * gelijk zijn aan de vrije rit die in hetzelfde venster voor hem liep, en dan
+ * zag de overlay geen andere dienst en bleef de aanmelding van die rit staan.
+ * Ook dit is een functie, om de dienst uit het profiel net zo te herkennen.
+ */
+function aanmeldSleutelVan(duty: Duty | undefined): string {
+  return duty ? `${dienstSleutelVan(duty)}#${dutyKeyOf(duty)}` : "";
+}
+
+/*
  * Waar de handtekening van de telefoon bewaard blijft als de overlay dicht gaat.
  *
  * Het hoofdproces gooit het overlayvenster weg bij "Overlay verbergen" en bouwt
@@ -245,15 +256,24 @@ function Overlay(): JSX.Element | null {
    * opnieuw te moeten tekenen voor dezelfde dienst. Alleen in de state was dat
    * wel zo: het venster wordt bij het sluiten weggegooid. Daarom gaat de
    * handtekening ook naar `HANDTEKENING`, onder `tekenSleutel` -- zie hieronder.
+   *
+   * Beide horen bij één dienst, niet bij het venster. `free:start` hergebruikt
+   * een overlay die al open staat en zet er alleen een andere dienst in
+   * (`openOverlay` in het hoofdproces). Met een vlag voor het hele venster kwam
+   * een tweede vrije rit daardoor al aangemeld op, en sloeg een loopbaandienst
+   * na een vrije rit het aanmelden over -- en bewaarde die geërfde handtekening
+   * dan ook nog onder zijn eigen sleutel. Daarom staat hier voor welke dienst
+   * je je aanmeldde (`aanmeldSleutel`), en begint elke andere dienst opnieuw.
    */
-  const [aangemeld, setAangemeld] = useState(false);
+  const [aangemeldVoor, setAangemeldVoor] = useState<string>();
   const [aanvaardVoor, setAanvaardVoor] = useState<string>();
   /*
    * Onder welke sleutel de handtekening bewaard wordt: de chauffeur, de dienst en
    * het moment waarop hij in het profiel is aangenomen. Leeg zolang dat nog niet
    * gelezen is; tot dan wordt er niets bewaard, anders overschrijft een vers
    * venster de handtekening voordat hij hem heeft kunnen teruglezen. Bij vrij
-   * rijden blijft hij leeg, en dan blijft de handtekening in dit venster.
+   * rijden blijft hij leeg, en dan blijft de handtekening in dit venster, tot
+   * er een andere dienst in beeld komt.
    */
   const [tekenSleutel, setTekenSleutel] = useState<string>();
   const [geometry, setGeometry] = useState<MapGeometry>();
@@ -297,6 +317,13 @@ function Overlay(): JSX.Element | null {
    * bewaren van de handtekening hieronder eraan hangt.
    */
   const dienstSleutel = dienstSleutelVan(duty);
+  const aanmeldSleutel = aanmeldSleutelVan(duty);
+  /*
+   * Aangemeld voor de dienst die nu in beeld staat. Een vergelijking en geen
+   * vlag: komt er een andere dienst in beeld, dan staat de telefoon meteen op
+   * aanmelden, nog voordat het terughalen hieronder alles heeft rechtgezet.
+   */
+  const aangemeld = aangemeldVoor === aanmeldSleutel;
 
   useEffect(() => {
     window.overlay.onFrame(setFrame);
@@ -337,11 +364,20 @@ function Overlay(): JSX.Element | null {
    * al aangemeld en getekend op -- ook voor een andere chauffeur, want de
    * localStorage overleeft het wisselen van profiel. Dan liever na het heropenen
    * opnieuw aanmelden. Een vrije rit terwijl er nog een dienst aangenomen staat
-   * telt ook zo: bewaard wordt alleen de dienst die in het profiel staat.
+   * telt ook zo: bewaard wordt alleen een dienst die tot op de ritten gelijk is
+   * aan die in het profiel (`aanmeldSleutelVan`).
+   *
+   * Dit loopt bij elke andere dienst in beeld, niet alleen bij het openen: het
+   * hoofdproces zet bij `free:start` en bij het beginnen van een dienst de
+   * nieuwe dienst in een venster dat al open staat. Eerst gaat alles terug naar
+   * af -- aanmelden, aanvaarden en de sleutel -- en daarna komt alleen terug
+   * wat een vorig venster voor precies deze aangenomen dienst bewaarde.
    */
   useEffect(() => {
+    setAangemeldVoor(undefined);
+    setAanvaardVoor(undefined);
     setTekenSleutel(undefined);
-    if (!dienstSleutel) return;
+    if (!aanmeldSleutel) return;
     let current = true;
     void window.career
       .career()
@@ -350,12 +386,12 @@ function Overlay(): JSX.Element | null {
         const actief = payload.state?.activeDuty;
         const aangenomen = (actief?.assignment as { duty?: Duty } | undefined)
           ?.duty;
-        if (!actief || dienstSleutelVan(aangenomen) !== dienstSleutel) return;
+        if (!actief || aanmeldSleutelVan(aangenomen) !== aanmeldSleutel) return;
         const sleutel = `${payload.state?.id ?? ""}|${dienstSleutel}|${actief.confirmedAt}`;
         const bewaard = leesHandtekening();
         // Alleen erbij, nooit eraf: wie in dit venster al getekend heeft, houdt dat.
         if (bewaard?.sleutel === sleutel) {
-          setAangemeld(true);
+          setAangemeldVoor(aanmeldSleutel);
           if (bewaard.aanvaardVoor === dienstSleutel)
             setAanvaardVoor(dienstSleutel);
         }
@@ -365,7 +401,7 @@ function Overlay(): JSX.Element | null {
     return () => {
       current = false;
     };
-  }, [dienstSleutel]);
+  }, [aanmeldSleutel, dienstSleutel]);
 
   // En elke stap die je op de telefoon zet meteen bewaren; zie `HANDTEKENING`.
   useEffect(() => {
@@ -730,7 +766,7 @@ function Overlay(): JSX.Element | null {
             <AanmeldPaneel
               chauffeur={frame.chauffeur}
               language={language}
-              onAangemeld={() => setAangemeld(true)}
+              onAangemeld={() => setAangemeldVoor(aanmeldSleutel)}
             />
           ) : duty && aanvaardVoor !== dienstSleutel ? (
             <DienstOpdracht
