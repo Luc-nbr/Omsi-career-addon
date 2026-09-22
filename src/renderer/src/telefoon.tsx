@@ -18,6 +18,7 @@ import {
   type AanmeldUitslag,
   type TelefoonStand,
 } from "../../shared/telefoon";
+import type { Verkoop } from "../../core/live";
 import { NavKaart, type NavFrame, type RitStand } from "./navigatie";
 import type { Manoeuvre } from "./RouteMap";
 
@@ -169,6 +170,7 @@ export function Telefoon({
             <KaartjesApp
               set={frame.kaartjes}
               keuze={frame.status?.ticketKeuze}
+              verkoop={frame.status?.verkoop}
               language={language}
             />
           ) : extra && app === extra.id ? (
@@ -784,25 +786,155 @@ function DienstOpdracht({
  * van twee euro, een van twintig cent" is bruikbaar terwijl je rijdt; "2,20"
  * moet je alsnog zelf uit de lade puzzelen.
  */
+
+/** De munten in de geldwisselaar, zoals de bak in de bus ze heeft. */
+const MUNTEN = [200, 100, 50, 20, 10, 5];
+
+/**
+ * De verkoop aan de deur, zoals het spel hem kent.
+ *
+ * WAAROM DIT ER IS
+ * OMSI zet linksboven in beeld wat de passagier wil, wat het kost en wat hij
+ * je in de hand drukt -- precies de drie dingen waar je op dat moment iets mee
+ * moet. Dat stond niet in de app: die liet je het kaartje zelf opzoeken en het
+ * bedrag zelf aantikken, terwijl het spel het allang wist. Nu komt het uit het
+ * geheugen van OMSI mee (zie plugin/omsicareer.c) en staat het hier.
+ *
+ * De geldwisselaar eronder is die van de bus, in het klein: tik de munten aan
+ * die je teruggeeft, en wat er nog terug moet telt af. Zo hoef je niet te
+ * rekenen terwijl er iemand voor je staat.
+ */
+function Verkoopscherm({
+  verkoop,
+  set,
+  teruggegeven,
+  onTeruggeven,
+  language,
+}: {
+  verkoop: Verkoop;
+  set: Kaartset;
+  teruggegeven: number;
+  onTeruggeven(centen: number): void;
+  language: Language;
+}): JSX.Element {
+  const prijs = Math.round(verkoop.prijs * 100);
+  /*
+   * De naam komt uit het kaartpakket van de kaart, de prijs uit het spel. Ze
+   * horen gelijk te zijn; is dat niet zo, dan wijst de plek in het pakket naar
+   * iets anders dan wat er verkocht wordt en noemen we liever geen naam dan de
+   * verkeerde.
+   */
+  const uitHetPak = set.kaartjes[verkoop.kaartje];
+  const kaartje =
+    uitHetPak && Math.abs(Math.round(uitHetPak.prijs * 100) - prijs) <= 1
+      ? uitHetPak
+      : undefined;
+  const gegeven = Math.round(verkoop.gegeven * 100);
+  const terug = Math.max(0, gegeven - prijs);
+  const rest = Math.max(0, terug - teruggegeven);
+  const euro = (cent: number): string => (cent / 100).toFixed(2);
+  /* Wat je bij elkaar zou pakken; de wisselaar telt het af zodra je tikt. */
+  const voorstel = wisselgeld(rest);
+
+  return (
+    <div className="verkoop" data-hit>
+      <p className="verkoop-kop">{t(language, "ovl.saleTitle")}</p>
+
+      <div className="verkoop-kaartje">
+        <b>{kaartje?.naam ?? t(language, "ovl.saleUnknown")}</b>
+        <span>{euro(prijs)}</span>
+      </div>
+
+      <dl className="verkoop-geld">
+        <div>
+          <dt>{t(language, "ovl.saleTaken")}</dt>
+          <dd>{euro(gegeven)}</dd>
+        </div>
+        <div className={rest > 0 ? "openstaand" : ""}>
+          <dt>{t(language, "ovl.saleChange")}</dt>
+          <dd>{euro(rest)}</dd>
+        </div>
+      </dl>
+
+      {verkoop.slechtWisselgeld && (
+        <p className="verkoop-mopper">{t(language, "ovl.saleBadChange")}</p>
+      )}
+
+      {terug > 0 ? (
+        <>
+          <p className="app-label">{t(language, "ovl.saleGiveBack")}</p>
+          {/* De geldwisselaar van de bus: een knop per munt. */}
+          <div className="wisselaar">
+            {MUNTEN.map((cent) => (
+              <button
+                key={cent}
+                type="button"
+                className={voorstel.some((m) => m.cent === cent) ? "raad" : undefined}
+                disabled={rest <= 0}
+                onClick={() => onTeruggeven(Math.min(terug, teruggegeven + cent))}
+              >
+                {euro(cent)}
+              </button>
+            ))}
+          </div>
+          <div className="verkoop-voet">
+            <button
+              type="button"
+              className="app-knop"
+              disabled={teruggegeven === 0}
+              onClick={() => onTeruggeven(0)}
+            >
+              {t(language, "ovl.signonClear")}
+            </button>
+            {rest === 0 && (
+              <span className="verkoop-klaar">{t(language, "ovl.saleDone")}</span>
+            )}
+          </div>
+        </>
+      ) : (
+        <p className="app-label">{t(language, "ovl.saleExact")}</p>
+      )}
+    </div>
+  );
+}
+
 function KaartjesApp({
   set,
   keuze,
+  verkoop,
   language,
 }: {
   set?: Kaartset;
   /** Wat er in de bus gekozen is (GivenTicket); dan hoeft het hier niet nog eens. */
   keuze?: number;
+  /** Wat er aan de deur verkocht wordt, uit het spel zelf; zie core/live.ts. */
+  verkoop?: Verkoop;
   language: Language;
 }): JSX.Element {
   const [gekozen, setGekozen] = useState<Kaartje>();
   /** Wat de passagier tot nu toe heeft aangegeven, in centen. */
   const [gegeven, setGegeven] = useState(0);
 
+  /** Wat er met de geldwisselaar al teruggegeven is, in centen. */
+  const [teruggegeven, setTeruggegeven] = useState(0);
+
   /* Wisselt de kaart, dan slaat de vorige keuze nergens meer op. */
   useEffect(() => {
     setGekozen(undefined);
     setGegeven(0);
   }, [set?.naam]);
+
+  /*
+   * Een andere passagier aan de deur betekent opnieuw beginnen met teruggeven.
+   * De sleutel is wat er aan hem verkocht wordt: een ander kaartje, een andere
+   * prijs of een ander bedrag in zijn hand.
+   */
+  const verkoopSleutel = verkoop
+    ? `${verkoop.kaartje}|${verkoop.prijs}|${verkoop.gegeven}`
+    : "";
+  useEffect(() => {
+    setTeruggegeven(0);
+  }, [verkoopSleutel]);
 
   /*
    * Kiest de chauffeur het kaartje op de automaat in de bus, dan staat het hier
@@ -820,6 +952,23 @@ function KaartjesApp({
 
   if (!set || set.kaartjes.length === 0) {
     return <p className="app-leeg">{t(language, "ovl.ticketsNone")}</p>;
+  }
+
+  /*
+   * Staat er iemand te betalen, dan is dit geen rekenmachine meer maar het
+   * scherm van de verkoop: het spel weet welk kaartje hij wil, wat het kost en
+   * wat hij gegeven heeft. Wat jij nog moet doen, is teruggeven.
+   */
+  if (verkoop) {
+    return (
+      <Verkoopscherm
+        verkoop={verkoop}
+        set={set}
+        teruggegeven={teruggegeven}
+        onTeruggeven={setTeruggegeven}
+        language={language}
+      />
+    );
   }
 
   const prijs = gekozen ? Math.round(gekozen.prijs * 100) : 0;

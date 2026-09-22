@@ -68,7 +68,7 @@ app.whenReady().then(async () => {
   const hoofd = BrowserWindow.getAllWindows()[0]
   const dienst = await js(hoofd, `window.career.career().then((p) => p.state?.activeDuty?.assignment?.duty)`)
   const rit = dienst.legs[0]
-  const beeld = (deur, ticket) => ({
+  const beeld = (deur, ticket, verkoop) => ({
     alive: true, seen: 8388607, seenSys: 63, seenStr: 63, strKind: 1,
     time: 43200, day: 1, month: 7, year: 2026, velocity: deur ? 0 : 11.1, passengers: 4,
     scheduleActive: 1, targetIndex: 0, tankPercent: 0.7, km: 0, metres: 0,
@@ -78,9 +78,25 @@ app.whenReady().then(async () => {
     brightness: 0.5, streetCond: 0, precipRate: 0, precipType: 0, lightsLow: 1,
     blinkerLeft: 0, blinkerRight: 0, brakeLight: 0, engineOn: 1, maxBrake: 0, maxAccel: 0,
     topSpeed: 0, harshBrakes: 0, harshAccels: 0, battery: 0, temperature: 0,
-    collisions: 0, collisionEnergy: 0, worstCollision: 0, exeVersion: '2.3.004', mem: { ok: 0 }
+    collisions: 0, collisionEnergy: 0, worstCollision: 0, exeVersion: '2.3.004',
+    /*
+     * Het geheugenblok van de plugin. Met een verkoop erin doet de app alsof er
+     * iemand aan de deur staat te betalen; `ok: 1` hoort daarbij, anders leest
+     * de app het blok niet.
+     */
+    mem: verkoop
+      ? {
+          ok: 1, tile: 4, x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1,
+          schedActive: 0, line: 0, tour: 0, tourEntry: 0, trip: 0, nextIndex: -1,
+          nextDist: 1000000, delay: 0, lineName: '', tourName: '', tripName: '', nextStop: '',
+          koper: 7, ticketSoort: 0, ticketIndex: verkoop.kaartje,
+          ticketPrijs: verkoop.prijs, ticketGegeven: verkoop.gegeven,
+          ticketSlecht: 0, ticketKlaar: 0
+        }
+      : { ok: 0 }
   })
-  const schrijf = (deur, ticket) => writeFileSync(join(live, 'live.json'), JSON.stringify(beeld(deur, ticket)))
+  const schrijf = (deur, ticket, verkoop) =>
+    writeFileSync(join(live, 'live.json'), JSON.stringify(beeld(deur, ticket, verkoop)))
   schrijf(false, -1)
   setInterval(() => { const nu = new Date(); utimesSync(join(live, 'live.json'), nu, nu) }, 2000).unref()
 
@@ -143,6 +159,38 @@ app.whenReady().then(async () => {
   })`)
   console.log('kaartsoorten als tegels:', JSON.stringify(tegels))
 
+  /*
+   * En de verkoop zoals het spel hem kent: kaartje 1 van deze kaart, met een
+   * briefje van tien in de hand. Prijs en naam moeten uit dezelfde bron komen.
+   */
+  const prijsVanEen = await js(hoofd, `window.career.kaartjes ? 0 : 0`)
+  void prijsVanEen
+  const uitPak = JSON.parse(await js(overlay, `JSON.stringify([...document.querySelectorAll('.kaarttegels .kaartprijs')].map((e) => e.textContent))`))
+  const prijs = Number(uitPak[1] ?? '1.90')
+  schrijf(true, -1, { kaartje: 1, prijs, gegeven: 10 })
+  await wacht(1800)
+  const verkoop = await js(overlay, `({
+    scherm: Boolean(document.querySelector('.verkoop')),
+    kaartje: document.querySelector('.verkoop-kaartje b')?.textContent ?? null,
+    prijs: document.querySelector('.verkoop-kaartje span')?.textContent ?? null,
+    bedragen: [...document.querySelectorAll('.verkoop-geld dd')].map((d) => d.textContent),
+    munten: [...document.querySelectorAll('.wisselaar button')].map((b) => b.textContent),
+    geraden: [...document.querySelectorAll('.wisselaar button.raad')].map((b) => b.textContent)
+  })`)
+  console.log('verkoop uit het spel:', JSON.stringify(verkoop))
+
+  /* Teruggeven met de wisselaar: tik de munten aan die hij geraden heeft. */
+  const naTeruggeven = await js(overlay, `(async () => {
+    const wacht = (ms) => new Promise((r) => setTimeout(r, ms));
+    for (const knop of [...document.querySelectorAll('.wisselaar button.raad')]) { knop.click(); await wacht(150) }
+    await wacht(300);
+    return {
+      terug: document.querySelectorAll('.verkoop-geld dd')[1]?.textContent ?? null,
+      klaar: document.querySelector('.verkoop-klaar')?.textContent ?? null
+    };
+  })()`)
+  console.log('na teruggeven:', JSON.stringify(naTeruggeven))
+
   const goed =
     voor.app === 'Kaart' &&
     !voor.kaartjes &&
@@ -156,7 +204,14 @@ app.whenReady().then(async () => {
     dicht.app === 'Kaart' &&
     !dicht.kaartjes &&
     tegels.tegels > 0 &&
-    tegels.lijst === 0
+    tegels.lijst === 0 &&
+    verkoop.scherm &&
+    verkoop.kaartje !== null &&
+    verkoop.bedragen[0] === '10.00' &&
+    verkoop.bedragen[1] === (10 - prijs).toFixed(2) &&
+    verkoop.munten.length === 6 &&
+    naTeruggeven.terug === '0.00' &&
+    naTeruggeven.klaar !== null
   console.log(goed ? 'de kaartverkoop klopt' : 'DE KAARTVERKOOP KLOPT NIET')
   app.exit(goed ? 0 : 1)
 })

@@ -656,6 +656,25 @@ Er stonden hier lange tijd tags zonder release -- `v0.2.0-beta.2`, `v0.3.2`,
 staan gewoon op master, dus er is niets verloren. Wat er nu nog staat heeft
 allemaal een release: `v0.1.0`, `v0.2.0-beta.1`, `v0.3.0`, `v0.3.1`.
 
+**De kaartverkoop komt uit het geheugen van OMSI** (22-09-2026). OMSI zet
+linksboven in beeld welk kaartje de passagier wil, wat het kost en wat hij
+gegeven heeft, maar geeft dat niet aan een plugin door. De plugin leest het nu
+uit het geheugen, met adressen uit OmsiHook (space928/Omsi-Extensions), en die
+gelden alleen voor OMSI 2.3.004 -- net als de positie en de dienstregeling die
+er al uit kwamen:
+
+- in `TRoadVehicleInst` staat op `+0x7a8` wie er staat te betalen (`-1` = niemand);
+- die index wijst in de lijst met mensen (`0x0086172c`, zelfde vorm als de
+  voertuigenlijst), en bij die persoon staat het kaartje (`+0x61d`), de prijs
+  (`+0x620`), het aangenomen geld (`+0x624`), te weinig wisselgeld (`+0x628`)
+  en of hij klaar is (`+0x629`).
+- De naam van het kaartje komt uit het kaartpakket van de kaart en wordt alleen
+  getoond als de prijs daar op een cent na mee klopt; anders wijst de index
+  ergens anders heen en noemen we geen naam.
+- Wat er nog niet is: het geld aannemen of teruggeven in het spel zelf. OMSI
+  doet dat met toetsen (Shift+T, T, Ctrl+T); de app registreert het teruggeven
+  wel, maar drukt die toetsen nog niet.
+
 **De navigatie kan op een telefoon of tablet** (22-09-2026, na 0.4.0). In de
 telefoon van de overlay staat een zesde app, "Bekijk op apparaat": die zet een
 kleine webserver aan (`src/main/apparaat.ts`, poort 47810) en toont een QR-code

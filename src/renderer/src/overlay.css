@@ -1404,6 +1404,142 @@
 
 /* ---- de lijst met kaartsoorten ---- */
 
+/* ---------- de verkoop aan de deur ---------- */
+
+/*
+ * Wat het spel zelf linksboven zet, maar dan op de telefoon: welk kaartje,
+ * wat het kost, wat je aangenomen hebt en wat er terug moet. Het bedrag dat
+ * terug moet is het grootst -- dat is wat je op dat moment doet.
+ */
+.verkoop {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 2px;
+}
+
+.verkoop-kop {
+  margin: 0;
+  color: var(--vel-zacht);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.verkoop-kaartje {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--vel-overlay-rand);
+  border-radius: var(--radius-klein);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.verkoop-kaartje b {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.verkoop-kaartje span {
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.verkoop-geld {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0;
+}
+
+.verkoop-geld div {
+  padding: 8px 10px;
+  border-radius: var(--radius-klein);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.verkoop-geld dt {
+  color: var(--vel-zacht);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.verkoop-geld dd {
+  margin: 2px 0 0;
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* Er moet nog geld terug: dat is het enige dat geel mag zijn. */
+.verkoop-geld .openstaand dd {
+  color: var(--lijn, #ffd23f);
+}
+
+.verkoop-mopper {
+  margin: 0;
+  color: #ff8a80;
+  font-size: 12px;
+}
+
+/*
+ * De geldwisselaar, zoals de bak naast het stuur: een knop per munt, grootste
+ * links. Wat je aantikt gaat van het bedrag af.
+ */
+.wisselaar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.wisselaar button {
+  padding: 14px 0;
+  border: 1px solid var(--vel-overlay-rand);
+  border-radius: var(--radius-klein);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums lining-nums;
+  cursor: pointer;
+}
+
+.wisselaar button:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* De munten die je nu nodig hebt, staan aan. */
+.wisselaar button.raad {
+  border-color: var(--lijn, #ffd23f);
+  color: var(--lijn, #ffd23f);
+}
+
+.wisselaar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.verkoop-voet {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.verkoop-voet .app-knop {
+  margin-top: 0;
+}
+
+.verkoop-klaar {
+  color: #37d67a;
+  font-size: 13px;
+  font-weight: 650;
+}
+
 /*
  * De kaartsoorten als tegels.
  *

@@ -174,6 +174,7 @@ static int g_strKind;
 #define MEM_ROAD_VEHICLES 0x00861508u  /* TMyOMSIList met TRoadVehicleInst */
 #define MEM_PLAYER_INDEX 0x00861740u   /* index van het voertuig van de speler */
 #define MEM_TIMETABLE_MAN 0x008614e8u  /* TTimeTableMan */
+#define MEM_HUMANS 0x0086172cu         /* TMyOMSIList met THumanBeingInst */
 
 /* In TMapObjInst, de basis van elk voertuig. */
 #define OFS_POSITION 0x4   /* D3DVector binnen de tegel */
@@ -189,6 +190,22 @@ static int g_strKind;
 #define OFS_SCHED_NEXT_NAME 0x6ac
 #define OFS_SCHED_DELAY 0x6bc
 #define OFS_SCHED_ACTIVE 0x6cc
+/*
+ * De kaartverkoop aan de deur, in TRoadVehicleInst en THumanBeingInst.
+ *
+ * OMSI weet precies wat er bij de deur gebeurt -- het zet het zelf linksboven
+ * in beeld: welk kaartje de passagier wil, wat het kost en hoeveel geld hij
+ * gegeven heeft. Aan een plugin geeft het spel dat niet door; in het geheugen
+ * staat het wel. De bus houdt bij wie er staat te betalen (-1 als er niemand
+ * is), en bij die persoon staat de rest.
+ */
+#define OFS_TICKET_PASSENGER 0x7a8 /* index in de lijst met mensen, -1 = niemand */
+#define OFS_H_TICKET_TYPE 0x61c    /* byte: soort kaartje */
+#define OFS_H_TICKET_INDEX 0x61d   /* byte: welk kaartje uit het kaartpakket */
+#define OFS_H_TICKET_SOLL 0x620    /* float: wat het kost */
+#define OFS_H_TICKET_GEGEVEN 0x624 /* float: wat hij gegeven heeft */
+#define OFS_H_TICKET_BADCHANGE 0x628 /* byte: te weinig wisselgeld terug */
+#define OFS_H_TICKET_READY 0x629     /* byte: klaar, hij mag doorlopen */
 /* In TTimeTableMan: dynamische arrays van records. */
 #define OFS_TT_TRIPS 0xc
 #define OFS_TT_LINES 0x18
@@ -202,6 +219,9 @@ typedef struct {
   float pos[3];
   float rot[4];
   int schedLine, schedTour, schedTourEntry, schedTrip, schedNextIndex, schedDelay;
+  /* De kaartverkoop: -1 in `koper` betekent dat er niemand staat te betalen. */
+  int koper, ticketSoort, ticketIndex, ticketSlecht, ticketKlaar;
+  float ticketPrijs, ticketGegeven;
   float schedActive, schedNextDist;
   char lineName[STR_MAX * 3], tourName[STR_MAX * 3], tripName[STR_MAX * 3], nextStop[STR_MAX * 3];
 } MemState;
@@ -374,6 +394,9 @@ static DWORD dyn_item(DWORD array, int index, DWORD recordSize) {
 static void read_memory(void) {
   MemState next;
   memset(&next, 0, sizeof(next));
+  next.koper = -1;
+  next.ticketIndex = -1;
+  next.ticketSoort = -1;
   if (g_memVersion != 1) {
     g_mem = next;
     return;
@@ -404,6 +427,38 @@ static void read_memory(void) {
           next.schedActive = *(float *)(ULONG_PTR)(vehicle + OFS_SCHED_ACTIVE);
           next.schedNextDist = *(float *)(ULONG_PTR)(vehicle + OFS_SCHED_NEXT_DIST);
           copy_text(next.nextStop, sizeof(next.nextStop), *(void **)(ULONG_PTR)(vehicle + OFS_SCHED_NEXT_NAME));
+
+          /*
+           * En wie er aan de deur staat te betalen. De lijst met mensen zit
+           * net zo in elkaar als die met voertuigen; `koper` is de plek daarin.
+           * Alles wordt getoetst: een prijs boven de duizend of een kaartje
+           * boven de honderd is geen verkoop maar een verkeerd adres.
+           */
+          next.koper = *(int *)(ULONG_PTR)(vehicle + OFS_TICKET_PASSENGER);
+          next.ticketIndex = -1;
+          next.ticketSoort = -1;
+          if (next.koper >= 0 && next.koper < 100000) {
+            const DWORD humans = *(DWORD *)(ULONG_PTR)mem_addr(MEM_HUMANS);
+            const DWORD hInner = plausible_ptr(humans) ? *(DWORD *)(ULONG_PTR)(humans + 0x28) : 0;
+            const DWORD hItems = plausible_ptr(hInner) ? *(DWORD *)(ULONG_PTR)(hInner + 0x4) : 0;
+            const DWORD human =
+                plausible_ptr(hItems) ? *(DWORD *)(ULONG_PTR)(hItems + (DWORD)next.koper * 4) : 0;
+            if (plausible_ptr(human)) {
+              const int soort = *(unsigned char *)(ULONG_PTR)(human + OFS_H_TICKET_TYPE);
+              const int kaartje = *(unsigned char *)(ULONG_PTR)(human + OFS_H_TICKET_INDEX);
+              const float prijs = *(float *)(ULONG_PTR)(human + OFS_H_TICKET_SOLL);
+              const float gegeven = *(float *)(ULONG_PTR)(human + OFS_H_TICKET_GEGEVEN);
+              if (isfinite(prijs) && isfinite(gegeven) && prijs >= 0 && prijs < 1000 &&
+                  gegeven >= 0 && gegeven < 1000 && kaartje < 100) {
+                next.ticketSoort = soort;
+                next.ticketIndex = kaartje;
+                next.ticketPrijs = prijs;
+                next.ticketGegeven = gegeven;
+                next.ticketSlecht = *(unsigned char *)(ULONG_PTR)(human + OFS_H_TICKET_BADCHANGE) ? 1 : 0;
+                next.ticketKlaar = *(unsigned char *)(ULONG_PTR)(human + OFS_H_TICKET_READY) ? 1 : 0;
+              }
+            }
+          }
 
           /* Namen van lijn, omloop en rit uit de dienstregeling van de kaart. */
           const DWORD tt = *(DWORD *)(ULONG_PTR)mem_addr(MEM_TIMETABLE_MAN);
@@ -599,11 +654,16 @@ static void flush_state(int alive) {
       "\"qx\":%.5f,\"qy\":%.5f,\"qz\":%.5f,\"qw\":%.5f,"
       "\"schedActive\":%.2f,\"line\":%d,\"tour\":%d,\"tourEntry\":%d,\"trip\":%d,"
       "\"nextIndex\":%d,\"nextDist\":%.1f,\"delay\":%d,"
+      "\"koper\":%d,\"ticketSoort\":%d,\"ticketIndex\":%d,"
+      "\"ticketPrijs\":%.2f,\"ticketGegeven\":%.2f,"
+      "\"ticketSlecht\":%d,\"ticketKlaar\":%d,"
       "\"lineName\":\"%s\",\"tourName\":\"%s\",\"tripName\":\"%s\",\"nextStop\":\"%s\"}}",
       g_exeVersion, g_mem.ok, g_mem.kachel, g_mem.pos[0], g_mem.pos[1], g_mem.pos[2],
       g_mem.rot[0], g_mem.rot[1], g_mem.rot[2], g_mem.rot[3],
       g_mem.schedActive, g_mem.schedLine, g_mem.schedTour, g_mem.schedTourEntry, g_mem.schedTrip,
       g_mem.schedNextIndex, g_mem.schedNextDist, g_mem.schedDelay,
+      g_mem.koper, g_mem.ticketSoort, g_mem.ticketIndex,
+      g_mem.ticketPrijs, g_mem.ticketGegeven, g_mem.ticketSlecht, g_mem.ticketKlaar,
       g_mem.lineName, g_mem.tourName, g_mem.tripName, g_mem.nextStop);
 
   int length = _snprintf_s(

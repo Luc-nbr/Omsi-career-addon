@@ -114,6 +114,39 @@ export interface MemoryData {
   tourName: string
   tripName: string
   nextStop: string
+  /*
+   * De kaartverkoop aan de deur; zie de plugin. `koper` is -1 als er niemand
+   * staat te betalen. Ouder dan de plugin van 22-09-2026 geeft dit niet door,
+   * vandaar de vraagtekens.
+   */
+  koper?: number
+  ticketSoort?: number
+  ticketIndex?: number
+  ticketPrijs?: number
+  ticketGegeven?: number
+  ticketSlecht?: number
+  ticketKlaar?: number
+}
+
+/**
+ * Wat er aan de deur verkocht wordt.
+ *
+ * OMSI zet dit zelf linksboven in beeld -- welk kaartje de passagier wil, wat
+ * het kost en hoeveel geld hij gegeven heeft -- maar geeft het niet aan een
+ * plugin door. De plugin leest het uit het geheugen van het spel; zie
+ * `read_memory` in plugin/omsicareer.c.
+ */
+export interface Verkoop {
+  /** Welk kaartje, als plek in het kaartpakket van de kaart. */
+  kaartje: number
+  /** Wat het kost, in euro's. */
+  prijs: number
+  /** Wat de chauffeur van hem aangenomen heeft. */
+  gegeven: number
+  /** Te weinig wisselgeld teruggegeven; de passagier is er niet blij mee. */
+  slechtWisselgeld: boolean
+  /** Afgehandeld: hij mag doorlopen. */
+  klaar: boolean
 }
 
 /**
@@ -301,6 +334,8 @@ export interface LiveStatus {
    * kaart. Niets als de bus het niet doorgeeft of er niets gekozen is.
    */
   ticketKeuze?: number
+  /** Wie er aan de deur een kaartje koopt, en waarvoor; zie `Verkoop`. */
+  verkoop?: Verkoop
   /** De rit waar je volgens de dienstkaart nu mee bezig bent. */
   legIndex: number
   leg?: DutyLeg
@@ -552,6 +587,27 @@ function ibisDelay(data: LiveData): number | undefined {
  * lichten niet als variabele aanbiedt staat niet "met het licht uit" — we weten
  * het simpelweg niet, en daar hoort geen waarschuwing bij.
  */
+/**
+ * De kaartverkoop uit het geheugen, als de plugin hem doorgeeft en er werkelijk
+ * iemand staat te betalen. Een prijs van nul is geen verkoop: dan is het vak
+ * nog niet gevuld, en een kaartje van gratis bestaat in geen kaartpakket.
+ */
+function verkoopVan(data: LiveData): Verkoop | undefined {
+  const mem = data.mem
+  if (!mem || mem.ok !== 1) return undefined
+  const koper = mem.koper ?? -1
+  const kaartje = mem.ticketIndex ?? -1
+  const prijs = mem.ticketPrijs ?? 0
+  if (koper < 0 || kaartje < 0 || !(prijs > 0)) return undefined
+  return {
+    kaartje,
+    prijs,
+    gegeven: mem.ticketGegeven ?? 0,
+    slechtWisselgeld: (mem.ticketSlecht ?? 0) > 0,
+    klaar: (mem.ticketKlaar ?? 0) > 0
+  }
+}
+
 function buildAdvice(data: LiveData, baseline?: { harshBrakes: number; harshAccels: number; tickets?: number; collisions?: number }): Advice[] {
   const advice: Advice[] = []
 
@@ -720,6 +776,7 @@ export function describeLive(
     doorsOpen: data.entryOpen > 0.5 || data.exitOpen > 0.5,
     ticketKeuze:
       has(data, BIT.ticket) && data.ticket >= 0 ? Math.round(data.ticket) : undefined,
+    verkoop: verkoopVan(data),
     legIndex,
     metresToStop:
       fromMenu && data.mem && data.mem.nextDist >= 0 && data.mem.nextDist < 20000

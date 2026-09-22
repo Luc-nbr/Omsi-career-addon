@@ -3521,6 +3521,39 @@ const TEXT = {
     fr: 'Pas encore de service. Lancez un service dans OMSI Enhancer et la carte apparaîtra ici d’elle-même.',
     nl: 'Nog geen dienst. Begin een dienst in OMSI Enhancer, dan komt de kaart hier vanzelf.'
   },
+  'ovl.saleTitle': {
+    en: 'TICKET SALE',
+    de: 'FAHRSCHEINVERKAUF',
+    fr: 'VENTE DE BILLET',
+    nl: 'KAARTVERKOOP'
+  },
+  'ovl.saleUnknown': {
+    en: 'Unknown ticket',
+    de: 'Unbekannter Fahrschein',
+    fr: 'Billet inconnu',
+    nl: 'Onbekend kaartje'
+  },
+  'ovl.saleTaken': { en: 'Taken', de: 'Angenommen', fr: 'Reçu', nl: 'Aangenomen' },
+  'ovl.saleChange': { en: 'Change', de: 'Rückgeld', fr: 'Monnaie', nl: 'Terug' },
+  'ovl.saleGiveBack': {
+    en: 'Tap what you hand back',
+    de: 'Tippe an, was du zurückgibst',
+    fr: 'Touchez ce que vous rendez',
+    nl: 'Tik aan wat je teruggeeft'
+  },
+  'ovl.saleDone': { en: 'Settled', de: 'Erledigt', fr: 'Réglé', nl: 'Afgerekend' },
+  'ovl.saleExact': {
+    en: 'Exact money: nothing to hand back.',
+    de: 'Passend bezahlt: nichts zurück.',
+    fr: 'Compte juste : rien à rendre.',
+    nl: 'Gepast betaald: niets terug.'
+  },
+  'ovl.saleBadChange': {
+    en: 'He got too little back.',
+    de: 'Er hat zu wenig zurückbekommen.',
+    fr: 'Il a reçu trop peu de monnaie.',
+    nl: 'Hij kreeg te weinig terug.'
+  },
   'ovl.ticketFromBus': {
     en: 'Selected on the ticket machine in the bus.',
     de: 'An der Fahrscheinmaschine im Bus gewählt.',
