@@ -9,7 +9,12 @@ import {
   settingKey,
   type SettingSpec
 } from '../../shared/omsiSettings'
-import type { OmsiOverlays } from '../../shared/api'
+import type {
+  OmsiOverlays,
+  OverlayKnoppen,
+  OverlayKnopStand,
+  Schakelbaar
+} from '../../shared/api'
 import { MODIFIER_CODES, SCANCODES } from '../../shared/scancodes'
 import { ControllersTab } from './Controllers'
 
@@ -120,6 +125,10 @@ function OverlaysTab({ language }: { language: Language }): JSX.Element {
   const [stand, setStand] = useState<OmsiOverlays>()
   const [kijkt, setKijkt] = useState(false)
   const [keuze, setKeuze] = useState<Partial<Record<Overlay, boolean>>>({})
+  /* De twee die de app zelf kan omzetten; zie core/overlayknop.ts. */
+  const [knoppen, setKnoppen] = useState<OverlayKnoppen>()
+  const [knopBezig, setKnopBezig] = useState<Schakelbaar>()
+  const [knopNoot, setKnopNoot] = useState<string>()
 
   useEffect(() => {
     void window.career.settings().then((instellingen) => setKeuze(instellingen.overlayWaarschuwing ?? {}))
@@ -129,10 +138,34 @@ function OverlaysTab({ language }: { language: Language }): JSX.Element {
     setKijkt(true)
     try {
       setStand(await window.career.omsiOverlays())
+      setKnoppen(await window.career.overlayKnoppen())
     } finally {
       setKijkt(false)
     }
   }, [])
+
+  /*
+   * Omzetten en meteen opnieuw lezen. Niet gokken dat het gelukt is: Steam kan
+   * halverwege opgestart zijn, en dan hoort de knop terug te springen.
+   */
+  const zetKnop = useCallback(
+    async (welke: Schakelbaar, aan: boolean) => {
+      setKnopBezig(welke)
+      setKnopNoot(undefined)
+      try {
+        const uit = await window.career.zetOverlayKnop(welke, aan)
+        setKnopNoot(
+          uit.gelukt
+            ? t(language, 'ovl.knop.gedaan')
+            : t(language, 'ovl.knop.mislukt', { reden: uit.reden ?? '?' })
+        )
+        setKnoppen(await window.career.overlayKnoppen())
+      } finally {
+        setKnopBezig(undefined)
+      }
+    },
+    [language]
+  )
   useEffect(() => {
     void kijk()
   }, [kijk])
@@ -182,6 +215,18 @@ function OverlaysTab({ language }: { language: Language }): JSX.Element {
             <p className="note" style={{ marginTop: 8 }}>
               {t(language, `ovl.uitleg.${soort}` as const)}
             </p>
+            {soort === 'steam' && (
+              <>
+                <p className="note" style={{ marginTop: 8 }}>{t(language, 'ovl.knop.steamdrm')}</p>
+                <OverlayKnop
+                  welke="steam"
+                  stand={knoppen?.steam}
+                  bezig={knopBezig === 'steam'}
+                  language={language}
+                  onZet={zetKnop}
+                />
+              </>
+            )}
             {soort !== 'opentrack' && (
               <label className="note" style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10 }}>
                 <input
@@ -195,7 +240,82 @@ function OverlaysTab({ language }: { language: Language }): JSX.Element {
           </section>
         )
       })}
+
+      {/*
+        De Game Bar staat los van de rest: hij komt niet uit de modulelijst van
+        OMSI -- daar is hij nooit in aangetroffen -- maar hij stond bij deze
+        gebruiker wél aan, en de app kan hem omzetten. Vandaar een eigen kaart
+        zonder "zit in OMSI"-regel, want dat zou een meting suggereren die er
+        niet is.
+      */}
+      <section className="card">
+        <h2 className="section-title">{t(language, 'ovl.naam.gamebar')}</h2>
+        <p className="note">{t(language, 'ovl.uitleg.gamebar')}</p>
+        <OverlayKnop
+          welke="gamebar"
+          stand={knoppen?.gamebar}
+          bezig={knopBezig === 'gamebar'}
+          language={language}
+          onZet={zetKnop}
+        />
+      </section>
+
+      {knopNoot && <p className="note">{knopNoot}</p>}
     </>
+  )
+}
+
+/**
+ * De schakelaar zelf.
+ *
+ * Hij zegt eerst wat er nú staat en biedt dan de omzetting aan. Kan hij niet om
+ * -- Steam draait -- dan staat de reden erbij in plaats van een knop die niets
+ * doet als je erop drukt.
+ */
+function OverlayKnop({
+  welke,
+  stand,
+  bezig,
+  language,
+  onZet
+}: {
+  welke: Schakelbaar
+  stand?: OverlayKnopStand
+  bezig: boolean
+  language: Language
+  onZet: (welke: Schakelbaar, aan: boolean) => void
+}): JSX.Element | null {
+  if (!stand) return null
+  if (stand.aan === undefined) {
+    return (
+      <p className="note" style={{ marginTop: 10 }}>
+        {t(language, 'ovl.knop.onbekend')}
+        {stand.waar ? ` — ${stand.waar}` : ''}
+      </p>
+    )
+  }
+  return (
+    <div style={{ marginTop: 10 }}>
+      <p className={stand.aan ? 'note warn' : 'note'}>
+        {t(language, stand.aan ? 'ovl.knop.staataan' : 'ovl.knop.staatuit')}
+      </p>
+      {stand.belet === 'steam' ? (
+        <p className="note warn" style={{ marginTop: 6 }}>{t(language, 'ovl.knop.steamdraait')}</p>
+      ) : (
+        <button
+          type="button"
+          className="btn secondary"
+          style={{ marginTop: 6 }}
+          disabled={bezig}
+          onClick={() => onZet(welke, !stand.aan)}
+        >
+          {t(language, stand.aan ? 'ovl.knop.uitzetten' : 'ovl.knop.aanzetten')}
+        </button>
+      )}
+      {stand.waar && (
+        <p className="note" style={{ marginTop: 6 }}>{stand.waar}</p>
+      )}
+    </div>
   )
 }
 

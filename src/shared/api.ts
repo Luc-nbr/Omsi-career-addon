@@ -399,6 +399,33 @@ export interface GameControllersPayload {
 }
 
 /** Wat de renderer via `window.career` kan aanroepen. */
+/** Wat er van een schakelbare overlay te zeggen valt; zie core/overlayknop.ts. */
+export interface OverlayKnopStand {
+  /** Staat hij aan? Niets betekent: niet vast te stellen. */
+  aan?: boolean
+  /**
+   * Waarom hij nu niet om kan. `steam` betekent: Steam draait, en dat schrijft
+   * zijn instellingen bij het afsluiten terug over de onze heen.
+   */
+  belet?: string
+  /** Waar de schakelaar staat, voor wie hem zelf wil omzetten. */
+  waar?: string
+}
+
+export interface OverlayKnoppen {
+  steam: OverlayKnopStand
+  gamebar: OverlayKnopStand
+}
+
+export interface OverlayUitkomst {
+  gelukt: boolean
+  reden?: string
+  aantal?: number
+}
+
+/** De overlays waar de app werkelijk aan kan komen. */
+export type Schakelbaar = 'steam' | 'gamebar'
+
 export interface CareerApi {
   status(): Promise<OmsiStatus>
   maps(): Promise<MapSummary[]>
@@ -536,6 +563,16 @@ export interface CareerApi {
   gameSettings(): Promise<GameSettingsPayload>
   /** Kijken welke overlays er nu in OMSI zitten; kost ongeveer anderhalve seconde. */
   omsiOverlays(): Promise<OmsiOverlays>
+  /**
+   * De overlays die de app zélf kan omzetten, en of dat nu kan.
+   *
+   * Twee van de vier: Steam en de Xbox Game Bar bewaren hun keuze in een gewoon
+   * bestand of in het register. Discord en NVIDIA niet -- voor die twee blijft
+   * het bij zeggen waar de schakelaar staat. Zie `core/overlayknop.ts`.
+   */
+  overlayKnoppen(): Promise<OverlayKnoppen>
+  /** Een van die twee omzetten. Geeft terug of het lukte, en zo niet waarom. */
+  zetOverlayKnop(welke: Schakelbaar, aan: boolean): Promise<OverlayUitkomst>
   /** De laatste melding over OMSI (crash, vastloper, overlays), als die er is. */
   omsiMelding(): Promise<OmsiMelding | undefined>
   /** De melding als gezien markeren. */

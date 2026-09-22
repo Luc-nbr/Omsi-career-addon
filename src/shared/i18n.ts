@@ -223,6 +223,69 @@ const TEXT = {
     fr: 'M’avertir s’il est dans OMSI',
     nl: 'Waarschuw als hij in OMSI zit'
   },
+  /*
+   * De knoppen die de app werkelijk kan omzetten. Twee van de zes, en dat hoort
+   * er met zoveel woorden bij te staan -- anders zoekt iemand zich blind naar de
+   * knop bij Discord die er niet is.
+   */
+  'ovl.knop.uitzetten': {
+    en: 'Turn this overlay off',
+    de: 'Dieses Overlay ausschalten',
+    fr: 'Désactiver cette superposition',
+    nl: 'Deze overlay uitzetten'
+  },
+  'ovl.knop.aanzetten': {
+    en: 'Turn this overlay on',
+    de: 'Dieses Overlay einschalten',
+    fr: 'Activer cette superposition',
+    nl: 'Deze overlay aanzetten'
+  },
+  'ovl.knop.staataan': { en: 'Currently on', de: 'Steht an', fr: 'Actuellement active', nl: 'Staat nu aan' },
+  'ovl.knop.staatuit': { en: 'Currently off', de: 'Steht aus', fr: 'Actuellement désactivée', nl: 'Staat nu uit' },
+  'ovl.knop.onbekend': {
+    en: 'Could not read the setting',
+    de: 'Einstellung nicht lesbar',
+    fr: 'Réglage illisible',
+    nl: 'Instelling niet te lezen'
+  },
+  /* Steam schrijft localconfig.vdf bij het afsluiten terug over alles heen. */
+  'ovl.knop.steamdraait': {
+    en: 'Close Steam first — it rewrites its settings when it exits, over ours.',
+    de: 'Schließe zuerst Steam — es schreibt seine Einstellungen beim Beenden über unsere.',
+    fr: 'Fermez d’abord Steam : il réécrit ses réglages en quittant, par-dessus les nôtres.',
+    nl: 'Sluit eerst Steam — die schrijft zijn instellingen bij het afsluiten over de onze heen.'
+  },
+  'ovl.knop.gedaan': {
+    en: 'Done. It takes effect the next time the game starts.',
+    de: 'Erledigt. Gilt ab dem nächsten Start des Spiels.',
+    fr: 'Fait. Effectif au prochain démarrage du jeu.',
+    nl: 'Gedaan. Het geldt vanaf de volgende keer dat het spel start.'
+  },
+  'ovl.knop.mislukt': {
+    en: 'Did not work: {reden}',
+    de: 'Hat nicht geklappt: {reden}',
+    fr: 'Échec : {reden}',
+    nl: 'Het lukte niet: {reden}'
+  },
+  /*
+   * Wat de schakelaar van Steam niet doet. OMSI heeft Steam-DRM, dus Steam laadt
+   * GameOverlayRenderer.dll hoe dan ook in het proces; de schakelaar stopt het
+   * tekenen, niet het inhaken. Wie dat niet weet, ziet de DLL in de lijst staan
+   * en denkt dat de knop niets deed.
+   */
+  'ovl.knop.steamdrm': {
+    en: 'Steam still loads its file into OMSI — the game uses Steam DRM. The switch stops it drawing, not loading.',
+    de: 'Steam lädt seine Datei trotzdem in OMSI — das Spiel nutzt Steam-DRM. Der Schalter stoppt das Zeichnen, nicht das Laden.',
+    fr: 'Steam charge quand même son fichier dans OMSI — le jeu utilise le DRM Steam. Le réglage empêche l’affichage, pas le chargement.',
+    nl: 'Steam laadt zijn bestand hoe dan ook in OMSI — het spel heeft Steam-DRM. De schakelaar stopt het tekenen, niet het inhaken.'
+  },
+  'ovl.naam.gamebar': { en: 'Xbox Game Bar', de: 'Xbox Game Bar', fr: 'Xbox Game Bar', nl: 'Xbox Game Bar' },
+  'ovl.uitleg.gamebar': {
+    en: 'Windows\u2019 own overlay, with background recording. The app switches all three registry values at once; one left on is enough for it to hook in.',
+    de: 'Das Overlay von Windows selbst, mit Aufnahme im Hintergrund. Die App setzt alle drei Registrierungswerte zusammen; einer reicht, damit es sich einklinkt.',
+    fr: 'La superposition de Windows, avec enregistrement en arrière-plan. L’application bascule les trois valeurs de registre ensemble ; une seule suffit pour qu’elle s’accroche.',
+    nl: 'De overlay van Windows zelf, met opnemen op de achtergrond. De app zet alle drie de registerwaarden samen om; één die aan blijft staan is genoeg om alsnog in te haken.'
+  },
   'ovl.naam.steam': {
     en: 'Steam overlay',
     de: 'Steam-Overlay',

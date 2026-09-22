@@ -70,6 +70,8 @@ const api: CareerApi = {
   omsiRunning: () => ipcRenderer.invoke('omsi:running'),
   gameSettings: () => ipcRenderer.invoke('game:settings'),
   omsiOverlays: () => ipcRenderer.invoke('omsi:overlays'),
+  overlayKnoppen: () => ipcRenderer.invoke('overlay:knoppen'),
+  zetOverlayKnop: (welke, aan) => ipcRenderer.invoke('overlay:zet', welke, aan),
   omsiMelding: () => ipcRenderer.invoke('omsi:melding'),
   vergeetOmsiMelding: () => ipcRenderer.invoke('omsi:melding:weg'),
   opOmsiMelding: (luisteraar: (melding: OmsiMelding) => void) => {

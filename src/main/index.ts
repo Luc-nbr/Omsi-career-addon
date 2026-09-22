@@ -79,6 +79,7 @@ import {
   sluitOmsi,
   type OverlayInOmsi
 } from '../core/omsiProces'
+import { leesKnoppen, zetKnop, type Schakelbaar, type Uitkomst as OverlayUitkomst, type OverlayKnoppen } from '../core/overlayknop'
 import { writeSituation } from '../core/situation'
 import { presetStartup } from '../core/startup'
 import { trailerOf } from '../core/trailer'
@@ -2001,6 +2002,20 @@ function registerHandlers(): void {
    * opnieuw. Draait het spel, dan is alles wat hier verandert straks weg, dus
    * dat melden we erbij in plaats van het stilletjes te laten gebeuren.
    */
+  /*
+   * De twee overlays die de app zelf kan omzetten.
+   *
+   * Dit schrijft in bestanden van andere programma's -- Steams localconfig.vdf
+   * en het register -- en dat doet de app verder nergens. Daarom zit alles wat
+   * daarover te zeggen valt in core/overlayknop.ts, inclusief waarom het bij
+   * deze twee blijft.
+   */
+  handle('overlay:knoppen', (): OverlayKnoppen => leesKnoppen())
+  handle(
+    'overlay:zet',
+    (_gebeurtenis, welke: Schakelbaar, aan: boolean): OverlayUitkomst => zetKnop(welke, aan)
+  )
+
   /* Wat er nu in OMSI hangt; voor het tabblad Overlays in de instellingen. */
   handle('omsi:overlays', async (): Promise<OmsiOverlays> => {
     const proces = await leesOmsiProces(OMSI_PROCES)
