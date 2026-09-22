@@ -804,6 +804,7 @@ export function Setup({
             /* Kantelen naar de muis, zoals de tegels in het hoofdmenu; zie beweging.ts. */
             onPointerMove={(event) => kantel(event, ".tegel", 5)}
             onPointerLeave={kantelLos}
+            onScroll={kantelLos}
           >
             {tegels.map((tegel, index) => (
               <button

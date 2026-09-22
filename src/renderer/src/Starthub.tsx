@@ -101,10 +101,10 @@ export function Starthub({
    * het scherm (de staat van dienst wordt apart gelezen); dan tellen ze vanaf
    * daar. Zie `useOptellen`.
    */
-  const diensten = useOptellen(samenvatting?.duties ?? 0);
-  const minuten = useOptellen(samenvatting?.minutes ?? 0);
-  const kilometers = useOptellen(samenvatting?.km ?? 0, 1200);
-  const vergunningen = useOptellen(samenvatting?.licences ?? 0);
+  const diensten = useOptellen(samenvatting?.duties ?? 0, 900, 560);
+  const minuten = useOptellen(samenvatting?.minutes ?? 0, 900, 560);
+  const kilometers = useOptellen(samenvatting?.km ?? 0, 1200, 560);
+  const vergunningen = useOptellen(samenvatting?.licences ?? 0, 900, 560);
   const uren = samenvatting
     ? formatDuration(Math.round(minuten), language)
     : undefined;
@@ -142,7 +142,8 @@ export function Starthub({
         </div>
       </header>
 
-      <main className="hub-vel vel">
+      {/* Scrollen schuift de tegels onder een stilstaande muis weg; dan niet scheef blijven staan. */}
+      <main className="hub-vel vel" onScroll={kantelLos}>
         <div className="hub-kop">
           <h1>{t(language, groet[dagdeel()], { naam: chauffeur })}</h1>
           <p>{t(language, "hub.intro")}</p>

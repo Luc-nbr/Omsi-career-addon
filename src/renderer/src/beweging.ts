@@ -51,9 +51,15 @@ export function kantel(event: ReactPointerEvent<HTMLElement>, keuze: string, gra
   const y = Math.min(1, Math.max(0, (event.clientY - vak.top) / vak.height))
   const px = x * 2 - 1
   const py = y * 2 - 1
+  /*
+   * De kant onder de muis komt naar je toe. Andersom (eerst zo) week de rand
+   * onder de muis zes pixels terug; vlak bij de rand stond de muis dan naast
+   * de tegel, die veerde terug, kwam weer onder de muis -- flikkeren, en een
+   * klik die in de kier viel.
+   */
   tegel.dataset.kantelt = ''
-  tegel.style.setProperty('--kx', `${(-py * graden).toFixed(2)}deg`)
-  tegel.style.setProperty('--ky', `${(px * graden).toFixed(2)}deg`)
+  tegel.style.setProperty('--kx', `${(py * graden).toFixed(2)}deg`)
+  tegel.style.setProperty('--ky', `${(-px * graden).toFixed(2)}deg`)
   tegel.style.setProperty('--px', px.toFixed(3))
   tegel.style.setProperty('--py', py.toFixed(3))
   tegel.style.setProperty('--gx', `${(x * 100).toFixed(1)}%`)
@@ -71,8 +77,11 @@ export function kantelLos(): void {
  * Een getal dat naar zijn waarde toe telt: bij het binnenkomen van 0, en als
  * het later verandert van de oude waarde naar de nieuwe. De staat van dienst
  * komt een tel later binnen dan het scherm; dan telt hij vanaf daar op.
+ *
+ * `wacht` is de tijd voordat het tellen begint: de rij met de cijfers komt pas
+ * na een halve seconde in beeld, en daarvoor tellen is tellen voor niemand.
  */
-export function useOptellen(doel: number, duur = 900): number {
+export function useOptellen(doel: number, duur = 900, wacht = 0): number {
   const [waarde, setWaarde] = useState(() => (rustig() ? doel : 0))
   const getoond = useRef(waarde)
   useEffect(() => {
@@ -85,8 +94,8 @@ export function useOptellen(doel: number, duur = 900): number {
     let begin: number | undefined
     let beeld = 0
     const stap = (nu: number): void => {
-      begin ??= nu
-      const t = Math.min(1, (nu - begin) / duur)
+      begin ??= nu + wacht
+      const t = Math.min(1, Math.max(0, (nu - begin) / duur))
       // Snel weg, rustig aankomen: zo leest het eindgetal als het getal.
       const deel = 1 - Math.pow(1 - t, 3)
       const nieuw = van + (doel - van) * deel
@@ -96,7 +105,7 @@ export function useOptellen(doel: number, duur = 900): number {
     }
     beeld = requestAnimationFrame(stap)
     return () => cancelAnimationFrame(beeld)
-  }, [doel, duur])
+  }, [doel, duur, wacht])
   return waarde
 }
 
