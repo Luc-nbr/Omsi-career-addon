@@ -639,25 +639,33 @@ hoort niet onder je handen opnieuw op te komen (`probe-beweging.cjs`,
 
 ## 5. Openstaand werk
 
-### 5.0 Waar het nu staat (20-09-2026)
+### 5.0 Waar het nu staat (22-09-2026)
 
-Vier dingen zijn deze ronde vastgelegd: `f0e29d4` (drie plekken waar het
-hoofdproces stond te wachten), `113160a` (carrière en vrij rijden in de nieuwe
-wereld), `a2bb62d` (de bus onder de weg, plus de hof-vraag, de terugknop en de
-donkere overlay), `764621c` (de staat van dienst en de kilometerteller).
+**0.3.1 is uit.** Hij staat op GitHub als Latest, samen met 0.3.0 dat er alsnog
+bij is gekomen. `master` en `origin/master` staan op `2eddb1e`; de tak
+`claude/ecstatic-noether-296800` wijst naar hetzelfde punt en kan weg zodra de
+worktree eronder niet meer nodig is.
 
-**Halverwege blijven liggen: de icoontjes.** De set staat er en is nagekeken, maar
-hij hangt nog nergens:
+Er stonden hier lange tijd tags zonder release -- `v0.2.0-beta.2`, `v0.3.2`,
+`v0.3.3` en `v0.3.4`, restanten van het hernummeren naar "deze uitgave heet
+0.3.1". Die zijn lokaal en op origin verwijderd; de commits waar ze naar wezen
+staan gewoon op master, dus er is niets verloren. Wat er nu nog staat heeft
+allemaal een release: `v0.1.0`, `v0.2.0-beta.1`, `v0.3.0`, `v0.3.1`.
 
-- `src/renderer/src/Icoon.tsx` — 23 vormen, getekend en beoordeeld op zestien
+**De icoontjes zijn nog maar half in gebruik.** De set staat er en is nagekeken:
+
+- `src/renderer/src/Icoon.tsx` — 26 vormen, getekend en beoordeeld op zestien
   pixels. `Setup.tsx` haalt zijn stapicoontjes er al uit; de oude `PADEN` is weg,
   dus er is nog maar één set.
 - `scripts/probe-iconen.ts` — zet de set op een vel in vier maten, licht en donker.
 - `scripts/schermafdruk.cjs` — maakt van een HTML-bestand een plaatje; algemeen
   bruikbaar, het voorbeeldpaneel legt geen lokale bestanden vast.
 
-De veertien nieuwe vormen -- weer, dagdeel, de koppen van het overzicht -- worden
-dus nog door niemand getoond.
+De starthub heeft er sindsdien drie bij getekend (`thuis`, `foto`, `fotoweg`) en
+gebruikt `thuis`, `stuur`, `bus`, `logboek`, `profile`, `licence`, `duty` en
+`map`. Wat nog nergens getoond wordt zijn de twaalf die voor de chips en het
+chauffeursoverzicht bedoeld waren: de vijf van het weer, de vijf van het dagdeel,
+en `stipt`, `record`, `plek` en `kaartje`.
 
 **Wat er nog moet gebeuren** is ze inbouwen waar ze voor bedoeld zijn. Die plekken
 zijn uitgezocht en het zijn er drie:
@@ -678,31 +686,19 @@ een `gap` bij, en een maatklasse voor het icoontje van een pixel of veertien.
 
 **Verder open:**
 
-- **De O3D-lezer is half af en staat niet in git.** Luc koos voor het tekenen
-  van het busmodel zelf (optie 3) om bussen in de keuze te laten zien, maar wil
-  dat later. Wat er ligt -- een lezer voor OMSI's modelformaat en een meetscript
-  -- staat in de kladmap van die sessie:
-  `%TEMP%\claude\C--OMSI-Career--claude-worktrees-ecstatic-noether-296800\69453af6-61d8-4662-b5b4-760aa670cb78\scratchpad\o3d-werk`.
-  Wat er al gemeten is aan het formaat staat hierboven onder "De kaartkeuze in
-  twee vormen": kop `84 19 <versie>`, blok 0x17 hoekpunten (uint16 aantal, 8
-  floats per punt), 0x49 driehoeken (4 uint16), 0x26 materialen; in deze
-  installatie 3957 bestanden van versie 1, 29 van 5, 12 van 4 en 2 van 3.
-
 - **In vrije modus zelf ritten aan je dienst toevoegen.** De gebruiker vroeg dit
   expliciet ("in vrije modus is er selectie mogelijk per lijn en kunnen handmatig
   meer ritten worden toegevoegd") en het is nooit gebouwd. De ritstap van vrij
   rijden is nu een formulier (waar, wanneer, weer) en kent geen ritten.
-- **Versie 0.3.1 staat nog niet op GitHub.** (0.3.0 evenmin: die is wel getagd,
-  maar nooit uitgegeven. De notities in `uitgaven/0.3.0.md` dekken dus nog niet
-  wat er na die tag bij kwam -- de spiegelingen, de staat van dienst, het
-  logboek, de starthub en het werk hierboven aan de snelheid.) Het uitgeefscript werkt; `gh` is in
-  de schil van de assistent aangemeld maar niet in het PowerShell-venster van de
-  gebruiker (vermoedelijk verhoogd, dus een andere sessie en geen toegang tot de
-  sleutelring). Commando:
-  `node scripts/uitgeven.mjs 0.3.1 --publiceer --notities uitgaven/0.3.1.md`.
-  De Discord-aankondiging staat klaar in
-  `C:\OMSI Enhancer Discord\uitgaven\0.3.0.md` maar de links daarin zijn dood
-  tot de release bestaat. **Publiceren doet de gebruiker zelf.**
+- **De Discord-aankondiging van 0.3.1 is geschreven maar mogelijk niet geplaatst.**
+  Hij staat in `C:\OMSI Enhancer Discord\uitgaven\0.3.1.md`; de links erin werken,
+  want de release bestaat. Of hij er ook staat weet de app niet -- vraag het.
+  **Plaatsen doet de gebruiker zelf.**
+- **Over uitgeven:** het script werkt
+  (`node scripts/uitgeven.mjs <versie> --publiceer --notities uitgaven/<versie>.md`).
+  Wel een valkuil die twee keer is misgegaan: met `--repo` werkt `gh` puur aan de
+  serverkant, en dan moet de tag al gepusht zijn -- een tag die alleen lokaal
+  staat geeft een release die nergens aan hangt.
 - **De kilometerteller is niet in het spel bevestigd** — zie §4.
 - **Twee getallen op hetzelfde scherm spreken elkaar tegen.** Op het remisescherm
   zeggen de tegels "0 van 2 bestemmingen" (dat gaat over je dienst) terwijl het
