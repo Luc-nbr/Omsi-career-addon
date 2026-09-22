@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 
 /**
- * Beweging die op de speler reageert: tegels die kantelen, een achtergrond die
- * meeschuift, cijfers die optellen.
+ * Beweging die op de speler reageert: tegels die kantelen en cijfers die
+ * optellen. De achtergrond doet niet mee; die staat stil (zie setup.css).
  *
  * WAT HIER NIET IN ZIT
  * Niets dat uit zichzelf blijft bewegen. De app staat vaak naast OMSI open, en
@@ -65,31 +65,6 @@ export function kantel(event: ReactPointerEvent<HTMLElement>, keuze: string, gra
 export function kantelLos(): void {
   if (gekanteld) zetRecht(gekanteld)
   gekanteld = undefined
-}
-
-/**
- * De achtergrond schuift een beetje mee met de muis, als een raam waar je
- * langs kijkt. Hooguit een keer per beeld: een muis meldt zich vaker dan het
- * scherm ververst.
- */
-let meebewegenGepland = 0
-
-export function meebewegen(event: ReactPointerEvent<HTMLElement>): void {
-  if (event.pointerType !== 'mouse' || rustig()) return
-  const vlak = event.currentTarget
-  const x = (event.clientX / window.innerWidth) * 2 - 1
-  const y = (event.clientY / window.innerHeight) * 2 - 1
-  cancelAnimationFrame(meebewegenGepland)
-  meebewegenGepland = requestAnimationFrame(() => {
-    vlak.style.setProperty('--hx', x.toFixed(3))
-    vlak.style.setProperty('--hy', y.toFixed(3))
-  })
-}
-
-export function meebewegenLos(event: ReactPointerEvent<HTMLElement>): void {
-  cancelAnimationFrame(meebewegenGepland)
-  event.currentTarget.style.removeProperty('--hx')
-  event.currentTarget.style.removeProperty('--hy')
 }
 
 /**

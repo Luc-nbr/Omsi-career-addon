@@ -3738,19 +3738,17 @@
 }
 
 /*
- * De achtergrond. Een laag groter dan het venster, zodat hij kan meeschuiven
- * met de muis (`--hx`/`--hy`, van -1 tot 1) zonder dat er een rand vrijkomt,
- * en bij het binnenkomen een keer van dichtbij naar zijn plek zakt.
+ * De achtergrond, en die staat stil. Hij schoof eerst mee met de muis en zakte
+ * bij het binnenkomen van dichtbij naar zijn plek; Luc vond dat storen. Wat
+ * beweegt, zijn de dingen waar je iets mee doet -- de tegels en de knoppen --
+ * niet de grond eronder.
  */
 .hub::before {
   content: '';
   position: fixed;
-  inset: -28px;
+  inset: 0;
   z-index: -1;
   background: #0a1122 url('./assets/achtergrond/hub-nacht.webp') center / cover no-repeat;
-  translate: calc(var(--hx, 0) * -16px) calc(var(--hy, 0) * -10px);
-  transition: translate 700ms cubic-bezier(0.2, 0.8, 0.2, 1);
-  animation: hub-grond-in 1400ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
   pointer-events: none;
 }
 
@@ -3763,17 +3761,6 @@
   :root:not([data-thema]) .hub::before {
     background-color: #e6edf7;
     background-image: url('./assets/achtergrond/hub-dag.webp');
-  }
-}
-
-@keyframes hub-grond-in {
-  from {
-    opacity: 0;
-    scale: 1.08;
-  }
-  to {
-    opacity: 1;
-    scale: 1;
   }
 }
 
@@ -4012,17 +3999,12 @@
 
 /* ---- minder beweging: alles staat stil, niets kantelt ---- */
 @media (prefers-reduced-motion: reduce) {
-  .hub::before,
   .hub-balk,
   .hub-vel,
   .hub-kop,
   .hub-tegel,
   .hub-onder {
     animation: none;
-  }
-
-  .hub::before {
-    translate: none;
   }
 
   .hub-tegel,

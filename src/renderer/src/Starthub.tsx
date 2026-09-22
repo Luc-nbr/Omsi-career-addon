@@ -6,14 +6,7 @@ import { Flag } from "./Flag";
 import { Icoon } from "./Icoon";
 import { ThemaKnop, type Thema } from "./ThemaKnop";
 import { Versie } from "./Versie";
-import {
-  dagdeel,
-  kantel,
-  kantelLos,
-  meebewegen,
-  meebewegenLos,
-  useOptellen,
-} from "./beweging";
+import { dagdeel, kantel, kantelLos, useOptellen } from "./beweging";
 import carriereFoto from "./assets/modi/carriere.webp";
 import dienstFoto from "./assets/modi/dienst.webp";
 import vrijFoto from "./assets/modi/vrij.webp";
@@ -128,11 +121,7 @@ export function Starthub({
   } as const;
 
   return (
-    <div
-      className="hub"
-      onPointerMove={meebewegen}
-      onPointerLeave={meebewegenLos}
-    >
+    <div className="hub">
       <header className="vel hub-balk">
         <span className="hub-merk">OMSI Enhancer</span>
         <Versie klasse="hub-versie" />
