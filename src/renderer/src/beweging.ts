@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { animatiesStand, windowsRustig } from './animaties'
 
 /**
  * Beweging die op de speler reageert: tegels die kantelen en cijfers die
@@ -12,9 +13,15 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
  * stil. Wie in Windows minder beweging heeft gekozen, krijgt er niets van.
  */
 
-/** Wil de speler minder beweging? */
+/**
+ * Wil de speler minder beweging? Wat hij in de app koos gaat voor; staat die
+ * op `systeem`, dan wat Windows zegt. Zie animaties.ts.
+ */
 export function rustig(): boolean {
-  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const stand = animatiesStand()
+  if (stand === 'aan') return false
+  if (stand === 'uit') return true
+  return windowsRustig()
 }
 
 const KANTEL_VARS = ['--kx', '--ky', '--px', '--py', '--gx', '--gy']

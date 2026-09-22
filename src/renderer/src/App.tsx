@@ -69,6 +69,7 @@ import { HervatDialog } from "./HervatDialog";
 import { ThemaKnop, type Thema } from "./ThemaKnop";
 import { wisselThema } from "./themaOvergang";
 import { Rondleiding } from "./Rondleiding";
+import { zetAnimaties } from "./animaties";
 import { Versie } from "./Versie";
 import {
   DEFAULT_LANGUAGE,
@@ -541,6 +542,7 @@ export function App(): JSX.Element {
       setTaalGekozen(settings.languageChosen === true);
       setBusfotosGevraagd(settings.busPhotosOffered === true);
       setRondleidingGezien(settings.tourSeen === true);
+      zetAnimaties(settings.animaties);
     });
   }, []);
 

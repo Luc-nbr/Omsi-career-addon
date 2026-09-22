@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type JSX } from 'react'
 import type { KeyBinding } from '../../core/omsiKeys'
-import { loose, t, type Language } from '../../shared/i18n'
+import { loose, t, type Language, type TextKey } from '../../shared/i18n'
+import { animatiesStand, windowsRustig, zetAnimaties, type Animaties } from './animaties'
 import {
   PRESETS,
   PRESET_NAMES,
@@ -23,7 +24,7 @@ interface Props {
   language: Language
   onBack(): void
   /** Met welk tabblad het scherm opent; de melding over overlays opent "Overlays". */
-  beginTab?: 'settings' | 'keys' | 'controllers' | 'overlays'
+  beginTab?: 'settings' | 'keys' | 'controllers' | 'overlays' | 'app'
 }
 
 /** Shift en Ctrl zitten in het derde veld van een binding; de rest laten we staan. */
@@ -41,7 +42,9 @@ const MOD_CTRL = 4
  * aangeraakt gaat het bestand in.
  */
 export function GameSetup({ language, onBack, beginTab }: Props): JSX.Element {
-  const [tab, setTab] = useState<'settings' | 'keys' | 'controllers' | 'overlays'>(beginTab ?? 'settings')
+  const [tab, setTab] = useState<'settings' | 'keys' | 'controllers' | 'overlays' | 'app'>(
+    beginTab ?? 'settings'
+  )
   return (
     <div className="app solo">
       <main className="main">
@@ -88,12 +91,21 @@ export function GameSetup({ language, onBack, beginTab }: Props): JSX.Element {
           >
             {t(language, 'cfg.tabOverlays')}
           </button>
+          <button
+            type="button"
+            className="chip"
+            aria-pressed={tab === 'app'}
+            onClick={() => setTab('app')}
+          >
+            {t(language, 'cfg.tabApp')}
+          </button>
         </div>
 
         {tab === 'settings' && <SettingsTab language={language} />}
         {tab === 'keys' && <KeysTab language={language} />}
         {tab === 'controllers' && <ControllersTab language={language} />}
         {tab === 'overlays' && <OverlaysTab language={language} />}
+        {tab === 'app' && <AppTab language={language} />}
       </main>
     </div>
   )
@@ -340,6 +352,48 @@ function OverlayKnop({
 function redenTekst(language: Language, reden: OverlayReden | undefined): string {
   if (!reden) return '?'
   return t(language, reden === 'steam' ? 'ovl.knop.steamdraait' : (`ovl.knop.reden.${reden}` as const))
+}
+
+/**
+ * Instellingen van de app zelf, niet van OMSI. Nu de animaties: zie
+ * animaties.ts voor waarom je die los van Windows wilt kunnen kiezen.
+ */
+function AppTab({ language }: { language: Language }): JSX.Element {
+  const [stand, setStand] = useState<Animaties>(animatiesStand())
+  const windows = windowsRustig()
+  const kies = (nieuw: Animaties): void => {
+    setStand(nieuw)
+    zetAnimaties(nieuw)
+    void window.career.saveSettings({ animaties: nieuw })
+  }
+  const keuzes: Array<{ id: Animaties; naam: TextKey; uitleg: TextKey }> = [
+    { id: 'systeem', naam: 'anim.systeem', uitleg: 'anim.systeemUitleg' },
+    { id: 'aan', naam: 'anim.aan', uitleg: 'anim.aanUitleg' },
+    { id: 'uit', naam: 'anim.uit', uitleg: 'anim.uitUitleg' }
+  ]
+  return (
+    <section className="card">
+      <h2 className="section-title">{t(language, 'anim.title')}</h2>
+      <p className="note">{t(language, 'anim.intro')}</p>
+      <div className="animatie-keuzes" role="radiogroup" aria-label={t(language, 'anim.title')}>
+        {keuzes.map((keuze) => (
+          <button
+            key={keuze.id}
+            type="button"
+            role="radio"
+            aria-checked={stand === keuze.id}
+            className="animatie-keuze"
+            onClick={() => kies(keuze.id)}
+          >
+            <b>{t(language, keuze.naam)}</b>
+            <span>{t(language, keuze.uitleg)}</span>
+          </button>
+        ))}
+      </div>
+      {/* Wie Windows op minder beweging heeft, weet vaak niet dat daar de oorzaak zit. */}
+      {windows && stand === 'systeem' && <p className="note warn">{t(language, 'anim.windowsUit')}</p>}
+    </section>
+  )
 }
 
 /** De schuiven en vinkjes uit options.cfg. */

@@ -1,4 +1,5 @@
 import { flushSync } from 'react-dom'
+import { rustig as zonderBeweging } from './beweging'
 
 /**
  * Van donker naar licht (en terug) als een cirkel die vanuit het knopje groeit.
@@ -18,8 +19,8 @@ import { flushSync } from 'react-dom'
  * Wie in Windows minder beweging heeft gekozen, krijgt de wissel zonder cirkel.
  */
 export function wisselThema(zet: () => void, vanaf?: { x: number; y: number }): void {
-  const rustig = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  if (rustig || typeof document.startViewTransition !== 'function') {
+  // Wat de speler in de app koos gaat voor Windows; zie animaties.ts.
+  if (zonderBeweging() || typeof document.startViewTransition !== 'function') {
     zet()
     return
   }

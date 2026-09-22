@@ -92,6 +92,11 @@ export interface Settings {
    */
   tourSeen?: boolean
   /**
+   * Animaties: `systeem` volgt Windows, `aan` beweegt altijd, `uit` nooit.
+   * Zie renderer/src/animaties.ts voor waarom dat los van Windows moet kunnen.
+   */
+  animaties?: 'systeem' | 'aan' | 'uit'
+  /**
    * Dag of nacht. `systeem` volgt wat Windows zegt en is de beginstand.
    *
    * Los van Windows, want de app wordt 's avonds in een donkere kamer gebruikt
@@ -146,6 +151,7 @@ export function readSettings(userDataPath: string): Settings {
       languageChosen: raw.languageChosen === true,
       busPhotosOffered: raw.busPhotosOffered === true,
       tourSeen: raw.tourSeen === true,
+      animaties: raw.animaties === 'aan' || raw.animaties === 'uit' ? raw.animaties : 'systeem',
       overlayWaarschuwing:
         raw.overlayWaarschuwing && typeof raw.overlayWaarschuwing === 'object'
           ? raw.overlayWaarschuwing
@@ -161,7 +167,8 @@ export function readSettings(userDataPath: string): Settings {
       mapView: 'tegels',
       languageChosen: false,
       busPhotosOffered: false,
-      tourSeen: false
+      tourSeen: false,
+      animaties: 'systeem'
     }
   }
 }
@@ -202,6 +209,10 @@ export function writeSettings(userDataPath: string, settings: Partial<Settings>)
         : current.busPhotosOffered,
     // Hoort in deze lijst, anders valt hij weg zodra iets anders bewaard wordt (zie navDeel).
     tourSeen: typeof settings.tourSeen === 'boolean' ? settings.tourSeen : current.tourSeen,
+    animaties:
+      settings.animaties === 'systeem' || settings.animaties === 'aan' || settings.animaties === 'uit'
+        ? settings.animaties
+        : current.animaties,
     overlayWaarschuwing:
       settings.overlayWaarschuwing && typeof settings.overlayWaarschuwing === 'object'
         ? { ...current.overlayWaarschuwing, ...settings.overlayWaarschuwing }

@@ -346,3 +346,19 @@
   animation: none;
   mix-blend-mode: normal;
 }
+
+/*
+ * Animaties uit in de app (animaties.ts), ook als Windows ze wel toestaat. Niet
+ * `none` maar bijna nul: dan staat alles meteen op zijn eindplek en komen de
+ * gebeurtenissen aan het eind van een animatie gewoon, voor code die daarop wacht.
+ */
+:root[data-beweging='uit'] *,
+:root[data-beweging='uit'] *::before,
+:root[data-beweging='uit'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-delay: 0ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  transition-delay: 0ms !important;
+  scroll-behavior: auto !important;
+}

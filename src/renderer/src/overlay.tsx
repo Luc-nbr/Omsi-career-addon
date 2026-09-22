@@ -44,6 +44,7 @@ import "@fontsource/hanken-grotesk/500.css";
 import "@fontsource/hanken-grotesk/700.css";
 import "@fontsource/hanken-grotesk/800.css";
 import "./theme.css";
+import { zetAnimaties } from "./animaties";
 import "@fontsource/manrope/400.css";
 import "@fontsource/manrope/500.css";
 import "@fontsource/manrope/600.css";
@@ -345,6 +346,8 @@ function Overlay(): JSX.Element | null {
     void window.career.settings().then((settings) => {
       setLanguage(settings.language);
       setRate(settings.overlayRate);
+      // Ook de overlay volgt wat er in de app voor animaties gekozen is.
+      zetAnimaties(settings.animaties);
     });
   }, []);
 

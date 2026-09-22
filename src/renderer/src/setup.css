@@ -4120,3 +4120,59 @@
     translate: none;
   }
 }
+
+/* ---- de keuze voor animaties, in het tabblad App (GameSetup.tsx) ---- */
+.animatie-keuzes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+@media (max-width: 700px) {
+  .animatie-keuzes {
+    grid-template-columns: 1fr;
+  }
+}
+
+.animatie-keuze {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--vel-rand);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--vel-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease-out,
+    background-color 120ms ease-out;
+}
+
+.animatie-keuze b {
+  font-size: 15px;
+}
+
+.animatie-keuze span {
+  color: var(--vel-zacht);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.animatie-keuze:hover {
+  border-color: var(--vel-zacht);
+}
+
+.animatie-keuze[aria-checked='true'] {
+  border-color: var(--route);
+  background: rgba(42, 117, 247, 0.12);
+  box-shadow: 0 0 0 1px var(--route);
+}
+
+.animatie-keuze:focus-visible {
+  outline: 2px solid var(--route);
+  outline-offset: 2px;
+}

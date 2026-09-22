@@ -165,6 +165,37 @@ const TEXT = {
     fr: 'Service annulé. Rien n’a été enregistré.',
     nl: 'Dienst geannuleerd. Er is niets geboekt.'
   },
+  // ---- animaties aan of uit, los van Windows (animaties.ts) ----
+  'cfg.tabApp': { en: 'App', de: 'App', fr: 'Appli', nl: 'App' },
+  'anim.title': { en: 'Animations', de: 'Animationen', fr: 'Animations', nl: 'Animaties' },
+  'anim.intro': {
+    en: 'Motion in the app: tiles that tilt, numbers that count up, the switch between day and night. None of it keeps running while you drive.',
+    de: 'Bewegung in der App: kippende Kacheln, hochzählende Zahlen, der Wechsel zwischen Tag und Nacht. Nichts davon läuft weiter, während du fährst.',
+    fr: "Le mouvement dans l'application : tuiles qui s'inclinent, chiffres qui défilent, passage du jour à la nuit. Rien ne continue pendant que vous conduisez.",
+    nl: 'Beweging in de app: tegels die kantelen, cijfers die optellen, de overgang tussen dag en nacht. Niets ervan loopt door terwijl je rijdt.'
+  },
+  'anim.systeem': { en: 'Follow Windows', de: 'Wie Windows', fr: 'Comme Windows', nl: 'Volgt Windows' },
+  'anim.systeemUitleg': { en: 'As set in Windows.', de: 'Wie in Windows eingestellt.', fr: 'Comme réglé dans Windows.', nl: 'Zoals je het in Windows hebt ingesteld.' },
+  'anim.aan': { en: 'On', de: 'An', fr: 'Activées', nl: 'Aan' },
+  'anim.aanUitleg': {
+    en: 'Always, even when Windows is set to reduce motion.',
+    de: 'Immer, auch wenn Windows auf weniger Bewegung steht.',
+    fr: 'Toujours, même si Windows réduit les animations.',
+    nl: 'Altijd, ook als Windows op minder beweging staat.'
+  },
+  'anim.uit': { en: 'Off', de: 'Aus', fr: 'Désactivées', nl: 'Uit' },
+  'anim.uitUitleg': {
+    en: 'Never: everything appears in place at once.',
+    de: 'Nie: alles steht sofort an seinem Platz.',
+    fr: 'Jamais : tout apparaît directement à sa place.',
+    nl: 'Nooit: alles staat meteen op zijn plek.'
+  },
+  'anim.windowsUit': {
+    en: "Windows is set to reduce motion right now, so with 'Follow Windows' the app stays still. Choose 'On' to see the animations anyway.",
+    de: "Windows steht gerade auf weniger Bewegung, mit 'Wie Windows' bleibt die App also still. Wähle 'An', um die Animationen trotzdem zu sehen.",
+    fr: "Windows réduit actuellement les animations ; avec 'Comme Windows', l'application reste immobile. Choisissez 'Activées' pour les voir quand même.",
+    nl: "Windows staat nu op minder beweging, dus met 'Volgt Windows' beweegt de app niet. Kies 'Aan' om de animaties toch te zien."
+  },
   // ---- de rondleiding voor nieuwe gebruikers (Rondleiding.tsx) ----
   'tour.open': { en: 'Show the tour', de: 'Rundgang zeigen', fr: 'Voir la visite guidée', nl: 'Rondleiding bekijken' },
   'tour.skip': { en: 'Skip', de: 'Überspringen', fr: 'Passer', nl: 'Overslaan' },
