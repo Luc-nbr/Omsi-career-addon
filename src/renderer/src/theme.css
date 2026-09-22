@@ -332,3 +332,17 @@
   --vel-hover: rgba(16, 22, 35, 0.04);
   --vel-schaduw: 0 1px 0 rgba(16, 22, 35, 0.06);
 }
+
+/*
+ * De overgang tussen donker en licht (zie themaOvergang.ts).
+ *
+ * De browser zet het oude en het nieuwe scherm als twee foto's op elkaar en laat
+ * ze standaard in elkaar overvloeien. Dat overvloeien moet uit: de cirkel die
+ * het nieuwe scherm onthult, doet het werk, en een halfdoorzichtige tussenstand
+ * eroverheen maakt er een grauwe waas van.
+ */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}

@@ -66,6 +66,7 @@ import { Dienstpas } from "./Dienstpas";
 import { DraaitDialog } from "./DraaitDialog";
 import { HervatDialog } from "./HervatDialog";
 import { ThemaKnop, type Thema } from "./ThemaKnop";
+import { wisselThema } from "./themaOvergang";
 import { Versie } from "./Versie";
 import {
   DEFAULT_LANGUAGE,
@@ -543,10 +544,21 @@ export function App(): JSX.Element {
     else document.documentElement.dataset.thema = thema;
   }, [thema]);
 
-  const kiesThema = useCallback((next: Thema) => {
-    setThema(next);
-    void window.career.saveSettings({ theme: next });
-  }, []);
+  const kiesThema = useCallback(
+    (next: Thema, vanaf?: { x: number; y: number }) => {
+      /*
+       * De wortel meteen omzetten, en niet pas in het effect hierboven: de
+       * overgang maakt haar foto van het nieuwe scherm zodra `zet` terugkeert.
+       */
+      wisselThema(() => {
+        if (next === "systeem") delete document.documentElement.dataset.thema;
+        else document.documentElement.dataset.thema = next;
+        setThema(next);
+      }, vanaf);
+      void window.career.saveSettings({ theme: next });
+    },
+    [],
+  );
 
   useEffect(() => {
     document.documentElement.lang = language;

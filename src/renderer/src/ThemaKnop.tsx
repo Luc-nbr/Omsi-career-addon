@@ -7,7 +7,8 @@ export type Thema = 'systeem' | 'licht' | 'donker'
 interface Props {
   language: Language
   thema: Thema
-  onThema: (thema: Thema) => void
+  /** `vanaf` is het midden van het knopje: daar begint de overgang (zie themaOvergang.ts). */
+  onThema: (thema: Thema, vanaf?: { x: number; y: number }) => void
 }
 
 /**
@@ -42,7 +43,10 @@ export function ThemaKnop({ language, thema, onThema }: Props): JSX.Element {
       className="themaknop"
       title={`${t(language, 'setup.theme')}: ${label}`}
       aria-label={label}
-      onClick={() => onThema(naar)}
+      onClick={(klik) => {
+        const vak = klik.currentTarget.getBoundingClientRect()
+        onThema(naar, { x: vak.left + vak.width / 2, y: vak.top + vak.height / 2 })
+      }}
     >
       {nuDonker ? (
         // Zon: een schijf met stralen.
