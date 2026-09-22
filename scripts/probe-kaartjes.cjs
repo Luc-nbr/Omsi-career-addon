@@ -124,6 +124,25 @@ app.whenReady().then(async () => {
   })()`)
   console.log('na een briefje van tien:', JSON.stringify(terug))
 
+  /* En dicht is rijden: dan hoort de kaart er weer te staan. */
+  schrijf(false, -1)
+  await wacht(1800)
+  const dicht = await js(overlay, `({
+    app: document.querySelector('.dock-knop[aria-pressed="true"]')?.getAttribute('aria-label'),
+    kaartjes: Boolean(document.querySelector('.kaartjes'))
+  })`)
+  console.log('deur weer dicht:', JSON.stringify(dicht))
+
+  /* De kaartsoorten staan als tegels, niet als lijst. */
+  schrijf(true, -1)
+  await wacht(1800)
+  const tegels = await js(overlay, `({
+    tegels: document.querySelectorAll('.kaarttegels button').length,
+    lijst: document.querySelectorAll('.kaartlijst button').length,
+    eerste: document.querySelector('.kaarttegels .kaartprijs')?.textContent ?? null
+  })`)
+  console.log('kaartsoorten als tegels:', JSON.stringify(tegels))
+
   const goed =
     voor.app === 'Kaart' &&
     !voor.kaartjes &&
@@ -133,7 +152,11 @@ app.whenReady().then(async () => {
     na.bron !== null &&
     terug.geklikt &&
     terug.terug !== null &&
-    terug.munten.length > 0
+    terug.munten.length > 0 &&
+    dicht.app === 'Kaart' &&
+    !dicht.kaartjes &&
+    tegels.tegels > 0 &&
+    tegels.lijst === 0
   console.log(goed ? 'de kaartverkoop klopt' : 'DE KAARTVERKOOP KLOPT NIET')
   app.exit(goed ? 0 : 1)
 })

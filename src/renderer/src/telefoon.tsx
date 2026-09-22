@@ -126,6 +126,14 @@ export function Telefoon({
   const deurStond = useRef(deurOpen);
   useEffect(() => {
     if (deurOpen && !deurStond.current) setApp("kaartjes");
+    /*
+     * En dicht is rijden. Dan hoort de kaart er weer te staan -- alleen als je
+     * nog bij de kaartjes bent; was je zelf al naar een andere app gegaan, dan
+     * blijf je daar.
+     */
+    if (!deurOpen && deurStond.current) {
+      setApp((huidig) => (huidig === "kaartjes" ? "kaart" : huidig));
+    }
     deurStond.current = deurOpen;
   }, [deurOpen]);
 
@@ -832,18 +840,23 @@ function KaartjesApp({
      */
     <div className="kaartjes" data-hit>
       {!gekozen ? (
-        <ul className="kaartlijst">
+        /*
+         * Tegels en geen lijst: je zoekt met een blik en je tikt met een duim,
+         * terwijl er iemand voor je staat. De prijs is het grootst, want daar
+         * gaat het om.
+         */
+        <ul className="kaarttegels">
           {set.kaartjes.map((kaartje) => (
             <li key={kaartje.naam}>
               <button type="button" onClick={() => setGekozen(kaartje)}>
-                <span className="kaartnaam">{kaartje.naam}</span>
                 <span className="kaartprijs">{kaartje.prijs.toFixed(2)}</span>
+                <span className="kaartnaam">{kaartje.naam}</span>
+                {kaartje.maxHaltes > 0 && (
+                  <small>
+                    {t(language, "ovl.ticketStops", { count: kaartje.maxHaltes })}
+                  </small>
+                )}
               </button>
-              {kaartje.maxHaltes > 0 && (
-                <small>
-                  {t(language, "ovl.ticketStops", { count: kaartje.maxHaltes })}
-                </small>
-              )}
             </li>
           ))}
         </ul>

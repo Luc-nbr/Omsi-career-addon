@@ -1404,40 +1404,68 @@
 
 /* ---- de lijst met kaartsoorten ---- */
 
-.kaartlijst {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+/*
+ * De kaartsoorten als tegels.
+ *
+ * Het was een lijst met de prijs rechts, en dat leest als een menukaart: je
+ * moet regel voor regel zoeken. Aan de deur heb je een vak om op te tikken en
+ * een prijs die eruit springt. Twee naast elkaar op een telefoon, drie zodra er
+ * ruimte is.
+ */
+.kaarttegels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.kaartlijst button {
+.kaarttegels li {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  width: 100%;
-  padding: 10px 12px;
+}
+
+.kaarttegels button {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 11px 12px 12px;
   border: 1px solid var(--vel-overlay-rand);
   border-radius: var(--radius-klein);
-  background: transparent;
+  background: rgba(255, 255, 255, 0.05);
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
 }
 
-.kaartlijst button:hover {
-  background: rgba(255, 255, 255, 0.07);
+.kaarttegels button:hover {
+  background: rgba(255, 255, 255, 0.12);
 }
 
-.kaartlijst small {
-  display: block;
-  padding: 2px 12px 0;
+.kaarttegels .kaartprijs {
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.kaarttegels .kaartnaam {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.kaarttegels small {
   color: var(--vel-zacht);
-  font-size: 11.5px;
+  font-size: 11px;
+}
+
+@media (min-width: 560px) {
+  .kaarttegels {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .kaartnaam {

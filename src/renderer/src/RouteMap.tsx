@@ -228,6 +228,17 @@ export function RouteMap({
   const [view, setView] = useState<View>({ cx: 0, cy: 0, mpp: 8, rot: 0 })
   const [hovered, setHovered] = useState<string>()
   const dragRef = useRef<{ x: number; y: number; cx: number; cy: number } | undefined>(undefined)
+  /*
+   * Vingers op het scherm, voor het knijpen met twee.
+   *
+   * Op een telefoon of tablet is er geen muiswiel en zijn de plus- en
+   * minknopjes klein werk tijdens het rijden. Twee vingers uit elkaar is wat
+   * iedereen daar doet. De kaart houdt daarom bij welke vingers er liggen;
+   * zodra dat er twee zijn, bepaalt hun afstand de schaal en hun midden het
+   * punt dat onder je vingers blijft liggen.
+   */
+  const vingers = useRef(new Map<number, { x: number; y: number }>())
+  const knijp = useRef<{ afstand: number; midX: number; midY: number } | undefined>(undefined)
 
   const byId = useMemo(() => new Map(geometry.stops.map((stop) => [stop.id, stop])), [geometry])
 
@@ -769,6 +780,14 @@ export function RouteMap({
   const onPointerDown = (event: ReactPointerEvent<SVGSVGElement>): void => {
     ;(event.target as Element).setPointerCapture?.(event.pointerId)
     markManual()
+    vingers.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    if (vingers.current.size >= 2) {
+      // Twee vingers: niet meer slepen, maar knijpen. Het begin wordt bij de
+      // eerste beweging gemeten, anders springt de kaart bij het neerzetten.
+      dragRef.current = undefined
+      knijp.current = undefined
+      return
+    }
     dragRef.current = { x: event.clientX, y: event.clientY, cx: view.cx, cy: view.cy }
     if (variant === 'full' && !gemeld.current) {
       beelden.current = { vorig: 0, duur: [] }
@@ -777,6 +796,13 @@ export function RouteMap({
   }
 
   const onPointerMove = (event: ReactPointerEvent<SVGSVGElement>): void => {
+    if (vingers.current.has(event.pointerId)) {
+      vingers.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    }
+    if (vingers.current.size >= 2) {
+      knijpen()
+      return
+    }
     const drag = dragRef.current
     if (!drag) return
     markManual()
@@ -786,9 +812,50 @@ export function RouteMap({
     })
   }
 
-  const endDrag = (): void => {
-    dragRef.current = undefined
-    meldTraagheid()
+  /*
+   * Twee vingers: de afstand ertussen is de schaal, hun midden schuift de kaart.
+   * Stap voor stap ten opzichte van de vorige beweging, want zo blijft het
+   * kloppen als er een vinger van het scherm komt en weer terug.
+   */
+  const knijpen = (): void => {
+    const svg = svgRef.current
+    const [a, b] = [...vingers.current.values()]
+    if (!svg || !a || !b) return
+    const afstand = Math.hypot(a.x - b.x, a.y - b.y)
+    const midX = (a.x + b.x) / 2
+    const midY = (a.y + b.y) / 2
+    const vorig = knijp.current
+    knijp.current = { afstand, midX, midY }
+    if (!vorig || afstand < 1 || vorig.afstand < 1) return
+    markManual()
+    const rect = svg.getBoundingClientRect()
+    const px = midX - rect.left - size.w / 2
+    const py = size.h / 2 - (midY - rect.top)
+    setView((old) => {
+      const next = clamp(old.mpp * (vorig.afstand / afstand), MIN_MPP, MAX_MPP)
+      // Het punt tussen je vingers blijft staan waar het staat, ook gedraaid.
+      const [ox, oy] = unrotate(px * old.mpp, py * old.mpp, old.rot)
+      const [nx, ny] = unrotate(px * next, py * next, old.rot)
+      // En de kaart schuift mee met het midden van je vingers.
+      const [sx, sy] = unrotate((midX - vorig.midX) * next, -(midY - vorig.midY) * next, old.rot)
+      return { ...old, mpp: next, cx: old.cx + ox - nx - sx, cy: old.cy + oy - ny - sy }
+    })
+  }
+
+  const endDrag = (event?: ReactPointerEvent<SVGSVGElement>): void => {
+    if (event) vingers.current.delete(event.pointerId)
+    else vingers.current.clear()
+    if (vingers.current.size < 2) knijp.current = undefined
+    /*
+     * Blijft er één vinger liggen, dan gaat die verder met slepen vanaf waar
+     * hij nu is; anders zou de kaart springen zodra je de andere optilt.
+     */
+    const over = [...vingers.current.values()][0]
+    dragRef.current =
+      vingers.current.size === 1 && over
+        ? { x: over.x, y: over.y, cx: view.cx, cy: view.cy }
+        : undefined
+    if (vingers.current.size === 0) meldTraagheid()
   }
 
   const zoomBy = (factor: number): void => {
