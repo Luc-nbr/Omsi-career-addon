@@ -160,6 +160,52 @@ function dutyKeyOf(duty: Duty | undefined): string {
   return `${duty.mapFolder}|${duty.legs.map((leg) => `${leg.tripFile}@${leg.departure}`).join(";")}`;
 }
 
+/*
+ * Waar de handtekening van de telefoon bewaard blijft als de overlay dicht gaat.
+ *
+ * Het hoofdproces gooit het overlayvenster weg bij "Overlay verbergen" en bouwt
+ * bij het openen een vers venster (`closeOverlay` / `openOverlay`). Wat alleen in
+ * de state stond was dan weg, en midden in je dienst moest je opnieuw nummer,
+ * pincode en handtekening geven. De localStorage van deze pagina blijft staan:
+ * elk overlayvenster laadt dezelfde pagina, dus dezelfde herkomst. Eén regel die
+ * steeds overschreven wordt -- er loopt maar één dienst tegelijk.
+ */
+const HANDTEKENING = "overlay.handtekening";
+
+interface Handtekening {
+  /** De dienst plus het moment waarop hij is aangenomen; zie `Overlay`. */
+  sleutel: string;
+  /** Voor welke dienst de opdracht aanvaard is; leeg als je alleen aangemeld bent. */
+  aanvaardVoor?: string;
+}
+
+function leesHandtekening(): Handtekening | undefined {
+  try {
+    const tekst = window.localStorage.getItem(HANDTEKENING);
+    const waarde = tekst
+      ? (JSON.parse(tekst) as Partial<Handtekening> | null)
+      : undefined;
+    if (typeof waarde?.sleutel !== "string") return undefined;
+    return {
+      sleutel: waarde.sleutel,
+      aanvaardVoor:
+        typeof waarde.aanvaardVoor === "string"
+          ? waarde.aanvaardVoor
+          : undefined,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function bewaarHandtekening(waarde: Handtekening): void {
+  try {
+    window.localStorage.setItem(HANDTEKENING, JSON.stringify(waarde));
+  } catch {
+    // Geen opslag: dan teken je na het heropenen opnieuw, zoals voorheen.
+  }
+}
+
 function Overlay(): JSX.Element | null {
   const [frame, setFrame] = useState<Frame>({
     connected: false,
@@ -183,15 +229,23 @@ function Overlay(): JSX.Element | null {
    */
   const [ibisReady, setIbisReady] = useState<string>();
   /*
-   * Aanmelden en de dienst aanvaarden, allebei in het geheugen van dit venster.
+   * Aanmelden en de dienst aanvaarden.
    *
-   * Niet op schijf: een dienst begint met jezelf aanmelden, en dat is het punt
-   * van deze stap. Wel per dienst onthouden welke er aanvaard is -- de overlay
-   * gaat tussendoor dicht en open, en je hoort niet halverwege opnieuw te
-   * moeten tekenen voor dezelfde dienst.
+   * Een dienst begint met jezelf aanmelden, en dat is het punt van deze stap.
+   * Maar de overlay gaat tussendoor dicht en open, en je hoort niet halverwege
+   * opnieuw te moeten tekenen voor dezelfde dienst. Alleen in de state was dat
+   * wel zo: het venster wordt bij het sluiten weggegooid. Daarom gaat de
+   * handtekening ook naar `HANDTEKENING`, onder `tekenSleutel` -- zie hieronder.
    */
   const [aangemeld, setAangemeld] = useState(false);
   const [aanvaardVoor, setAanvaardVoor] = useState<string>();
+  /*
+   * Onder welke sleutel de handtekening bewaard wordt: de dienst plus het moment
+   * waarop hij in het profiel is aangenomen. Leeg zolang dat nog niet gelezen is;
+   * tot dan wordt er niets bewaard, anders overschrijft een vers venster de
+   * handtekening voordat hij hem heeft kunnen teruglezen.
+   */
+  const [tekenSleutel, setTekenSleutel] = useState<string>();
   const [geometry, setGeometry] = useState<MapGeometry>();
   /** Wat er aan bocht voor je ligt; de kaart rekent het uit, de balk tekent het. */
   const [manoeuvre, setManoeuvre] = useState<Manoeuvre>();
@@ -227,6 +281,14 @@ function Overlay(): JSX.Element | null {
     frame.ibis,
     frame.ibis ? `${frame.ibis.line}|${frame.ibis.tour}` : "",
   );
+  /*
+   * Welke dienst dit is. Niet de rit maar de hele dienst: je tekent er één keer
+   * voor en niet bij elke rit opnieuw. Hij staat boven de vroege return omdat het
+   * bewaren van de handtekening hieronder eraan hangt.
+   */
+  const dienstSleutel = duty
+    ? `${duty.mapFolder}|${duty.tourNumber}|${duty.start}`
+    : "";
 
   useEffect(() => {
     window.overlay.onFrame(setFrame);
@@ -247,6 +309,48 @@ function Overlay(): JSX.Element | null {
       current = false;
     };
   }, [duty?.mapFolder]);
+
+  /*
+   * De handtekening terughalen die een vorig overlayvenster voor deze dienst
+   * bewaarde.
+   *
+   * De dienst alleen is geen goede sleutel: wie dezelfde omloop een dag later
+   * opnieuw aanneemt, heeft een nieuwe dienst met dezelfde kaart, omloop en
+   * vertrektijd -- en die hoort weer met aanmelden te beginnen. Daarom telt het
+   * moment van aannemen mee (`confirmedAt` in het profiel), net als de sleutel
+   * waarmee App.tsx een aangenomen dienst herkent. Een herstart midden in de
+   * dienst houdt dat moment, en dus de handtekening. Vrij rijden staat niet in het
+   * profiel; dan blijft alleen de dienst zelf over.
+   */
+  useEffect(() => {
+    setTekenSleutel(undefined);
+    if (!dienstSleutel) return;
+    let current = true;
+    void window.career
+      .career()
+      .then((payload) => {
+        if (!current) return;
+        const sleutel = `${dienstSleutel}|${payload.state?.activeDuty?.confirmedAt ?? ""}`;
+        const bewaard = leesHandtekening();
+        // Alleen erbij, nooit eraf: wie in dit venster al getekend heeft, houdt dat.
+        if (bewaard?.sleutel === sleutel) {
+          setAangemeld(true);
+          if (bewaard.aanvaardVoor === dienstSleutel)
+            setAanvaardVoor(dienstSleutel);
+        }
+        setTekenSleutel(sleutel);
+      })
+      .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, [dienstSleutel]);
+
+  // En elke stap die je op de telefoon zet meteen bewaren; zie `HANDTEKENING`.
+  useEffect(() => {
+    if (!tekenSleutel || !aangemeld) return;
+    bewaarHandtekening({ sleutel: tekenSleutel, aanvaardVoor });
+  }, [tekenSleutel, aangemeld, aanvaardVoor]);
 
   // Slepen levert een stroom wijzigingen op; pas als de muis stilligt naar schijf.
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -425,13 +529,6 @@ function Overlay(): JSX.Element | null {
    */
   const tripKey = upcoming ? `${upcomingIndex}|${upcoming.tripFile}` : "";
   /*
-   * Welke dienst dit is. Niet de rit maar de hele dienst: je tekent er één keer
-   * voor en niet bij elke rit opnieuw.
-   */
-  const dienstSleutel = duty
-    ? `${duty.mapFolder}|${duty.tourNumber}|${duty.start}`
-    : "";
-  /*
    * Klaar om te rijden: aangemeld, en getekend voor deze dienst. Zonder dienst
    * -- vrij rijden -- is aanmelden genoeg; er valt dan niets te aanvaarden.
    */
@@ -532,7 +629,26 @@ function Overlay(): JSX.Element | null {
             en de klok loopt gewoon door.
           */}
           {!getekend ? (
-            <p className="empty">{t(language, "ovl.signonFirst")}</p>
+            <>
+              <p className="empty">{t(language, "ovl.signonFirst")}</p>
+              {/*
+                Wie de telefoon met zijn ✕ had uitgezet, zat hier vast: aanmelden
+                kan alleen daar, en die indeling blijft bewaard. De enige
+                uitweg was de bewerkstand met "+ Navigatie", en daar zei deze
+                regel niets over. Dus dezelfde knop hier, zolang hij nodig is.
+                Aanmelden blijft op de telefoon; daar gaat het om.
+              */}
+              {!layout.navigatie.visible && (
+                <button
+                  type="button"
+                  className="ovl-btn"
+                  data-hit
+                  onClick={() => move("navigatie", { visible: true })}
+                >
+                  + {t(language, "ovl.panelNav")}
+                </button>
+              )}
+            </>
           ) : duty && !ibisLoaded ? (
             ibisCapable && !readable ? (
               <IbisPanel
@@ -1073,7 +1189,7 @@ function Panel({
 /**
  * Het balkje onderin: waarmee je van app wisselt.
  *
- * Vier vaste plekken, altijd dezelfde volgorde. Tijdens het rijden wil je niet
+ * Vaste plekken, altijd dezelfde volgorde. Tijdens het rijden wil je niet
  * zoeken, dus de kaart staat vooraan en verandert nooit van plaats. Loopt er een
  * pauze, dan blijft dat zichtbaar ook als je ergens anders kijkt.
  */
@@ -1241,7 +1357,9 @@ function PauzeApp({
         : "ontime";
 
   return (
-    <div className="app-pauze">
+    // data-hit om dezelfde reden als bij de kaartjes: anders gaat "Pauze
+    // starten" door de telefoon heen naar OMSI en begint er niets.
+    <div className="app-pauze" data-hit>
       <div
         className={`pauze-ring ${stand}`}
         style={{ "--deel": deel } as CSSProperties}
@@ -2350,7 +2468,14 @@ function KaartjesApp({
   const COUPURES = [2000, 1000, 500, 200, 100, 50, 20, 10];
 
   return (
-    <div className="kaartjes">
+    /*
+     * data-hit op het hele blok, net als het cijferblok: buiten de bewerkstand
+     * vraagt de overlay de muis alleen op boven `[data-hit]`. Dat stond nergens
+     * in deze app of erboven, en dus ging elke tik op een kaartje, een munt of
+     * "Wissen" dwars door de telefoon heen de bus in. Het blok en niet alleen de
+     * knoppen, want een lange lijst kaartsoorten wil je ook kunnen scrollen.
+     */
+    <div className="kaartjes" data-hit>
       {!gekozen ? (
         <ul className="kaartlijst">
           {set.kaartjes.map((kaartje) => (

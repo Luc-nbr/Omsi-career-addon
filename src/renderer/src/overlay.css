@@ -1029,14 +1029,21 @@
 /* ---- het toestel: apps en het balkje onderin ----
  *
  * De navigatie stond al staand en smal, als een telefoon in een houder. Onderin
- * een vaste rij van vier: kaart, dienst, pauze, rit. Vaste volgorde en vaste
+ * een vaste rij: kaart, dienst, pauze, rit, kaartjes. Vaste volgorde en vaste
  * plek, want tijdens het rijden wil je niet zoeken.
  */
 
+/*
+ * Eén rij, hoeveel apps er ook zijn. Hier stond `repeat(4, 1fr)`, en toen de
+ * kaartjes er als vijfde bij kwamen viel dat knopje alleen op een tweede rij --
+ * een balk die een rij hoger werd en die hoogte van de kaart afsnoepte. Nu telt
+ * de rij zijn knoppen zelf.
+ */
 .dock {
   flex: none;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   gap: 4px;
   margin-top: 8px;
   padding-top: 8px;
