@@ -161,6 +161,15 @@ function dutyKeyOf(duty: Duty | undefined): string {
 }
 
 /*
+ * Voor welke dienst je tekent; zie `dienstSleutel` in `Overlay`. Een functie,
+ * want de aangenomen dienst uit het profiel moet op precies dezelfde manier
+ * herkend worden als die in het beeld -- zie het terughalen van de handtekening.
+ */
+function dienstSleutelVan(duty: Duty | undefined): string {
+  return duty ? `${duty.mapFolder}|${duty.tourNumber}|${duty.start}` : "";
+}
+
+/*
  * Waar de handtekening van de telefoon bewaard blijft als de overlay dicht gaat.
  *
  * Het hoofdproces gooit het overlayvenster weg bij "Overlay verbergen" en bouwt
@@ -173,7 +182,7 @@ function dutyKeyOf(duty: Duty | undefined): string {
 const HANDTEKENING = "overlay.handtekening";
 
 interface Handtekening {
-  /** De dienst plus het moment waarop hij is aangenomen; zie `Overlay`. */
+  /** Chauffeur, dienst en het moment waarop hij is aangenomen; zie `Overlay`. */
   sleutel: string;
   /** Voor welke dienst de opdracht aanvaard is; leeg als je alleen aangemeld bent. */
   aanvaardVoor?: string;
@@ -240,10 +249,11 @@ function Overlay(): JSX.Element | null {
   const [aangemeld, setAangemeld] = useState(false);
   const [aanvaardVoor, setAanvaardVoor] = useState<string>();
   /*
-   * Onder welke sleutel de handtekening bewaard wordt: de dienst plus het moment
-   * waarop hij in het profiel is aangenomen. Leeg zolang dat nog niet gelezen is;
-   * tot dan wordt er niets bewaard, anders overschrijft een vers venster de
-   * handtekening voordat hij hem heeft kunnen teruglezen.
+   * Onder welke sleutel de handtekening bewaard wordt: de chauffeur, de dienst en
+   * het moment waarop hij in het profiel is aangenomen. Leeg zolang dat nog niet
+   * gelezen is; tot dan wordt er niets bewaard, anders overschrijft een vers
+   * venster de handtekening voordat hij hem heeft kunnen teruglezen. Bij vrij
+   * rijden blijft hij leeg, en dan blijft de handtekening in dit venster.
    */
   const [tekenSleutel, setTekenSleutel] = useState<string>();
   const [geometry, setGeometry] = useState<MapGeometry>();
@@ -286,9 +296,7 @@ function Overlay(): JSX.Element | null {
    * voor en niet bij elke rit opnieuw. Hij staat boven de vroege return omdat het
    * bewaren van de handtekening hieronder eraan hangt.
    */
-  const dienstSleutel = duty
-    ? `${duty.mapFolder}|${duty.tourNumber}|${duty.start}`
-    : "";
+  const dienstSleutel = dienstSleutelVan(duty);
 
   useEffect(() => {
     window.overlay.onFrame(setFrame);
@@ -316,11 +324,20 @@ function Overlay(): JSX.Element | null {
    *
    * De dienst alleen is geen goede sleutel: wie dezelfde omloop een dag later
    * opnieuw aanneemt, heeft een nieuwe dienst met dezelfde kaart, omloop en
-   * vertrektijd -- en die hoort weer met aanmelden te beginnen. Daarom telt het
-   * moment van aannemen mee (`confirmedAt` in het profiel), net als de sleutel
-   * waarmee App.tsx een aangenomen dienst herkent. Een herstart midden in de
-   * dienst houdt dat moment, en dus de handtekening. Vrij rijden staat niet in het
-   * profiel; dan blijft alleen de dienst zelf over.
+   * vertrektijd -- en die hoort weer met aanmelden te beginnen. Daarom tellen de
+   * chauffeur en het moment van aannemen mee (profiel-id en `confirmedAt`), net
+   * als in de sleutel waarmee App.tsx een aangenomen dienst herkent. Een herstart
+   * midden in de dienst houdt dat moment, en dus de handtekening.
+   *
+   * Vrij rijden wordt niet bewaard, alleen in dit venster. Daar staat niets van
+   * in het profiel, en het beeld draagt niets dat per start verschilt:
+   * `free:start` trekt een omloop die tussen een halfuur voor en twee uur na je
+   * tijd vertrekt, dus een volgende vrije rit op dezelfde lijn krijgt al gauw
+   * dezelfde kaart, omloop en vertrektijd. Met alleen die als sleutel kwam hij
+   * al aangemeld en getekend op -- ook voor een andere chauffeur, want de
+   * localStorage overleeft het wisselen van profiel. Dan liever na het heropenen
+   * opnieuw aanmelden. Een vrije rit terwijl er nog een dienst aangenomen staat
+   * telt ook zo: bewaard wordt alleen de dienst die in het profiel staat.
    */
   useEffect(() => {
     setTekenSleutel(undefined);
@@ -330,7 +347,11 @@ function Overlay(): JSX.Element | null {
       .career()
       .then((payload) => {
         if (!current) return;
-        const sleutel = `${dienstSleutel}|${payload.state?.activeDuty?.confirmedAt ?? ""}`;
+        const actief = payload.state?.activeDuty;
+        const aangenomen = (actief?.assignment as { duty?: Duty } | undefined)
+          ?.duty;
+        if (!actief || dienstSleutelVan(aangenomen) !== dienstSleutel) return;
+        const sleutel = `${payload.state?.id ?? ""}|${dienstSleutel}|${actief.confirmedAt}`;
         const bewaard = leesHandtekening();
         // Alleen erbij, nooit eraf: wie in dit venster al getekend heeft, houdt dat.
         if (bewaard?.sleutel === sleutel) {

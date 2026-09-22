@@ -919,17 +919,41 @@ het navigatiepaneel, `PANELS[1]`, het paneel met de appbalk eronder:
    aangevuld door `zorgVoorDienstgegevens()` in `core/profiles.ts`) en reizen mee
    in het beeld als `frame.chauffeur`. Ze staan ook gewoon in het
    chauffeursoverzicht onder "je dienstgegevens", want wie ze kwijt is moet ze
-   ergens terug kunnen lezen. Er wordt niets beveiligd en niets bewaard: dit is je
-   eigen pc, en dat je je aanmeldt is het punt, niet dat iemand buitengesloten
-   wordt. Een chauffeur zonder gegevens krijgt een doorgaan-knop.
+   ergens terug kunnen lezen. Er wordt niets beveiligd: dit is je eigen pc, en
+   dat je je aanmeldt is het punt, niet dat iemand buitengesloten wordt. Een
+   chauffeur zonder gegevens krijgt een doorgaan-knop.
 2. `DienstOpdracht` -- lijn, omloop, vertrek, terug om, aantal ritten, en
-   "dienst aanvaarden". Wat aanvaard is wordt onthouden per dienst
-   (`aanvaardVoor === dienstSleutel`), want de overlay gaat tussendoor dicht en
-   open en je hoort niet halverwege opnieuw te tekenen.
+   "dienst aanvaarden". Je tekent voor de hele dienst en niet per rit:
+   `aanvaardVoor === dienstSleutel`, en `dienstSleutel` is kaart, omloop en
+   vertrektijd.
 3. Pas daarna het gewone toestel: de kaart, de apps en de balk. En pas daarna
    vult het dienstpaneel zich met welke omloop je in OMSI moet kiezen en welke
    codes in de IBIS; tot die tijd staat daar alleen "meld je eerst aan op de
    telefoon" (`ovl.signonFirst`).
+
+**Aanmelden en aanvaarden overleven het sluiten van de overlay.** Het
+hoofdproces gooit het overlayvenster weg bij "Overlay verbergen" en bouwt bij
+het openen een vers venster, dus wat alleen in de state stond was weg: midden
+in je dienst moest je opnieuw nummer, pincode en handtekening geven. Daarom
+schrijft de overlay elke stap ook naar localStorage, onder `overlay.handtekening`
+(`HANDTEKENING` in `overlay.tsx`): één regel `{ sleutel, aanvaardVoor }` die
+steeds overschreven wordt. De sleutel is profiel-id, `dienstSleutel` en
+`confirmedAt` van de aangenomen dienst, zoals `activeKey` in `App.tsx`. Een vers
+venster haalt het profiel op (`window.career.career()`) en neemt de aanmelding
+alleen over als die sleutel klopt; tot dan schrijft het niets, anders
+overschrijft het de regel voordat het hem gelezen heeft.
+
+Opnieuw aanmelden hoort dus bij een andere chauffeur en bij elke nieuw
+aangenomen dienst -- ook dezelfde omloop een dag later, want die krijgt een
+nieuwe `confirmedAt`. Een herstart van de app midden in de dienst houdt de
+sleutel, en dus de handtekening. Gewist wordt er niets: een oude regel past
+gewoon nergens meer op. **Vrij rijden wordt niet bewaard**, alleen in het venster
+zelf. Het staat niet in het profiel, het beeld draagt niets dat per start
+verschilt, en `free:start` trekt bij dezelfde lijn en tijd al gauw dezelfde
+omloop -- met alleen de dienst als sleutel kwam een volgende vrije rit, ook van
+een andere chauffeur, al aangemeld op. Om dezelfde reden telt een vrije rit
+terwijl er nog een dienst aangenomen staat niet mee: bewaard wordt alleen de
+dienst die in het profiel staat.
 
 **Alles wat je in de overlay kunt indrukken heeft `data-hit` nodig.** Het
 overlayvenster ligt over het hele scherm en laat muisklikken dóór naar OMSI --
@@ -939,7 +963,9 @@ elementen staat, wordt de muis even opgevraagd (zie de `mousemove`-luisteraar in
 zonder, en dus was het een plaatje: je zag de toetsen, maar de klik ging dwars
 door de bus in. Dit kost je niets bij het bouwen en niets bij het typen -- het
 valt pas op als je het in het spel probeert. Zet het op het buitenste blok van
-elk nieuw paneel dat een knop bevat.
+elk nieuw paneel dat een knop bevat. Dat geldt ook voor de apps op de telefoon:
+de kaartjes en de pauze-app misten het net zo en hebben het nu op `.kaartjes`
+en `.app-pauze`.
 
 Nagerekend met `scripts/probe-aanmelden.cjs`: het telt de toetsen per paneel (12
 in het navigatiepaneel, 0 in het dienstpaneel), kijkt of de appbalk en de kaart
