@@ -700,6 +700,12 @@ export function App(): JSX.Element {
       setSelected(undefined);
       setStarted(false);
       setVehicleOverride("");
+      /*
+       * De vraag hoort bij de dienst waarvoor hij gesteld werd. Bleef hij staan,
+       * dan vroeg het hoofdmenu na de volgende aangenomen dienst "lijn X loopt
+       * nog" over een dienst die nog niet eens begonnen was.
+       */
+      setHervatVraag(false);
       return;
     }
     const held = active.assignment as Assignment;
@@ -730,6 +736,8 @@ export function App(): JSX.Element {
     if (active.startedAt) {
       setScreen("modes");
       setHervatVraag(true);
+    } else {
+      setHervatVraag(false);
     }
   }, [activeKey]);
 
@@ -767,6 +775,16 @@ export function App(): JSX.Element {
     if (vorige === undefined || vorige === mode) return;
     setStap("map");
     setExamenScherm(false);
+    /*
+     * Een aangenomen dienst blijft staan. De controle hierboven ving alleen het
+     * eerste beeld, maar het effect dat de dienst uit het profiel terugleest zet
+     * de modus pas als het profiel binnen is -- van "service" naar "career" bij
+     * een dienst in de carriere of een examen. Dan gooide deze regel de dienst
+     * weg die daar net was teruggezet: geen vraag of je verder wilde, "verder
+     * rijden" kwam op de kaartstap uit, en afronden of annuleren kon niet meer,
+     * want `duties` wordt voor een aangenomen dienst nergens anders gevuld.
+     */
+    if (confirmed) return;
     setDuties([]);
     setSelected(undefined);
   }, [mode]);
@@ -1742,8 +1760,15 @@ export function App(): JSX.Element {
        * in het hoofdmenu of de instellingen staat: dan naar de lopende dienst,
        * waar de knop om opnieuw te starten staat. Een melding over overlays is
        * geen haast; die wacht tot hij daar zelf komt.
+       *
+       * De vraag of je verder wilt rijden gaat daarbij weg: de app heeft hem nu
+       * zelf beantwoord. Bleef hij staan, dan kwam hij terug zodra je naar het
+       * hoofdmenu ging, over de dienst waar je op dat moment in zat.
        */
-      if (melding.soort !== "overlays") setScreen("drive");
+      if (melding.soort !== "overlays") {
+        setHervatVraag(false);
+        setScreen("drive");
+      }
     });
     return () => {
       geldig = false;
@@ -2046,7 +2071,15 @@ export function App(): JSX.Element {
           modus={mode}
           lopend={active ? (active.mode ?? "service") : undefined}
           onModus={(gekozen) => {
-            setMode(gekozen);
+            /*
+             * Zolang er een dienst aangenomen is, is de modus die van de dienst.
+             * Een andere tegel kiezen zette de app eerst in een modus waar de
+             * dienst niet bij hoort: het wisseleffect gooide hem uit `duties`,
+             * en in vrij rijden deed START iets anders dan de dienst rijden. Er
+             * valt dan niets anders te kiezen, dus elke tegel brengt je naar de
+             * dienst die openstaat.
+             */
+            setMode(active ? (active.mode ?? "service") : gekozen);
             setScreen("drive");
           }}
           onStaatVanDienst={() => setScreen("profiel")}
@@ -2373,7 +2406,14 @@ export function App(): JSX.Element {
           rijen={[]}
           gekozen={0}
           onKies={() => {}}
-          voet=""
+          /*
+           * Wat `begin` over het starten te zeggen heeft. `begin` zet het net na
+           * de sprong naar dit scherm, en hier stond een lege voet: "je rijdt
+           * mee, kies de kaart en de omloop zelf" na Meerijden, of dat het
+           * klaarzetten mislukte, werd uitgerekend en pas getoond als je daarna
+           * de instellingen of de chauffeurs opende.
+           */
+          voet={note ?? ""}
           onStart={() => void finish()}
           startTekst={t(language, "act.finish")}
           bezig={busy}
@@ -3955,8 +3995,13 @@ export function App(): JSX.Element {
            * allebei in de oude wereld en hadden hier geen plek meer.
            */
           waarschuwing={
+            /*
+             * Het draaiende spel telt hier alleen mee waar zijn regel ook echt
+             * verschijnt, dus niet bij vrij rijden. Stond het er los in, dan
+             * gaf een draaiend OMSI bij vrij rijden een leeg rood kader.
+             */
             stap === "bus" &&
-            (omsiDraaitAl ||
+            ((omsiDraaitAl && mode !== "free") ||
               schermmodus === "volledig" ||
               plugin?.error ||
               plugin?.changed) ? (
@@ -4043,7 +4088,16 @@ export function App(): JSX.Element {
                   setBusScherm("hof");
                 }}
               />
-            ) : busAanbod && vehicle && duty ? (
+            ) : /*
+               * Alleen op de stappen van de opzet. Dit vel toont ook de
+               * instellingen, de chauffeurs en de staat van dienst, en die zijn
+               * ook bereikbaar terwijl een dienst loopt. Na een herstart is
+               * `hofGevraagd` weer leeg, en dan vroeg dit venster bij het openen
+               * van de instellingen om een wagenpark in de busmap te zetten --
+               * met het spel open. Een lopende dienst op `screen === "drive"`
+               * heeft zijn eigen vel hierboven, dus hier rijdt er dan niets.
+               */
+              screen === "drive" && busAanbod && vehicle && duty ? (
               <HofDialog
                 bus={
                   `${vehicle.manufacturer} ${vehicle.type}`.trim() ||
@@ -4216,7 +4270,18 @@ export function App(): JSX.Element {
               return;
             }
             setScreen("drive");
-            if (naar === "map" || naar === "line" || naar === "licence") {
+            /*
+             * Niet bij een aangenomen dienst: die staat in het profiel, en
+             * `duties` is daar het enige beeld van in het geheugen. Een examen
+             * wordt al op de vergunningstap aangenomen; wie daarna van de
+             * busstap terugklikte naar de kaart, raakte het hier kwijt, en
+             * opnieuw zoeken of een ander examen kon niet meer -- `generate` en
+             * `confirmDuty` weigeren zolang er een dienst aangenomen is.
+             */
+            if (
+              !confirmed &&
+              (naar === "map" || naar === "line" || naar === "licence")
+            ) {
               setDuties([]);
               setSelected(undefined);
             }

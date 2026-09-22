@@ -573,6 +573,7 @@ export function Setup({
    * strookje en op de andere de helft.
    */
   const rootRef = useRef<HTMLDivElement>(null);
+  const kaartRef = useRef<HTMLDivElement>(null);
   const [navDeel, setNavDeel] = useState<number>();
   const [sleept, setSleept] = useState(false);
   useEffect(() => {
@@ -584,15 +585,26 @@ export function Setup({
 
   const versleep = (start: ReactPointerEvent<HTMLDivElement>): void => {
     const vak = rootRef.current?.getBoundingClientRect();
-    if (!vak) return;
+    const kaart = kaartRef.current?.getBoundingClientRect();
+    if (!vak || !kaart) return;
     start.currentTarget.setPointerCapture(start.pointerId);
     setSleept(true);
     let laatste = navDeel ?? 0.32;
+    /*
+     * Hoeveel de muis verschoof, opgeteld bij hoe breed de kaart nu is. Hier
+     * stond de afstand van de muis tot de rechterrand van het venster, maar de
+     * kaart staat 22 pixels van die rand en de greep nog eens 2 tot 14 pixels
+     * links van de kaart: bij de eerste beweging sprong de greep zo'n dertig
+     * pixels van de muis weg, en bleef daar de hele sleep. Zo blijft hij onder
+     * de muis op de plek waar je hem pakte, wat de CSS er ook omheen zet.
+     */
+    const breedte = kaart.width;
+    const vanaf = start.clientX;
     const beweeg = (event: PointerEvent): void => {
-      /* Van rechts gemeten, want de kaart hangt aan de rechterrand. */
+      /* Naar links is breder, want de kaart hangt aan de rechterrand. */
       laatste = Math.min(
         0.62,
-        Math.max(0.18, (vak.right - event.clientX) / vak.width),
+        Math.max(0.18, (breedte + vanaf - event.clientX) / vak.width),
       );
       setNavDeel(laatste);
     };
@@ -653,7 +665,7 @@ export function Setup({
           }}
         />
       )}
-      <div className="setup-kaart">
+      <div ref={kaartRef} className="setup-kaart">
         {/*
           Zolang er geen dienst gekozen is valt er geen route te tekenen. Dan
           niet een zwart vlak laten staan maar zeggen wat er gaat komen: de
