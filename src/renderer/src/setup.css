@@ -2542,10 +2542,16 @@
   font-size: 11.5px;
 }
 
+/*
+ * De pauze voor een rit stond in het geel van de lijn. Op het donkere vel viel
+ * dat op; op het lichte gaf het contrast 1.36 -- geel op wit leest niet. Het
+ * geel is bovendien de lijn, en een pauze is de lijn niet. Dus dezelfde zachte
+ * inkt als de regel erboven, en het onderscheid zit in de maat.
+ */
 .live-pauze {
   display: block;
   margin-top: 4px;
-  color: var(--lijn);
+  color: var(--vel-zacht);
   font-size: 11.5px;
 }
 

@@ -64,7 +64,12 @@
   --op-grond-zacht: rgba(232, 235, 242, 0.62);
   --vel: #141a26;
   --vel-ink: #e8ebf2;
-  --vel-zacht: #8b94a6;
+  /*
+   * Was #8b94a6: 5.71 op het vel, maar 4.41 op een tegel -- net als in het licht
+   * te weinig ruimte zodra er iets onder ligt. Deze waarde haalt 6.41 en 4.95.
+   * Dit geldt ook voor de overlay, en daar kijk je naar terwijl je rijdt.
+   */
+  --vel-zacht: #959db0;
   --vel-lijn: rgba(255, 255, 255, 0.09);
   --vel-rand: rgba(255, 255, 255, 0.08);
   --vel-schaduw: 0 10px 30px rgba(0, 0, 0, 0.5);
@@ -99,6 +104,70 @@
 }
 
 /*
+ * DE OUDE GLASWERELD OP HET NIEUWE VEL
+ *
+ * Niet alles is om. Het rijscherm (`RunningDuty.tsx`) en de meelopende
+ * dienstregeling (`LiveDienst.tsx`) hangen nog aan de klassen uit styles.css, en
+ * die wereld is er een van wit op donker: `--text` is #ffffff, `--muted` is wit
+ * op 60 procent, en het glas is wit op een paar procent. Dat klopte zolang die
+ * schermen op de donkere grond lagen. Ze liggen nu in een vel van het
+ * opzetscherm, en dat vel is in de lichte stand bijna wit -- dus stond er wit op
+ * wit. Gemeten met `scripts/probe-leesbaar.cjs`: contrast 1.03 tot 1.05, oftewel
+ * onzichtbaar.
+ *
+ * Dus wijzen de oude namen hier naar de inkt van het vel. Ze staan met opzet op
+ * dezelfde selector als `--vel-ink` en de rest: een `var()` in een eigen naam
+ * wordt opgelost op het element waar hij staat, dus pakt `--text` vanzelf de
+ * lichte of de donkere waarde mee zonder dat het hieronder nog een keer hoeft.
+ *
+ * Het vel bepaalt de inkt. Dat is de hele regel, en daarmee draaien deze
+ * schermen mee met de stand in plaats van ertegenin.
+ */
+.setup,
+.hub,
+.busvenster,
+.overlay-body {
+  --text: var(--vel-ink);
+  /* De oude wereld kende twee graden van zacht; het vel kent er een. */
+  --muted: var(--vel-zacht);
+  --zacht: var(--vel-zacht);
+
+  /*
+   * Glas stapelde: een kaart met een vulling, daarin een tegel met nog een, en
+   * de letters lagen twee lagen diep -- op het lichte vel kwam dat uit op
+   * rgb(213, 215, 215) en haalde ook de sterkere inkt het niet meer. Een kaart
+   * die al op een vel ligt hoeft dat vel niet nog eens te tinten; zijn rand
+   * tekent hem al. Dus de kaart krijgt niets en de tegel erin houdt zijn
+   * vulling, en daarmee is er nog hoogstens een laag onder een letter.
+   */
+  --glas: transparent;
+  --glas-sterk: var(--vel-lijn);
+  --glas-rand: var(--vel-rand);
+
+  /*
+   * De tweede knoppen waren blauw getint met lichtblauwe letters -- op een wit
+   * vel las dat als 1.14. Op het vel zijn ze wat `.tweedeknop` in setup.css ook
+   * is: het vel zelf met een rand eromheen.
+   */
+  --tint: transparent;
+  --tint-rand: var(--vel-rand);
+  --tint-tekst: var(--vel-ink);
+
+  /*
+   * De oude namen wezen in styles.css naar de oude waarden. Dat werkt hier niet
+   * vanzelf: die `var()` is op `:root` opgelost en draagt de donkere waarde mee
+   * naar beneden. Daarom staan ze hier opnieuw, nu wijzend naar wat op dit vel
+   * geldt.
+   */
+  --bg: var(--grond);
+  --panel: var(--glas);
+  --panel-2: var(--glas-sterk);
+  --line: var(--glas-rand);
+  --accent: var(--lijn);
+  --good: var(--optijd);
+}
+
+/*
  * Licht: de kaart is dag, en een wit vel heeft een rand nodig om vel te zijn.
  *
  * ALLEEN HET OPZETSCHERM, NIET DE OVERLAY.
@@ -117,7 +186,15 @@
   --op-grond-zacht: rgba(14, 17, 23, 0.6);
   --vel: #f7f8f8;
   --vel-ink: #0e1117;
-  --vel-zacht: #6b7280;
+  /*
+   * Was #6b7280, en dat gaf op het vel precies 4.54 -- de ondergrens van WCAG,
+   * zonder een druppel over. Zodra er ook maar iets onder lag (een tegel, een
+   * vlak van de oude glaswereld) zakte hij eronder. In het donker was dat nooit
+   * een probleem: #8b94a6 haalt 5.71 op het vel en 5.02 op een vulling. Deze
+   * waarde geeft het licht dezelfde ruimte -- 5.60 en 5.04 -- in plaats van de
+   * stand aan de rand te laten liggen. Gerekend in scripts/probe-leesbaar.cjs.
+   */
+  --vel-zacht: #5d6470;
   --vel-lijn: rgba(14, 17, 23, 0.1);
   --vel-rand: rgba(14, 17, 23, 0.12);
   --vel-schaduw: 0 6px 20px rgba(14, 17, 23, 0.1);
@@ -147,7 +224,15 @@
     --op-grond-zacht: rgba(14, 17, 23, 0.6);
     --vel: #f7f8f8;
     --vel-ink: #0e1117;
-    --vel-zacht: #6b7280;
+    /*
+   * Was #6b7280, en dat gaf op het vel precies 4.54 -- de ondergrens van WCAG,
+   * zonder een druppel over. Zodra er ook maar iets onder lag (een tegel, een
+   * vlak van de oude glaswereld) zakte hij eronder. In het donker was dat nooit
+   * een probleem: #8b94a6 haalt 5.71 op het vel en 5.02 op een vulling. Deze
+   * waarde geeft het licht dezelfde ruimte -- 5.60 en 5.04 -- in plaats van de
+   * stand aan de rand te laten liggen. Gerekend in scripts/probe-leesbaar.cjs.
+   */
+  --vel-zacht: #5d6470;
     --vel-lijn: rgba(14, 17, 23, 0.1);
     --vel-rand: rgba(14, 17, 23, 0.12);
     --vel-schaduw: 0 6px 20px rgba(14, 17, 23, 0.1);
@@ -226,7 +311,12 @@
   --grond: #090c18;
   --vel: #141a26;
   --vel-ink: #e8ebf2;
-  --vel-zacht: #8b94a6;
+  /*
+   * Was #8b94a6: 5.71 op het vel, maar 4.41 op een tegel -- net als in het licht
+   * te weinig ruimte zodra er iets onder ligt. Deze waarde haalt 6.41 en 4.95.
+   * Dit geldt ook voor de overlay, en daar kijk je naar terwijl je rijdt.
+   */
+  --vel-zacht: #959db0;
   --vel-rand: rgba(255, 255, 255, 0.08);
   --vel-hover: rgba(255, 255, 255, 0.06);
   --vel-schaduw: 0 10px 30px rgba(0, 0, 0, 0.5);

@@ -1974,8 +1974,24 @@ input[type='range'] {
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * Het woord naast het cijfer draagt de kleur niet meer.
+ *
+ * De kleur staat op het vak, dus erfde het woord hem ook -- groen op groen,
+ * rood op rood. Gemeten haalde dat nergens meer dan 3.8, in geen van beide
+ * standen en ook niet op het kale vel: deze drie kleuren zijn gekozen om een
+ * vlak mee te merken, niet om vijftien pixels tekst mee te zetten. Het cijfer
+ * staat op veertig en houdt de kleur, want dat is het signaal; het woord zegt
+ * alleen wat het cijfer betekent en leest gewoon in de inkt van het vel.
+ */
 .running-delta span {
+  color: var(--text);
   font-size: 15px;
+}
+
+/* De regel die zegt dat het spel er nog niet is, is geen stand van de klok. */
+.running-delta .running-wait {
+  color: var(--muted);
 }
 
 .running-delta.is-laat {

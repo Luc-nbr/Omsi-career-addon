@@ -690,6 +690,31 @@ dienstpaneel -- zie "Een dienst begint met aanmelden" in §5.2. Het zat er eerst
 naast: een los cijferblok rechtsboven in beeld, terwijl de telefoon linksonder
 zei dat de kaart aan het laden was.
 
+**De lichte stand was op sommige schermen niet te lezen** (opgelost op
+22-09-2026). Het rijscherm gaf witte letters op een wit vel: contrast 1.03. De
+oorzaak is dat `RunningDuty.tsx` en `LiveDienst.tsx` nog aan de oude glaswereld
+uit `styles.css` hangen -- wit op donker -- terwijl ze in een vel van het
+opzetscherm liggen. Gemeten en verholpen met `scripts/probe-leesbaar.cjs`, dat
+beide standen narekent en de plekken onder de WCAG-grens opsomt. Wat er veranderd
+is, staat in de commentaren bij de wijzigingen zelf:
+
+- De oude namen (`--text`, `--muted`, `--glas`, `--tint-tekst` en de aliassen)
+  wijzen op `.setup` nu naar de inkt van het vel, zodat ze met de stand meedraaien.
+- `--glas` is daar doorzichtig: een kaart die al op een vel ligt hoefde dat vel
+  niet nog eens te tinten, en door dat stapelen haalde geen enkele inkt het nog.
+- `--vel-zacht` had in geen van beide standen ruimte -- 4.54 in het licht, 4.41
+  op een tegel in het donker. Nu #5d6470 en #959db0. **Dit is een afwijking van
+  de gemeten waarden uit `.impeccable/build/spec.json`**; als iemand die
+  afbeelding opnieuw als waarheid neemt, komt dit gebrek terug.
+- Het woord naast het vertragingscijfer draagt de kleur niet meer. Rood, groen en
+  blauw halen op vijftien pixels nergens 4.5 -- niet op hun eigen tint en ook niet
+  op het kale vel. Het cijfer staat op veertig en houdt de kleur.
+
+**Nog niet nagerekend** zijn de overige oude schermen (de volledige dienstkaart in
+het venster achter "Bekijk volledige dienst", de routekaart, de dialogen). De
+proef tekent nu alleen `RunningDuty` en `LiveDienst`; wie er meer bij zet, breidt
+`entry` in dat bestand uit.
+
 **Verder open:**
 
 - **In vrije modus zelf ritten aan je dienst toevoegen.** De gebruiker vroeg dit
