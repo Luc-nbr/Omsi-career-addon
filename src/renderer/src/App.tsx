@@ -1224,6 +1224,9 @@ export function App(): JSX.Element {
    * Dienst starten. Dit zet de situatie klaar in OMSI -- datum, tijd, bus bij de
    * halte en de dienstregeling -- en start daarna pas het spel. Er is geen aparte
    * knop meer voor het klaarzetten; dat hoort bij starten.
+   *
+   * Geeft terug of de dienst gestart is, zodat de herstartknop na een crash
+   * weet of hij terug moet komen.
    */
   const begin = useCallback(
     async (alBevestigd = false, herstart = false, meerijden = false) => {
@@ -1232,10 +1235,18 @@ export function App(): JSX.Element {
        * in één druk bevestigt en start, weet zelf dat het net gebeurd is; daarom
        * mag hij dat hier zeggen in plaats van te wachten tot de status volgt.
        */
-      if (!duty || (!confirmed && !alBevestigd)) return;
+      if (!duty || (!confirmed && !alBevestigd)) return false;
       setBusy(true);
       setNote(t(language, "start.preparing"));
       try {
+        /*
+         * Weigert `duty:begin` -- main logt de fout en gooit hem door -- dan is
+         * er niets gestart. Zonder deze vangst bleef de voet van het rijscherm
+         * op "Situatie wordt geschreven…" staan, ging de fout nergens heen, en
+         * was de herstartknop na een crash weg: die haalt de melding weg voordat
+         * hij `begin` aanroept. Alleen om deze aanroep, want wat erna komt hoort
+         * bij een start die wel gelukt is.
+         */
         const result = await window.career.beginDuty({
           duty,
           ibis,
@@ -1250,7 +1261,15 @@ export function App(): JSX.Element {
           lineNumber: ibis?.line || duty.legs[0]?.lineNumber || "",
           terminus: duty.legs[0]?.terminus ?? "",
           yard: ibis?.yard,
+        }).catch((cause: unknown) => {
+          setNote(
+            t(language, "start.failed", {
+              reason: cause instanceof Error ? cause.message : String(cause),
+            }),
+          );
+          return undefined;
         });
+        if (!result) return false;
         setStarted(true);
         /*
          * Wie zelf op START drukt, wil rijden. Dit zat eerst in de voorwaarde om
@@ -1299,6 +1318,7 @@ export function App(): JSX.Element {
         if (result.running && !result.meegereden)
           lines.push(t(language, "start.alreadyRunning"));
         setNote(lines.join(" "));
+        return true;
       } finally {
         setBusy(false);
       }
@@ -1415,6 +1435,22 @@ export function App(): JSX.Element {
    */
   const doeExamen = useCallback(
     async (line: LineSummary, basic: boolean) => {
+      /*
+       * Is er al een dienst aangenomen, dan geen nieuw examen maar verder met
+       * die dienst, zoals elke tegel in het hoofdmenu dan doet. Dit zette eerst
+       * het gevonden examen in `duties` en vroeg pas daarna main om het aan te
+       * nemen; main weigert dat zolang er een dienst in het profiel staat, en
+       * dan reed je een ander examen dan het profiel -- en `finishExam`
+       * beoordeelt het examen in het geheugen. Wie nog geen vergunning heeft,
+       * kan op deze stap alleen via deze knop verder: na een herstart van de
+       * app, of na terugklikken in de balk, sta je met een aangenomen examen
+       * weer hier.
+       */
+      if (confirmed) {
+        setExamenScherm(false);
+        setStap("bus");
+        return;
+      }
       setBusy(true);
       setError(undefined);
       setNote(undefined);
@@ -1443,7 +1479,7 @@ export function App(): JSX.Element {
         setBusy(false);
       }
     },
-    [mapFolder, language],
+    [mapFolder, language, confirmed],
   );
 
   /**
@@ -2329,9 +2365,19 @@ export function App(): JSX.Element {
               className="btn"
               disabled={busy}
               onClick={() => {
+                /*
+                 * Mislukt de herstart, dan komt de melding terug, en daarmee
+                 * deze knop. Hij verdween hier meteen, en na een geweigerde
+                 * `duty:begin` stond je op een rijscherm zonder enige manier om
+                 * het nog eens te proberen. Een nieuwere melding die intussen
+                 * binnenkwam gaat voor.
+                 */
+                const melding = omsiMelding;
                 setOmsiMelding(undefined);
                 void window.career.vergeetOmsiMelding();
-                void begin(true, true);
+                void begin(true, true).then((gelukt) => {
+                  if (!gelukt) setOmsiMelding((nu) => nu ?? melding);
+                });
               }}
             >
               {t(language, "omsi.herstart")}
@@ -2442,7 +2488,16 @@ export function App(): JSX.Element {
                 <StartingDialog
                   onDone={() => {
                     setStarting(false);
-                    setNote(t(language, "app.omsiReady"));
+                    /*
+                     * Alleen als de voet nog leeg is: `begin` zet er zelf al
+                     * neer wat er voor deze start geldt. Sinds de voet van dit
+                     * scherm `note` toont, stond na elke gewone START de hele
+                     * dienst lang "laad je kaart en bus, en stel de dienst in"
+                     * -- terwijl de app dat net allemaal had klaargezet -- en
+                     * verdween "klaarzetten lukte niet" of "je rijdt mee"
+                     * eronder nog voor je het had kunnen lezen.
+                     */
+                    setNote((nu) => nu ?? t(language, "app.omsiReady"));
                     if (duty)
                       void window.career
                         .setOverlay(duty, true, ibis)
@@ -3999,8 +4054,15 @@ export function App(): JSX.Element {
              * Het draaiende spel telt hier alleen mee waar zijn regel ook echt
              * verschijnt, dus niet bij vrij rijden. Stond het er los in, dan
              * gaf een draaiend OMSI bij vrij rijden een leeg rood kader.
+             *
+             * En alleen als het vel ook echt de busstap toont, net als bij het
+             * venster over het wagenpark hieronder. `stap` blijft de hele
+             * dienst op "bus" staan, en dit vel toont ook de instellingen, de
+             * chauffeurs en de staat van dienst: die kregen tijdens een lopende
+             * dienst de waarschuwing over volledig scherm of "OMSI draait al"
+             * erboven. `opzetStap` is alleen "bus" op `screen === "drive"`.
              */
-            stap === "bus" &&
+            opzetStap === "bus" &&
             ((omsiDraaitAl && mode !== "free") ||
               schermmodus === "volledig" ||
               plugin?.error ||
