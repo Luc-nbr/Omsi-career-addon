@@ -6,10 +6,10 @@
  * Laadt alleen de overlaypagina en voedt hem een verzonnen beeld. OMSI wordt niet
  * aangeraakt en er wordt niets geschreven behalve het plaatje.
  *
- * Wat er nagerekend wordt: dat er een cijferblok staat voordat je iets anders
- * ziet, dat een verkeerd nummer wordt afgewezen, dat het goede nummer naar de
- * pincode gaat, en dat je daarna de dienstopdracht krijgt en niet meteen de
- * IBIS-codes.
+ * Wat er nagerekend wordt: dat het cijferblok in de telefoon staat en niet in
+ * het dienstpaneel, dat de balk met apps er zolang niet is, dat een verkeerd
+ * nummer wordt afgewezen, dat het goede nummer naar de pincode gaat, en dat je
+ * daarna de dienstopdracht krijgt en niet meteen de IBIS-codes.
  */
 const { app, BrowserWindow } = require('electron')
 const { writeFileSync, mkdirSync, mkdtempSync } = require('node:fs')
@@ -86,12 +86,26 @@ app.whenReady().then(async () => {
 
   const eerst = await js(venster, `({
     cijferblok: document.querySelectorAll('.cijferblok button').length,
+    // Waar hij staat is het hele punt: in de telefoon, niet in het dienstpaneel.
+    inTelefoon: document.querySelectorAll('.panel-navigatie .cijferblok button').length,
+    inDienst: document.querySelectorAll('.panel-dienst .cijferblok button').length,
+    // Een telefoon waarop je nog niet aangemeld bent, heeft ook geen appbalk.
+    balk: document.querySelectorAll('.panel-navigatie .dock button').length,
+    kaart: Boolean(document.querySelector('.panel-navigatie .route-map')),
+    // En het dienstpaneel verwijst alleen maar naar de telefoon.
+    dienstpaneel: document.querySelector('.panel-dienst .panel-body')?.textContent.trim(),
     vakjes: document.querySelectorAll('.aanmeld-vakjes span').length,
     uitleg: document.querySelector('.aanmeld-uitleg')?.textContent.trim(),
     opdracht: Boolean(document.querySelector('.opdracht')),
     ibis: Boolean(document.querySelector('.ibis, .ibisstap'))
   })`)
   console.log('bij binnenkomst: ' + JSON.stringify(eerst))
+
+  if (schrijft) {
+    venster.showInactive()
+    await wait(400)
+    writeFileSync(join(outputDir, 'aanmelden.png'), (await venster.capturePage()).toPNG())
+  }
 
   const tik = (reeks) => js(venster, `(() => {
     for (const c of ${JSON.stringify(reeks)}.split('')) {
@@ -118,7 +132,7 @@ app.whenReady().then(async () => {
   await tik('7341')
   await wait(700)
   const naPin = await js(venster, `({
-    opdracht: Boolean(document.querySelector('.opdracht')),
+    opdracht: Boolean(document.querySelector('.panel-navigatie .opdracht')),
     regels: [...document.querySelectorAll('.opdracht-lijst dd')].map((d) => d.textContent.trim()),
     knop: document.querySelector('.opdracht-teken')?.textContent.trim(),
     cijferblok: document.querySelectorAll('.cijferblok button').length
@@ -132,7 +146,25 @@ app.whenReady().then(async () => {
     console.log('plaatje: opdracht.png')
   }
 
-  const goed = eerst.cijferblok === 12 && naFout.fout && naPin.opdracht
+  // En na het tekenen hoort de telefoon zijn balk en zijn apps terug te krijgen.
+  await js(venster, `document.querySelector('.opdracht-teken')?.click()`)
+  await wait(700)
+  const naTekenen = await js(venster, `({
+    balk: document.querySelectorAll('.panel-navigatie .dock button').length,
+    opdracht: Boolean(document.querySelector('.opdracht')),
+    dienstpaneel: document.querySelector('.panel-dienst .panel-body')?.textContent.trim().slice(0, 60)
+  })`)
+  console.log('na het tekenen: ' + JSON.stringify(naTekenen))
+
+  const goed =
+    eerst.inTelefoon === 12 &&
+    eerst.inDienst === 0 &&
+    eerst.balk === 0 &&
+    !eerst.kaart &&
+    naFout.fout &&
+    naPin.opdracht &&
+    naTekenen.balk > 0 &&
+    !naTekenen.opdracht
   console.log(goed ? 'de volgorde klopt' : 'DE VOLGORDE KLOPT NIET')
   app.exit(goed ? 0 : 1)
 })

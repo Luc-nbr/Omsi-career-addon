@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { ReactNode } from "react";
 import {
   useCallback,
   useEffect,
@@ -7,19 +7,19 @@ import {
   useState,
   type CSSProperties,
   type JSX,
-  type PointerEvent
-} from 'react'
-import { createRoot } from 'react-dom/client'
-import type { MapGeometry } from '../../core/geo'
-import type { IbisPlan } from '../../core/ibis'
-import { wisselgeld, type Kaartje, type Kaartset } from '../../shared/kaartjes'
-import type { LiveStatus } from '../../core/live'
-import type { Duty, DutyLeg } from '../../core/types'
-import type { CareerApi } from '../../shared/api'
-import { formatTime } from '../../shared/format'
-import { RouteCode } from './RouteCode'
-import { punctuality } from '../../shared/status'
-import { DEFAULT_LANGUAGE, loose, t, type Language } from '../../shared/i18n'
+  type PointerEvent,
+} from "react";
+import { createRoot } from "react-dom/client";
+import type { MapGeometry } from "../../core/geo";
+import type { IbisPlan } from "../../core/ibis";
+import { wisselgeld, type Kaartje, type Kaartset } from "../../shared/kaartjes";
+import type { LiveStatus } from "../../core/live";
+import type { Duty, DutyLeg } from "../../core/types";
+import type { CareerApi } from "../../shared/api";
+import { formatTime } from "../../shared/format";
+import { RouteCode } from "./RouteCode";
+import { punctuality } from "../../shared/status";
+import { DEFAULT_LANGUAGE, loose, t, type Language } from "../../shared/i18n";
 import {
   OPACITY_MIN,
   OVERLAY_RATES,
@@ -32,24 +32,24 @@ import {
   type OverlayLayout,
   type OverlayRate,
   type PanelId,
-  type PanelInfo
-} from '../../shared/overlay'
-import { RouteMap, type Manoeuvre } from './RouteMap'
+  type PanelInfo,
+} from "../../shared/overlay";
+import { RouteMap, type Manoeuvre } from "./RouteMap";
 /*
  * Dezelfde letter als het hoofdvenster. Manrope blijft erbij staan omdat delen
  * van de overlay hem nog noemen; wat de nieuwe wereld tekent gebruikt Hanken.
  */
-import '@fontsource/hanken-grotesk/400.css'
-import '@fontsource/hanken-grotesk/500.css'
-import '@fontsource/hanken-grotesk/700.css'
-import '@fontsource/hanken-grotesk/800.css'
-import './theme.css'
-import '@fontsource/manrope/400.css'
-import '@fontsource/manrope/500.css'
-import '@fontsource/manrope/600.css'
-import '@fontsource/manrope/700.css'
-import '@fontsource/manrope/800.css'
-import './overlay.css'
+import "@fontsource/hanken-grotesk/400.css";
+import "@fontsource/hanken-grotesk/500.css";
+import "@fontsource/hanken-grotesk/700.css";
+import "@fontsource/hanken-grotesk/800.css";
+import "./theme.css";
+import "@fontsource/manrope/400.css";
+import "@fontsource/manrope/500.css";
+import "@fontsource/manrope/600.css";
+import "@fontsource/manrope/700.css";
+import "@fontsource/manrope/800.css";
+import "./overlay.css";
 
 /**
  * Hoe groot het scherm is, in dezelfde punten als de indeling.
@@ -59,74 +59,79 @@ import './overlay.css'
  * Het scherm blijft even groot, wat het venster ook doet.
  */
 function screenSize(): { w: number; h: number } {
-  return { w: window.screen.width, h: window.screen.height }
+  return { w: window.screen.width, h: window.screen.height };
 }
 
 /** Een vak in schermpunten: waar iets staat en hoe groot het is. */
 interface Box {
-  x: number
-  y: number
-  w: number
-  h: number
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 /** Het kleinste vak waar alles in past, met wat lucht voor de schaduwranden. */
 function union(parts: Box[]): Box | undefined {
-  if (parts.length === 0) return undefined
-  const LUCHT = 12
-  const minX = Math.min(...parts.map((part) => part.x))
-  const minY = Math.min(...parts.map((part) => part.y))
-  const maxX = Math.max(...parts.map((part) => part.x + part.w))
-  const maxY = Math.max(...parts.map((part) => part.y + part.h))
+  if (parts.length === 0) return undefined;
+  const LUCHT = 12;
+  const minX = Math.min(...parts.map((part) => part.x));
+  const minY = Math.min(...parts.map((part) => part.y));
+  const maxX = Math.max(...parts.map((part) => part.x + part.w));
+  const maxY = Math.max(...parts.map((part) => part.y + part.h));
   return {
     x: Math.max(0, Math.floor(minX - LUCHT)),
     y: Math.max(0, Math.floor(minY - LUCHT)),
     w: Math.ceil(maxX - minX) + LUCHT * 2,
-    h: Math.ceil(maxY - minY) + LUCHT * 2
-  }
+    h: Math.ceil(maxY - minY) + LUCHT * 2,
+  };
 }
 
 /** Een punt verschil is geen verschil; anders blijft het venster trillen. */
 function same(a: Box | undefined, b: Box | undefined): boolean {
-  if (!a || !b) return a === b
+  if (!a || !b) return a === b;
   return (
     Math.abs(a.x - b.x) < 2 &&
     Math.abs(a.y - b.y) < 2 &&
     Math.abs(a.w - b.w) < 2 &&
     Math.abs(a.h - b.h) < 2
-  )
+  );
 }
 
 /** De apps op het toestel, in de volgorde van het balkje onderin. */
-type OverlayApp = 'kaart' | 'dienst' | 'pauze' | 'rit' | 'kaartjes'
+type OverlayApp = "kaart" | "dienst" | "pauze" | "rit" | "kaartjes";
 
 interface Frame {
-  status?: LiveStatus
-  duty?: Duty
+  status?: LiveStatus;
+  duty?: Duty;
   /** Lijn en routes die in de IBIS moeten; de overlay toont ze tot ze erin staan. */
-  ibis?: IbisPlan
+  ibis?: IbisPlan;
   /** De bus op de kaart van de dienst, uit het geheugen van OMSI. */
-  vehicle?: { x: number; y: number; heading: number; headingFromMotion: boolean }
+  vehicle?: {
+    x: number;
+    y: number;
+    heading: number;
+    headingFromMotion: boolean;
+  };
   /** Draait OMSI met onze plugin? */
-  connected: boolean
+  connected: boolean;
   /** OMSI staat open, maar de kaart laadt nog: de plugin geeft pas daarna iets door. */
-  laadt?: boolean
+  laadt?: boolean;
   /** De kaartsoorten van deze kaart, met hun prijzen; zie core/kaartjes.ts. */
-  kaartjes?: Kaartset
+  kaartjes?: Kaartset;
   /** Wie er rijdt, met zijn dienstgegevens om mee aan te melden. */
-  chauffeur?: { naam: string; personeelsnummer?: string; pincode?: string }
+  chauffeur?: { naam: string; personeelsnummer?: string; pincode?: string };
   /** In de bewerkstand neemt de overlay muisklikken aan. */
-  editing: boolean
+  editing: boolean;
 }
 
 declare global {
   interface Window {
     overlay: {
-      onFrame(handler: (frame: Frame) => void): void
+      onFrame(handler: (frame: Frame) => void): void;
       /** De sneltoets klapt het paneel een stand verder. */
-      onCycle(handler: () => void): void
-    }
-    career: CareerApi
+      onCycle(handler: () => void): void;
+    };
+    career: CareerApi;
   }
 }
 
@@ -140,40 +145,43 @@ declare global {
  * houden we de eerste kopie vast, en laat de kaart zijn rekenwerk staan.
  */
 function useStable<T>(value: T | undefined, key: string): T | undefined {
-  const held = useRef<{ key: string; value: T } | undefined>(undefined)
+  const held = useRef<{ key: string; value: T } | undefined>(undefined);
   if (value === undefined) {
-    held.current = undefined
-    return undefined
+    held.current = undefined;
+    return undefined;
   }
-  if (held.current?.key !== key) held.current = { key, value }
-  return held.current.value
+  if (held.current?.key !== key) held.current = { key, value };
+  return held.current.value;
 }
 
 /** Waaraan je een dienst herkent: welke ritten, in welke volgorde. */
 function dutyKeyOf(duty: Duty | undefined): string {
-  if (!duty) return ''
-  return `${duty.mapFolder}|${duty.legs.map((leg) => `${leg.tripFile}@${leg.departure}`).join(';')}`
+  if (!duty) return "";
+  return `${duty.mapFolder}|${duty.legs.map((leg) => `${leg.tripFile}@${leg.departure}`).join(";")}`;
 }
 
 function Overlay(): JSX.Element | null {
-  const [frame, setFrame] = useState<Frame>({ connected: false, editing: false })
+  const [frame, setFrame] = useState<Frame>({
+    connected: false,
+    editing: false,
+  });
   /*
    * De navigatie staat al staand en smal, als een telefoon in een houder op het
    * dashboard. Die vorm helemaal doortrekken: onderin een balkje waarmee je van
    * app wisselt, en de kaart is er daar een van. Wat je tijdens het rijden nodig
    * hebt staat op de kaart; de rest kijk je op als je stilstaat.
    */
-  const [app, setApp] = useState<OverlayApp>('kaart')
+  const [app, setApp] = useState<OverlayApp>("kaart");
   /** Wanneer de pauze begon, in speltijd. Leeg betekent: geen pauze bezig. */
-  const [pauzeVanaf, setPauzeVanaf] = useState<number>()
-  const [layout, setLayout] = useState<OverlayLayout>()
+  const [pauzeVanaf, setPauzeVanaf] = useState<number>();
+  const [layout, setLayout] = useState<OverlayLayout>();
   /*
    * Welke rit de chauffeur zelf heeft afgemeld met "IBIS ingevoerd". Per rit,
    * want elke rit heeft zijn eigen route: bij de volgende hoort de vraag opnieuw
    * gesteld te worden. Deze haak staat hier en niet verderop: onder de vroege
    * return zou React hem bij het eerste beeld overslaan en daarna verwachten.
    */
-  const [ibisReady, setIbisReady] = useState<string>()
+  const [ibisReady, setIbisReady] = useState<string>();
   /*
    * Aanmelden en de dienst aanvaarden, allebei in het geheugen van dit venster.
    *
@@ -182,20 +190,20 @@ function Overlay(): JSX.Element | null {
    * gaat tussendoor dicht en open, en je hoort niet halverwege opnieuw te
    * moeten tekenen voor dezelfde dienst.
    */
-  const [aangemeld, setAangemeld] = useState(false)
-  const [aanvaardVoor, setAanvaardVoor] = useState<string>()
-  const [geometry, setGeometry] = useState<MapGeometry>()
+  const [aangemeld, setAangemeld] = useState(false);
+  const [aanvaardVoor, setAanvaardVoor] = useState<string>();
+  const [geometry, setGeometry] = useState<MapGeometry>();
   /** Wat er aan bocht voor je ligt; de kaart rekent het uit, de balk tekent het. */
-  const [manoeuvre, setManoeuvre] = useState<Manoeuvre>()
+  const [manoeuvre, setManoeuvre] = useState<Manoeuvre>();
   /** Wat het laatste bord langs de route zei; niets als er geen bord stond. */
-  const [limit, setLimit] = useState<number>()
-  const [language, setLanguage] = useState<Language>(DEFAULT_LANGUAGE)
+  const [limit, setLimit] = useState<number>();
+  const [language, setLanguage] = useState<Language>(DEFAULT_LANGUAGE);
   /** Hoe vaak de overlay wordt bijgewerkt; in de sleepbalk te kiezen. */
-  const [rate, setRate] = useState<OverlayRate>('rustig')
+  const [rate, setRate] = useState<OverlayRate>("rustig");
   /** De elementen zelf, om hun hoogte te kunnen meten. */
-  const panelRefs = useRef<Partial<Record<PanelId, HTMLElement | null>>>({})
+  const panelRefs = useRef<Partial<Record<PanelId, HTMLElement | null>>>({});
   /** Het vak waar ze samen in passen; het venster wordt precies zo groot. */
-  const [box, setBox] = useState<Box>()
+  const [box, setBox] = useState<Box>();
   /*
    * Wordt er op dit moment gesleept of geschaald?
    *
@@ -207,67 +215,78 @@ function Overlay(): JSX.Element | null {
    * vasthield, schoof mee over het scherm. Met deze vlag schuift er niets
    * zolang het venster het hele scherm beslaat, net als in de bewerkstand.
    */
-  const [grijpend, setGrijpend] = useState(false)
+  const [grijpend, setGrijpend] = useState(false);
 
-  const { status, editing } = frame
+  const { status, editing } = frame;
   /*
    * De dienst en de codes veranderen zelden; ze komen alleen elke tel opnieuw
    * door de brug. Vasthouden scheelt de kaart een hoop nutteloos rekenwerk.
    */
-  const duty = useStable(frame.duty, dutyKeyOf(frame.duty))
-  const ibis = useStable(frame.ibis, frame.ibis ? `${frame.ibis.line}|${frame.ibis.tour}` : '')
+  const duty = useStable(frame.duty, dutyKeyOf(frame.duty));
+  const ibis = useStable(
+    frame.ibis,
+    frame.ibis ? `${frame.ibis.line}|${frame.ibis.tour}` : "",
+  );
 
   useEffect(() => {
-    window.overlay.onFrame(setFrame)
-    void window.career.overlayLayout().then(setLayout)
+    window.overlay.onFrame(setFrame);
+    void window.career.overlayLayout().then(setLayout);
     void window.career.settings().then((settings) => {
-      setLanguage(settings.language)
-      setRate(settings.overlayRate)
-    })
-  }, [])
+      setLanguage(settings.language);
+      setRate(settings.overlayRate);
+    });
+  }, []);
 
   useEffect(() => {
-    if (!duty?.mapFolder) return
-    let current = true
+    if (!duty?.mapFolder) return;
+    let current = true;
     void window.career.geometry(duty.mapFolder).then((found) => {
-      if (current) setGeometry(found)
-    })
+      if (current) setGeometry(found);
+    });
     return () => {
-      current = false
-    }
-  }, [duty?.mapFolder])
+      current = false;
+    };
+  }, [duty?.mapFolder]);
 
   // Slepen levert een stroom wijzigingen op; pas als de muis stilligt naar schijf.
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const store = useCallback((next: OverlayLayout) => {
-    clearTimeout(timer.current)
-    timer.current = setTimeout(() => void window.career.saveOverlayLayout(next), 400)
-    return next
-  }, [])
+    clearTimeout(timer.current);
+    timer.current = setTimeout(
+      () => void window.career.saveOverlayLayout(next),
+      400,
+    );
+    return next;
+  }, []);
 
   const move = useCallback(
-    (id: PanelId, patch: Partial<OverlayLayout['dienst']>) => {
-      setLayout((old) => (old ? store({ ...old, [id]: { ...old[id], ...patch } }) : old))
+    (id: PanelId, patch: Partial<OverlayLayout["dienst"]>) => {
+      setLayout((old) =>
+        old ? store({ ...old, [id]: { ...old[id], ...patch } }) : old,
+      );
     },
-    [store]
-  )
+    [store],
+  );
 
   const cycle = useCallback(() => {
-    setLayout((old) => (old ? store({ ...old, detail: nextDetail(old.detail) }) : old))
-  }, [store])
+    setLayout((old) =>
+      old ? store({ ...old, detail: nextDetail(old.detail) }) : old,
+    );
+  }, [store]);
 
-  useEffect(() => window.overlay.onCycle(cycle), [cycle])
+  useEffect(() => window.overlay.onCycle(cycle), [cycle]);
 
   /*
    * De kilometerstand op het moment dat de IBIS een halte verder springt. Wat de
    * bus daarna rijdt, legt hij af over de route vanaf die halte; zo rijdt de kaart
    * mee zonder dat OMSI een positie hoeft door te geven.
    */
-  const stopOdometer = useRef<{ key: string; km: number }>(undefined)
-  const passedNow = walkedStops(status)
-  const stopKey = status && passedNow !== undefined ? `${status.legIndex}|${passedNow}` : ''
+  const stopOdometer = useRef<{ key: string; km: number }>(undefined);
+  const passedNow = walkedStops(status);
+  const stopKey =
+    status && passedNow !== undefined ? `${status.legIndex}|${passedNow}` : "";
   if (status && stopKey && stopOdometer.current?.key !== stopKey) {
-    stopOdometer.current = { key: stopKey, km: status.odometerKm }
+    stopOdometer.current = { key: stopKey, km: status.odometerKm };
   }
 
   /*
@@ -277,20 +296,22 @@ function Overlay(): JSX.Element | null {
    * zonder dat OMSI de aandacht kwijtraakt.
    */
   useEffect(() => {
-    if (editing) return
-    let over = false
+    if (editing) return;
+    let over = false;
     const onMove = (event: MouseEvent): void => {
-      const hit = Boolean((event.target as Element | null)?.closest?.('[data-hit]'))
-      if (hit === over) return
-      over = hit
-      void window.career.overlayHit(hit)
-    }
-    window.addEventListener('mousemove', onMove)
+      const hit = Boolean(
+        (event.target as Element | null)?.closest?.("[data-hit]"),
+      );
+      if (hit === over) return;
+      over = hit;
+      void window.career.overlayHit(hit);
+    };
+    window.addEventListener("mousemove", onMove);
     return () => {
-      window.removeEventListener('mousemove', onMove)
-      if (over) void window.career.overlayHit(false)
-    }
-  }, [editing])
+      window.removeEventListener("mousemove", onMove);
+      if (over) void window.career.overlayHit(false);
+    };
+  }, [editing]);
 
   /*
    * Hoe groot moet het venster zijn?
@@ -305,79 +326,90 @@ function Overlay(): JSX.Element | null {
    * venster, en dan zou de ene meting de volgende uitlokken.
    */
   useLayoutEffect(() => {
-    if (!layout) return
+    if (!layout) return;
     const meet = (): void => {
-      const delen: Box[] = []
+      const delen: Box[] = [];
       for (const info of PANELS) {
-        const state = layout[info.id]
-        const element = panelRefs.current[info.id]
-        if (!state.visible || !element) continue
+        const state = layout[info.id];
+        const element = panelRefs.current[info.id];
+        if (!state.visible || !element) continue;
         delen.push({
           x: state.x,
           y: state.y,
           w: element.offsetWidth * state.scale,
-          h: element.offsetHeight * state.scale
-        })
+          h: element.offsetHeight * state.scale,
+        });
       }
       setBox((old) => {
-        const next = union(delen)
-        return same(old, next) ? old : next
-      })
+        const next = union(delen);
+        return same(old, next) ? old : next;
+      });
 
       /*
        * En wat er al buiten beeld stond, halen we terug. De overlay gebruikte
        * eerst het werkgebied in plaats van het hele scherm; een element dat
        * daardoor half over de rand hing, hoort weer helemaal zichtbaar te zijn.
        */
-      const room = screenSize()
+      const room = screenSize();
       for (const info of PANELS) {
-        const state = layout[info.id]
-        const element = panelRefs.current[info.id]
-        if (!state.visible || !element) continue
-        const x = clamp(state.x, 0, Math.max(0, room.w - element.offsetWidth * state.scale))
-        const y = clamp(state.y, 0, Math.max(0, room.h - element.offsetHeight * state.scale))
-        if (Math.abs(x - state.x) > 1 || Math.abs(y - state.y) > 1) move(info.id, { x, y })
+        const state = layout[info.id];
+        const element = panelRefs.current[info.id];
+        if (!state.visible || !element) continue;
+        const x = clamp(
+          state.x,
+          0,
+          Math.max(0, room.w - element.offsetWidth * state.scale),
+        );
+        const y = clamp(
+          state.y,
+          0,
+          Math.max(0, room.h - element.offsetHeight * state.scale),
+        );
+        if (Math.abs(x - state.x) > 1 || Math.abs(y - state.y) > 1)
+          move(info.id, { x, y });
       }
-    }
-    meet()
+    };
+    meet();
 
     // De inhoud groeit en krimpt vanzelf: een waarschuwing erbij, een stand
     // verder. Een waarnemer hoort dat, een lijst met afhankelijkheden niet.
-    const watcher = new ResizeObserver(meet)
+    const watcher = new ResizeObserver(meet);
     for (const info of PANELS) {
-      const element = panelRefs.current[info.id]
-      if (element) watcher.observe(element)
+      const element = panelRefs.current[info.id];
+      if (element) watcher.observe(element);
     }
-    return () => watcher.disconnect()
-  }, [layout])
+    return () => watcher.disconnect();
+  }, [layout]);
 
   /*
    * In de bewerkstand beslaat het venster het hele scherm, anders kun je een
    * element nergens heen slepen. Daarbuiten krimpt het naar zijn inhoud.
    */
-  const boxKey = box ? `${box.x}|${box.y}|${box.w}|${box.h}` : ''
+  const boxKey = box ? `${box.x}|${box.y}|${box.w}|${box.h}` : "";
   useEffect(() => {
-    void window.career.overlayBounds(editing ? undefined : box)
-  }, [boxKey, editing])
+    void window.career.overlayBounds(editing ? undefined : box);
+  }, [boxKey, editing]);
 
-  if (!layout) return null
+  if (!layout) return null;
 
-  const leg = status?.leg
-  const passed = passedNow
+  const leg = status?.leg;
+  const passed = passedNow;
   /*
    * Kan de app in OMSI kijken, dan telt wat daar in het dienstregelingsmenu is
    * gekozen: pas dan is duidelijk welke rit gereden wordt. Anders valt hij terug
    * op de IBIS, die zich vult zodra lijn en route zijn ingetoetst.
    */
-  const readable = Boolean(status?.omsiReadable)
-  const scheduled = Boolean(status?.schedule?.matchesDuty)
-  const ibisLoaded = readable ? scheduled : Boolean(status?.reportsStops) && passed !== undefined
+  const readable = Boolean(status?.omsiReadable);
+  const scheduled = Boolean(status?.schedule?.matchesDuty);
+  const ibisLoaded = readable
+    ? scheduled
+    : Boolean(status?.reportsStops) && passed !== undefined;
   /*
    * Een bus zonder IBIS meldt nooit een halte; die chauffeur heeft niets aan
    * "toets de route in". Hij krijgt de vraag om zijn dienst in OMSI te kiezen,
    * want daar komt het antwoord dan vandaan.
    */
-  const ibisCapable = status ? status.offersStops : true
+  const ibisCapable = status ? status.offersStops : true;
 
   /*
    * De rit waar de instructies over gaan. Dat rekent `describeLive` uit: wat in
@@ -385,18 +417,25 @@ function Overlay(): JSX.Element | null {
    * aangekomen. Hier stond diezelfde som nog eens; twee plekken met dezelfde
    * regel lopen uit elkaar zodra er een verandert.
    */
-  const upcomingIndex = status?.legIndex ?? 0
-  const upcoming = duty?.legs[upcomingIndex]
+  const upcomingIndex = status?.legIndex ?? 0;
+  const upcoming = duty?.legs[upcomingIndex];
   /*
    * Elke rit zijn eigen afmelding. De sleutel bevat het ritbestand, zodat een
    * dienst die dezelfde rit later nog eens rijdt opnieuw om de IBIS vraagt.
    */
-  const tripKey = upcoming ? `${upcomingIndex}|${upcoming.tripFile}` : ''
+  const tripKey = upcoming ? `${upcomingIndex}|${upcoming.tripFile}` : "";
   /*
    * Welke dienst dit is. Niet de rit maar de hele dienst: je tekent er één keer
    * voor en niet bij elke rit opnieuw.
    */
-  const dienstSleutel = duty ? `${duty.mapFolder}|${duty.tourNumber}|${duty.start}` : ''
+  const dienstSleutel = duty
+    ? `${duty.mapFolder}|${duty.tourNumber}|${duty.start}`
+    : "";
+  /*
+   * Klaar om te rijden: aangemeld, en getekend voor deze dienst. Zonder dienst
+   * -- vrij rijden -- is aanmelden genoeg; er valt dan niets te aanvaarden.
+   */
+  const getekend = aangemeld && (!duty || aanvaardVoor === dienstSleutel);
 
   /*
    * Staat het al op de IBIS?
@@ -412,90 +451,96 @@ function Overlay(): JSX.Element | null {
    */
   const ibisTyped = Boolean(
     status &&
+    /*
+     * Het sterkste bewijs komt van OMSI zelf: staat de goede rit in het
+     * dienstregelingsmenu, dan weet het spel welke rit er loopt en hoeven wij
+     * het niemand meer te vragen. Dat werkt bij elke bus.
+     */
+    (status.fromTimetable ||
       /*
-       * Het sterkste bewijs komt van OMSI zelf: staat de goede rit in het
-       * dienstregelingsmenu, dan weet het spel welke rit er loopt en hoeven wij
-       * het niemand meer te vragen. Dat werkt bij elke bus.
+       * En anders wat er op de film staat. Klassieke bussen geven dat door;
+       * moderne bussen met hun eigen scherm laten die velden leeg, ook als de
+       * chauffeur alles netjes heeft ingevoerd -- vandaar de regel hierboven.
        */
-      (status.fromTimetable ||
-        /*
-         * En anders wat er op de film staat. Klassieke bussen geven dat door;
-         * moderne bussen met hun eigen scherm laten die velden leeg, ook als de
-         * chauffeur alles netjes heeft ingevoerd -- vandaar de regel hierboven.
-         */
-        (upcoming &&
-          status.ibisLine &&
-          status.ibisTerminus &&
-          status.ibisLine.replace(/\s+/g, '') === upcoming.lineNumber.replace(/\s+/g, '')))
-  )
+      (upcoming &&
+        status.ibisLine &&
+        status.ibisTerminus &&
+        status.ibisLine.replace(/\s+/g, "") ===
+          upcoming.lineNumber.replace(/\s+/g, ""))),
+  );
 
   /** De rit loopt zodra de IBIS klopt -- of zodra de chauffeur zelf zegt dat het zo is. */
-  const started = ibisLoaded && (!ibisCapable || ibisTyped || ibisReady === tripKey)
+  const started =
+    ibisLoaded && (!ibisCapable || ibisTyped || ibisReady === tripKey);
   // Alleen schatten waar de bus is als OMSI zijn plek niet laat lezen.
   const bus =
-    !frame.vehicle && status && ibisLoaded && passed !== undefined && stopOdometer.current?.key === stopKey
+    !frame.vehicle &&
+    status &&
+    ibisLoaded &&
+    passed !== undefined &&
+    stopOdometer.current?.key === stopKey
       ? {
           legIndex: status.legIndex,
           nextStop: passed,
-          metresSinceStop: Math.max(0, (status.odometerKm - stopOdometer.current.km) * 1000)
+          metresSinceStop: Math.max(
+            0,
+            (status.odometerKm - stopOdometer.current.km) * 1000,
+          ),
         }
-      : undefined
+      : undefined;
 
   /*
    * De elementen staan op hun plek op het scherm, maar het venster begint niet
    * meer linksboven: het ligt om de inhoud heen. Dus schuiven we alles op met de
    * hoek van dat vak, en blijft alles staan waar de chauffeur het heeft neergezet.
    */
-  const origin = editing || grijpend || !box ? { x: 0, y: 0 } : box
+  const origin = editing || grijpend || !box ? { x: 0, y: 0 } : box;
 
   return (
     <div
-      className={editing ? 'stage editing' : 'stage'}
-      style={origin.x || origin.y ? { transform: `translate(${-origin.x}px, ${-origin.y}px)` } : undefined}
+      className={editing ? "stage editing" : "stage"}
+      style={
+        origin.x || origin.y
+          ? { transform: `translate(${-origin.x}px, ${-origin.y}px)` }
+          : undefined
+      }
     >
       {layout.dienst.visible && (
         <Panel
           info={PANELS[0]}
-          title={t(language, 'ovl.panelDuty')}
+          title={t(language, "ovl.panelDuty")}
           state={layout.dienst}
           editing={editing}
           language={language}
           innerRef={(element) => {
-            panelRefs.current.dienst = element
+            panelRefs.current.dienst = element;
           }}
           onGrab={setGrijpend}
-          onChange={(patch) => move('dienst', patch)}
+          onChange={(patch) => move("dienst", patch)}
         >
           {/*
-            Het scherm vult zich pas als het spel zegt dat de dienst loopt: de
-            dienstregeling gekozen in OMSI, of anders een IBIS die haltes meldt.
-            Tot die tijd staat er wat er te doen valt. Een dienst die al ingevuld
-            lijkt terwijl OMSI nog niets weet, geeft cijfers die nergens op slaan
-            -- de bus stond gisteren nog stil en de klok loopt gewoon door.
+            Zolang je op de telefoon niet getekend hebt, staat hier niets over de
+            dienst. Aanmelden gebeurt daar -- dat is het apparaat dat je in je
+            hand hebt -- en dit paneel hoort niet vooruit te lopen op wat daar nog
+            moet gebeuren; de codes voor de IBIS staan er dus niet al in voordat
+            je weet of je ze nodig hebt.
+
+            Daarna vult het scherm zich pas als het spel zegt dat de dienst loopt:
+            de dienstregeling gekozen in OMSI, of anders een IBIS die haltes
+            meldt. Een dienst die al ingevuld lijkt terwijl OMSI nog niets weet,
+            geeft cijfers die nergens op slaan -- de bus stond gisteren nog stil
+            en de klok loopt gewoon door.
           */}
-          {/*
-            Eerst aanmelden, dan de dienst aanvaarden, en pas daarna waar het
-            over gaat: welke omloop je in OMSI moet kiezen en welke codes in de
-            IBIS. Dat is de volgorde waarin een chauffeur zijn dienst begint, en
-            het scheelt bovendien dat de codes al in beeld staan voordat je weet
-            of je ze nodig hebt.
-          */}
-          {!aangemeld ? (
-            <AanmeldPaneel
-              chauffeur={frame.chauffeur}
-              language={language}
-              onAangemeld={() => setAangemeld(true)}
-            />
-          ) : duty && aanvaardVoor !== dienstSleutel ? (
-            <DienstOpdracht
-              duty={duty}
-              chauffeur={frame.chauffeur}
-              language={language}
-              onAanvaard={() => setAanvaardVoor(dienstSleutel)}
-            />
+          {!getekend ? (
+            <p className="empty">{t(language, "ovl.signonFirst")}</p>
           ) : duty && !ibisLoaded ? (
             ibisCapable && !readable ? (
-              <IbisPanel duty={duty} ibis={ibis} status={status} language={language} />
+              <IbisPanel
+                duty={duty}
+                ibis={ibis}
+                status={status}
+                language={language}
+              />
             ) : (
               <SelectPanel
                 duty={duty}
@@ -515,7 +560,12 @@ function Overlay(): JSX.Element | null {
               onDone={() => setIbisReady(tripKey)}
             />
           ) : (
-            <DutyPanel frame={frame} detail={layout.detail} language={language} onCycle={cycle} />
+            <DutyPanel
+              frame={frame}
+              detail={layout.detail}
+              language={language}
+              onCycle={cycle}
+            />
           )}
         </Panel>
       )}
@@ -523,103 +573,155 @@ function Overlay(): JSX.Element | null {
       {layout.navigatie.visible && (
         <Panel
           info={PANELS[1]}
-          title={t(language, 'ovl.panelNav')}
+          title={t(language, "ovl.panelNav")}
           state={layout.navigatie}
           editing={editing}
           language={language}
           innerRef={(element) => {
-            panelRefs.current.navigatie = element
+            panelRefs.current.navigatie = element;
           }}
           onGrab={setGrijpend}
-          onChange={(patch) => move('navigatie', patch)}
+          onChange={(patch) => move("navigatie", patch)}
         >
-          {app !== 'kaart' ? (
-            <div className="app-scherm">
-              {app === 'dienst' ? (
-                <DienstApp duty={duty} status={status} language={language} />
-              ) : app === 'pauze' ? (
-                <PauzeApp
-                  duty={duty}
-                  status={status}
-                  language={language}
-                  vanaf={pauzeVanaf}
-                  onVanaf={setPauzeVanaf}
-                />
-              ) : app === 'kaartjes' ? (
-                <KaartjesApp set={frame?.kaartjes} language={language} />
-              ) : (
-                <RitApp status={status} language={language} />
-              )}
-            </div>
-          ) : duty && geometry ? (
-            <div className="nav-wrap">
-              <NavBar
-                status={status}
-                leg={leg}
-                passed={passed}
-                manoeuvre={manoeuvre}
-                language={language}
-              />
-              <RouteMap
+          {/*
+            De telefoon is waar je je aanmeldt en waar je tekent voor je dienst.
+            Tot dat gebeurd is staat er verder niets op: geen kaart, geen apps en
+            geen balk onderin. Een telefoon waarop je nog niet aangemeld bent laat
+            je ook geen dienstregeling zien.
+          */}
+          {!aangemeld ? (
+            <AanmeldPaneel
+              chauffeur={frame.chauffeur}
+              language={language}
+              onAangemeld={() => setAangemeld(true)}
+            />
+          ) : duty && aanvaardVoor !== dienstSleutel ? (
+            <DienstOpdracht
               duty={duty}
-              geometry={geometry}
-              nextStopId={leg && passed !== undefined ? leg.stopIds[Math.min(passed, leg.stopIds.length - 1)] : undefined}
-              activeLeg={status?.legIndex}
-              pixelScale={layout.navigatie.scale}
-              routeMode={ibisLoaded && started ? 'active' : 'none'}
-              bus={bus}
-              vehicle={frame.vehicle && status ? { ...frame.vehicle, speedKmh: status.speedKmh } : undefined}
-              // Nog niets gekozen en geen bus te zien: de eerste halte van de rit in beeld.
-              focusStopId={started || frame.vehicle ? undefined : upcoming?.stopIds[0]}
-              texts={{
-                /*
-                  Waar de kaart op wacht verschilt per stap: eerst de dienst in
-                  OMSI, daarna de IBIS. "Kies je dienst" blijven zeggen terwijl
-                  die al gekozen is, stuurt de chauffeur het verkeerde menu in.
-                  Zolang OMSI niets doorgeeft is er nog geen stap: dan zegt de
-                  kaart of OMSI er al is en de kaart laadt, of dat het er nog
-                  niet is.
-                */
-                waiting: t(
-                  language,
-                  !frame.connected
-                    ? frame.laadt
-                      ? 'ovl.loading'
-                      : 'ovl.waiting'
-                    : ibisLoaded
-                      ? 'ovl.mapIbis'
-                      : readable
-                        ? 'ovl.mapSelect'
-                        : 'ovl.mapWaiting'
-                ),
-                busNote: t(language, 'ovl.busHere'),
-                centre: t(language, 'ovl.centre')
-              }}
-                variant="panel"
-                onManoeuvre={setManoeuvre}
-                onSpeedLimit={setLimit}
-              />
-              {status && (
-                <div className="nav-speed">
-                  <b className={limit !== undefined && status.speedKmh > limit + 3 ? 'tehard' : undefined}>
-                    {Math.max(0, Math.round(status.speedKmh))}
-                  </b>
-                  <span>km/u</span>
-                  {/*
-                    Het bord zoals het langs de weg staat: wit met een rode ring.
-                    Alleen als er eentje voorbij is gekomen -- verzinnen wat er
-                    mag is erger dan niets zeggen.
-                  */}
-                  {limit !== undefined && <i className="nav-limit">{limit}</i>}
-                </div>
-              )}
-              <NavFoot leg={leg} passed={passed} language={language} />
-            </div>
+              chauffeur={frame.chauffeur}
+              language={language}
+              onAanvaard={() => setAanvaardVoor(dienstSleutel)}
+            />
           ) : (
-            <div className="empty">{t(language, 'ovl.mapLoading')}</div>
-          )}
+            <>
+              {app !== "kaart" ? (
+                <div className="app-scherm">
+                  {app === "dienst" ? (
+                    <DienstApp
+                      duty={duty}
+                      status={status}
+                      language={language}
+                    />
+                  ) : app === "pauze" ? (
+                    <PauzeApp
+                      duty={duty}
+                      status={status}
+                      language={language}
+                      vanaf={pauzeVanaf}
+                      onVanaf={setPauzeVanaf}
+                    />
+                  ) : app === "kaartjes" ? (
+                    <KaartjesApp set={frame?.kaartjes} language={language} />
+                  ) : (
+                    <RitApp status={status} language={language} />
+                  )}
+                </div>
+              ) : duty && geometry ? (
+                <div className="nav-wrap">
+                  <NavBar
+                    status={status}
+                    leg={leg}
+                    passed={passed}
+                    manoeuvre={manoeuvre}
+                    language={language}
+                  />
+                  <RouteMap
+                    duty={duty}
+                    geometry={geometry}
+                    nextStopId={
+                      leg && passed !== undefined
+                        ? leg.stopIds[Math.min(passed, leg.stopIds.length - 1)]
+                        : undefined
+                    }
+                    activeLeg={status?.legIndex}
+                    pixelScale={layout.navigatie.scale}
+                    routeMode={ibisLoaded && started ? "active" : "none"}
+                    bus={bus}
+                    vehicle={
+                      frame.vehicle && status
+                        ? { ...frame.vehicle, speedKmh: status.speedKmh }
+                        : undefined
+                    }
+                    // Nog niets gekozen en geen bus te zien: de eerste halte van de rit in beeld.
+                    focusStopId={
+                      started || frame.vehicle
+                        ? undefined
+                        : upcoming?.stopIds[0]
+                    }
+                    texts={{
+                      /*
+                    Waar de kaart op wacht verschilt per stap: eerst de dienst in
+                    OMSI, daarna de IBIS. "Kies je dienst" blijven zeggen terwijl
+                    die al gekozen is, stuurt de chauffeur het verkeerde menu in.
+                    Zolang OMSI niets doorgeeft is er nog geen stap: dan zegt de
+                    kaart of OMSI er al is en de kaart laadt, of dat het er nog
+                    niet is.
+                  */
+                      waiting: t(
+                        language,
+                        !frame.connected
+                          ? frame.laadt
+                            ? "ovl.loading"
+                            : "ovl.waiting"
+                          : ibisLoaded
+                            ? "ovl.mapIbis"
+                            : readable
+                              ? "ovl.mapSelect"
+                              : "ovl.mapWaiting",
+                      ),
+                      busNote: t(language, "ovl.busHere"),
+                      centre: t(language, "ovl.centre"),
+                    }}
+                    variant="panel"
+                    onManoeuvre={setManoeuvre}
+                    onSpeedLimit={setLimit}
+                  />
+                  {status && (
+                    <div className="nav-speed">
+                      <b
+                        className={
+                          limit !== undefined && status.speedKmh > limit + 3
+                            ? "tehard"
+                            : undefined
+                        }
+                      >
+                        {Math.max(0, Math.round(status.speedKmh))}
+                      </b>
+                      <span>km/u</span>
+                      {/*
+                      Het bord zoals het langs de weg staat: wit met een rode ring.
+                      Alleen als er eentje voorbij is gekomen -- verzinnen wat er
+                      mag is erger dan niets zeggen.
+                    */}
+                      {limit !== undefined && (
+                        <i className="nav-limit">{limit}</i>
+                      )}
+                    </div>
+                  )}
+                  <NavFoot leg={leg} passed={passed} language={language} />
+                </div>
+              ) : (
+                <div className="empty">{t(language, "ovl.mapLoading")}</div>
+              )}
 
-          <Dock app={app} onApp={setApp} language={language} pauze={pauzeVanaf !== undefined} />
+              <Dock
+                app={app}
+                onApp={setApp}
+                language={language}
+                pauze={pauzeVanaf !== undefined}
+              />
+            </>
+          )}
         </Panel>
       )}
 
@@ -629,15 +731,17 @@ function Overlay(): JSX.Element | null {
           language={language}
           rate={rate}
           onRate={(next) => {
-            setRate(next)
-            void window.career.saveSettings({ overlayRate: next })
+            setRate(next);
+            void window.career.saveSettings({ overlayRate: next });
           }}
           onShow={(id) => move(id, { visible: true })}
-          onReset={() => void window.career.resetOverlayLayout().then(setLayout)}
+          onReset={() =>
+            void window.career.resetOverlayLayout().then(setLayout)
+          }
         />
       )}
     </div>
-  )
+  );
 }
 
 /**
@@ -656,30 +760,31 @@ function NavBar({
   leg,
   passed,
   manoeuvre,
-  language
+  language,
 }: {
-  status?: LiveStatus
-  leg?: DutyLeg
-  passed?: number
-  manoeuvre?: Manoeuvre
-  language: Language
+  status?: LiveStatus;
+  leg?: DutyLeg;
+  passed?: number;
+  manoeuvre?: Manoeuvre;
+  language: Language;
 }): JSX.Element | null {
-  if (!status || !leg || passed === undefined) return null
-  const at = Math.min(passed, leg.stops.length - 1)
-  const naam = leg.stops[at]
-  if (!naam) return null
+  if (!status || !leg || passed === undefined) return null;
+  const at = Math.min(passed, leg.stops.length - 1);
+  const naam = leg.stops[at];
+  if (!naam) return null;
 
-  const meters = status.metresToStop
+  const meters = status.metresToStop;
   const afstand =
     meters === undefined
       ? undefined
       : meters >= 1000
-        ? `${(meters / 1000).toFixed(1).replace('.', ',')} km`
-        : `${meters} m`
+        ? `${(meters / 1000).toFixed(1).replace(".", ",")} km`
+        : `${meters} m`;
 
-  const stand = punctuality(status.deltaSeconds)
-  const klasse = stand === 'laat' ? 'late' : stand === 'vroeg' ? 'early' : 'ontime'
-  const wanneer = leg.stopTimes[at]
+  const stand = punctuality(status.deltaSeconds);
+  const klasse =
+    stand === "laat" ? "late" : stand === "vroeg" ? "early" : "ontime";
+  const wanneer = leg.stopTimes[at];
 
   return (
     <div className="navbar">
@@ -697,13 +802,13 @@ function NavBar({
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        {manoeuvre?.kind === 'rechts' ? (
+        {manoeuvre?.kind === "rechts" ? (
           <>
             <path d="M12 21V9" />
             <path d="M12 9c0-2.6 2.1-4.7 4.7-4.7H19" />
             <path d="M16.5 1.6 19.3 4.4 16.5 7.2" />
           </>
-        ) : manoeuvre?.kind === 'links' ? (
+        ) : manoeuvre?.kind === "links" ? (
           <>
             <path d="M12 21V9" />
             <path d="M12 9c0-2.6-2.1-4.7-4.7-4.7H5" />
@@ -721,37 +826,41 @@ function NavBar({
         <span>{naam}</span>
       </div>
       <div className="navbar-when">
-        {wanneer !== undefined && <b className={klasse}>{formatTime(wanneer)}</b>}
+        {wanneer !== undefined && (
+          <b className={klasse}>{formatTime(wanneer)}</b>
+        )}
         <span>
-          {t(language, 'ovl.stopOf', { at: at + 1, total: leg.stops.length })}
+          {t(language, "ovl.stopOf", { at: at + 1, total: leg.stops.length })}
         </span>
       </div>
     </div>
-  )
+  );
 }
 
 /** En wat er daarna komt; één regel, want verder kijkt niemand tijdens het rijden. */
 function NavFoot({
   leg,
   passed,
-  language
+  language,
 }: {
-  leg?: DutyLeg
-  passed?: number
-  language: Language
+  leg?: DutyLeg;
+  passed?: number;
+  language: Language;
 }): JSX.Element | null {
-  if (!leg || passed === undefined) return null
-  const next = Math.min(passed + 1, leg.stops.length - 1)
-  if (next <= passed || !leg.stops[next]) return null
+  if (!leg || passed === undefined) return null;
+  const next = Math.min(passed + 1, leg.stops.length - 1);
+  if (next <= passed || !leg.stops[next]) return null;
   return (
     <div className="navfoot">
       <span className="navfoot-dot" />
       <span className="navfoot-name">
-        {t(language, 'ovl.thenStop', { stop: leg.stops[next] })}
+        {t(language, "ovl.thenStop", { stop: leg.stops[next] })}
       </span>
-      <span className="navfoot-time">{formatTime(leg.stopTimes[next] ?? leg.arrival)}</span>
+      <span className="navfoot-time">
+        {formatTime(leg.stopTimes[next] ?? leg.arrival)}
+      </span>
     </div>
-  )
+  );
 }
 
 /** Een verplaatsbaar element. Slepen en verschalen kan in de bewerkstand. */
@@ -764,92 +873,111 @@ function Panel({
   innerRef,
   onGrab,
   onChange,
-  children
+  children,
 }: {
-  info: PanelInfo
-  title: string
-  state: OverlayLayout['dienst']
-  editing: boolean
-  language: Language
+  info: PanelInfo;
+  title: string;
+  state: OverlayLayout["dienst"];
+  editing: boolean;
+  language: Language;
   /** Het element zelf, zodat de overlay kan meten hoe hoog het geworden is. */
-  innerRef?(element: HTMLElement | null): void
+  innerRef?(element: HTMLElement | null): void;
   /** Meldt het begin en het eind van slepen of schalen; zie `grijpend`. */
-  onGrab?(bezig: boolean): void
-  onChange(patch: Partial<OverlayLayout['dienst']>): void
+  onGrab?(bezig: boolean): void;
+  onChange(patch: Partial<OverlayLayout["dienst"]>): void;
   /* Sinds er nog maar één element is, draagt het paneel meer dan één blok. */
-  children: ReactNode
+  children: ReactNode;
 }): JSX.Element {
-  const drag = useRef<{ x: number; y: number; ox: number; oy: number }>(undefined)
-  const size = useRef<{ x: number; y: number; w: number; h: number }>(undefined)
+  const drag = useRef<{ x: number; y: number; ox: number; oy: number }>(
+    undefined,
+  );
+  const size = useRef<{ x: number; y: number; w: number; h: number }>(
+    undefined,
+  );
   /** Het element zelf: de overlay meet er de hoogte aan, het slepen de grens. */
-  const self = useRef<HTMLElement | null>(null)
+  const self = useRef<HTMLElement | null>(null);
   const hold = (element: HTMLElement | null): void => {
-    self.current = element
-    innerRef?.(element)
-  }
+    self.current = element;
+    innerRef?.(element);
+  };
 
   const startDrag = (event: PointerEvent<HTMLElement>): void => {
-    event.currentTarget.setPointerCapture(event.pointerId)
-    drag.current = { x: event.clientX, y: event.clientY, ox: state.x, oy: state.y }
+    event.currentTarget.setPointerCapture(event.pointerId);
+    drag.current = {
+      x: event.clientX,
+      y: event.clientY,
+      ox: state.x,
+      oy: state.y,
+    };
     // Het venster even zo groot als het scherm, anders stopt het slepen bij de eigen rand.
     if (!editing) {
-      void window.career.overlayGrab(true)
-      onGrab?.(true)
+      void window.career.overlayGrab(true);
+      onGrab?.(true);
     }
-  }
+  };
 
   const startSize = (event: PointerEvent<HTMLElement>): void => {
-    event.stopPropagation()
-    event.currentTarget.setPointerCapture(event.pointerId)
-    size.current = { x: event.clientX, y: event.clientY, w: state.w, h: state.h }
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    size.current = {
+      x: event.clientX,
+      y: event.clientY,
+      w: state.w,
+      h: state.h,
+    };
     if (!editing) {
-      void window.career.overlayGrab(true)
-      onGrab?.(true)
+      void window.career.overlayGrab(true);
+      onGrab?.(true);
     }
-  }
+  };
 
   /** Een stap groter of kleiner, inhoud en al. */
   const rescale = (step: number): void =>
     onChange({
-      scale: Math.round(Math.min(SCALE_MAX, Math.max(SCALE_MIN, state.scale + step)) * 100) / 100
-    })
+      scale:
+        Math.round(
+          Math.min(SCALE_MAX, Math.max(SCALE_MIN, state.scale + step)) * 100,
+        ) / 100,
+    });
 
   const onMove = (event: PointerEvent<HTMLElement>): void => {
     if (drag.current) {
-      const { x, y, ox, oy } = drag.current
+      const { x, y, ox, oy } = drag.current;
       /*
        * Helemaal in beeld blijven. Op zijn plek houden gaat over wat je ziet,
        * dus over de vergrote maat -- en dan over het hele element, niet alleen
        * over zijn linkerbovenhoek: een navigatie die voor driekwart buiten beeld
        * hangt, valt niet meer af te lezen.
        */
-      const room = screenSize()
-      const wide = (self.current?.offsetWidth ?? state.w) * state.scale
-      const tall = (self.current?.offsetHeight ?? state.h) * state.scale
+      const room = screenSize();
+      const wide = (self.current?.offsetWidth ?? state.w) * state.scale;
+      const tall = (self.current?.offsetHeight ?? state.h) * state.scale;
       onChange({
         x: clamp(ox + event.clientX - x, 0, Math.max(0, room.w - wide)),
-        y: clamp(oy + event.clientY - y, 0, Math.max(0, room.h - tall))
-      })
+        y: clamp(oy + event.clientY - y, 0, Math.max(0, room.h - tall)),
+      });
     } else if (size.current) {
-      const { x, y, w, h } = size.current
+      const { x, y, w, h } = size.current;
       // Het element is vergroot, dus een muisstap van tien punten is er minder.
       onChange({
         w: Math.max(info.minW, w + (event.clientX - x) / state.scale),
-        h: info.autoHeight ? state.h : Math.max(info.minH, h + (event.clientY - y) / state.scale)
-      })
+        h: info.autoHeight
+          ? state.h
+          : Math.max(info.minH, h + (event.clientY - y) / state.scale),
+      });
     }
-  }
+  };
 
   const stop = (): void => {
-    const bezig = Boolean(drag.current || size.current)
-    drag.current = undefined
-    size.current = undefined
+    const bezig = Boolean(drag.current || size.current);
+    drag.current = undefined;
+    size.current = undefined;
     // Losgelaten: het venster krimpt weer om de overlay heen.
     if (bezig && !editing) {
-      void window.career.overlayGrab(false)
-      onGrab?.(false)
+      void window.career.overlayGrab(false);
+      onGrab?.(false);
     }
-  }
+  };
 
   return (
     <section
@@ -864,10 +992,10 @@ function Panel({
           // Schalen bij de linkerbovenhoek: dan blijft het element staan waar je
           // het hebt neergezet en groeit het naar rechtsonder weg.
           transform: state.scale === 1 ? undefined : `scale(${state.scale})`,
-          transformOrigin: 'top left',
+          transformOrigin: "top left",
           // Eigen eigenschap: de stylesheet rekent er de dichtheid van de
           // achtergrond, de randen en de inhoud mee uit.
-          '--fade': state.opacity
+          "--fade": state.opacity,
         } as CSSProperties
       }
       onPointerMove={onMove}
@@ -886,8 +1014,8 @@ function Panel({
         <button
           type="button"
           className="panel-scale"
-          title={t(language, 'ovl.smaller')}
-          aria-label={t(language, 'ovl.smaller')}
+          title={t(language, "ovl.smaller")}
+          aria-label={t(language, "ovl.smaller")}
           onClick={() => rescale(-SCALE_STEP)}
         >
           −
@@ -896,8 +1024,8 @@ function Panel({
         <button
           type="button"
           className="panel-scale"
-          title={t(language, 'ovl.bigger')}
-          aria-label={t(language, 'ovl.bigger')}
+          title={t(language, "ovl.bigger")}
+          aria-label={t(language, "ovl.bigger")}
           onClick={() => rescale(SCALE_STEP)}
         >
           +
@@ -913,15 +1041,17 @@ function Panel({
           max={100}
           step={5}
           value={Math.round(state.opacity * 100)}
-          title={`${t(language, 'ovl.opacity')} ${Math.round(state.opacity * 100)}%`}
-          aria-label={t(language, 'ovl.opacity')}
+          title={`${t(language, "ovl.opacity")} ${Math.round(state.opacity * 100)}%`}
+          aria-label={t(language, "ovl.opacity")}
           onPointerDown={(event) => event.stopPropagation()}
-          onChange={(event) => onChange({ opacity: Number(event.target.value) / 100 })}
+          onChange={(event) =>
+            onChange({ opacity: Number(event.target.value) / 100 })
+          }
         />
         <button
           type="button"
           className="panel-hide"
-          title={t(language, 'ovl.hide')}
+          title={t(language, "ovl.hide")}
           onClick={() => onChange({ visible: false })}
         >
           ✕
@@ -933,11 +1063,11 @@ function Panel({
       <span
         className="panel-grip"
         data-hit
-        title={t(language, info.autoHeight ? 'ovl.resizeW' : 'ovl.resizeWH')}
+        title={t(language, info.autoHeight ? "ovl.resizeW" : "ovl.resizeWH")}
         onPointerDown={startSize}
       />
     </section>
-  )
+  );
 }
 
 /**
@@ -951,45 +1081,45 @@ function Dock({
   app,
   onApp,
   language,
-  pauze
+  pauze,
 }: {
-  app: OverlayApp
-  onApp(app: OverlayApp): void
-  language: Language
-  pauze: boolean
+  app: OverlayApp;
+  onApp(app: OverlayApp): void;
+  language: Language;
+  pauze: boolean;
 }): JSX.Element {
   const apps: Array<{
-    id: OverlayApp
-    label: Parameters<typeof t>[1]
-    pad: string
+    id: OverlayApp;
+    label: Parameters<typeof t>[1];
+    pad: string;
   }> = [
     {
-      id: 'kaart',
-      label: 'ovl.appMap',
-      pad: 'M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Zm0 2.2 6 2v11.6l-6-2V6.2Z'
+      id: "kaart",
+      label: "ovl.appMap",
+      pad: "M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Zm0 2.2 6 2v11.6l-6-2V6.2Z",
     },
     {
-      id: 'dienst',
-      label: 'ovl.appDuty',
-      pad: 'M5 3h14v18l-7-4-7 4V3Zm2 2v12.2l5-2.9 5 2.9V5H7Z'
+      id: "dienst",
+      label: "ovl.appDuty",
+      pad: "M5 3h14v18l-7-4-7 4V3Zm2 2v12.2l5-2.9 5 2.9V5H7Z",
     },
     {
-      id: 'pauze',
-      label: 'ovl.appBreak',
-      pad: 'M8 5h2v14H8V5Zm6 0h2v14h-2V5Z'
+      id: "pauze",
+      label: "ovl.appBreak",
+      pad: "M8 5h2v14H8V5Zm6 0h2v14h-2V5Z",
     },
     {
-      id: 'rit',
-      label: 'ovl.appTrip',
-      pad: 'M4 20V10h4v10H4Zm6 0V4h4v16h-4Zm6 0v-7h4v7h-4Z'
+      id: "rit",
+      label: "ovl.appTrip",
+      pad: "M4 20V10h4v10H4Zm6 0V4h4v16h-4Zm6 0v-7h4v7h-4Z",
     },
     {
-      id: 'kaartjes',
-      label: 'ovl.appTickets',
+      id: "kaartjes",
+      label: "ovl.appTickets",
       // Een kaartje met een knip in de zijkant, zoals in Icoon.tsx.
-      pad: 'M3 6.5h18v4a2 2 0 0 0 0 3.8v4H3v-4a2 2 0 0 0 0-3.8ZM5 8.5v1.1a4 4 0 0 1 0 5.4v1.1h14v-1.1a4 4 0 0 1 0-5.4V8.5Zm4 1.6h1.6v4.6H9Zm4 0h1.6v4.6H13Z'
-    }
-  ]
+      pad: "M3 6.5h18v4a2 2 0 0 0 0 3.8v4H3v-4a2 2 0 0 0 0-3.8ZM5 8.5v1.1a4 4 0 0 1 0 5.4v1.1h14v-1.1a4 4 0 0 1 0-5.4V8.5Zm4 1.6h1.6v4.6H9Zm4 0h1.6v4.6H13Z",
+    },
+  ];
   return (
     <nav className="dock" data-hit>
       {apps.map((item) => (
@@ -1005,11 +1135,13 @@ function Dock({
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d={item.pad} fill="currentColor" fillRule="evenodd" />
           </svg>
-          {item.id === 'pauze' && pauze && <i className="dock-stip" aria-hidden="true" />}
+          {item.id === "pauze" && pauze && (
+            <i className="dock-stip" aria-hidden="true" />
+          )}
         </button>
       ))}
     </nav>
-  )
+  );
 }
 
 /**
@@ -1024,21 +1156,21 @@ function Dock({
 function DienstApp({
   duty,
   status,
-  language
+  language,
 }: {
-  duty?: Duty
-  status?: LiveStatus
-  language: Language
+  duty?: Duty;
+  status?: LiveStatus;
+  language: Language;
 }): JSX.Element {
-  if (!duty) return <div className="empty">{t(language, 'ovl.appNoDuty')}</div>
-  const nuIndex = status?.legIndex
+  if (!duty) return <div className="empty">{t(language, "ovl.appNoDuty")}</div>;
+  const nuIndex = status?.legIndex;
   return (
     <div className="app-lijst met-rail">
       {duty.legs.map((leg, index) => (
         <div
           key={`${leg.tripFile}-${index}`}
-          className={`app-rit ${nuIndex === index ? 'nu' : ''} ${
-            nuIndex !== undefined && index < nuIndex ? 'gereden' : ''
+          className={`app-rit ${nuIndex === index ? "nu" : ""} ${
+            nuIndex !== undefined && index < nuIndex ? "gereden" : ""
           }`}
         >
           <i className="app-punt" aria-hidden="true" />
@@ -1046,20 +1178,20 @@ function DienstApp({
           <span className="app-rit-naar">
             <b>{leg.terminus}</b>
             <small>
-              {t(language, 'ovl.appLine', { line: leg.lineNumber })} ·{' '}
-              {t(language, 'ovl.appStops', { count: leg.stops.length })}
+              {t(language, "ovl.appLine", { line: leg.lineNumber })} ·{" "}
+              {t(language, "ovl.appStops", { count: leg.stops.length })}
             </small>
           </span>
           <span className="app-rit-aan">{formatTime(leg.arrival)}</span>
           {leg.layoverBefore > 0 && (
             <span className="app-pauzeblok">
-              {t(language, 'ovl.appLayover', { minutes: leg.layoverBefore })}
+              {t(language, "ovl.appLayover", { minutes: leg.layoverBefore })}
             </span>
           )}
         </div>
       ))}
     </div>
-  )
+  );
 }
 
 /**
@@ -1075,19 +1207,22 @@ function PauzeApp({
   status,
   language,
   vanaf,
-  onVanaf
+  onVanaf,
 }: {
-  duty?: Duty
-  status?: LiveStatus
-  language: Language
-  vanaf?: number
-  onVanaf(vanaf: number | undefined): void
+  duty?: Duty;
+  status?: LiveStatus;
+  language: Language;
+  vanaf?: number;
+  onVanaf(vanaf: number | undefined): void;
 }): JSX.Element {
-  const klok = status?.clockMinutes
-  const volgende = duty?.legs[(status?.legIndex ?? 0) + 1]
-  const staat = volgende?.layoverBefore ?? 0
-  const bezig = vanaf !== undefined && klok !== undefined ? Math.max(0, klok - vanaf) : undefined
-  const over = bezig !== undefined ? staat - bezig : undefined
+  const klok = status?.clockMinutes;
+  const volgende = duty?.legs[(status?.legIndex ?? 0) + 1];
+  const staat = volgende?.layoverBefore ?? 0;
+  const bezig =
+    vanaf !== undefined && klok !== undefined
+      ? Math.max(0, klok - vanaf)
+      : undefined;
+  const over = bezig !== undefined ? staat - bezig : undefined;
 
   /*
    * Twee grote getallen naast elkaar zeiden allebei half zo veel. Nu is er er
@@ -1096,27 +1231,40 @@ function PauzeApp({
    * de overlay verderop over tijd praat, en geen andere. In de ring staat hoe
    * lang je staat, eronder wat dat betekent.
    */
-  const deel = staat > 0 && bezig !== undefined ? Math.min(1, bezig / staat) : 0
-  const stand = bezig === undefined ? 'stil' : over !== undefined && over < 0 ? 'late' : 'ontime'
+  const deel =
+    staat > 0 && bezig !== undefined ? Math.min(1, bezig / staat) : 0;
+  const stand =
+    bezig === undefined
+      ? "stil"
+      : over !== undefined && over < 0
+        ? "late"
+        : "ontime";
 
   return (
     <div className="app-pauze">
-      <div className={`pauze-ring ${stand}`} style={{ '--deel': deel } as CSSProperties}>
+      <div
+        className={`pauze-ring ${stand}`}
+        style={{ "--deel": deel } as CSSProperties}
+      >
         <b>{bezig ?? staat}</b>
         <span>min</span>
       </div>
 
       <span className="app-label">
         {over === undefined
-          ? t(language, 'ovl.appBreakDue')
+          ? t(language, "ovl.appBreakDue")
           : over >= 0
-            ? t(language, 'ovl.appBreakLeft', { minutes: over })
-            : t(language, 'ovl.appBreakOver', { minutes: -over })}
+            ? t(language, "ovl.appBreakLeft", { minutes: over })
+            : t(language, "ovl.appBreakOver", { minutes: -over })}
       </span>
 
       {bezig !== undefined ? (
-        <button type="button" className="app-knop" onClick={() => onVanaf(undefined)}>
-          {t(language, 'ovl.appBreakStop')}
+        <button
+          type="button"
+          className="app-knop"
+          onClick={() => onVanaf(undefined)}
+        >
+          {t(language, "ovl.appBreakStop")}
         </button>
       ) : (
         <button
@@ -1125,7 +1273,7 @@ function PauzeApp({
           disabled={klok === undefined}
           onClick={() => onVanaf(klok)}
         >
-          {t(language, 'ovl.appBreakStart')}
+          {t(language, "ovl.appBreakStart")}
         </button>
       )}
 
@@ -1136,24 +1284,30 @@ function PauzeApp({
       */}
       {volgende && (
         <div className="app-volgende">
-          <span className="app-label">{t(language, 'ovl.appNextTrip')}</span>
+          <span className="app-label">{t(language, "ovl.appNextTrip")}</span>
           <div className="app-lijst">
             <div className="app-rit">
-              <span className="app-rit-tijd">{formatTime(volgende.departure)}</span>
+              <span className="app-rit-tijd">
+                {formatTime(volgende.departure)}
+              </span>
               <span className="app-rit-naar">
                 <b>{volgende.terminus}</b>
                 <small>
-                  {t(language, 'ovl.appLine', { line: volgende.lineNumber })} ·{' '}
-                  {t(language, 'ovl.appStops', { count: volgende.stops.length })}
+                  {t(language, "ovl.appLine", { line: volgende.lineNumber })} ·{" "}
+                  {t(language, "ovl.appStops", {
+                    count: volgende.stops.length,
+                  })}
                 </small>
               </span>
-              <span className="app-rit-aan">{formatTime(volgende.arrival)}</span>
+              <span className="app-rit-aan">
+                {formatTime(volgende.arrival)}
+              </span>
             </div>
           </div>
         </div>
       )}
     </div>
-  )
+  );
 }
 
 /**
@@ -1167,13 +1321,20 @@ function PauzeApp({
  * hele breedte, want dat is het getal waar het om draait, en hij draagt de
  * tijdkleur: de enige kleur die in deze overlay iets betekent.
  */
-function RitApp({ status, language }: { status?: LiveStatus; language: Language }): JSX.Element {
-  if (!status) return <div className="empty">{t(language, 'ovl.noData')}</div>
-  const stand = punctuality(status.deltaSeconds)
-  const klasse = stand === 'laat' ? 'late' : stand === 'vroeg' ? 'early' : 'ontime'
-  const minuten = Math.round(status.delayMinutes)
-  const leg = status.leg
-  const at = status.stopIndex
+function RitApp({
+  status,
+  language,
+}: {
+  status?: LiveStatus;
+  language: Language;
+}): JSX.Element {
+  if (!status) return <div className="empty">{t(language, "ovl.noData")}</div>;
+  const stand = punctuality(status.deltaSeconds);
+  const klasse =
+    stand === "laat" ? "late" : stand === "vroeg" ? "early" : "ontime";
+  const minuten = Math.round(status.delayMinutes);
+  const leg = status.leg;
+  const at = status.stopIndex;
   return (
     <div className="app-ritscherm">
       <div className="app-tegels">
@@ -1182,32 +1343,32 @@ function RitApp({ status, language }: { status?: LiveStatus; language: Language 
             {minuten > 0 ? `+${minuten}` : minuten}
             <small>min</small>
           </b>
-          <span>{t(language, 'ovl.appDelay')}</span>
+          <span>{t(language, "ovl.appDelay")}</span>
         </div>
         <div>
           <b>
             {Math.max(0, Math.round(status.speedKmh))}
             <small>km/u</small>
           </b>
-          <span>{t(language, 'ovl.appSpeed')}</span>
+          <span>{t(language, "ovl.appSpeed")}</span>
         </div>
         <div>
           <b>{status.passengers}</b>
-          <span>{t(language, 'ovl.appPassengers')}</span>
+          <span>{t(language, "ovl.appPassengers")}</span>
         </div>
         <div>
           <b>
             {status.stopIndex ?? 0}
             <small>/ {status.stopsTotal}</small>
           </b>
-          <span>{t(language, 'ovl.appStopsDone')}</span>
+          <span>{t(language, "ovl.appStopsDone")}</span>
         </div>
         <div>
           <b>
             {Math.round(status.odometerKm)}
             <small>km</small>
           </b>
-          <span>{t(language, 'ovl.appOdometer')}</span>
+          <span>{t(language, "ovl.appOdometer")}</span>
         </div>
         {/*
           Tank of accu, niet allebei. Een elektrische bus heeft geen tank en een
@@ -1220,12 +1381,19 @@ function RitApp({ status, language }: { status?: LiveStatus; language: Language 
         */}
         {Number.isFinite(status.battery ?? status.fuel) && (
           <div>
-            <b className={(status.battery ?? status.fuel) < 0.1 ? 'late' : undefined}>
+            <b
+              className={
+                (status.battery ?? status.fuel) < 0.1 ? "late" : undefined
+              }
+            >
               {Math.round((status.battery ?? status.fuel) * 100)}
               <small>%</small>
             </b>
             <span>
-              {t(language, status.battery !== undefined ? 'ovl.appBattery' : 'ovl.appFuel')}
+              {t(
+                language,
+                status.battery !== undefined ? "ovl.appBattery" : "ovl.appFuel",
+              )}
             </span>
           </div>
         )}
@@ -1242,12 +1410,14 @@ function RitApp({ status, language }: { status?: LiveStatus; language: Language 
             {leg.stops.map((naam, index) => (
               <div
                 key={`${naam}-${index}`}
-                className={`app-rit halte ${at === index ? 'nu' : ''} ${
-                  at !== undefined && index < at ? 'gereden' : ''
+                className={`app-rit halte ${at === index ? "nu" : ""} ${
+                  at !== undefined && index < at ? "gereden" : ""
                 }`}
               >
                 <i className="app-punt" aria-hidden="true" />
-                <span className="app-rit-tijd">{formatTime(leg.stopTimes[index])}</span>
+                <span className="app-rit-tijd">
+                  {formatTime(leg.stopTimes[index])}
+                </span>
                 <span className="app-halte-naam">{naam}</span>
               </div>
             ))}
@@ -1255,7 +1425,7 @@ function RitApp({ status, language }: { status?: LiveStatus; language: Language 
         </div>
       )}
     </div>
-  )
+  );
 }
 
 /**
@@ -1267,29 +1437,37 @@ function DutyPanel({
   frame,
   detail,
   language,
-  onCycle
+  onCycle,
 }: {
-  frame: Frame
-  detail: DetailLevel
-  language: Language
-  onCycle(): void
+  frame: Frame;
+  detail: DetailLevel;
+  language: Language;
+  onCycle(): void;
 }): JSX.Element {
-  const tr = (key: Parameters<typeof t>[1], vars?: Record<string, string | number>): string =>
-    t(language, key, vars)
-  const { status, duty, connected } = frame
-  const leg = status?.leg
+  const tr = (
+    key: Parameters<typeof t>[1],
+    vars?: Record<string, string | number>,
+  ): string => t(language, key, vars);
+  const { status, duty, connected } = frame;
+  const leg = status?.leg;
 
   if (!status) {
     return (
       <div className="waiting">
-        <span className="dot" />{' '}
-        {tr(connected ? 'ovl.noData' : frame.laadt ? 'ovl.loading' : 'ovl.waiting')}
+        <span className="dot" />{" "}
+        {tr(
+          connected
+            ? "ovl.noData"
+            : frame.laadt
+              ? "ovl.loading"
+              : "ovl.waiting",
+        )}
       </div>
-    )
+    );
   }
 
-  const passed = walkedStops(status)
-  const total = leg?.stops.length ?? 0
+  const passed = walkedStops(status);
+  const total = leg?.stops.length ?? 0;
 
   /*
    * De rit is voorbij maar de dienst nog niet: dan moet de chauffeur in OMSI de
@@ -1297,9 +1475,13 @@ function DutyPanel({
    * want anders zit hij aan het eindpunt te wachten op een overlay die niets
    * meer te melden heeft.
    */
-  const next = duty && status.legIndex >= 0 ? duty.legs[status.legIndex + 1] : undefined
-  const legDone = Boolean(leg && status.clockMinutes >= leg.arrival)
-  const nextRoute = duty && frame.ibis ? frame.ibis.legs[status.legIndex + 1]?.route : undefined
+  const next =
+    duty && status.legIndex >= 0 ? duty.legs[status.legIndex + 1] : undefined;
+  const legDone = Boolean(leg && status.clockMinutes >= leg.arrival);
+  const nextRoute =
+    duty && frame.ibis
+      ? frame.ibis.legs[status.legIndex + 1]?.route
+      : undefined;
 
   return (
     <>
@@ -1311,7 +1493,9 @@ function DutyPanel({
           type="button"
           className="expand"
           data-hit
-          title={tr('ovl.detail', { level: tr(`ovl.detail${detail}` as const) })}
+          title={tr("ovl.detail", {
+            level: tr(`ovl.detail${detail}` as const),
+          })}
           onClick={onCycle}
         >
           <span className={`pips pips-${detail}`}>
@@ -1326,107 +1510,136 @@ function DutyPanel({
       {legDone && next && !status.dutyComplete && (
         <div className="advice next-trip">
           {nextRoute
-            ? tr('ovl.nextTrip', { time: formatTime(next.departure), route: nextRoute })
-            : tr('ovl.nextTripPlain', { time: formatTime(next.departure) })}
+            ? tr("ovl.nextTrip", {
+                time: formatTime(next.departure),
+                route: nextRoute,
+              })
+            : tr("ovl.nextTripPlain", { time: formatTime(next.departure) })}
         </div>
       )}
 
       {status.dutyComplete ? (
-        <div className="line-done">{tr('ovl.done')}</div>
+        <div className="line-done">{tr("ovl.done")}</div>
       ) : (
         <>
           {/* Beknopt: bestemming en volgende halte op een regel. */}
           {detail === 0 && leg && (
             <div className="tight">
-              <span className="tight-stop">{stopName(leg, passed) ?? leg.terminus}</span>
+              <span className="tight-stop">
+                {stopName(leg, passed) ?? leg.terminus}
+              </span>
               <span className="tight-rest">
-                {tr('ovl.tight', {
+                {tr("ovl.tight", {
                   passengers: status.passengers,
-                  speed: Math.round(status.speedKmh)
+                  speed: Math.round(status.speedKmh),
                 })}
                 {total > 0 && passed !== undefined
-                  ? tr('ovl.tightLeft', { left: Math.max(0, total - passed) })
-                  : ''}
+                  ? tr("ovl.tightLeft", { left: Math.max(0, total - passed) })
+                  : ""}
               </span>
             </div>
           )}
 
           {detail > 0 && leg && (
             <div className="row">
-              <span className="label">{tr('ovl.to')}</span>
+              <span className="label">{tr("ovl.to")}</span>
               <span className="value">{leg.terminus}</span>
               <span className="sub">
                 {duty
-                  ? tr('ovl.arrival', {
+                  ? tr("ovl.arrival", {
                       time: formatTime(leg.arrival),
                       index: status.legIndex + 1,
-                      total: duty.legs.length
+                      total: duty.legs.length,
                     })
-                  : tr('ovl.arrivalShort', { time: formatTime(leg.arrival) })}
+                  : tr("ovl.arrivalShort", { time: formatTime(leg.arrival) })}
               </span>
             </div>
           )}
 
           {detail === 1 && leg && (
             <div className="row">
-              <span className="label">{tr('ovl.nextStop')}</span>
-              <span className="value">{stopName(leg, passed) ?? '—'}</span>
+              <span className="label">{tr("ovl.nextStop")}</span>
+              <span className="value">{stopName(leg, passed) ?? "—"}</span>
               {passed !== undefined && total > 0 && (
                 <span className="sub">
-                  {tr('ovl.remaining', { left: Math.max(0, total - passed), total })}
+                  {tr("ovl.remaining", {
+                    left: Math.max(0, total - passed),
+                    total,
+                  })}
                 </span>
               )}
             </div>
           )}
 
-          {detail === 2 && leg && <NextStops leg={leg} status={status} language={language} />}
+          {detail === 2 && leg && (
+            <NextStops leg={leg} status={status} language={language} />
+          )}
 
           {detail > 0 && (
             <div className="grid">
               <div>
                 <b>{status.passengers}</b>
-                <span>{tr('ovl.onboard')}</span>
+                <span>{tr("ovl.onboard")}</span>
               </div>
               <div>
                 <b>{Math.round(status.speedKmh)}</b>
-                <span>{tr('ovl.speed')}</span>
+                <span>{tr("ovl.speed")}</span>
               </div>
-              <div className={status.hasPassengers ? `mood mood-${Math.round(status.mood * 4)}` : 'mood'}>
-                <b>{loose(language, `mood.${status.moodLabel}`, status.moodLabel)}</b>
-                <span>{tr('ovl.mood')}</span>
+              <div
+                className={
+                  status.hasPassengers
+                    ? `mood mood-${Math.round(status.mood * 4)}`
+                    : "mood"
+                }
+              >
+                <b>
+                  {loose(
+                    language,
+                    `mood.${status.moodLabel}`,
+                    status.moodLabel,
+                  )}
+                </b>
+                <span>{tr("ovl.mood")}</span>
               </div>
             </div>
           )}
 
-          {detail === 2 && (status.harshBrakes > 0 || status.harshAccels > 0) && (
-            <div className="counters">
-              {status.harshBrakes > 0 && (
-                <span>{tr('ovl.harshBrakes', { count: status.harshBrakes })}</span>
-              )}
-              {status.harshAccels > 0 && (
-                <span>{tr('ovl.harshAccels', { count: status.harshAccels })}</span>
-              )}
-            </div>
-          )}
+          {detail === 2 &&
+            (status.harshBrakes > 0 || status.harshAccels > 0) && (
+              <div className="counters">
+                {status.harshBrakes > 0 && (
+                  <span>
+                    {tr("ovl.harshBrakes", { count: status.harshBrakes })}
+                  </span>
+                )}
+                {status.harshAccels > 0 && (
+                  <span>
+                    {tr("ovl.harshAccels", { count: status.harshAccels })}
+                  </span>
+                )}
+              </div>
+            )}
         </>
       )}
 
       {(status.entryRequest || status.exitRequest) && (
         <div className="request">
-          {tr(status.entryRequest ? 'ovl.wantsIn' : 'ovl.wantsOut')}
+          {tr(status.entryRequest ? "ovl.wantsIn" : "ovl.wantsOut")}
         </div>
       )}
 
       {/* Waarschuwingen horen er altijd te staan; alleen de rest klapt weg. */}
       {status.advice
-        .filter((item) => detail === 2 || item.severity === 'warn')
+        .filter((item) => detail === 2 || item.severity === "warn")
         .map((item) => (
           <div key={item.id} className={`advice ${item.severity}`}>
-            {loose(language, `advice.${item.id}`, item.id, { count: item.count ?? 0 })}
+            {loose(language, `advice.${item.id}`, item.id, {
+              count: item.count ?? 0,
+            })}
           </div>
         ))}
     </>
-  )
+  );
 }
 
 /**
@@ -1438,20 +1651,25 @@ function DutyPanel({
  */
 function Delta({
   status,
-  tr
+  tr,
 }: {
-  status: LiveStatus
-  tr: (key: Parameters<typeof t>[1], vars?: Record<string, string | number>) => string
+  status: LiveStatus;
+  tr: (
+    key: Parameters<typeof t>[1],
+    vars?: Record<string, string | number>,
+  ) => string;
 }): JSX.Element {
-  const delta = status.deltaSeconds
+  const delta = status.deltaSeconds;
   if (delta === undefined) {
-    const late = status.delayMinutes >= 1
+    const late = status.delayMinutes >= 1;
     return (
-      <span className={`delay ${late ? 'late' : 'ontime'}`}>
-        {late ? tr('ovl.late', { minutes: Math.round(status.delayMinutes) }) : tr('ovl.ontime')}
-        {status.delayFromIbis ? '' : '*'}
+      <span className={`delay ${late ? "late" : "ontime"}`}>
+        {late
+          ? tr("ovl.late", { minutes: Math.round(status.delayMinutes) })
+          : tr("ovl.ontime")}
+        {status.delayFromIbis ? "" : "*"}
       </span>
-    )
+    );
   }
 
   /*
@@ -1459,15 +1677,18 @@ function Delta({
    * `punctuality`. Het venster van de app rekent met dezelfde grens, anders
    * staat er op het ene scherm groen en op het andere rood.
    */
-  const size = Math.abs(delta)
-  const clock = `${Math.floor(size / 60)}:${String(size % 60).padStart(2, '0')}`
-  const state = punctuality(delta)
-  const klasse = state === 'laat' ? 'late' : state === 'vroeg' ? 'early' : 'ontime'
+  const size = Math.abs(delta);
+  const clock = `${Math.floor(size / 60)}:${String(size % 60).padStart(2, "0")}`;
+  const state = punctuality(delta);
+  const klasse =
+    state === "laat" ? "late" : state === "vroeg" ? "early" : "ontime";
   return (
-    <span className={`delay ${klasse}`} title={tr('ovl.onTheDot')}>
-      {state === 'optijd' ? tr('ovl.ontime') : `${delta > 0 ? '+' : '\u2212'}${clock}`}
+    <span className={`delay ${klasse}`} title={tr("ovl.onTheDot")}>
+      {state === "optijd"
+        ? tr("ovl.ontime")
+        : `${delta > 0 ? "+" : "\u2212"}${clock}`}
     </span>
-  )
+  );
 }
 
 /**
@@ -1478,17 +1699,17 @@ function Delta({
  */
 /** Het versienummer in de bewerkbalk; gevraagd bij elke foutmelding. */
 function OverlayVersie(): JSX.Element | null {
-  const [versie, setVersie] = useState<string>()
+  const [versie, setVersie] = useState<string>();
   useEffect(() => {
-    let staat = true
+    let staat = true;
     void window.career.version().then((waarde) => {
-      if (staat) setVersie(waarde)
-    })
+      if (staat) setVersie(waarde);
+    });
     return () => {
-      staat = false
-    }
-  }, [])
-  return versie ? <span className="editbar-version">v{versie}</span> : null
+      staat = false;
+    };
+  }, []);
+  return versie ? <span className="editbar-version">v{versie}</span> : null;
 }
 
 function LayoutButton({ language }: { language: Language }): JSX.Element {
@@ -1497,8 +1718,8 @@ function LayoutButton({ language }: { language: Language }): JSX.Element {
       type="button"
       className="layout-button"
       data-hit
-      title={t(language, 'ovl.layout')}
-      aria-label={t(language, 'ovl.layout')}
+      title={t(language, "ovl.layout")}
+      aria-label={t(language, "ovl.layout")}
       onClick={() => void window.career.editOverlay(true)}
     >
       {/* Twee panelen naast elkaar: dat is waar de knop over gaat. */}
@@ -1507,7 +1728,7 @@ function LayoutButton({ language }: { language: Language }): JSX.Element {
         <rect x="9.25" y="0.75" width="6" height="7" rx="1.5" />
       </svg>
     </button>
-  )
+  );
 }
 
 /**
@@ -1521,44 +1742,46 @@ function IbisPanel({
   duty,
   ibis,
   status,
-  language
+  language,
 }: {
-  duty: Duty
-  ibis?: IbisPlan
-  status?: LiveStatus
-  language: Language
+  duty: Duty;
+  ibis?: IbisPlan;
+  status?: LiveStatus;
+  language: Language;
 }): JSX.Element {
-  const legIndex = status?.legIndex ?? 0
-  const leg = duty.legs[legIndex] ?? duty.legs[0]
+  const legIndex = status?.legIndex ?? 0;
+  const leg = duty.legs[legIndex] ?? duty.legs[0];
   // De route van de rit die nu aan de beurt is; anders de eerste die er een heeft.
-  const entry = ibis?.legs[legIndex] ?? ibis?.legs.find((item) => item.route)
-  const line = ibis?.line || leg?.lineNumber || '—'
+  const entry = ibis?.legs[legIndex] ?? ibis?.legs.find((item) => item.route);
+  const line = ibis?.line || leg?.lineNumber || "—";
 
   return (
     <div className="ibis-entry">
       <div className="topline">
-        <b>{t(language, 'ovl.ibisTitle')}</b>
+        <b>{t(language, "ovl.ibisTitle")}</b>
         <LayoutButton language={language} />
       </div>
       <div className="grid">
         <div>
           <b>{line}</b>
-          <span>{t(language, 'ibis.line')}</span>
+          <span>{t(language, "ibis.line")}</span>
         </div>
         <div>
           <b>
             <RouteCode route={entry?.route} kort={entry?.routeShort} />
           </b>
-          <span>{t(language, 'ibis.routeAtStart')}</span>
+          <span>{t(language, "ibis.routeAtStart")}</span>
         </div>
       </div>
       <div className="row">
         <span className="sub">
-          {entry?.route ? t(language, 'ovl.ibisWaiting') : t(language, 'ibis.noTable')}
+          {entry?.route
+            ? t(language, "ovl.ibisWaiting")
+            : t(language, "ibis.noTable")}
         </span>
       </div>
     </div>
-  )
+  );
 }
 
 /**
@@ -1576,27 +1799,29 @@ function SelectPanel({
   leg,
   legIndex,
   status,
-  language
+  language,
 }: {
-  duty: Duty
-  ibis?: IbisPlan
-  leg?: DutyLeg
-  legIndex: number
-  status?: LiveStatus
-  language: Language
+  duty: Duty;
+  ibis?: IbisPlan;
+  leg?: DutyLeg;
+  legIndex: number;
+  status?: LiveStatus;
+  language: Language;
 }): JSX.Element {
-  const chosen = status?.schedule
-  const line = ibis?.line || leg?.lineNumber || duty.lineNumbers[0] || '—'
-  const entry = ibis?.legs[legIndex]
+  const chosen = status?.schedule;
+  const line = ibis?.line || leg?.lineNumber || duty.lineNumbers[0] || "—";
+  const entry = ibis?.legs[legIndex];
   return (
     <div className="select-duty">
       <div className="topline">
-        <span className="line">{leg?.lineNumber ?? duty.lineNumbers.join(' / ')}</span>
-        <b>{t(language, 'ovl.selectTitle')}</b>
+        <span className="line">
+          {leg?.lineNumber ?? duty.lineNumbers.join(" / ")}
+        </span>
+        <b>{t(language, "ovl.selectTitle")}</b>
         <LayoutButton language={language} />
       </div>
 
-      <span className="step-title">{t(language, 'ovl.menu')}</span>
+      <span className="step-title">{t(language, "ovl.menu")}</span>
       <div className="grid">
         <div>
           <b>{leg?.lineFile ?? duty.lineFile}</b>
@@ -1607,42 +1832,47 @@ function SelectPanel({
           <span>Tour</span>
         </div>
         <div>
-          <b>{leg ? formatTime(leg.departure) : '—'}</b>
-          <span>{t(language, 'ovl.menuTrip')}</span>
+          <b>{leg ? formatTime(leg.departure) : "—"}</b>
+          <span>{t(language, "ovl.menuTrip")}</span>
         </div>
       </div>
 
-      <span className="step-title">{t(language, 'ovl.onTheIbis')}</span>
+      <span className="step-title">{t(language, "ovl.onTheIbis")}</span>
       <div className="grid">
         <div>
           <b>{line}</b>
-          <span>{t(language, 'ibis.line')}</span>
+          <span>{t(language, "ibis.line")}</span>
         </div>
         <div>
           <b>
             <RouteCode route={entry?.route} kort={entry?.routeShort} />
           </b>
-          <span>{t(language, 'ibis.routeAtStart')}</span>
+          <span>{t(language, "ibis.routeAtStart")}</span>
         </div>
         <div className="wide">
-          <b>{leg?.stops[0] ?? '—'}</b>
-          <span>{t(language, 'ovl.menuFirst')}</span>
+          <b>{leg?.stops[0] ?? "—"}</b>
+          <span>{t(language, "ovl.menuFirst")}</span>
         </div>
       </div>
 
       <div className="row">
         <span className="sub">
-          {t(language, 'ovl.selectSteps', { time: leg ? formatTime(leg.departure) : '—' })}
+          {t(language, "ovl.selectSteps", {
+            time: leg ? formatTime(leg.departure) : "—",
+          })}
         </span>
       </div>
 
       {chosen && !chosen.matchesDuty && (
         <div className="advice warn">
-          {t(language, 'ovl.selectWrong', { line: chosen.lineName || '—', tour: chosen.tourName || '—' })}
+          {t(language, "ovl.selectWrong", {
+            line: chosen.lineName || "—",
+            tour: chosen.tourName || "—",
+          })}
         </div>
       )}
     </div>
-  )
+  );
 }
 
 /**
@@ -1661,51 +1891,51 @@ function IbisStep({
   ibis,
   legIndex,
   language,
-  onDone
+  onDone,
 }: {
-  leg?: DutyLeg
-  ibis?: IbisPlan
-  legIndex: number
-  language: Language
-  onDone(): void
+  leg?: DutyLeg;
+  ibis?: IbisPlan;
+  legIndex: number;
+  language: Language;
+  onDone(): void;
 }): JSX.Element {
-  const line = ibis?.line || leg?.lineNumber || '—'
-  const entry = ibis?.legs[legIndex]
+  const line = ibis?.line || leg?.lineNumber || "—";
+  const entry = ibis?.legs[legIndex];
   return (
     // Een eigen naam naast die van het keuzescherm: ze lijken op elkaar, en een
     // proef moet kunnen zien welke van de twee er staat.
     <div className="select-duty ibis-step">
       <div className="topline">
-        <span className="line">{leg?.lineNumber ?? '—'}</span>
-        <b>{t(language, 'ovl.ibisStepTitle')}</b>
+        <span className="line">{leg?.lineNumber ?? "—"}</span>
+        <b>{t(language, "ovl.ibisStepTitle")}</b>
         <LayoutButton language={language} />
       </div>
       <div className="grid">
         <div>
           <b>{line}</b>
-          <span>{t(language, 'ibis.line')}</span>
+          <span>{t(language, "ibis.line")}</span>
         </div>
         <div>
           <b>
             <RouteCode route={entry?.route} kort={entry?.routeShort} />
           </b>
-          <span>{t(language, 'ibis.routeAtStart')}</span>
+          <span>{t(language, "ibis.routeAtStart")}</span>
         </div>
         <div>
-          <b>{leg?.terminus ?? '—'}</b>
-          <span>{t(language, 'ovl.to')}</span>
+          <b>{leg?.terminus ?? "—"}</b>
+          <span>{t(language, "ovl.to")}</span>
         </div>
       </div>
       <div className="row">
         <span className="sub">
-          {t(language, 'ovl.ibisStepHow', { line, route: entry?.route ?? '—' })}
+          {t(language, "ovl.ibisStepHow", { line, route: entry?.route ?? "—" })}
         </span>
       </div>
       <button type="button" className="ovl-btn" data-hit onClick={onDone}>
-        {t(language, 'ovl.ibisDone')}
+        {t(language, "ovl.ibisDone")}
       </button>
     </div>
-  )
+  );
 }
 
 /** De balk die alleen in de bewerkstand verschijnt. */
@@ -1715,28 +1945,28 @@ function EditBar({
   rate,
   onRate,
   onShow,
-  onReset
+  onReset,
 }: {
-  layout: OverlayLayout
-  language: Language
-  rate: OverlayRate
-  onRate(next: OverlayRate): void
-  onShow(id: PanelId): void
-  onReset(): void
+  layout: OverlayLayout;
+  language: Language;
+  rate: OverlayRate;
+  onRate(next: OverlayRate): void;
+  onShow(id: PanelId): void;
+  onReset(): void;
 }): JSX.Element {
-  const hidden = PANELS.filter((info) => !layout[info.id].visible)
+  const hidden = PANELS.filter((info) => !layout[info.id].visible);
   const name = (id: PanelId): string =>
-    t(language, id === 'dienst' ? 'ovl.panelDuty' : 'ovl.panelNav')
+    t(language, id === "dienst" ? "ovl.panelDuty" : "ovl.panelNav");
   return (
     <div className="editbar" data-hit>
-      <b>{t(language, 'ovl.editTitle')}</b>
-      <span className="editbar-hint">{t(language, 'ovl.editHint')}</span>
+      <b>{t(language, "ovl.editTitle")}</b>
+      <span className="editbar-hint">{t(language, "ovl.editHint")}</span>
       {/* Wie hier staat is aan het instellen; dan is het versienummer ook te vinden. */}
       <OverlayVersie />
 
       {hidden.length > 0 && (
         <div className="editbar-add">
-          <span>{t(language, 'ovl.hidden')}</span>
+          <span>{t(language, "ovl.hidden")}</span>
           {hidden.map((info) => (
             <button key={info.id} type="button" onClick={() => onShow(info.id)}>
               + {name(info.id)}
@@ -1753,35 +1983,39 @@ function EditBar({
         grotere stappen op.
       */}
       <div className="editbar-rate">
-        <span>{t(language, 'ovl.rate')}</span>
+        <span>{t(language, "ovl.rate")}</span>
         {(Object.keys(OVERLAY_RATES) as OverlayRate[]).map((key) => (
           <button
             key={key}
             type="button"
             aria-pressed={rate === key}
-            className={rate === key ? 'on' : undefined}
+            className={rate === key ? "on" : undefined}
             onClick={() => onRate(key)}
           >
             {t(language, `ovl.rate.${key}` as const)}
           </button>
         ))}
-        <span className="editbar-hint">{t(language, 'ovl.rateHint')}</span>
+        <span className="editbar-hint">{t(language, "ovl.rateHint")}</span>
       </div>
 
       <div className="editbar-buttons">
         <button type="button" onClick={onReset}>
-          {t(language, 'ovl.reset')}
+          {t(language, "ovl.reset")}
         </button>
         {/* Zonder deze knop kreeg je de overlay alleen via de app dicht. */}
         <button type="button" onClick={() => void window.career.closeOverlay()}>
-          {t(language, 'ovl.close')}
+          {t(language, "ovl.close")}
         </button>
-        <button type="button" className="done" onClick={() => void window.career.editOverlay(false)}>
-          {t(language, 'ovl.ready')}
+        <button
+          type="button"
+          className="done"
+          onClick={() => void window.career.editOverlay(false)}
+        >
+          {t(language, "ovl.ready")}
         </button>
       </div>
     </div>
-  )
+  );
 }
 
 /**
@@ -1794,83 +2028,94 @@ function EditBar({
 function NextStops({
   leg,
   status,
-  language
+  language,
 }: {
-  leg: DutyLeg
-  status: LiveStatus
-  language: Language
+  leg: DutyLeg;
+  status: LiveStatus;
+  language: Language;
 }): JSX.Element {
-  const tr = (key: Parameters<typeof t>[1], vars?: Record<string, string | number>): string =>
-    t(language, key, vars)
-  const total = leg.stops.length
-  const passed = walkedStops(status)
-  const at = passed ?? 0
+  const tr = (
+    key: Parameters<typeof t>[1],
+    vars?: Record<string, string | number>,
+  ): string => t(language, key, vars);
+  const total = leg.stops.length;
+  const passed = walkedStops(status);
+  const at = passed ?? 0;
 
   // Eentje terug geeft richting; verder vooruit past niet in de cabine.
-  const from = Math.max(0, at - 1)
-  const shown = leg.stops.slice(from, from + 6)
-  const left = total - (from + shown.length)
+  const from = Math.max(0, at - 1);
+  const shown = leg.stops.slice(from, from + 6);
+  const left = total - (from + shown.length);
 
   return (
     <div className="nav">
       <div className="nav-head">
-        <span className="label">{tr('ovl.stop')}</span>{' '}
+        <span className="label">{tr("ovl.stop")}</span>{" "}
         {passed !== undefined ? (
-          <span className="sub">{tr('ovl.remaining', { left: Math.max(0, total - at), total })}</span>
+          <span className="sub">
+            {tr("ovl.remaining", { left: Math.max(0, total - at), total })}
+          </span>
         ) : (
           <span className="sub">
-            {tr(status.offersStops ? 'ovl.ibisHint' : 'ovl.noStopInfo')}
+            {tr(status.offersStops ? "ovl.ibisHint" : "ovl.noStopInfo")}
           </span>
         )}
       </div>
 
       <ol className="strip">
         {shown.map((name, index) => {
-          const index2 = from + index
+          const index2 = from + index;
           const state =
             passed === undefined
-              ? 'ahead'
+              ? "ahead"
               : index2 < at
-                ? 'done'
+                ? "done"
                 : index2 === at
-                  ? 'now'
-                  : 'ahead'
+                  ? "now"
+                  : "ahead";
           return (
             <li key={`${index2}-${name}`} className={`stop ${state}`}>
               <span className="pin" />
               <span className="name">{name}</span>
               {leg.stopTimes[index2] !== undefined && (
-                <span className="stop-time">{formatTime(leg.stopTimes[index2])}</span>
+                <span className="stop-time">
+                  {formatTime(leg.stopTimes[index2])}
+                </span>
               )}
-              {index2 === total - 1 && <span className="tag">{tr('ovl.endpoint')}</span>}
+              {index2 === total - 1 && (
+                <span className="tag">{tr("ovl.endpoint")}</span>
+              )}
             </li>
-          )
+          );
         })}
       </ol>
 
       {left > 0 && (
-        <div className="nav-rest">{tr('ovl.andMore', { count: left, terminus: leg.terminus })}</div>
+        <div className="nav-rest">
+          {tr("ovl.andMore", { count: left, terminus: leg.terminus })}
+        </div>
       )}
     </div>
-  )
+  );
 }
 
 /** Hoeveel haltes de bus gehad heeft, of niets als hij het niet doorgeeft. */
 function walkedStops(status?: LiveStatus): number | undefined {
-  if (!status?.leg || !status.reportsStops || status.stopIndex === undefined) return undefined
-  return Math.min(Math.max(status.stopIndex, 0), status.leg.stops.length)
+  if (!status?.leg || !status.reportsStops || status.stopIndex === undefined)
+    return undefined;
+  return Math.min(Math.max(status.stopIndex, 0), status.leg.stops.length);
 }
 
 function stopName(leg: DutyLeg, at?: number): string | undefined {
-  if (at === undefined) return undefined
-  return leg.stops[Math.min(at, leg.stops.length - 1)]
+  if (at === undefined) return undefined;
+  return leg.stops[Math.min(at, leg.stops.length - 1)];
 }
 
 function clamp(value: number, low: number, high: number): number {
-  return Math.min(high, Math.max(low, value))
+  return Math.min(high, Math.max(low, value));
 }
 
-createRoot(document.getElementById('root')!).render(<Overlay />)
+createRoot(document.getElementById("root")!).render(<Overlay />);
 
 /**
  * Aanmelden op de telefoon.
@@ -1894,18 +2139,19 @@ createRoot(document.getElementById('root')!).render(<Overlay />)
 function AanmeldPaneel({
   chauffeur,
   language,
-  onAangemeld
+  onAangemeld,
 }: {
-  chauffeur?: { naam: string; personeelsnummer?: string; pincode?: string }
-  language: Language
-  onAangemeld: () => void
+  chauffeur?: { naam: string; personeelsnummer?: string; pincode?: string };
+  language: Language;
+  onAangemeld: () => void;
 }): JSX.Element {
-  const [stap, setStap] = useState<'nummer' | 'pin'>('nummer')
-  const [ingevoerd, setIngevoerd] = useState('')
-  const [fout, setFout] = useState(false)
+  const [stap, setStap] = useState<"nummer" | "pin">("nummer");
+  const [ingevoerd, setIngevoerd] = useState("");
+  const [fout, setFout] = useState(false);
 
-  const verwacht = stap === 'nummer' ? chauffeur?.personeelsnummer : chauffeur?.pincode
-  const lengte = verwacht?.length ?? 0
+  const verwacht =
+    stap === "nummer" ? chauffeur?.personeelsnummer : chauffeur?.pincode;
+  const lengte = verwacht?.length ?? 0;
 
   /*
    * Zodra er genoeg cijfers staan wordt er gekeken. Geen bevestigknop: op een
@@ -1913,71 +2159,81 @@ function AanmeldPaneel({
    * het stuur.
    */
   useEffect(() => {
-    if (!verwacht || ingevoerd.length < lengte) return
+    if (!verwacht || ingevoerd.length < lengte) return;
     if (ingevoerd === verwacht) {
-      setFout(false)
-      setIngevoerd('')
-      if (stap === 'nummer') setStap('pin')
-      else onAangemeld()
+      setFout(false);
+      setIngevoerd("");
+      if (stap === "nummer") setStap("pin");
+      else onAangemeld();
     } else {
-      setFout(true)
-      setIngevoerd('')
+      setFout(true);
+      setIngevoerd("");
     }
-  }, [ingevoerd, verwacht, lengte, stap, onAangemeld])
+  }, [ingevoerd, verwacht, lengte, stap, onAangemeld]);
 
   /* Zonder gegevens valt er niets na te kijken; dan maar door. */
   if (!chauffeur?.personeelsnummer || !chauffeur?.pincode) {
     return (
       <div className="aanmelden">
-        <p className="aanmeld-uitleg">{t(language, 'ovl.signonNone')}</p>
+        <p className="aanmeld-uitleg">{t(language, "ovl.signonNone")}</p>
         <button type="button" className="aanmeld-door" onClick={onAangemeld}>
-          {t(language, 'ovl.signonSkip')}
+          {t(language, "ovl.signonSkip")}
         </button>
       </div>
-    )
+    );
   }
 
   const toets = (cijfer: string): void => {
-    setFout(false)
-    setIngevoerd((huidig) => (huidig.length >= lengte ? huidig : huidig + cijfer))
-  }
+    setFout(false);
+    setIngevoerd((huidig) =>
+      huidig.length >= lengte ? huidig : huidig + cijfer,
+    );
+  };
 
   return (
     <div className="aanmelden">
-      <p className="aanmeld-kop">{t(language, 'ovl.signonTitle')}</p>
+      <p className="aanmeld-kop">{t(language, "ovl.signonTitle")}</p>
       <p className="aanmeld-uitleg">
-        {t(language, stap === 'nummer' ? 'ovl.signonNumber' : 'ovl.signonPin')}
+        {t(language, stap === "nummer" ? "ovl.signonNumber" : "ovl.signonPin")}
       </p>
 
-      <div className={`aanmeld-vakjes ${fout ? 'fout' : ''}`}>
+      <div className={`aanmeld-vakjes ${fout ? "fout" : ""}`}>
         {Array.from({ length: lengte }, (_, i) => (
-          <span key={i} className={i < ingevoerd.length ? 'vol' : ''}>
+          <span key={i} className={i < ingevoerd.length ? "vol" : ""}>
             {/* Het nummer lees je terug, de pincode niet -- die typ je blind. */}
-            {i < ingevoerd.length ? (stap === 'nummer' ? ingevoerd[i] : '•') : ''}
+            {i < ingevoerd.length
+              ? stap === "nummer"
+                ? ingevoerd[i]
+                : "•"
+              : ""}
           </span>
         ))}
       </div>
 
-      {fout && <p className="aanmeld-fout">{t(language, 'ovl.signonWrong')}</p>}
+      {fout && <p className="aanmeld-fout">{t(language, "ovl.signonWrong")}</p>}
 
       <div className="cijferblok">
-        {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((cijfer) => (
+        {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((cijfer) => (
           <button key={cijfer} type="button" onClick={() => toets(cijfer)}>
             {cijfer}
           </button>
         ))}
-        <button type="button" className="leeg" onClick={() => setIngevoerd('')}>
-          {t(language, 'ovl.signonClear')}
+        <button type="button" className="leeg" onClick={() => setIngevoerd("")}>
+          {t(language, "ovl.signonClear")}
         </button>
-        <button type="button" onClick={() => toets('0')}>
+        <button type="button" onClick={() => toets("0")}>
           0
         </button>
-        <button type="button" className="leeg" onClick={() => setIngevoerd((h) => h.slice(0, -1))}>
+        <button
+          type="button"
+          className="leeg"
+          onClick={() => setIngevoerd((h) => h.slice(0, -1))}
+        >
           ←
         </button>
       </div>
     </div>
-  )
+  );
 }
 
 /**
@@ -1991,47 +2247,49 @@ function DienstOpdracht({
   duty,
   chauffeur,
   language,
-  onAanvaard
+  onAanvaard,
 }: {
-  duty: Duty
-  chauffeur?: { naam: string }
-  language: Language
-  onAanvaard: () => void
+  duty: Duty;
+  chauffeur?: { naam: string };
+  language: Language;
+  onAanvaard: () => void;
 }): JSX.Element {
-  const klok = (minuten: number): string => formatTime(minuten)
+  const klok = (minuten: number): string => formatTime(minuten);
   return (
     <div className="opdracht">
-      <p className="opdracht-kop">{t(language, 'ovl.dutyOrder')}</p>
+      <p className="opdracht-kop">{t(language, "ovl.dutyOrder")}</p>
       {chauffeur && <p className="opdracht-naam">{chauffeur.naam}</p>}
 
       <dl className="opdracht-lijst">
         <div>
-          <dt>{t(language, 'ovl.dutyLine')}</dt>
-          <dd>{duty.lineNumbers.join(' / ') || duty.legs[0]?.lineNumber || '—'}</dd>
+          <dt>{t(language, "ovl.dutyLine")}</dt>
+          <dd>
+            {duty.lineNumbers.join(" / ") || duty.legs[0]?.lineNumber || "—"}
+          </dd>
         </div>
         <div>
-          <dt>{t(language, 'ovl.dutyTour')}</dt>
-          <dd>{duty.tourNumber || '—'}</dd>
+          <dt>{t(language, "ovl.dutyTour")}</dt>
+          <dd>{duty.tourNumber || "—"}</dd>
         </div>
         <div>
-          <dt>{t(language, 'ovl.dutyStart')}</dt>
+          <dt>{t(language, "ovl.dutyStart")}</dt>
           <dd>{klok(duty.start)}</dd>
         </div>
         <div>
-          <dt>{t(language, 'ovl.dutyEnd')}</dt>
+          <dt>{t(language, "ovl.dutyEnd")}</dt>
           <dd>{klok(duty.end)}</dd>
         </div>
         <div>
-          <dt>{t(language, 'ovl.dutyTrips')}</dt>
+          <dt>{t(language, "ovl.dutyTrips")}</dt>
           <dd>{duty.legs.length}</dd>
         </div>
       </dl>
 
       <button type="button" className="opdracht-teken" onClick={onAanvaard}>
-        {t(language, 'ovl.dutyAccept')}
+        {t(language, "ovl.dutyAccept")}
       </button>
     </div>
-  )
+  );
 }
 
 /**
@@ -2055,32 +2313,32 @@ function DienstOpdracht({
  */
 function KaartjesApp({
   set,
-  language
+  language,
 }: {
-  set?: Kaartset
-  language: Language
+  set?: Kaartset;
+  language: Language;
 }): JSX.Element {
-  const [gekozen, setGekozen] = useState<Kaartje>()
+  const [gekozen, setGekozen] = useState<Kaartje>();
   /** Wat de passagier tot nu toe heeft aangegeven, in centen. */
-  const [gegeven, setGegeven] = useState(0)
+  const [gegeven, setGegeven] = useState(0);
 
   /* Wisselt de kaart, dan slaat de vorige keuze nergens meer op. */
   useEffect(() => {
-    setGekozen(undefined)
-    setGegeven(0)
-  }, [set?.naam])
+    setGekozen(undefined);
+    setGegeven(0);
+  }, [set?.naam]);
 
   if (!set || set.kaartjes.length === 0) {
-    return <p className="app-leeg">{t(language, 'ovl.ticketsNone')}</p>
+    return <p className="app-leeg">{t(language, "ovl.ticketsNone")}</p>;
   }
 
-  const prijs = gekozen ? Math.round(gekozen.prijs * 100) : 0
-  const terug = gegeven - prijs
-  const munten = terug > 0 ? wisselgeld(terug) : []
-  const euro = (cent: number): string => (cent / 100).toFixed(2)
+  const prijs = gekozen ? Math.round(gekozen.prijs * 100) : 0;
+  const terug = gegeven - prijs;
+  const munten = terug > 0 ? wisselgeld(terug) : [];
+  const euro = (cent: number): string => (cent / 100).toFixed(2);
 
   /* De coupures waarmee een passagier betaalt; grootste eerst zoals in de lade. */
-  const COUPURES = [2000, 1000, 500, 200, 100, 50, 20, 10]
+  const COUPURES = [2000, 1000, 500, 200, 100, 50, 20, 10];
 
   return (
     <div className="kaartjes">
@@ -2093,7 +2351,9 @@ function KaartjesApp({
                 <span className="kaartprijs">{kaartje.prijs.toFixed(2)}</span>
               </button>
               {kaartje.maxHaltes > 0 && (
-                <small>{t(language, 'ovl.ticketStops', { count: kaartje.maxHaltes })}</small>
+                <small>
+                  {t(language, "ovl.ticketStops", { count: kaartje.maxHaltes })}
+                </small>
               )}
             </li>
           ))}
@@ -2101,7 +2361,14 @@ function KaartjesApp({
       ) : (
         <>
           <div className="kaartkop">
-            <button type="button" className="kaartterug" onClick={() => { setGekozen(undefined); setGegeven(0) }}>
+            <button
+              type="button"
+              className="kaartterug"
+              onClick={() => {
+                setGekozen(undefined);
+                setGegeven(0);
+              }}
+            >
               ‹
             </button>
             <span className="kaartnaam">{gekozen.naam}</span>
@@ -2115,34 +2382,42 @@ function KaartjesApp({
           */}
           <div className="coupures">
             {COUPURES.map((cent) => (
-              <button key={cent} type="button" onClick={() => setGegeven((t) => t + cent)}>
+              <button
+                key={cent}
+                type="button"
+                onClick={() => setGegeven((t) => t + cent)}
+              >
                 {euro(cent)}
               </button>
             ))}
           </div>
 
           <div className="kaartsom">
-            <span>{t(language, 'ovl.ticketGiven')}</span>
+            <span>{t(language, "ovl.ticketGiven")}</span>
             <b>{euro(gegeven)}</b>
-            <button type="button" className="kaartwis" onClick={() => setGegeven(0)}>
-              {t(language, 'ovl.ticketClear')}
+            <button
+              type="button"
+              className="kaartwis"
+              onClick={() => setGegeven(0)}
+            >
+              {t(language, "ovl.ticketClear")}
             </button>
           </div>
 
           {gegeven > 0 && (
-            <div className={`kaartterugbedrag ${terug < 0 ? 'tekort' : ''}`}>
+            <div className={`kaartterugbedrag ${terug < 0 ? "tekort" : ""}`}>
               {terug < 0 ? (
                 <>
-                  <span>{t(language, 'ovl.ticketShort')}</span>
+                  <span>{t(language, "ovl.ticketShort")}</span>
                   <b>{euro(-terug)}</b>
                 </>
               ) : (
                 <>
-                  <span>{t(language, 'ovl.ticketChange')}</span>
+                  <span>{t(language, "ovl.ticketChange")}</span>
                   <b>{euro(terug)}</b>
                   <div className="kaartmunten">
                     {munten.length === 0 ? (
-                      <em>{t(language, 'ovl.ticketExact')}</em>
+                      <em>{t(language, "ovl.ticketExact")}</em>
                     ) : (
                       munten.map((m) => (
                         <span key={m.cent}>
@@ -2158,6 +2433,5 @@ function KaartjesApp({
         </>
       )}
     </div>
-  )
+  );
 }
-

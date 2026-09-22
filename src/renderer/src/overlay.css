@@ -1676,6 +1676,22 @@
 }
 
 /*
+ * Aanmelden en tekenen gebeuren op de telefoon, en dat paneel heeft met opzet
+ * geen binnenmarge -- de kaart hoort van rand tot rand te staan. Een cijferblok
+ * hoort dat niet, dus die marge komt hier terug. Past het niet, dan scrolt het;
+ * het paneel zelf snijdt af wat eruit steekt.
+ */
+.panel-navigatie .panel-body > .aanmelden,
+.panel-navigatie .panel-body > .opdracht {
+  flex: 1;
+  min-height: 0;
+  padding: 10px 12px 12px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--vel-zacht) transparent;
+}
+
+/*
  * AANMELDEN EN DE DIENSTOPDRACHT
  *
  * Dit is het eerste dat je in de overlay ziet, en je zit al in de bus. Het

@@ -2982,6 +2982,13 @@ const TEXT = {
     nl: 'Deze chauffeur heeft nog geen personeelsnummer.'
   },
   'ovl.signonSkip': { en: 'Continue', de: 'Weiter', fr: 'Continuer', nl: 'Doorgaan' },
+  /* Staat in het dienstpaneel zolang je op de telefoon nog niet getekend hebt. */
+  'ovl.signonFirst': {
+    en: 'Sign on with your phone first.',
+    de: 'Melde dich erst auf dem Telefon an.',
+    fr: 'Prenez d’abord votre service sur le téléphone.',
+    nl: 'Meld je eerst aan op de telefoon.'
+  },
   'ovl.dutyOrder': {
     en: 'Duty assignment',
     de: 'Dienstauftrag',
