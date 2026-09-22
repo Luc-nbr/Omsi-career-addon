@@ -1214,42 +1214,69 @@
   height: calc(100% - 85px - 115px);
 }
 
-/* ---- de kaartkeuze: een foto achter het venster, en glas erop ----
+/* ---- de eerste stappen en de kaartkeuze: een foto achter het venster, en glas erop ----
  *
- * Op verzoek van Luc: bij het kiezen van de kaart ligt er een stad achter de
- * hele app -- 's nachts in de donkere stand, overdag in de lichte -- en liggen
- * de balk, het vel en de knoppen er als glas overheen. Het midden van beide
- * foto's is rustig (daar ligt het vel), het leven zit aan de randen.
+ * Op verzoek van Luc ligt er bij het kiezen van de chauffeur, de modus (die in
+ * de app het hoofdmenu is; zie de starthub hieronder) en de kaart een beeld
+ * achter de hele app, en liggen de balk, het vel en de knoppen
+ * er als glas overheen. Bij de chauffeur en de modus een weg met lijnen en een
+ * stad in de verte; bij de kaart een stad aan het water, 's nachts in de
+ * donkere stand en overdag in de lichte. Het midden van elk beeld is rustig
+ * (daar ligt het vel), het leven zit aan de randen.
  *
- * Alleen op deze stap. Vanaf de lijn ligt de kaart van OMSI zelf eronder, en
- * die is de ondergrond waar het daar om gaat. Staat de lijst in plaats van de
- * tegels, dan komt de netkaart rechts over de foto heen: ook dan wint de kaart.
+ * Alleen op deze stappen. Vanaf de lijn ligt de kaart van OMSI zelf eronder,
+ * en die is de ondergrond waar het daar om gaat. Staat de kaartkeuze als lijst
+ * in plaats van tegels, dan komt de netkaart rechts over de foto heen: ook dan
+ * wint de kaart.
  */
-.setup[data-stap='map'] {
+:is(.setup[data-stap='profile'], .setup[data-stap='mode'], .setup[data-stap='map']) {
   --glas: rgba(11, 16, 31, 0.56);
   --glas-knop: rgba(11, 16, 31, 0.62);
   --glas-rand: rgba(255, 255, 255, 0.1);
   --glas-schaduw: 0 18px 50px rgba(0, 0, 0, 0.38);
+}
+
+.setup[data-stap='map'] {
   background: #0a1122 url('./assets/achtergrond/nacht.webp') center / cover no-repeat;
 }
 
-:root[data-thema='licht'] .setup[data-stap='map'] {
+:is(.setup[data-stap='profile'], .setup[data-stap='mode']) {
+  background: #0a1122 url('./assets/achtergrond/start-nacht.webp') center / cover no-repeat;
+}
+
+:root[data-thema='licht']
+  :is(.setup[data-stap='profile'], .setup[data-stap='mode'], .setup[data-stap='map']) {
   --glas: rgba(247, 250, 253, 0.62);
   --glas-knop: rgba(247, 250, 253, 0.7);
   --glas-rand: rgba(255, 255, 255, 0.7);
   --glas-schaduw: 0 18px 50px rgba(30, 60, 110, 0.18);
   background-color: #dde8f6;
+}
+
+:root[data-thema='licht'] .setup[data-stap='map'] {
   background-image: url('./assets/achtergrond/dag.webp');
 }
 
+:root[data-thema='licht'] :is(.setup[data-stap='profile'], .setup[data-stap='mode']) {
+  background-image: url('./assets/achtergrond/start-dag.webp');
+}
+
 @media (prefers-color-scheme: light) {
-  :root:not([data-thema]) .setup[data-stap='map'] {
+  :root:not([data-thema])
+    :is(.setup[data-stap='profile'], .setup[data-stap='mode'], .setup[data-stap='map']) {
     --glas: rgba(247, 250, 253, 0.62);
     --glas-knop: rgba(247, 250, 253, 0.7);
     --glas-rand: rgba(255, 255, 255, 0.7);
     --glas-schaduw: 0 18px 50px rgba(30, 60, 110, 0.18);
     background-color: #dde8f6;
+  }
+
+  :root:not([data-thema]) .setup[data-stap='map'] {
     background-image: url('./assets/achtergrond/dag.webp');
+  }
+
+  :root:not([data-thema]) :is(.setup[data-stap='profile'], .setup[data-stap='mode']) {
+    background-image: url('./assets/achtergrond/start-dag.webp');
   }
 }
 
@@ -1258,17 +1285,16 @@
  * lopen de lichtjes van de stad door de namen van de kaarten heen; met twintig
  * pixels blijft het een gloed.
  */
-.setup[data-stap='map'] .vel,
-.setup[data-stap='map'] .tweedeknop,
-.setup[data-stap='map'] .terugknop {
+:is(.setup[data-stap='profile'], .setup[data-stap='mode'], .setup[data-stap='map'])
+  :is(.vel, .tweedeknop, .terugknop) {
   border-color: var(--glas-rand);
   background: var(--glas);
   box-shadow: var(--glas-schaduw);
   backdrop-filter: blur(20px) saturate(1.3);
 }
 
-.setup[data-stap='map'] .tweedeknop,
-.setup[data-stap='map'] .terugknop {
+:is(.setup[data-stap='profile'], .setup[data-stap='mode'], .setup[data-stap='map'])
+  :is(.tweedeknop, .terugknop) {
   background: var(--glas-knop);
 }
 
@@ -1742,6 +1768,16 @@
   font-size: 17px;
   font-weight: 800;
   letter-spacing: 0.01em;
+}
+
+/*
+ * Op een gekozen tegel is het vlak blauw en de tekst wit; het monogram hield de
+ * inkt van het vel, en die is in de lichte stand bijna zwart. Zo stond de "L"
+ * van de gekozen chauffeur zwart op blauw.
+ */
+.tegel[aria-pressed='true'] .monogram {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
 }
 
 /*
@@ -3708,9 +3744,10 @@
 
 /* ---- het hoofdmenu: een achtergrond, glas, en beweging die op jou reageert ----
  *
- * Op verzoek van Luc: een afbeelding achter het hoofdmenu (een nachtelijke weg
- * met lijnen en haltes in de donkere stand, dezelfde overdag in de lichte), de
- * vellen als glas erop, en meer beweging.
+ * Op verzoek van Luc: een afbeelding achter het hoofdmenu -- dezelfde als bij
+ * de chauffeurskeuze: een weg met lijnen en een stad in de verte, 's nachts in
+ * de donkere stand en overdag in de lichte -- de vellen als glas erop, en meer
+ * beweging.
  *
  * Die beweging is er alleen bij het binnenkomen, een keer, en als jij iets
  * doet. Niets loopt uit zichzelf door: de app staat vaak naast OMSI open, en
@@ -3754,19 +3791,19 @@
   position: fixed;
   inset: 0;
   z-index: -1;
-  background: #0a1122 url('./assets/achtergrond/hub-nacht.webp') center / cover no-repeat;
+  background: #0a1122 url('./assets/achtergrond/start-nacht.webp') center / cover no-repeat;
   pointer-events: none;
 }
 
 :root[data-thema='licht'] .hub::before {
   background-color: #e6edf7;
-  background-image: url('./assets/achtergrond/hub-dag.webp');
+  background-image: url('./assets/achtergrond/start-dag.webp');
 }
 
 @media (prefers-color-scheme: light) {
   :root:not([data-thema]) .hub::before {
     background-color: #e6edf7;
-    background-image: url('./assets/achtergrond/hub-dag.webp');
+    background-image: url('./assets/achtergrond/start-dag.webp');
   }
 }
 
