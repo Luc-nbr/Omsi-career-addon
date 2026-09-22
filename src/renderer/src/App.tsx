@@ -63,6 +63,8 @@ import { Busplaatjes } from "./Busplaatjes";
 import { Icoon } from "./Icoon";
 import { Starthub } from "./Starthub";
 import { Dienstpas } from "./Dienstpas";
+import { DraaitDialog } from "./DraaitDialog";
+import { HervatDialog } from "./HervatDialog";
 import { ThemaKnop, type Thema } from "./ThemaKnop";
 import { Versie } from "./Versie";
 import {
@@ -504,6 +506,21 @@ export function App(): JSX.Element {
   const [omsiMelding, setOmsiMelding] = useState<OmsiMelding>();
   /** Met welk tabblad de instellingen openen; de melding over overlays wijst naar "Overlays". */
   const [instellingenTab, setInstellingenTab] = useState<"overlays">();
+  /*
+   * Twee vragen die de app stelt in plaats van te raden.
+   *
+   * `hervatVraag`: er stond nog een dienst open toen je de app opende. Hij kwam
+   * daar vanzelf op uit, en dat is handig als je verder wilt en hinderlijk in
+   * elk ander geval.
+   *
+   * `draaitVraag`: je drukt op START terwijl OMSI al draait. Klaarzetten heeft
+   * dan geen zin -- het spel leest zijn startscherm alleen bij het opstarten --
+   * dus is de vraag of je meerijdt of liever opnieuw begint.
+   */
+  const [hervatVraag, setHervatVraag] = useState(false);
+  const [draaitVraag, setDraaitVraag] = useState(false);
+  /** Draait OMSI op dit moment? Gepeild op de busstap, vóór je op START drukt. */
+  const [omsiDraaitAl, setOmsiDraaitAl] = useState(false);
 
   // De taalkeuze staat los van de chauffeur; hij hoort bij deze computer.
   useEffect(() => {
@@ -580,6 +597,31 @@ export function App(): JSX.Element {
       }
     })();
   }, []);
+
+  /*
+   * Draait OMSI al? Alleen peilen waar het antwoord ertoe doet.
+   *
+   * Dit kost een `tasklist` van een tiende seconde, en dat is te veel om er de
+   * hele app mee te doorspekken. Op de busstap staat er een START-knop, en daar
+   * hangt het antwoord aan vast: draait het spel al, dan heeft klaarzetten geen
+   * zin en hoort dat te blijken vóórdat je drukt en niet erna.
+   */
+  useEffect(() => {
+    /* `stap` is de stap van het opzetvel; de busstap is de laatste voor START. */
+    if (stap !== "bus" || started) return undefined;
+    let geldig = true;
+    const peil = (): void => {
+      void window.career.omsiRunning().then((draait) => {
+        if (geldig) setOmsiDraaitAl(draait);
+      });
+    };
+    peil();
+    const klok = setInterval(peil, 5000);
+    return () => {
+      geldig = false;
+      clearInterval(klok);
+    };
+  }, [stap, started]);
 
   /*
    * Bij binnenkomst op de lijnstap staat de bovenste regel gemarkeerd, terwijl
@@ -666,7 +708,17 @@ export function App(): JSX.Element {
      * naartoe op het moment dat de dienst verschijnt: bij het aannemen, bij het
      * starten van de app, en bij het wisselen naar een chauffeur die rijdt.
      */
-    if (active.startedAt) setScreen("drive");
+    /*
+     * Een dienst die al liep toen hij verscheen -- bij het openen van de app of
+     * bij het wisselen naar een chauffeur die rijdt -- brengt je niet meer
+     * ongevraagd naar het rijscherm. Je komt in het hoofdmenu en de app vraagt
+     * of je verder wilt. Wie in deze sessie zelf op START drukt gaat er wel
+     * meteen heen; dat staat in `begin`, want daar valt niets te vragen.
+     */
+    if (active.startedAt) {
+      setScreen("modes");
+      setHervatVraag(true);
+    }
   }, [activeKey]);
 
   /*
@@ -1144,7 +1196,7 @@ export function App(): JSX.Element {
    * knop meer voor het klaarzetten; dat hoort bij starten.
    */
   const begin = useCallback(
-    async (alBevestigd = false, herstart = false) => {
+    async (alBevestigd = false, herstart = false, meerijden = false) => {
       /*
        * `confirmed` komt uit de loopbaanstatus en die is er pas een tik later. Wie
        * in één druk bevestigt en start, weet zelf dat het net gebeurd is; daarom
@@ -1163,12 +1215,19 @@ export function App(): JSX.Element {
               ? busKleur.naam
               : undefined,
           herstart,
+          meerijden,
           date: assignment?.date,
           lineNumber: ibis?.line || duty.legs[0]?.lineNumber || "",
           terminus: duty.legs[0]?.terminus ?? "",
           yard: ibis?.yard,
         });
         setStarted(true);
+        /*
+         * Wie zelf op START drukt, wil rijden. Dit zat eerst in de voorwaarde om
+         * het rijscherm heen -- "loopt er een dienst, dan is dit het scherm" --
+         * en die vrat alle andere schermen op.
+         */
+        setScreen("drive");
         /*
          * De overlay hoort pas in beeld te komen als het spel er is. Draait OMSI
          * al met de plugin, dan is dat nu; anders blijft het venstertje staan tot
@@ -1180,7 +1239,13 @@ export function App(): JSX.Element {
         setStarting(!result.connected);
 
         const lines: string[] = [];
-        if (result.prepareError) {
+        /*
+         * Meerijden: er is met opzet niets klaargezet, dus "alles staat klaar"
+         * zou hier gewoon niet waar zijn. Wat er wel geldt staat in de overlay.
+         */
+        if (result.meegereden) {
+          lines.push(t(language, "start.riding"));
+        } else if (result.prepareError) {
           lines.push(
             t(language, "start.failed", { reason: result.prepareError }),
           );
@@ -1201,7 +1266,8 @@ export function App(): JSX.Element {
             );
           }
         }
-        if (result.running) lines.push(t(language, "start.alreadyRunning"));
+        if (result.running && !result.meegereden)
+          lines.push(t(language, "start.alreadyRunning"));
         setNote(lines.join(" "));
       } finally {
         setBusy(false);
@@ -1218,11 +1284,14 @@ export function App(): JSX.Element {
    * wel -- de dienst komt in je loopbaan te staan -- maar hij hangt niet langer
    * aan een eigen knop.
    */
-  const startAlles = useCallback(async () => {
-    if (!assignment || busy) return;
-    if (!confirmed) await confirmDuty();
-    await begin(true);
-  }, [assignment, busy, confirmed, confirmDuty, begin]);
+  const startAlles = useCallback(
+    async (meerijden?: boolean) => {
+      if (!assignment || busy) return;
+      if (!confirmed) await confirmDuty();
+      await begin(true, false, meerijden);
+    },
+    [assignment, busy, confirmed, confirmDuty, begin],
+  );
 
   /**
    * Vrij rijden: klaarzetten en starten.
@@ -1285,6 +1354,27 @@ export function App(): JSX.Element {
     language,
     busKleur,
   ]);
+
+  /*
+   * Op START drukken. Draait OMSI al, dan eerst de vraag wat de app moet doen:
+   * klaarzetten heeft dan geen zin, want het spel leest zijn startscherm alleen
+   * bij het opstarten. Dat hoort te blijken voordat de dienst in je loopbaan
+   * staat en niet als mededeling erna.
+   */
+  const drukOpStart = useCallback(() => {
+    /*
+     * Niet bij vrij rijden. Daar is het klaarzetten niet een deel van het
+     * starten maar het hele starten: er is geen dienst om mee te rijden, alleen
+     * een situatie die de app schrijft en die OMSI moet inlezen. Meerijden zou
+     * daar dus niets opleveren, en de melding achteraf zegt terecht dat het spel
+     * opnieuw moet.
+     */
+    if (omsiDraaitAl && !started && mode !== "free") {
+      setDraaitVraag(true);
+      return;
+    }
+    void (mode === "free" ? startVrij() : startAlles());
+  }, [omsiDraaitAl, started, mode, startVrij, startAlles]);
 
   /**
    * Carriere: examen afleggen op de aangewezen lijn.
@@ -1968,9 +2058,30 @@ export function App(): JSX.Element {
             de eerste start waarin de gegevens erbij gekomen zijn.
           */
           dialoog={
-            !career.state.pasGezien &&
-            career.state.personeelsnummer &&
-            career.state.pincode ? (
+            /*
+             * De dienstpas gaat voor: die komt maar één keer in je leven en is
+             * kort. De vraag over de openstaande dienst komt daarna wel, want
+             * die staat er de volgende keer nog.
+             */
+            /*
+             * `duty` en niet `activeDuty.assignment`: dat veld is `unknown` in
+             * het profiel en wordt elders al uitgepakt. De aangenomen dienst
+             * staat op dit moment in `duties`, gezet door het effect dat hem
+             * terugleest.
+             */
+            hervatVraag && duty ? (
+              <HervatDialog
+                lijn={duty.lineNumbers[0] ?? duty.legs[0]?.lineNumber ?? "?"}
+                kaart={duty.mapName}
+                onHervatten={() => {
+                  setHervatVraag(false);
+                  setScreen("drive");
+                }}
+                onVerlaten={() => setHervatVraag(false)}
+              />
+            ) : !career.state.pasGezien &&
+              career.state.personeelsnummer &&
+              career.state.pincode ? (
               <Dienstpas
                 chauffeur={career.state.driver}
                 personeelsnummer={career.state.personeelsnummer}
@@ -2311,6 +2422,7 @@ export function App(): JSX.Element {
                       }
                     : undefined
                 }
+                onHoofdmenu={() => setScreen("modes")}
                 onToggleOverlay={toggleOverlay}
                 onCancel={cancelDuty}
                 onFinish={finish}
@@ -2509,7 +2621,7 @@ export function App(): JSX.Element {
        * de dienst aan en beginnen hem; vrij rijden heeft geen dienst om aan te
        * nemen en zet alleen de situatie klaar.
        */
-      verder: () => void (mode === "free" ? startVrij() : startAlles()),
+      verder: drukOpStart,
       knop: t(language, "setup.start"),
     };
 
@@ -3832,8 +3944,19 @@ export function App(): JSX.Element {
            */
           waarschuwing={
             stap === "bus" &&
-            (schermmodus === "volledig" || plugin?.error || plugin?.changed) ? (
+            (omsiDraaitAl ||
+              schermmodus === "volledig" ||
+              plugin?.error ||
+              plugin?.changed) ? (
               <>
+                {/*
+                  Draait het spel al, dan heeft klaarzetten geen zin en wordt
+                  START een vraag in plaats van een start. Dat hoort hier te
+                  staan en niet pas in het venstertje zelf.
+                */}
+                {omsiDraaitAl && mode !== "free" && (
+                  <p>{t(language, "app.omsiDraaitAl")}</p>
+                )}
                 {schermmodus === "volledig" && (
                   <>
                     <p>
@@ -3873,9 +3996,25 @@ export function App(): JSX.Element {
             /*
              * Eerst de vraag over de bus zelf, en pas daarna die over het
              * wagenpark: twee vensters tegelijk is er een te veel, en de tweede
-             * gaat over een keuze die de eerste nog moet maken.
+             * gaat over een keuze die de eerste nog moet maken. De vraag over
+             * een draaiend OMSI gaat voor allebei: die komt op het moment dat je
+             * op START drukt, en dan zijn de andere twee al beantwoord.
              */
-            toonBusVraag && assignment?.vehicle && duty ? (
+            draaitVraag ? (
+              <DraaitDialog
+                kaart={kaartDuty?.mapName ?? selectedMap?.name ?? ""}
+                bezig={busy}
+                onTerug={() => setDraaitVraag(false)}
+                onMeerijden={() => {
+                  setDraaitVraag(false);
+                  void startAlles(true);
+                }}
+                onKlaarzetten={() => {
+                  setDraaitVraag(false);
+                  void startAlles();
+                }}
+              />
+            ) : toonBusVraag && assignment?.vehicle && duty ? (
               <BusDialog
                 bus={`${assignment.vehicle.manufacturer} ${assignment.vehicle.type}`.trim()}
                 fit={assignment.fit}

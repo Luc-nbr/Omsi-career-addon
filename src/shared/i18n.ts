@@ -917,6 +917,100 @@ const TEXT = {
     fr: 'L’écran de démarrage d’OMSI n’a pas pu être préparé — choisissez {map} et la situation OMSI Enhancer vous-même.',
     nl: 'Het startscherm van OMSI kon niet worden klaargezet — kies zelf {map} en de situatie OMSI Enhancer.'
   },
+  /*
+   * OMSI draait al, en dan is klaarzetten zinloos: het spel leest zijn
+   * startscherm alleen bij het opstarten. De vraag komt vooraf, want als je het
+   * spel toch opnieuw gaat starten wil je dat weten voordat de dienst loopt.
+   */
+  /*
+   * Bij het openen van de app, als er nog een dienst openstond. De app kwam daar
+   * vanzelf op uit, en dat is handig als je verder wilt en hinderlijk in elk
+   * ander geval. "Verlaten" breekt niets af -- de dienst blijft gewoon staan.
+   */
+  /* Op het rijscherm: eruit, zonder de dienst aan te raken. */
+  'run.home': {
+    en: 'To the main menu',
+    de: 'Zum Hauptmenü',
+    fr: 'Vers le menu principal',
+    nl: 'Naar het hoofdmenu'
+  },
+  'hervat.title': {
+    en: 'You had a duty open',
+    de: 'Du hattest einen Dienst offen',
+    fr: 'Un service était en cours',
+    nl: 'Je had nog een dienst openstaan'
+  },
+  'hervat.body': {
+    en: 'Line {line} on {map} is still running. Carry on with it, or leave it for now? It stays in your profile either way.',
+    de: 'Linie {line} auf {map} läuft noch. Weiterfahren oder vorerst liegen lassen? Der Dienst bleibt so oder so in deinem Profil.',
+    fr: 'La ligne {line} sur {map} est toujours en cours. Reprendre, ou laisser pour l’instant ? Le service reste dans votre profil.',
+    nl: 'Lijn {line} op {map} loopt nog. Verder rijden, of voor nu laten staan? Hij blijft hoe dan ook in je profiel.'
+  },
+  'hervat.resume': {
+    en: 'Carry on driving',
+    de: 'Weiterfahren',
+    fr: 'Reprendre',
+    nl: 'Verder rijden'
+  },
+  'hervat.leave': {
+    en: 'Leave it for now',
+    de: 'Vorerst liegen lassen',
+    fr: 'Laisser pour l’instant',
+    nl: 'Laat maar staan'
+  },
+  'draait.title': {
+    en: 'OMSI is already running',
+    de: 'OMSI läuft schon',
+    fr: 'OMSI tourne déjà',
+    nl: 'OMSI draait al'
+  },
+  'draait.body': {
+    en: 'The game reads its start screen only when it launches, so setting up {map} would not reach this session. Two ways on:',
+    de: 'Das Spiel liest seinen Startbildschirm nur beim Start, ein Vorbereiten von {map} erreicht diese Sitzung also nicht. Zwei Wege:',
+    fr: 'Le jeu ne lit son écran de démarrage qu’au lancement : préparer {map} n’atteindrait pas cette session. Deux options :',
+    nl: 'Het spel leest zijn startscherm alleen bij het opstarten, dus {map} klaarzetten bereikt deze sessie niet meer. Twee wegen verder:'
+  },
+  'draait.rideName': { en: 'Ride along', de: 'Mitfahren', fr: 'Embarquer', nl: 'Meerijden' },
+  'draait.rideWhat': {
+    en: 'The duty starts now and the overlay opens. It tells you which map, which tour and which codes to pick in the game yourself.',
+    de: 'Der Dienst beginnt jetzt und das Overlay geht auf. Es sagt dir, welche Karte, welchen Umlauf und welche Codes du im Spiel selbst wählst.',
+    fr: 'Le service démarre et la superposition s’ouvre. Elle vous indique la carte, la rotation et les codes à choisir vous-même dans le jeu.',
+    nl: 'De dienst begint nu en de overlay gaat open. Die vertelt welke kaart, welke omloop en welke codes je in het spel zelf kiest.'
+  },
+  'draait.prepName': {
+    en: 'Set it up anyway',
+    de: 'Trotzdem vorbereiten',
+    fr: 'Préparer quand même',
+    nl: 'Toch klaarzetten'
+  },
+  'draait.prepWhat': {
+    en: 'Everything is written to the start screen. Close OMSI yourself and launch it again, and it is all preset.',
+    de: 'Alles wird in den Startbildschirm geschrieben. Beende OMSI selbst und starte es neu, dann steht alles bereit.',
+    fr: 'Tout est écrit dans l’écran de démarrage. Fermez OMSI vous-même et relancez-le : tout sera prêt.',
+    nl: 'Alles wordt in het startscherm gezet. Sluit OMSI zelf af en start het opnieuw, dan staat alles klaar.'
+  },
+  'draait.ride': { en: 'Ride along', de: 'Mitfahren', fr: 'Embarquer', nl: 'Meerijden' },
+  'draait.prep': {
+    en: 'Set up anyway',
+    de: 'Trotzdem vorbereiten',
+    fr: 'Préparer quand même',
+    nl: 'Toch klaarzetten'
+  },
+  'draait.back': { en: 'Not yet', de: 'Noch nicht', fr: 'Pas encore', nl: 'Nog niet' },
+  /* Op het rijscherm, nadat je voor meerijden koos. */
+  'start.riding': {
+    en: 'You are riding along in the running game. Nothing was set up: pick the map and the tour in OMSI yourself — the overlay says which.',
+    de: 'Du fährst im laufenden Spiel mit. Es wurde nichts vorbereitet: Wähle Karte und Umlauf in OMSI selbst -- das Overlay sagt welche.',
+    fr: 'Vous embarquez dans la partie en cours. Rien n’a été préparé : choisissez la carte et la rotation dans OMSI -- la superposition vous le dit.',
+    nl: 'Je rijdt mee in het spel dat al draait. Er is niets klaargezet: kies de kaart en de omloop zelf in OMSI -- de overlay zegt welke.'
+  },
+  /* Op de busstap, voordat je op START drukt. */
+  'app.omsiDraaitAl': {
+    en: 'OMSI is already running. Starting will ask whether you want to ride along in it or set things up for a fresh launch.',
+    de: 'OMSI läuft bereits. Beim Starten wird gefragt, ob du mitfahren oder für einen Neustart vorbereiten willst.',
+    fr: 'OMSI tourne déjà. Au démarrage, il vous sera demandé si vous voulez embarquer ou préparer un nouveau lancement.',
+    nl: 'OMSI draait al. Bij het starten vraagt de app of je meerijdt of liever klaarzet voor een verse start.'
+  },
   'start.alreadyRunning': {
     en: 'OMSI was already running, so it has not seen this yet. Restart the game, or load the situation OMSI Enhancer yourself.',
     de: 'OMSI lief bereits und kennt das noch nicht. Starte das Spiel neu oder lade die Situation OMSI Enhancer selbst.',

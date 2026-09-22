@@ -151,6 +151,7 @@ function Scherm() {
               onCancel={() => {}}
               onFinish={() => {}}
               chauffeur={{ personeelsnummer: '481902', pincode: '7341' }}
+              onHoofdmenu={() => {}}
               full={null}
             />
           </>
@@ -178,6 +179,8 @@ const meten = `(() => {
   const greep = doos('.navgreep')
   /* De gegevens om mee aan te melden, en het icoontje van de stap die loopt. */
   const pas = [...document.querySelectorAll('.running-pas b')].map((b) => b.textContent)
+  /* De weg terug hoort tussen de knoppen te staan en niet alleen in de balk. */
+  const knoppen = [...document.querySelectorAll('.actions button')].map((b) => b.textContent.trim())
   const stappen = [...document.querySelectorAll('.stap')]
   const stapNu = stappen.find((n) => n.dataset.stand === 'nu')
   /*
@@ -196,6 +199,7 @@ const meten = `(() => {
     knop,
     greep,
     pas,
+    knoppen,
     stapNu: stapNu?.textContent.trim(),
     stapLaatst,
     eigenVorm: stapVorm !== busVorm && stapVorm.length > 0,
@@ -261,6 +265,7 @@ app.whenReady().then(async () => {
       `  stap in de balk: "${m.stapNu}" (laatste: ${m.stapLaatst}, eigen vorm: ${m.eigenVorm})` +
         `, dienstgegevens ${JSON.stringify(m.pas)}`
     )
+    console.log(`  knoppen: ${JSON.stringify(m.knoppen)}`)
     for (const h of m.haltes) console.log(`  halte "${h.naam}" ${h.hoog}px hoog`)
 
     /* De oude kolom was hoogstens 420 breed; hieronder is er niets gewonnen. */
@@ -272,20 +277,23 @@ app.whenReady().then(async () => {
     /* De gegevens horen er te staan, en de balk hoort de rijstap aan te wijzen. */
     const pasErop = m.pas.join('|') === '481902|7341'
     const eigenStap = m.stapLaatst && m.eigenVorm
+    /* De weg terug staat vooraan, want hij is de enige die niets met deze dienst doet. */
+    const terugKnop = m.knoppen.length === 6 && /main menu|hoofdmenu/i.test(m.knoppen[0])
     const greepErtussen =
       m.greep && m.greep.links >= m.vel.rechts - 4 && m.greep.rechts <= m.kaart.links + 4
     /* En hij hoort onder de inhoud te staan, niet eroverheen. */
     const knopOnder = !m.knop || m.knop.links >= m.vel.links
     /* Een haltenaam die over twee regels valt, is 40 of meer hoog. */
     const opEenRegel = m.haltes.every((h) => h.hoog < 34)
-    if (!ruim || !naastElkaar || !binnen || !opEenRegel || !knopVrij || !knopOnder || !greepErtussen || !pasErop || !eigenStap) {
+    if (!ruim || !naastElkaar || !binnen || !opEenRegel || !knopVrij || !knopOnder || !greepErtussen || !pasErop || !eigenStap || !terugKnop) {
       goed = false
       console.log(
         `  MIS: ${!ruim ? 'vel te smal ' : ''}${!naastElkaar ? 'kaart overlapt ' : ''}` +
           `${!binnen ? 'valt buiten het venster ' : ''}${!opEenRegel ? 'haltenaam breekt af ' : ''}` +
           `${!knopVrij ? 'knop ligt over de kaart ' : ''}${!knopOnder ? 'knop staat naast het vel ' : ''}` +
           `${!greepErtussen ? 'de greep ligt niet tussen de twee ' : ''}` +
-          `${!pasErop ? 'geen dienstgegevens ' : ''}${!eigenStap ? 'de balk wijst de verkeerde stap aan' : ''}`
+          `${!pasErop ? 'geen dienstgegevens ' : ''}${!eigenStap ? 'de balk wijst de verkeerde stap aan ' : ''}` +
+          `${!terugKnop ? 'geen knop naar het hoofdmenu' : ''}`
       )
     }
 

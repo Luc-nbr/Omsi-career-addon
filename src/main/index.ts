@@ -2624,21 +2624,32 @@ function registerHandlers(): void {
      * Eerst klaarzetten, dan pas starten. Andersom heeft geen zin: OMSI leest
      * het startscherm bij het opstarten, dus wat er daarna nog geschreven wordt
      * ziet het spel deze sessie niet meer.
+     *
+     * En precies daarom slaan we het over als de speler meerijdt in een OMSI dat
+     * al draait: dan zou het schrijven niets opleveren voor deze sessie en wel
+     * het startscherm van de volgende keer overschrijven met een dienst die dan
+     * misschien allang afgerond is. Wat er in plaats daarvan gebeurt staat in de
+     * overlay: die vertelt welke kaart, welke omloop en welke codes je zelf moet
+     * kiezen.
      */
     let prepared: ReturnType<typeof prepareSituation> | undefined
     let prepareError: string | undefined
-    try {
-      prepared = prepareSituation(
-        duty,
-        request.vehiclePath,
-        request.date,
-        request.lineNumber,
-        request.terminus,
-        request.yard,
-        request.kleurstelling
-      )
-    } catch (cause) {
-      prepareError = cause instanceof Error ? cause.message : String(cause)
+    if (request.meerijden) {
+      log(`Meerijden in een draaiend OMSI: niets klaargezet voor ${duty.mapName}`)
+    } else {
+      try {
+        prepared = prepareSituation(
+          duty,
+          request.vehiclePath,
+          request.date,
+          request.lineNumber,
+          request.terminus,
+          request.yard,
+          request.kleurstelling
+        )
+      } catch (cause) {
+        prepareError = cause instanceof Error ? cause.message : String(cause)
+      }
     }
 
     captureBaseline()
@@ -2668,7 +2679,14 @@ function registerHandlers(): void {
      * en zetten we de situatie opnieuw klaar.
      */
     omsiDraaide = running || launched
-    return { connected: Boolean(live?.alive), launched, running, prepared, prepareError }
+    return {
+      connected: Boolean(live?.alive),
+      launched,
+      running,
+      meegereden: request.meerijden === true,
+      prepared,
+      prepareError
+    }
   })
 
   /**

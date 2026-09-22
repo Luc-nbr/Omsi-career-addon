@@ -239,6 +239,22 @@ export interface BeginRequest {
    * er tot dan gereden is telt mee; de meting begint opnieuw bij de herstart.
    */
   herstart?: boolean
+  /**
+   * Instappen in een OMSI dat al draait.
+   *
+   * De app zet een dienst normaal klaar in het startscherm van OMSI: kaart,
+   * situatie, dienstregeling, bus bij de halte. Dat werkt alleen bij het
+   * opstarten -- het spel leest dat scherm één keer en daarna nooit meer. Wie de
+   * app opent terwijl hij al in de bus zit, heeft daar dus niets aan, en kreeg
+   * tot nu toe een klaargezette situatie die hij pas de volgende keer zou zien
+   * plus de mededeling dat hij het spel maar opnieuw moest starten.
+   *
+   * Hiermee slaat de app dat klaarzetten over en doet ze wat er wél kan: de
+   * dienst gaat lopen, de overlay gaat open, en die vertelt welke kaart, welke
+   * omloop en welke codes je zelf moet kiezen -- precies de schermen die er al
+   * waren voor wie zijn dienst in het spel aanwees.
+   */
+  meerijden?: boolean
   date?: DutyDate
   lineNumber: string
   terminus: string
@@ -249,6 +265,8 @@ export interface BeginResult {
   connected: boolean
   launched: boolean
   running: boolean
+  /** Er is met opzet niets klaargezet: je stapt in een spel dat al draait. */
+  meegereden?: boolean
   prepared?: PreparedSituation
   /** Waarom het klaarzetten niet lukte; de overlay staat er dan alsnog. */
   prepareError?: string

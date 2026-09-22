@@ -1031,6 +1031,56 @@ kijkt of de kaart meebeweegt en of er iets bewaard wordt. Met een uitvoermap
 erachter schrijft hij de plaatjes; `--donker` voor de andere stand, `--breedte`
 voor een eigen maat.
 
+**Beginnen terwijl OMSI al draait** (sinds 22-09-2026). De app zet een dienst
+klaar in het startscherm van OMSI -- kaart, situatie, dienstregeling, bus bij de
+halte -- en start daarna het spel. Dat werkt **alleen bij het opstarten**: OMSI
+leest dat scherm een keer en daarna nooit meer. Wie de app opende terwijl hij al
+in de bus zat, kreeg dus een situatie klaargezet die hij pas de volgende keer zou
+zien, plus achteraf de mededeling dat hij het spel maar opnieuw moest starten.
+
+Nu peilt de app op de busstap of OMSI draait (elke vijf tellen, `omsiRunning`, en
+alleen daar -- het is een `tasklist` van een tiende seconde), zegt het in de
+waarschuwing boven de lijst, en maakt van START een vraag met twee antwoorden die
+allebei ergens toe leiden (`DraaitDialog.tsx`):
+
+- **Meerijden** -- `BeginRequest.meerijden`. Het hoofdproces slaat
+  `prepareSituation` over: schrijven zou deze sessie niets opleveren en wel het
+  startscherm van de volgende keer overschrijven met een dienst die dan misschien
+  allang afgerond is. De dienst gaat lopen, de overlay gaat open, en die vertelt
+  welke kaart, welke omloop en welke codes je zelf kiest -- precies de schermen
+  (`SelectPanel`, `IbisPanel`) die er al waren voor wie zijn dienst in het spel
+  aanwees. `BeginResult.meegereden` zorgt dat de app daarna niet "alles staat
+  klaar" zegt, want dat zou niet waar zijn.
+- **Toch klaarzetten** -- het oude gedrag, met de melding dat OMSI opnieuw moet.
+
+**Niet bij vrij rijden.** Daar is het klaarzetten niet een deel van het starten
+maar het hele starten: er is geen dienst om mee te rijden, alleen een situatie
+die OMSI moet inlezen. De vraag komt daar dus niet en de oude melding klopt.
+
+**De app sluit OMSI niet af** om het opnieuw te kunnen starten. Dat is het spel
+van de gebruiker, met een rit erin die misschien nog loopt.
+
+**Bij het openen kom je in het hoofdmenu** (sinds 22-09-2026), en stond er nog
+een dienst open, dan vraagt de app of je verder wilt (`HervatDialog.tsx`).
+Verder rijden brengt je naar het rijscherm; "laat maar staan" laat je in het
+hoofdmenu en raakt de dienst niet aan -- hij blijft in het profiel en de tegel
+zegt nog steeds "verder rijden". Afbreken is iets anders en zit waar het hoort,
+op het rijscherm onder "dienst annuleren".
+
+Wie in deze sessie zelf op START drukt gaat wel meteen naar het rijscherm; dat
+staat in `begin`, want daar valt niets te vragen. Het onderscheid hangt aan
+`activeKey`: die verandert bij het aannemen van een dienst en niet bij het
+starten ervan, dus de vraag komt alleen voor een dienst die al liep toen hij
+verscheen.
+
+**Op het rijscherm staat een knop naar het hoofdmenu.** De balk bovenaan heeft er
+al een huisje voor, en dat is een icoontje van zestien pixels in een hoek; dit
+scherm staat uren open en je wilt er tussendoor uit.
+
+Proeven: `scripts/probe-draait.cjs` tekent beide venstertjes, drukt alle knoppen
+in en kijkt of de goede afhandeling loopt. `probe-rijscherm.cjs` kijkt of de knop
+naar het hoofdmenu vooraan in de rij staat.
+
 **Een lopende dienst slokte het hele menu op** (opgelost op 22-09-2026). Het
 rijscherm stond achter `if (started && duty)`, en die voorwaarde stond boven de
 instellingen, de chauffeurslijst en de staat van dienst. Elke knop in het

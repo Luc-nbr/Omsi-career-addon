@@ -101,6 +101,8 @@ import { LiveDienst } from './src/renderer/src/LiveDienst'
 import { RunningDuty } from './src/renderer/src/RunningDuty'
 import { Dienstpas } from './src/renderer/src/Dienstpas'
 import { HofDialog } from './src/renderer/src/HofDialog'
+import { DraaitDialog } from './src/renderer/src/DraaitDialog'
+import { HervatDialog } from './src/renderer/src/HervatDialog'
 
 const duty = ${JSON.stringify(duty)}
 
@@ -168,6 +170,18 @@ function Scherm() {
           pincode="7341"
           onGezien={() => {}}
           onStaatVanDienst={() => {}}
+        />
+      </div>
+      <div className="hub" style={{ position: 'relative', height: '300px' }}>
+        <HervatDialog lijn="849" kaart="Hohenkirchen" onHervatten={() => {}} onVerlaten={() => {}} />
+      </div>
+      <div className="setup" style={{ position: 'relative', height: '520px' }}>
+        <DraaitDialog
+          kaart="Hohenkirchen"
+          bezig={false}
+          onMeerijden={() => {}}
+          onKlaarzetten={() => {}}
+          onTerug={() => {}}
         />
       </div>
       <div className="setup" style={{ position: 'relative', height: '380px' }}>

@@ -2111,6 +2111,48 @@
 }
 
 /*
+ * DE TWEE WEGEN VERDER ALS OMSI AL DRAAIT
+ *
+ * Geen knoppen met alleen een naam erop: de een slaat het klaarzetten over en de
+ * ander vraagt je het spel opnieuw te starten, en dat verschil moet je kunnen
+ * lezen voordat je kiest. Dus staat er bij elke keuze wat hij doet.
+ */
+.draait-keuzes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 18px;
+  padding: 0;
+  list-style: none;
+}
+
+.draait-keuzes li {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 14px;
+  border: 1px solid var(--vel-lijn);
+  border-radius: var(--radius-klein);
+}
+
+.draait-keuzes b {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.draait-keuzes span {
+  color: var(--vel-zacht);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* Drie knoppen passen op een smal venster niet meer naast elkaar. */
+.setup .dialog.draait .dialog-actions,
+.hub .dialog.draait .dialog-actions {
+  flex-wrap: wrap;
+}
+
+/*
  * DE DIENSTPAS
  *
  * De twee getallen staan groot en met lucht tussen de cijfers, want ze worden

@@ -29,6 +29,15 @@ interface Props {
    * het moment dat je in de bus zit en het cijferblok voor je hebt.
    */
   chauffeur?: { personeelsnummer?: string; pincode?: string };
+  /**
+   * Terug naar het hoofdmenu, zonder de dienst aan te raken.
+   *
+   * De balk bovenaan heeft er al een huisje voor, en dat is een icoontje van
+   * zestien pixels in een hoek. Dit scherm staat uren open en je wilt er
+   * tussendoor uit -- naar de instellingen, naar je staat van dienst -- dus
+   * hoort de weg terug ook tussen de knoppen te staan waar je toch al kijkt.
+   */
+  onHoofdmenu(): void;
   onToggleOverlay(): void;
   onCancel(): void;
   onFinish(): void;
@@ -55,6 +64,7 @@ export function RunningDuty({
   exam,
   overlayOpen,
   chauffeur,
+  onHoofdmenu,
   onToggleOverlay,
   onCancel,
   onFinish,
@@ -181,6 +191,13 @@ export function RunningDuty({
       </p>
 
       <div className="actions">
+        {/*
+          Naar het hoofdmenu, en de dienst blijft gewoon staan. Vooraan, want dit
+          is de enige knop hier die niets met deze dienst doet.
+        */}
+        <button type="button" className="btn secondary" onClick={onHoofdmenu}>
+          {tr("run.home")}
+        </button>
         <button
           type="button"
           className="btn secondary"
