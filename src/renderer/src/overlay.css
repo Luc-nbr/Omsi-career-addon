@@ -242,65 +242,6 @@
   overflow: hidden;
 }
 
-/*
- * De titelbalk zweeft boven het element in plaats van erin: zo is het tijdens
- * het schuiven precies even groot als daarna, en springt de inhoud niet weg
- * zodra je op Klaar drukt.
- */
-.panel-bar {
-  position: absolute;
-  left: -1px;
-  right: -1px;
-  top: -23px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 8px;
-  border-radius: 8px 8px 0 0;
-  border: 1px solid rgba(240, 180, 41, 0.4);
-  border-bottom: none;
-  background: rgba(12, 16, 22, 0.94);
-  color: #e6ecf5;
-  font-size: 11.5px;
-  cursor: grab;
-}
-
-.panel-title {
-  flex: 1;
-  letter-spacing: 0.03em;
-}
-
-.panel-bar button {
-  border: none;
-  background: none;
-  color: #8d9bad;
-  font: inherit;
-  cursor: pointer;
-  padding: 0 2px;
-  line-height: 1;
-}
-
-.panel-bar button:hover {
-  color: #ffffff;
-}
-
-/* Het hoekje waar je aan trekt om het element te verschalen. */
-.panel-grip {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 16px;
-  height: 16px;
-  cursor: nwse-resize;
-  background: linear-gradient(
-    135deg,
-    transparent 0 46%,
-    rgba(240, 180, 41, 0.75) 46% 54%,
-    transparent 54% 76%,
-    rgba(240, 180, 41, 0.75) 76% 84%,
-    transparent 84%
-  );
-}
 
 /* ---------- bovenste regel en de standknop ---------- */
 
@@ -679,11 +620,22 @@
   align-items: center;
   gap: 14px;
   flex-wrap: wrap;
+  /*
+   * Zo breed als de inhoud. Met alleen `left: 50%` mocht hij de halve
+   * schermbreedte gebruiken, en brak hij ook op een breed scherm in tweeen.
+   */
+  width: max-content;
   max-width: calc(100vw - 40px);
   padding: 9px 16px;
+  /*
+   * Glas en het blauw van de route, zoals de balk boven elk element. Het geel
+   * van de oude bewerkstand hoort bij het lijnnummer en nergens anders.
+   */
   border-radius: 12px;
-  background: rgba(12, 16, 22, 0.94);
-  border: 1px solid rgba(240, 180, 41, 0.4);
+  background: rgba(12, 17, 30, 0.92);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
 }
 
@@ -704,16 +656,21 @@
 .editbar button {
   font: inherit;
   cursor: pointer;
-  border-radius: 7px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.06);
   color: #dbe3ee;
-  padding: 4px 10px;
+  padding: 5px 12px;
   font-size: 12px;
+  font-weight: 600;
+  transition:
+    border-color 120ms ease-out,
+    background-color 120ms ease-out;
 }
 
 .editbar button:hover {
-  border-color: #f0b429;
+  border-color: rgba(42, 117, 247, 0.7);
+  background: rgba(42, 117, 247, 0.14);
   color: #ffffff;
 }
 
@@ -728,8 +685,8 @@
 }
 
 .editbar-rate button.on {
-  border-color: #f0b429;
-  background: rgba(240, 180, 41, 0.18);
+  border-color: var(--route);
+  background: rgba(42, 117, 247, 0.22);
   color: #ffffff;
 }
 
@@ -740,10 +697,14 @@
 }
 
 .editbar button.done {
-  background: #f0b429;
-  border-color: #f0b429;
-  color: #1d1607;
+  background: var(--route);
+  border-color: var(--route);
+  color: #ffffff;
   font-weight: 700;
+}
+
+.editbar button.done:hover {
+  background: #3d84ff;
 }
 
 /* ---------- knop naar de bewerkstand ---------- */
@@ -802,48 +763,6 @@
   margin-top: 9px;
 }
 
-/* ---------- vergroten en verkleinen ---------- */
-
-.panel-scale {
-  border: none;
-  background: none;
-  color: #8d9bad;
-  font: inherit;
-  cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
-}
-
-.panel-scale:hover {
-  color: #ffffff;
-}
-
-.panel-percent {
-  color: #8d9bad;
-  font-variant-numeric: tabular-nums;
-  min-width: 34px;
-  text-align: center;
-}
-
-/* De schuif voor de doorzichtigheid, naast de vergroting in dezelfde balk. */
-.panel-fade {
-  appearance: none;
-  width: 56px;
-  height: 4px;
-  margin: 0 2px;
-  border-radius: 2px;
-  background: linear-gradient(90deg, rgba(240, 180, 41, 0.22), #f0b429);
-  cursor: pointer;
-}
-
-.panel-fade::-webkit-slider-thumb {
-  appearance: none;
-  width: 10px;
-  height: 10px;
-  border: none;
-  border-radius: 50%;
-  background: #e6ecf5;
-}
 
 /* ---------- tijden bij de haltes ---------- */
 
@@ -990,40 +909,6 @@
 }
 
 
-/*
- * De balk staat er altijd, dus hij mag niet schreeuwen. Rustig tot je er met de
- * muis overheen gaat; dan pas laat hij zien dat je kunt slepen en schuiven.
- */
-.panel-bar {
-  /*
-   * In rust helemaal weg.
-   *
-   * Hij stond op 0,35 -- flauw, maar zichtbaar -- en dan kijk je tijdens het
-   * rijden de hele tijd tegen een titelbalk met een schuif en een kruisje aan
-   * boven je kaart. Dat hoort er niet te staan: je gebruikt hem eens, bij het
-   * inrichten, en daarna nooit meer.
-   *
-   * Hij blijft wel op zijn plek liggen en blijft aanklikbaar, dus hij is er
-   * meteen zodra je de muis erheen brengt. Weggehaald zou betekenen dat je er
-   * een knop voor moet indrukken, en dat was juist het bezwaar.
-   */
-  opacity: 0;
-  transition: opacity 120ms ease-out;
-}
-
-.panel:hover .panel-bar,
-.panel-bar:focus-within {
-  opacity: 1;
-}
-
-.panel-grip {
-  opacity: 0;
-  transition: opacity 120ms ease-out;
-}
-
-.panel:hover .panel-grip {
-  opacity: 0.9;
-}
 
 
 /* ---- het toestel: apps en het balkje onderin ----
@@ -1857,4 +1742,360 @@
 
 .opdracht-teken:hover {
   background: var(--route-diep);
+}
+
+/* ---- de balk, de randen en het hoekje van een element ----
+ *
+ * In de stijl van de rest van de app: glas, het blauw van de route, en ronde
+ * knopjes met een tekentje in plaats van losse tekens. De oude balk had een
+ * gele rand en een gele schuif, en hing half buiten het venster.
+ *
+ * De balk staat er in rust niet: je gebruikt hem eens, bij het inrichten, en
+ * daarna nooit meer, dus tijdens het rijden hoort hij niet boven je kaart te
+ * hangen. Hij komt zodra de muis op het element staat, en blijft liggen waar
+ * hij ligt, dus je kunt er meteen naartoe.
+ */
+.panel-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 4px 0 9px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(12, 17, 30, 0.9);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+  color: #e8ebf2;
+  font-size: 11px;
+  cursor: grab;
+  opacity: 0;
+  translate: 0 4px;
+  transition:
+    opacity 140ms ease-out,
+    translate 160ms ease-out;
+}
+
+/* Geen ruimte boven het element (het staat tegen de bovenrand): dan erin. */
+.panel[data-balk='binnen'] .panel-bar {
+  bottom: auto;
+  top: 6px;
+  left: 6px;
+  right: 6px;
+  translate: 0 -4px;
+}
+
+.panel:hover .panel-bar,
+.panel-bar:focus-within,
+.editing .panel-bar,
+.panel[data-sleept] .panel-bar {
+  opacity: 1;
+  translate: 0 0;
+}
+
+.panel-bar:active,
+.panel[data-sleept] .panel-bar {
+  cursor: grabbing;
+}
+
+.panel-greep {
+  flex: none;
+  width: 8px;
+  height: 13px;
+  fill: rgba(232, 235, 242, 0.42);
+}
+
+.panel-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(232, 235, 242, 0.75);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Een groepje als een capsule: kleiner, de maat, groter. */
+.panel-maat,
+.panel-dicht {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.panel-bar button {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(232, 235, 242, 0.72);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease-out,
+    color 120ms ease-out;
+}
+
+.panel-bar button:hover {
+  background: rgba(255, 255, 255, 0.13);
+  color: #ffffff;
+}
+
+.panel-bar button:focus-visible,
+.panel-fade:focus-visible {
+  outline: 2px solid var(--route);
+  outline-offset: 1px;
+}
+
+.panel-bar button svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+}
+
+.panel-percent {
+  min-width: 32px;
+  color: rgba(232, 235, 242, 0.85);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* De doorzichtigheid: een druppel en een dunne schuif, blauw gevuld tot waar hij staat. */
+.panel-dicht {
+  gap: 6px;
+  padding: 0 9px 0 7px;
+  cursor: pointer;
+}
+
+.panel-dicht svg {
+  width: 11px;
+  height: 11px;
+  fill: rgba(232, 235, 242, 0.7);
+}
+
+.panel-fade {
+  appearance: none;
+  width: 52px;
+  height: 4px;
+  margin: 0;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    var(--route) var(--vulling, 100%),
+    rgba(255, 255, 255, 0.18) var(--vulling, 100%)
+  );
+  cursor: pointer;
+}
+
+.panel-fade::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--route);
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+/* Het element zelf laat zien dat je het kunt oppakken. */
+.panel {
+  transition: border-color 140ms ease-out;
+}
+
+.panel:hover {
+  border-color: rgba(42, 117, 247, 0.45);
+}
+
+.panel[data-sleept] {
+  border-color: var(--route);
+}
+
+/*
+ * Vastpakken aan de randen: smalle stroken langs alle vier de kanten, behalve
+ * het hoekje rechtsonder, dat is voor de maat. Ze lichten blauw op als de muis
+ * erop staat, zodat je ziet dat je daar kunt trekken.
+ */
+.panel-rand {
+  position: absolute;
+  z-index: 2;
+  cursor: grab;
+}
+
+.panel-rand::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border-radius: 4px;
+  background: rgba(42, 117, 247, 0);
+  transition: background-color 140ms ease-out;
+}
+
+.panel-rand:hover::after,
+.panel[data-sleept] .panel-rand::after {
+  background: rgba(42, 117, 247, 0.4);
+}
+
+.panel-rand:active {
+  cursor: grabbing;
+}
+
+.panel-rand-boven {
+  top: -1px;
+  left: -1px;
+  right: -1px;
+  height: 9px;
+}
+
+.panel-rand-onder {
+  bottom: -1px;
+  left: -1px;
+  right: 26px;
+  height: 9px;
+}
+
+.panel-rand-links {
+  top: -1px;
+  bottom: -1px;
+  left: -1px;
+  width: 9px;
+}
+
+.panel-rand-rechts {
+  top: -1px;
+  bottom: 26px;
+  right: -1px;
+  width: 9px;
+}
+
+/* Het hoekje voor de maat: een haakje in de ronding, blauw als je erop staat. */
+.panel-grip {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  z-index: 3;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  opacity: 0;
+  transition: opacity 140ms ease-out;
+}
+
+.panel-grip::before {
+  content: '';
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid rgba(232, 235, 242, 0.6);
+  border-bottom: 2px solid rgba(232, 235, 242, 0.6);
+  border-bottom-right-radius: 5px;
+  transition: border-color 120ms ease-out;
+}
+
+.panel:hover .panel-grip,
+.editing .panel-grip,
+.panel[data-sleept] .panel-grip {
+  opacity: 1;
+}
+
+.panel-grip:hover::before {
+  border-color: var(--route);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-bar,
+  .panel,
+  .panel-rand::after,
+  .panel-grip,
+  .panel-grip::before,
+  .panel-bar button {
+    transition: none;
+  }
+
+  .panel-bar,
+  .panel[data-balk='binnen'] .panel-bar {
+    translate: none;
+  }
+}
+
+/* ---- je dienstpas in het dienstpaneel ---- */
+.aanmeld-pas {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0 2px;
+}
+
+.aanmeld-pas div {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  transition:
+    border-color 140ms ease-out,
+    background-color 140ms ease-out;
+}
+
+
+.aanmeld-pas dt {
+  color: rgba(232, 235, 242, 0.6);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.aanmeld-pas dd {
+  margin: 0;
+  color: #ffffff;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tijdens het rijden: een regel onderaan, zacht, want je kijkt er zelden naar. */
+.pasregel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: 8px 0 0;
+  padding-top: 7px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(232, 235, 242, 0.55);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pasregel b {
+  margin-right: 6px;
+  color: rgba(232, 235, 242, 0.9);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  font-variant-numeric: tabular-nums;
 }

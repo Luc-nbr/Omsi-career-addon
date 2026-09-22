@@ -58,6 +58,20 @@ import "./overlay.css";
  * zijn inhoud, en dan zou een element zichzelf naar de linkerbovenhoek klemmen.
  * Het scherm blijft even groot, wat het venster ook doet.
  */
+/** Zo dicht bij een schermrand klikt een element er tegenaan, in schermpunten. */
+const KLEEF = 14;
+
+/**
+ * De ruimte boven een element voor zijn balk: 30 hoog en 6 lucht.
+ *
+ * De balk zweeft boven het element. Het venster krimpt buiten het slepen tot
+ * het vak om de elementen heen, en rekende hem niet mee: van de oude balk viel
+ * de helft buiten het venster, en die helft kon je niet zien en niet pakken.
+ * Staat een element zo hoog dat er geen ruimte boven is, dan komt de balk
+ * erbinnen (zie `data-balk`).
+ */
+const BALK_RUIMTE = 36;
+
 function screenSize(): { w: number; h: number } {
   return { w: window.screen.width, h: window.screen.height };
 }
@@ -494,11 +508,13 @@ function Overlay(): JSX.Element | null {
         const state = layout[info.id];
         const element = panelRefs.current[info.id];
         if (!state.visible || !element) continue;
+        const boven =
+          state.y >= BALK_RUIMTE * state.scale ? BALK_RUIMTE * state.scale : 0;
         delen.push({
           x: state.x,
-          y: state.y,
+          y: state.y - boven,
           w: element.offsetWidth * state.scale,
-          h: element.offsetHeight * state.scale,
+          h: element.offsetHeight * state.scale + boven,
         });
       }
       setBox((old) => {
@@ -688,6 +704,7 @@ function Overlay(): JSX.Element | null {
           {!getekend ? (
             <>
               <p className="empty">{t(language, "ovl.signonFirst")}</p>
+              <Dienstpas chauffeur={frame.chauffeur} language={language} />
               {/*
                 Wie de telefoon met zijn ✕ had uitgezet, zat hier vast: aanmelden
                 kan alleen daar, en die indeling blijft bewaard. De enige
@@ -1069,19 +1086,32 @@ function Panel({
   );
   /** Het element zelf: de overlay meet er de hoogte aan, het slepen de grens. */
   const self = useRef<HTMLElement | null>(null);
+  /** Wordt het nu versleept of geschaald? Dan draagt het de blauwe rand. */
+  const [sleept, setSleept] = useState(false);
   const hold = (element: HTMLElement | null): void => {
     self.current = element;
     innerRef?.(element);
   };
 
+  /*
+   * Slepen rekent in SCHERMpunten (`screenX`), niet in vensterpunten. Zodra je
+   * vastpakt groeit het overlayvenster van het vak om de elementen heen naar het
+   * hele scherm; met `clientX` verschoof daarmee halverwege de sleep de
+   * nulpunt, en sprong het element een eind op. Schermpunten veranderen niet
+   * als het venster verandert.
+   */
   const startDrag = (event: PointerEvent<HTMLElement>): void => {
+    if (event.button !== 0) return;
+    // Een knop of de schuif in de balk is geen handvat.
+    if ((event.target as Element).closest("button, input, label")) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     drag.current = {
-      x: event.clientX,
-      y: event.clientY,
+      x: event.screenX,
+      y: event.screenY,
       ox: state.x,
       oy: state.y,
     };
+    setSleept(true);
     // Het venster even zo groot als het scherm, anders stopt het slepen bij de eigen rand.
     if (!editing) {
       void window.career.overlayGrab(true);
@@ -1093,11 +1123,12 @@ function Panel({
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
     size.current = {
-      x: event.clientX,
-      y: event.clientY,
+      x: event.screenX,
+      y: event.screenY,
       w: state.w,
       h: state.h,
     };
+    setSleept(true);
     if (!editing) {
       void window.career.overlayGrab(true);
       onGrab?.(true);
@@ -1125,18 +1156,27 @@ function Panel({
       const room = screenSize();
       const wide = (self.current?.offsetWidth ?? state.w) * state.scale;
       const tall = (self.current?.offsetHeight ?? state.h) * state.scale;
+      const maxX = Math.max(0, room.w - wide);
+      const maxY = Math.max(0, room.h - tall);
+      /*
+       * Dicht bij een schermrand klikt het element er tegenaan. Een hoek halen
+       * was pixelwerk: het bleef een paar punten van de rand hangen, en dan zie
+       * je een streepje spel tussen de navigatie en de rand van je scherm.
+       */
+      const kleef = (plek: number, max: number): number =>
+        plek < KLEEF ? 0 : max - plek < KLEEF ? max : plek;
       onChange({
-        x: clamp(ox + event.clientX - x, 0, Math.max(0, room.w - wide)),
-        y: clamp(oy + event.clientY - y, 0, Math.max(0, room.h - tall)),
+        x: kleef(clamp(ox + event.screenX - x, 0, maxX), maxX),
+        y: kleef(clamp(oy + event.screenY - y, 0, maxY), maxY),
       });
     } else if (size.current) {
       const { x, y, w, h } = size.current;
       // Het element is vergroot, dus een muisstap van tien punten is er minder.
       onChange({
-        w: Math.max(info.minW, w + (event.clientX - x) / state.scale),
+        w: Math.max(info.minW, w + (event.screenX - x) / state.scale),
         h: info.autoHeight
           ? state.h
-          : Math.max(info.minH, h + (event.clientY - y) / state.scale),
+          : Math.max(info.minH, h + (event.screenY - y) / state.scale),
       });
     }
   };
@@ -1145,6 +1185,7 @@ function Panel({
     const bezig = Boolean(drag.current || size.current);
     drag.current = undefined;
     size.current = undefined;
+    setSleept(false);
     // Losgelaten: het venster krimpt weer om de overlay heen.
     if (bezig && !editing) {
       void window.career.overlayGrab(false);
@@ -1156,6 +1197,8 @@ function Panel({
     <section
       ref={hold}
       className={`panel panel-${info.id}`}
+      data-balk={state.y < BALK_RUIMTE * state.scale ? "binnen" : undefined}
+      data-sleept={sleept ? "ja" : undefined}
       style={
         {
           left: state.x,
@@ -1183,55 +1226,106 @@ function Panel({
         overal elders gaan je klikken gewoon naar het spel.
       */}
       <header className="panel-bar" data-hit onPointerDown={startDrag}>
+        {/* Het greepje: zes stippen, het teken voor "hier kun je aan trekken". */}
+        <svg className="panel-greep" viewBox="0 0 10 16" aria-hidden="true">
+          {[3, 8, 13].map((cy) => (
+            <g key={cy}>
+              <circle cx="2.5" cy={cy} r="1.3" />
+              <circle cx="7.5" cy={cy} r="1.3" />
+            </g>
+          ))}
+        </svg>
         <span className="panel-title">{title}</span>
-        <button
-          type="button"
-          className="panel-scale"
-          title={t(language, "ovl.smaller")}
-          aria-label={t(language, "ovl.smaller")}
-          onClick={() => rescale(-SCALE_STEP)}
-        >
-          −
-        </button>
-        <span className="panel-percent">{Math.round(state.scale * 100)}%</span>
-        <button
-          type="button"
-          className="panel-scale"
-          title={t(language, "ovl.bigger")}
-          aria-label={t(language, "ovl.bigger")}
-          onClick={() => rescale(SCALE_STEP)}
-        >
-          +
-        </button>
+        <span className="panel-maat">
+          <button
+            type="button"
+            className="panel-scale"
+            title={t(language, "ovl.smaller")}
+            aria-label={t(language, "ovl.smaller")}
+            onClick={() => rescale(-SCALE_STEP)}
+          >
+            <svg viewBox="0 0 12 12" aria-hidden="true">
+              <path d="M2.5 6h7" />
+            </svg>
+          </button>
+          <span className="panel-percent">{Math.round(state.scale * 100)}%</span>
+          <button
+            type="button"
+            className="panel-scale"
+            title={t(language, "ovl.bigger")}
+            aria-label={t(language, "ovl.bigger")}
+            onClick={() => rescale(SCALE_STEP)}
+          >
+            <svg viewBox="0 0 12 12" aria-hidden="true">
+              <path d="M2.5 6h7M6 2.5v7" />
+            </svg>
+          </button>
+        </span>
         {/*
-            De schuif zit in de balk waaraan je sleept, dus een sleep erop zou
-            het hele element meenemen; stopPropagation houdt hem bij de schuif.
-          */}
-        <input
-          type="range"
-          className="panel-fade"
-          min={Math.round(OPACITY_MIN * 100)}
-          max={100}
-          step={5}
-          value={Math.round(state.opacity * 100)}
+          De doorzichtigheid: een druppel met de schuif erachter. De schuif zit
+          in de balk waaraan je sleept; `startDrag` laat invoervelden met rust,
+          en stopPropagation houdt de sleep bij de schuif.
+        */}
+        <label
+          className="panel-dicht"
           title={`${t(language, "ovl.opacity")} ${Math.round(state.opacity * 100)}%`}
-          aria-label={t(language, "ovl.opacity")}
-          onPointerDown={(event) => event.stopPropagation()}
-          onChange={(event) =>
-            onChange({ opacity: Number(event.target.value) / 100 })
-          }
-        />
+        >
+          <svg viewBox="0 0 12 12" aria-hidden="true">
+            <path d="M6 1.6C4.2 4 3 5.6 3 7.2a3 3 0 0 0 6 0C9 5.6 7.8 4 6 1.6Z" />
+          </svg>
+          <input
+            type="range"
+            className="panel-fade"
+            min={Math.round(OPACITY_MIN * 100)}
+            max={100}
+            step={5}
+            value={Math.round(state.opacity * 100)}
+            aria-label={t(language, "ovl.opacity")}
+            style={
+              {
+                "--vulling": `${((state.opacity - OPACITY_MIN) / (1 - OPACITY_MIN)) * 100}%`,
+              } as CSSProperties
+            }
+            onPointerDown={(event) => event.stopPropagation()}
+            onChange={(event) =>
+              onChange({ opacity: Number(event.target.value) / 100 })
+            }
+          />
+        </label>
         <button
           type="button"
           className="panel-hide"
           title={t(language, "ovl.hide")}
+          aria-label={t(language, "ovl.hide")}
           onClick={() => onChange({ visible: false })}
         >
-          ✕
+          <svg viewBox="0 0 12 12" aria-hidden="true">
+            <path d="M3 3l6 6M9 3 3 9" />
+          </svg>
         </button>
       </header>
 
       <div className="panel-body">{children}</div>
+
+      {/*
+        Vastpakken kan aan elke rand, niet alleen aan de balk.
+
+        Alleen aan de balk betekende: de navigatie in een hoek onderaan zetten
+        door hem aan zijn bovenkant naar beneden te trekken, zonder te zien waar
+        de onderrand uitkomt. Nu pak je hem aan de kant die je in de hoek wilt.
+        Het zijn smalle stroken langs de rand en niet het hele element: overal
+        waar `data-hit` staat vangt de overlay de muis, en dan krijgt OMSI hem
+        niet -- ook niet om rond te kijken.
+      */}
+      {(["boven", "links", "rechts", "onder"] as const).map((kant) => (
+        <span
+          key={kant}
+          className={`panel-rand panel-rand-${kant}`}
+          data-hit
+          aria-hidden="true"
+          onPointerDown={startDrag}
+        />
+      ))}
 
       <span
         className="panel-grip"
@@ -1813,6 +1907,9 @@ function DutyPanel({
             })}
           </div>
         ))}
+
+      {/* Je dienstpas, klein: voor wie zich na een herstart van OMSI opnieuw aanmeldt. */}
+      <Dienstpas chauffeur={frame.chauffeur} language={language} klein />
     </>
   );
 }
@@ -2417,6 +2514,49 @@ function AanmeldPaneel({
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * Je dienstpas: personeelsnummer en pincode.
+ *
+ * Ze stonden alleen in de app, bij de staat van dienst en op het rijscherm --
+ * en dat is net niet het scherm dat je voor je hebt als je in de bus zit met
+ * het cijferblok van de telefoon voor je neus. Luc wilde ze in het
+ * dienstpaneel: groot zolang je nog moet aanmelden, en daarna als een kleine
+ * regel onderaan, voor wie zich na een herstart van OMSI opnieuw aanmeldt.
+ */
+function Dienstpas({
+  chauffeur,
+  language,
+  klein,
+}: {
+  chauffeur?: { personeelsnummer?: string; pincode?: string };
+  language: Language;
+  klein?: boolean;
+}): JSX.Element | null {
+  if (!chauffeur?.personeelsnummer || !chauffeur.pincode) return null;
+  if (klein) {
+    return (
+      <p className="pasregel">
+        <span>{t(language, "prof.staffNumber")}</span>
+        <b>{chauffeur.personeelsnummer}</b>
+        <span>{t(language, "prof.pin")}</span>
+        <b>{chauffeur.pincode}</b>
+      </p>
+    );
+  }
+  return (
+    <dl className="aanmeld-pas">
+      <div>
+        <dt>{t(language, "prof.staffNumber")}</dt>
+        <dd>{chauffeur.personeelsnummer}</dd>
+      </div>
+      <div>
+        <dt>{t(language, "prof.pin")}</dt>
+        <dd>{chauffeur.pincode}</dd>
+      </div>
+    </dl>
   );
 }
 

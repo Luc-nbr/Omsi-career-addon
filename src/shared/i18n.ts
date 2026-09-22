@@ -2394,11 +2394,12 @@ const TEXT = {
     fr: 'Organiser la surcouche',
     nl: 'Overlay aanpassen'
   },
+  // Sinds 22-09 kun je een element ook aan zijn randen pakken, niet alleen aan de balk.
   'ovl.editHint': {
-    en: 'drag the bar, pull the corner — Ctrl+Alt+O closes this',
-    de: 'an der Leiste ziehen, an der Ecke greifen — Strg+Alt+O schließt dies',
-    fr: 'glissez la barre, tirez le coin — Ctrl+Alt+O ferme ceci',
-    nl: 'sleep aan de balk, trek aan de hoek — Ctrl+Alt+O sluit dit'
+    en: 'drag by the bar or an edge, resize at the corner — Ctrl+Alt+O closes this',
+    de: 'an der Leiste oder einem Rand ziehen, an der Ecke die Größe ändern — Strg+Alt+O schließt dies',
+    fr: 'glissez par la barre ou un bord, redimensionnez au coin — Ctrl+Alt+O ferme ceci',
+    nl: 'sleep aan de balk of een rand, trek aan de hoek voor de maat — Ctrl+Alt+O sluit dit'
   },
   'ovl.stopOf': { en: 'stop {at} / {total}', de: 'Halt {at} / {total}', fr: 'arrêt {at} / {total}', nl: 'halte {at} / {total}' },
   'ovl.thenStop': { en: 'then {stop}', de: 'danach {stop}', fr: 'ensuite {stop}', nl: 'daarna {stop}' },
