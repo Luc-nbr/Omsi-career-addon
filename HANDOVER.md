@@ -641,6 +641,10 @@ hoort niet onder je handen opnieuw op te komen (`probe-beweging.cjs`,
 
 ### 5.0 Waar het nu staat (22-09-2026)
 
+**0.4.0 is uit** (22-09-2026), als Latest op GitHub, met de notities in
+`uitgaven/0.4.0.md`. De tag `v0.4.0` hangt aan de tak `claude/ecstatic-noether-296800`;
+master is niet meegegaan. Daarvoor gold:
+
 **0.3.1 is uit.** Hij staat op GitHub als Latest, samen met 0.3.0 dat er alsnog
 bij is gekomen. `master` en `origin/master` staan op `2eddb1e`; de tak
 `claude/ecstatic-noether-296800` wijst naar hetzelfde punt en kan weg zodra de
