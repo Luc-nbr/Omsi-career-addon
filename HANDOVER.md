@@ -656,6 +656,27 @@ Er stonden hier lange tijd tags zonder release -- `v0.2.0-beta.2`, `v0.3.2`,
 staan gewoon op master, dus er is niets verloren. Wat er nu nog staat heeft
 allemaal een release: `v0.1.0`, `v0.2.0-beta.1`, `v0.3.0`, `v0.3.1`.
 
+**De navigatie kan op een telefoon of tablet** (22-09-2026, na 0.4.0). In de
+telefoon van de overlay staat een zesde app, "Bekijk op apparaat": die zet een
+kleine webserver aan (`src/main/apparaat.ts`, poort 47810) en toont een QR-code
+naar `http://<adres van de pc>:47810/n/<sleutel>/`. Het toestel opent daar
+`apparaat.html` in zijn eigen browser. Wat je moet weten:
+
+- De kaart, de balk en de afleidingen staan in `src/renderer/src/navigatie.tsx`
+  en worden door de overlay en de webpagina allebei gebruikt. Verander je iets
+  aan de navigatie, dan verandert het op beide plekken.
+- De sleutel (128 bits) en de poort staan in settings.json (`apparaatSleutel`,
+  `apparaatPoort`), zodat een icoon op het beginscherm na een herstart blijft
+  werken. "Nieuwe code" maakt een nieuwe sleutel; de oude geeft dan 404.
+- De server geeft alleen lezen, alleen de kaart en routes van de dienst in de
+  overlay, en nooit het personeelsnummer of de pincode (`frameVoorApparaat`).
+- Windows vraagt de eerste keer of de app op het netwerk mag. Dat beslist de
+  speler; de app raakt de firewall niet aan. Een proef zet de server met
+  `OMSI_ENHANCER_APPARAAT_HOST=127.0.0.1` alleen op deze pc, dan komt die vraag
+  niet.
+- Nog niet op een echte iPhone of Android gezien, alleen in een browser op
+  telefoon- en tabletformaat.
+
 **De icoontjes zijn nog maar half in gebruik.** De set staat er en is nagekeken:
 
 - `src/renderer/src/Icoon.tsx` — 26 vormen, getekend en beoordeeld op zestien

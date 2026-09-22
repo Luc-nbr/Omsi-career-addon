@@ -51,13 +51,23 @@ export default defineConfig({
     root: resolve(__dirname, 'src/renderer'),
     plugins: [react()],
     build: {
+      /*
+       * Ook voor Safari. De pagina voor telefoon en tablet (apparaat.html) draait
+       * niet in Electron maar in de browser van het toestel, en op een iPhone of
+       * iPad is dat altijd Safari -- ook als je Chrome gebruikt. Standaard bouwt
+       * electron-vite voor de Chromium van Electron alleen, en dan blijft er
+       * schrijfwijze staan die een oudere iPhone niet leest.
+       */
+      target: ['chrome130', 'safari15'],
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/renderer/index.html'),
           overlay: resolve(__dirname, 'src/renderer/overlay.html'),
           receipt: resolve(__dirname, 'src/renderer/receipt.html'),
           /* Het verborgen venster dat een bus in beeld brengt. */
-          busfoto: resolve(__dirname, 'src/renderer/busfoto.html')
+          busfoto: resolve(__dirname, 'src/renderer/busfoto.html'),
+          /* De navigatie op een telefoon of tablet, via main/apparaat.ts. */
+          apparaat: resolve(__dirname, 'src/renderer/apparaat.html')
         }
       }
     }

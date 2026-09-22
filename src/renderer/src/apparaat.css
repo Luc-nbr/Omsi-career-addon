@@ -1,0 +1,131 @@
+/*
+ * De navigatie op een telefoon of tablet: dezelfde kaart als in de overlay
+ * (overlay.css), maar over het hele scherm en op een eigen, donkere grond.
+ * In de overlay ligt hij als glas over het spel; hier ligt er niets onder.
+ */
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+.apparaat-body {
+  margin: 0;
+  background: #0e1522;
+  color: #ffffff;
+  font: 14px/1.45 var(--letter);
+  font-feature-settings: var(--cijfers);
+  overflow: hidden;
+  /* Geen stuiteren en geen blauwe flits bij elke tik: het is een scherm, geen pagina. */
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/*
+ * Het hele scherm, maar niet achter de inkeping of de balk onderin: daar zou de
+ * manoeuvrebalk onder verdwijnen.
+ */
+.apparaat {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+}
+
+.apparaat .nav-wrap {
+  border-radius: 0;
+}
+
+.apparaat .empty {
+  margin: auto;
+  font-size: 14px;
+}
+
+.apparaat-leeg {
+  margin: auto;
+  max-width: 320px;
+  padding: 24px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.apparaat-leeg b {
+  display: block;
+  margin-bottom: 8px;
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.apparaat-leeg p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Verbinding kwijt: een pil boven de kaart, zodat je ziet dat hij stilstaat. */
+.apparaat-melding {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  top: calc(env(safe-area-inset-top) + 86px);
+  translate: -50% 0;
+  max-width: calc(100% - 32px);
+  padding: 7px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(20, 26, 38, 0.95);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* Op een tablet mag het groter: hij staat verder weg dan een scherm voor je neus. */
+@media (min-width: 700px) {
+  .apparaat .navbar {
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    padding: 14px 18px 13px;
+  }
+
+  .apparaat .navbar-arrow {
+    width: 40px;
+    height: 40px;
+  }
+
+  .apparaat .navbar-what b {
+    font-size: 36px;
+  }
+
+  .apparaat .navbar-what span {
+    font-size: 17px;
+  }
+
+  .apparaat .navbar-when b {
+    font-size: 20px;
+  }
+
+  .apparaat .navbar-when span {
+    font-size: 13px;
+  }
+
+  .apparaat .navfoot {
+    padding: 12px 18px;
+    font-size: 16px;
+  }
+
+  .apparaat .nav-speed b {
+    font-size: 26px;
+  }
+
+  /* De balk is hier hoger; de regel eronder schuift mee. */
+  .apparaat .nav-wrap .map-note-quiet {
+    top: 112px;
+  }
+}

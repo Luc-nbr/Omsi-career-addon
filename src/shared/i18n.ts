@@ -3401,6 +3401,126 @@ const TEXT = {
     nl: 'Dienst aanvaarden'
   },
   'ovl.appTickets': { en: 'Tickets', de: 'Fahrscheine', fr: 'Billets', nl: 'Kaartjes' },
+  'ovl.appDevice': {
+    en: 'View on device',
+    de: 'Auf Gerät ansehen',
+    fr: 'Voir sur un appareil',
+    nl: 'Bekijk op apparaat'
+  },
+  'dev.title': {
+    en: 'The navigation on your phone or tablet',
+    de: 'Die Navigation auf Handy oder Tablet',
+    fr: 'La navigation sur votre téléphone ou tablette',
+    nl: 'De navigatie op je telefoon of tablet'
+  },
+  'dev.scan': {
+    en: 'Scan the code with the camera of your phone or tablet.',
+    de: 'Scanne den Code mit der Kamera deines Handys oder Tablets.',
+    fr: 'Scannez le code avec l’appareil photo de votre téléphone ou tablette.',
+    nl: 'Scan de code met de camera van je telefoon of tablet.'
+  },
+  'dev.wifi': {
+    en: 'The device has to be on the same Wi-Fi network as this PC.',
+    de: 'Das Gerät muss im selben WLAN sein wie dieser PC.',
+    fr: 'L’appareil doit être sur le même réseau Wi-Fi que ce PC.',
+    nl: 'Het toestel moet op hetzelfde wifi-netwerk zitten als deze pc.'
+  },
+  'dev.firewall': {
+    en: 'Windows may ask whether OMSI Enhancer may use the network: choose Allow access. If the device cannot connect, check that Windows treats your network as private.',
+    de: 'Windows fragt vielleicht, ob OMSI Enhancer ins Netzwerk darf: wähle Zugriff zulassen. Klappt die Verbindung nicht, prüfe, ob Windows dein Netzwerk als privat einstuft.',
+    fr: 'Windows peut demander si OMSI Enhancer peut utiliser le réseau : choisissez Autoriser l’accès. Si l’appareil ne se connecte pas, vérifiez que Windows considère votre réseau comme privé.',
+    nl: 'Windows vraagt misschien of OMSI Enhancer op het netwerk mag: kies Toegang toestaan. Lukt verbinden niet, kijk dan of Windows je netwerk als privénetwerk ziet.'
+  },
+  'dev.watching': {
+    en: 'Connected devices: {count}',
+    de: 'Verbundene Geräte: {count}',
+    fr: 'Appareils connectés : {count}',
+    nl: 'Verbonden toestellen: {count}'
+  },
+  'dev.nobody': {
+    en: 'No device connected yet.',
+    de: 'Noch kein Gerät verbunden.',
+    fr: 'Aucun appareil connecté pour l’instant.',
+    nl: 'Nog geen toestel verbonden.'
+  },
+  'dev.stop': {
+    en: 'Stop sharing',
+    de: 'Teilen beenden',
+    fr: 'Arrêter le partage',
+    nl: 'Stoppen met delen'
+  },
+  'dev.newLink': {
+    en: 'New code',
+    de: 'Neuer Code',
+    fr: 'Nouveau code',
+    nl: 'Nieuwe code'
+  },
+  'dev.newLinkHint': {
+    en: 'Makes a new address. Whatever was scanned before stops working.',
+    de: 'Erstellt eine neue Adresse. Was vorher gescannt wurde, funktioniert dann nicht mehr.',
+    fr: 'Crée une nouvelle adresse. Ce qui a été scanné avant ne fonctionne plus.',
+    nl: 'Maakt een nieuw adres. Wat eerder gescand is, werkt dan niet meer.'
+  },
+  'dev.stopped': {
+    en: 'Sharing is off. Phones and tablets no longer see the navigation.',
+    de: 'Teilen ist aus. Handys und Tablets sehen die Navigation nicht mehr.',
+    fr: 'Le partage est désactivé. Les téléphones et tablettes ne voient plus la navigation.',
+    nl: 'Delen staat uit. Telefoons en tablets zien de navigatie niet meer.'
+  },
+  'dev.start': {
+    en: 'Share again',
+    de: 'Wieder teilen',
+    fr: 'Partager à nouveau',
+    nl: 'Weer delen'
+  },
+  'dev.starting': {
+    en: 'Starting…',
+    de: 'Wird gestartet…',
+    fr: 'Démarrage…',
+    nl: 'Bezig met starten…'
+  },
+  'dev.noAddress': {
+    en: 'This PC has no network address. Is it on Wi-Fi or a network cable?',
+    de: 'Dieser PC hat keine Netzwerkadresse. Ist er per WLAN oder Kabel verbunden?',
+    fr: 'Ce PC n’a pas d’adresse réseau. Est-il connecté en Wi-Fi ou par câble ?',
+    nl: 'Deze pc heeft geen netwerkadres. Zit hij aan wifi of een netwerkkabel?'
+  },
+  'dev.error': {
+    en: 'Could not start: {fout}',
+    de: 'Start fehlgeschlagen: {fout}',
+    fr: 'Échec du démarrage : {fout}',
+    nl: 'Starten lukte niet: {fout}'
+  },
+  'dev.qr': {
+    en: 'QR code with the address',
+    de: 'QR-Code mit der Adresse',
+    fr: 'Code QR avec l’adresse',
+    nl: 'QR-code met het adres'
+  },
+  'dev.connecting': {
+    en: 'Connecting to the PC…',
+    de: 'Verbinde mit dem PC…',
+    fr: 'Connexion au PC…',
+    nl: 'Verbinden met de pc…'
+  },
+  'dev.lost': {
+    en: 'Lost the connection to the PC. Reconnecting…',
+    de: 'Verbindung zum PC verloren. Neuer Versuch…',
+    fr: 'Connexion au PC perdue. Reconnexion…',
+    nl: 'Verbinding met de pc kwijt. Opnieuw verbinden…'
+  },
+  'dev.expired': {
+    en: 'This code no longer works. Scan the new code on the phone in the overlay.',
+    de: 'Dieser Code funktioniert nicht mehr. Scanne den neuen Code auf dem Handy im Overlay.',
+    fr: 'Ce code ne fonctionne plus. Scannez le nouveau code sur le téléphone de l’overlay.',
+    nl: 'Deze code werkt niet meer. Scan de nieuwe code op de telefoon in de overlay.'
+  },
+  'dev.noDuty': {
+    en: 'No duty yet. Start a duty in OMSI Enhancer and the map appears here by itself.',
+    de: 'Noch kein Dienst. Starte einen Dienst in OMSI Enhancer, dann erscheint die Karte hier von selbst.',
+    fr: 'Pas encore de service. Lancez un service dans OMSI Enhancer et la carte apparaîtra ici d’elle-même.',
+    nl: 'Nog geen dienst. Begin een dienst in OMSI Enhancer, dan komt de kaart hier vanzelf.'
+  },
   'ovl.ticketsNone': {
     en: 'This map has no tickets: nothing is sold here.',
     de: 'Diese Karte hat keine Fahrscheine: hier wird nichts verkauft.',

@@ -462,8 +462,27 @@ export interface OverlayUitkomst {
 /** De overlays waar de app werkelijk aan kan komen. */
 export type Schakelbaar = 'steam' | 'gamebar'
 
+/** De webpagina voor telefoon en tablet; zie main/apparaat.ts. */
+export interface ApparaatStand {
+  aan: boolean
+  /** Het adres voor de QR-code, met de sleutel erin. */
+  url?: string
+  /** Alle adressen van deze pc waarop de pagina te bereiken is. */
+  adressen: string[]
+  /** Hoeveel telefoons en tablets er nu meekijken. */
+  kijkers: number
+  /** Wat er misging bij het starten, als het misging. */
+  fout?: string
+}
+
 export interface CareerApi {
   status(): Promise<OmsiStatus>
+  /** De navigatie op een telefoon of tablet: de server aan, en het adres voor de QR-code. */
+  apparaatStart(): Promise<ApparaatStand>
+  apparaatStop(): Promise<ApparaatStand>
+  apparaatStand(): Promise<ApparaatStand>
+  /** Een nieuwe sleutel in het adres: wat eerder gescand is, werkt dan niet meer. */
+  apparaatNieuw(): Promise<ApparaatStand>
   maps(): Promise<MapSummary[]>
   /** Het logboek van de app in de verkenner tonen; geeft het pad terug. */
   logboekOpenen(): Promise<string | undefined>

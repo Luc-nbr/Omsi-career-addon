@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -10,12 +11,13 @@ import {
   type PointerEvent,
 } from "react";
 import { createRoot } from "react-dom/client";
+import qrcode from "qrcode-generator";
 import type { MapGeometry } from "../../core/geo";
 import type { IbisPlan } from "../../core/ibis";
 import { wisselgeld, type Kaartje, type Kaartset } from "../../shared/kaartjes";
 import type { LiveStatus } from "../../core/live";
 import type { Duty, DutyLeg } from "../../core/types";
-import type { CareerApi } from "../../shared/api";
+import type { ApparaatStand, CareerApi } from "../../shared/api";
 import { formatTime } from "../../shared/format";
 import { RouteCode } from "./RouteCode";
 import { punctuality } from "../../shared/status";
@@ -34,7 +36,16 @@ import {
   type PanelId,
   type PanelInfo,
 } from "../../shared/overlay";
-import { RouteMap, type Manoeuvre } from "./RouteMap";
+import type { Manoeuvre } from "./RouteMap";
+import {
+  NavKaart,
+  dutyKeyOf,
+  stopName,
+  useRitStand,
+  useStable,
+  walkedStops,
+  type NavFrame,
+} from "./navigatie";
 /*
  * Dezelfde letter als het hoofdvenster. Manrope blijft erbij staan omdat delen
  * van de overlay hem nog noemen; wat de nieuwe wereld tekent gebruikt Hanken.
@@ -113,26 +124,15 @@ function same(a: Box | undefined, b: Box | undefined): boolean {
 }
 
 /** De apps op het toestel, in de volgorde van het balkje onderin. */
-type OverlayApp = "kaart" | "dienst" | "pauze" | "rit" | "kaartjes";
+type OverlayApp =
+  | "kaart"
+  | "dienst"
+  | "pauze"
+  | "rit"
+  | "kaartjes"
+  | "apparaat";
 
-interface Frame {
-  status?: LiveStatus;
-  duty?: Duty;
-  /** Lijn en routes die in de IBIS moeten; de overlay toont ze tot ze erin staan. */
-  ibis?: IbisPlan;
-  /** De bus op de kaart van de dienst, uit het geheugen van OMSI. */
-  vehicle?: {
-    x: number;
-    y: number;
-    heading: number;
-    headingFromMotion: boolean;
-  };
-  /** Draait OMSI met onze plugin? */
-  connected: boolean;
-  /** OMSI staat open, maar de kaart laadt nog: de plugin geeft pas daarna iets door. */
-  laadt?: boolean;
-  /** De kaartsoorten van deze kaart, met hun prijzen; zie core/kaartjes.ts. */
-  kaartjes?: Kaartset;
+interface Frame extends NavFrame {
   /** Wie er rijdt, met zijn dienstgegevens om mee aan te melden. */
   chauffeur?: { naam: string; personeelsnummer?: string; pincode?: string };
   /** In de bewerkstand neemt de overlay muisklikken aan. */
@@ -148,31 +148,6 @@ declare global {
     };
     career: CareerApi;
   }
-}
-
-/**
- * Dezelfde inhoud, hetzelfde voorwerp.
- *
- * Elk beeld komt door de brug als een verse kopie. Voor React is dat elke tel
- * een andere dienst, en dan rekent de kaart alles opnieuw uit: alle haltes, alle
- * borden, alle lijnen, tien keer per seconde, terwijl er niets veranderd is. Dat
- * werk ging ten koste van het spel eronder. Zolang de sleutel gelijk blijft
- * houden we de eerste kopie vast, en laat de kaart zijn rekenwerk staan.
- */
-function useStable<T>(value: T | undefined, key: string): T | undefined {
-  const held = useRef<{ key: string; value: T } | undefined>(undefined);
-  if (value === undefined) {
-    held.current = undefined;
-    return undefined;
-  }
-  if (held.current?.key !== key) held.current = { key, value };
-  return held.current.value;
-}
-
-/** Waaraan je een dienst herkent: welke ritten, in welke volgorde. */
-function dutyKeyOf(duty: Duty | undefined): string {
-  if (!duty) return "";
-  return `${duty.mapFolder}|${duty.legs.map((leg) => `${leg.tripFile}@${leg.departure}`).join(";")}`;
 }
 
 /*
@@ -255,6 +230,8 @@ function Overlay(): JSX.Element | null {
   const [app, setApp] = useState<OverlayApp>("kaart");
   /** Wanneer de pauze begon, in speltijd. Leeg betekent: geen pauze bezig. */
   const [pauzeVanaf, setPauzeVanaf] = useState<number>();
+  /** Staat de navigatie open voor een telefoon of tablet? Zie `ApparaatApp`. */
+  const [deelt, setDeelt] = useState(false);
   const [layout, setLayout] = useState<OverlayLayout>();
   /*
    * Welke rit de chauffeur zelf heeft afgemeld met "IBIS ingevoerd". Per rit,
@@ -349,6 +326,11 @@ function Overlay(): JSX.Element | null {
       // Ook de overlay volgt wat er in de app voor animaties gekozen is.
       zetAnimaties(settings.animaties);
     });
+    // Een overlay die opnieuw opent, hoort te weten dat er al gedeeld werd.
+    void window.career
+      .apparaatStand()
+      .then((stand) => setDeelt(stand.aan))
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -454,18 +436,8 @@ function Overlay(): JSX.Element | null {
 
   useEffect(() => window.overlay.onCycle(cycle), [cycle]);
 
-  /*
-   * De kilometerstand op het moment dat de IBIS een halte verder springt. Wat de
-   * bus daarna rijdt, legt hij af over de route vanaf die halte; zo rijdt de kaart
-   * mee zonder dat OMSI een positie hoeft door te geven.
-   */
-  const stopOdometer = useRef<{ key: string; km: number }>(undefined);
-  const passedNow = walkedStops(status);
-  const stopKey =
-    status && passedNow !== undefined ? `${status.legIndex}|${passedNow}` : "";
-  if (status && stopKey && stopOdometer.current?.key !== stopKey) {
-    stopOdometer.current = { key: stopKey, km: status.odometerKm };
-  }
+  // Waar de dienst staat; dezelfde som als op de webpagina, zie navigatie.tsx.
+  const rit = useRitStand(frame, duty, ibisReady);
 
   /*
    * Buiten de bewerkstand laat het venster muisklikken door naar het spel. Dat
@@ -572,95 +544,20 @@ function Overlay(): JSX.Element | null {
 
   if (!layout) return null;
 
-  const leg = status?.leg;
-  const passed = passedNow;
-  /*
-   * Kan de app in OMSI kijken, dan telt wat daar in het dienstregelingsmenu is
-   * gekozen: pas dan is duidelijk welke rit gereden wordt. Anders valt hij terug
-   * op de IBIS, die zich vult zodra lijn en route zijn ingetoetst.
-   */
-  const readable = Boolean(status?.omsiReadable);
-  const scheduled = Boolean(status?.schedule?.matchesDuty);
-  const ibisLoaded = readable
-    ? scheduled
-    : Boolean(status?.reportsStops) && passed !== undefined;
-  /*
-   * Een bus zonder IBIS meldt nooit een halte; die chauffeur heeft niets aan
-   * "toets de route in". Hij krijgt de vraag om zijn dienst in OMSI te kiezen,
-   * want daar komt het antwoord dan vandaan.
-   */
-  const ibisCapable = status ? status.offersStops : true;
-
-  /*
-   * De rit waar de instructies over gaan. Dat rekent `describeLive` uit: wat in
-   * OMSI gekozen is gaat voor, en anders de eerste rit die nog niet is
-   * aangekomen. Hier stond diezelfde som nog eens; twee plekken met dezelfde
-   * regel lopen uit elkaar zodra er een verandert.
-   */
-  const upcomingIndex = status?.legIndex ?? 0;
-  const upcoming = duty?.legs[upcomingIndex];
-  /*
-   * Elke rit zijn eigen afmelding. De sleutel bevat het ritbestand, zodat een
-   * dienst die dezelfde rit later nog eens rijdt opnieuw om de IBIS vraagt.
-   */
-  const tripKey = upcoming ? `${upcomingIndex}|${upcoming.tripFile}` : "";
+  const {
+    readable,
+    ibisLoaded,
+    ibisCapable,
+    upcomingIndex,
+    upcoming,
+    tripKey,
+    ibisTyped,
+  } = rit;
   /*
    * Klaar om te rijden: aangemeld, en getekend voor deze dienst. Zonder dienst
    * -- vrij rijden -- is aanmelden genoeg; er valt dan niets te aanvaarden.
    */
   const getekend = aangemeld && (!duty || aanvaardVoor === dienstSleutel);
-
-  /*
-   * Staat het al op de IBIS?
-   *
-   * De bus geeft door wat er op zijn film staat: het lijnnummer en de
-   * bestemming. Klopt het lijnnummer met deze rit en staat er een bestemming,
-   * dan heeft de chauffeur zijn lijn en route ingetoetst en hoeft hij dat niet
-   * ook nog te melden. Dat scheelt een knop waarvan mensen niet begrepen wat
-   * hij van hen wilde.
-   *
-   * Niet elke bus geeft die velden door. Blijven ze leeg, dan verandert er
-   * niets en blijft de knop staan.
-   */
-  const ibisTyped = Boolean(
-    status &&
-    /*
-     * Het sterkste bewijs komt van OMSI zelf: staat de goede rit in het
-     * dienstregelingsmenu, dan weet het spel welke rit er loopt en hoeven wij
-     * het niemand meer te vragen. Dat werkt bij elke bus.
-     */
-    (status.fromTimetable ||
-      /*
-       * En anders wat er op de film staat. Klassieke bussen geven dat door;
-       * moderne bussen met hun eigen scherm laten die velden leeg, ook als de
-       * chauffeur alles netjes heeft ingevoerd -- vandaar de regel hierboven.
-       */
-      (upcoming &&
-        status.ibisLine &&
-        status.ibisTerminus &&
-        status.ibisLine.replace(/\s+/g, "") ===
-          upcoming.lineNumber.replace(/\s+/g, ""))),
-  );
-
-  /** De rit loopt zodra de IBIS klopt -- of zodra de chauffeur zelf zegt dat het zo is. */
-  const started =
-    ibisLoaded && (!ibisCapable || ibisTyped || ibisReady === tripKey);
-  // Alleen schatten waar de bus is als OMSI zijn plek niet laat lezen.
-  const bus =
-    !frame.vehicle &&
-    status &&
-    ibisLoaded &&
-    passed !== undefined &&
-    stopOdometer.current?.key === stopKey
-      ? {
-          legIndex: status.legIndex,
-          nextStop: passed,
-          metresSinceStop: Math.max(
-            0,
-            (status.odometerKm - stopOdometer.current.km) * 1000,
-          ),
-        }
-      : undefined;
 
   /*
    * De elementen staan op hun plek op het scherm, maar het venster begint niet
@@ -813,98 +710,27 @@ function Overlay(): JSX.Element | null {
                       vanaf={pauzeVanaf}
                       onVanaf={setPauzeVanaf}
                     />
+                  ) : app === "apparaat" ? (
+                    <ApparaatApp language={language} onStand={setDeelt} />
                   ) : app === "kaartjes" ? (
                     <KaartjesApp set={frame?.kaartjes} language={language} />
                   ) : (
                     <RitApp status={status} language={language} />
                   )}
                 </div>
-              ) : duty && geometry ? (
-                <div className="nav-wrap">
-                  <NavBar
-                    status={status}
-                    leg={leg}
-                    passed={passed}
-                    manoeuvre={manoeuvre}
-                    language={language}
-                  />
-                  <RouteMap
-                    duty={duty}
-                    geometry={geometry}
-                    nextStopId={
-                      leg && passed !== undefined
-                        ? leg.stopIds[Math.min(passed, leg.stopIds.length - 1)]
-                        : undefined
-                    }
-                    activeLeg={status?.legIndex}
-                    pixelScale={layout.navigatie.scale}
-                    routeMode={ibisLoaded && started ? "active" : "none"}
-                    bus={bus}
-                    vehicle={
-                      frame.vehicle && status
-                        ? { ...frame.vehicle, speedKmh: status.speedKmh }
-                        : undefined
-                    }
-                    // Nog niets gekozen en geen bus te zien: de eerste halte van de rit in beeld.
-                    focusStopId={
-                      started || frame.vehicle
-                        ? undefined
-                        : upcoming?.stopIds[0]
-                    }
-                    texts={{
-                      /*
-                    Waar de kaart op wacht verschilt per stap: eerst de dienst in
-                    OMSI, daarna de IBIS. "Kies je dienst" blijven zeggen terwijl
-                    die al gekozen is, stuurt de chauffeur het verkeerde menu in.
-                    Zolang OMSI niets doorgeeft is er nog geen stap: dan zegt de
-                    kaart of OMSI er al is en de kaart laadt, of dat het er nog
-                    niet is.
-                  */
-                      waiting: t(
-                        language,
-                        !frame.connected
-                          ? frame.laadt
-                            ? "ovl.loading"
-                            : "ovl.waiting"
-                          : ibisLoaded
-                            ? "ovl.mapIbis"
-                            : readable
-                              ? "ovl.mapSelect"
-                              : "ovl.mapWaiting",
-                      ),
-                      busNote: t(language, "ovl.busHere"),
-                      centre: t(language, "ovl.centre"),
-                    }}
-                    variant="panel"
-                    onManoeuvre={setManoeuvre}
-                    onSpeedLimit={setLimit}
-                  />
-                  {status && (
-                    <div className="nav-speed">
-                      <b
-                        className={
-                          limit !== undefined && status.speedKmh > limit + 3
-                            ? "tehard"
-                            : undefined
-                        }
-                      >
-                        {Math.max(0, Math.round(status.speedKmh))}
-                      </b>
-                      <span>km/u</span>
-                      {/*
-                      Het bord zoals het langs de weg staat: wit met een rode ring.
-                      Alleen als er eentje voorbij is gekomen -- verzinnen wat er
-                      mag is erger dan niets zeggen.
-                    */}
-                      {limit !== undefined && (
-                        <i className="nav-limit">{limit}</i>
-                      )}
-                    </div>
-                  )}
-                  <NavFoot leg={leg} passed={passed} language={language} />
-                </div>
               ) : (
-                <div className="empty">{t(language, "ovl.mapLoading")}</div>
+                <NavKaart
+                  frame={frame}
+                  duty={duty}
+                  geometry={geometry}
+                  rit={rit}
+                  pixelScale={layout.navigatie.scale}
+                  language={language}
+                  manoeuvre={manoeuvre}
+                  onManoeuvre={setManoeuvre}
+                  limit={limit}
+                  onSpeedLimit={setLimit}
+                />
               )}
 
               <Dock
@@ -912,6 +738,7 @@ function Overlay(): JSX.Element | null {
                 onApp={setApp}
                 language={language}
                 pauze={pauzeVanaf !== undefined}
+                deelt={deelt}
               />
             </>
           )}
@@ -933,125 +760,6 @@ function Overlay(): JSX.Element | null {
           }
         />
       )}
-    </div>
-  );
-}
-
-/**
- * De manoeuvrebalk boven de kaart.
- *
- * Wat een chauffeur op dat moment wil weten, in de volgorde waarin hij het wil
- * weten: hoeveel meter nog, naar welke halte, en hoe laat hij daar hoort te
- * zijn. Die tijd draagt de kleur van het verschil met de dienstregeling -- de
- * enige kleur op dit paneel die iets betekent.
- *
- * De afstand komt uit het geheugen van OMSI. Laat het spel zich niet lezen, dan
- * staat er geen meterstand; een verzonnen getal is erger dan geen getal.
- */
-function NavBar({
-  status,
-  leg,
-  passed,
-  manoeuvre,
-  language,
-}: {
-  status?: LiveStatus;
-  leg?: DutyLeg;
-  passed?: number;
-  manoeuvre?: Manoeuvre;
-  language: Language;
-}): JSX.Element | null {
-  if (!status || !leg || passed === undefined) return null;
-  const at = Math.min(passed, leg.stops.length - 1);
-  const naam = leg.stops[at];
-  if (!naam) return null;
-
-  const meters = status.metresToStop;
-  const afstand =
-    meters === undefined
-      ? undefined
-      : meters >= 1000
-        ? `${(meters / 1000).toFixed(1).replace(".", ",")} km`
-        : `${meters} m`;
-
-  const stand = punctuality(status.deltaSeconds);
-  const klasse =
-    stand === "laat" ? "late" : stand === "vroeg" ? "early" : "ontime";
-  const wanneer = leg.stopTimes[at];
-
-  return (
-    <div className="navbar">
-      {/*
-        De pijl hoort te zeggen wat je doet, niet wat de app kan tekenen. Hij
-        stond altijd op afslaan; nu wijst hij rechtdoor tenzij de weg binnen
-        tweehonderd meter echt draait.
-      */}
-      <svg
-        className="navbar-arrow"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2.2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        {manoeuvre?.kind === "rechts" ? (
-          <>
-            <path d="M12 21V9" />
-            <path d="M12 9c0-2.6 2.1-4.7 4.7-4.7H19" />
-            <path d="M16.5 1.6 19.3 4.4 16.5 7.2" />
-          </>
-        ) : manoeuvre?.kind === "links" ? (
-          <>
-            <path d="M12 21V9" />
-            <path d="M12 9c0-2.6-2.1-4.7-4.7-4.7H5" />
-            <path d="M7.5 1.6 4.7 4.4 7.5 7.2" />
-          </>
-        ) : (
-          <>
-            <path d="M12 21V4" />
-            <path d="M5.8 10.2 12 4l6.2 6.2" />
-          </>
-        )}
-      </svg>
-      <div className="navbar-what">
-        {afstand && <b>{afstand}</b>}
-        <span>{naam}</span>
-      </div>
-      <div className="navbar-when">
-        {wanneer !== undefined && (
-          <b className={klasse}>{formatTime(wanneer)}</b>
-        )}
-        <span>
-          {t(language, "ovl.stopOf", { at: at + 1, total: leg.stops.length })}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-/** En wat er daarna komt; één regel, want verder kijkt niemand tijdens het rijden. */
-function NavFoot({
-  leg,
-  passed,
-  language,
-}: {
-  leg?: DutyLeg;
-  passed?: number;
-  language: Language;
-}): JSX.Element | null {
-  if (!leg || passed === undefined) return null;
-  const next = Math.min(passed + 1, leg.stops.length - 1);
-  if (next <= passed || !leg.stops[next]) return null;
-  return (
-    <div className="navfoot">
-      <span className="navfoot-dot" />
-      <span className="navfoot-name">
-        {t(language, "ovl.thenStop", { stop: leg.stops[next] })}
-      </span>
-      <span className="navfoot-time">
-        {formatTime(leg.stopTimes[next] ?? leg.arrival)}
-      </span>
     </div>
   );
 }
@@ -1352,11 +1060,14 @@ function Dock({
   onApp,
   language,
   pauze,
+  deelt,
 }: {
   app: OverlayApp;
   onApp(app: OverlayApp): void;
   language: Language;
   pauze: boolean;
+  /** Kijkt er een telefoon of tablet mee? */
+  deelt: boolean;
 }): JSX.Element {
   const apps: Array<{
     id: OverlayApp;
@@ -1389,6 +1100,12 @@ function Dock({
       // Een kaartje met een knip in de zijkant, zoals in Icoon.tsx.
       pad: "M3 6.5h18v4a2 2 0 0 0 0 3.8v4H3v-4a2 2 0 0 0 0-3.8ZM5 8.5v1.1a4 4 0 0 1 0 5.4v1.1h14v-1.1a4 4 0 0 1 0-5.4V8.5Zm4 1.6h1.6v4.6H9Zm4 0h1.6v4.6H13Z",
     },
+    {
+      id: "apparaat",
+      label: "ovl.appDevice",
+      // Een tablet met een telefoon ervoor: de navigatie op een ander toestel.
+      pad: "M4 3h12a2 2 0 0 1 2 2v1.5h-1.8V4.8H3.8v12.4h7.4V19H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm11 5h5a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-5a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2Zm-.2 2v8.2h5.4V10Zm2.1 9.1h1.4v1h-1.4Z",
+    },
   ];
   return (
     <nav className="dock" data-hit>
@@ -1405,7 +1122,8 @@ function Dock({
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d={item.pad} fill="currentColor" fillRule="evenodd" />
           </svg>
-          {item.id === "pauze" && pauze && (
+          {((item.id === "pauze" && pauze) ||
+            (item.id === "apparaat" && deelt)) && (
             <i className="dock-stip" aria-hidden="true" />
           )}
         </button>
@@ -2374,18 +2092,6 @@ function NextStops({
   );
 }
 
-/** Hoeveel haltes de bus gehad heeft, of niets als hij het niet doorgeeft. */
-function walkedStops(status?: LiveStatus): number | undefined {
-  if (!status?.leg || !status.reportsStops || status.stopIndex === undefined)
-    return undefined;
-  return Math.min(Math.max(status.stopIndex, 0), status.leg.stops.length);
-}
-
-function stopName(leg: DutyLeg, at?: number): string | undefined {
-  if (at === undefined) return undefined;
-  return leg.stops[Math.min(at, leg.stops.length - 1)];
-}
-
 function clamp(value: number, low: number, high: number): number {
   return Math.min(high, Math.max(low, value));
 }
@@ -2638,6 +2344,159 @@ function DienstOpdracht({
  * van twee euro, een van twintig cent" is bruikbaar terwijl je rijdt; "2,20"
  * moet je alsnog zelf uit de lade puzzelen.
  */
+/**
+ * De navigatie op een telefoon of tablet.
+ *
+ * Deze app openen is de vraag om te delen: de server gaat aan (zie
+ * main/apparaat.ts) en de QR-code verschijnt. Hij blijft aan als je naar een
+ * andere app gaat -- de telefoon op het dashboard moet blijven werken terwijl
+ * de overlay de kaart laat zien, of helemaal niets -- tot je hier op stoppen
+ * drukt of de app afsluit.
+ *
+ * Elke twee tellen kijkt hij hoeveel toestellen er meekijken. Dat is ook het
+ * antwoord op "doet hij het?": staat er een toestel, dan komt de kaart aan.
+ */
+function ApparaatApp({
+  language,
+  onStand,
+}: {
+  language: Language;
+  onStand(aan: boolean): void;
+}): JSX.Element {
+  const [stand, setStand] = useState<ApparaatStand>();
+  const [bezig, setBezig] = useState(false);
+
+  useEffect(() => {
+    let actief = true;
+    const zet = (nieuw: ApparaatStand): void => {
+      if (!actief) return;
+      setStand(nieuw);
+      onStand(nieuw.aan);
+    };
+    void window.career.apparaatStart().then(zet).catch(() => undefined);
+    const klok = setInterval(
+      () => void window.career.apparaatStand().then(zet).catch(() => undefined),
+      2000,
+    );
+    return () => {
+      actief = false;
+      clearInterval(klok);
+    };
+  }, [onStand]);
+
+  const doe = (werk: () => Promise<ApparaatStand>): void => {
+    setBezig(true);
+    void werk()
+      .then((nieuw) => {
+        setStand(nieuw);
+        onStand(nieuw.aan);
+      })
+      .finally(() => setBezig(false));
+  };
+
+  if (!stand) return <div className="empty">{t(language, "dev.starting")}</div>;
+
+  return (
+    // data-hit om dezelfde reden als bij de pauze: anders gaat een klik door de telefoon heen naar OMSI.
+    <div className="app-apparaat" data-hit>
+      <b className="app-apparaat-kop">{t(language, "dev.title")}</b>
+      {!stand.aan ? (
+        <>
+          <p className="app-label">
+            {stand.fout
+              ? t(language, "dev.error", { fout: stand.fout })
+              : t(language, "dev.stopped")}
+          </p>
+          <button
+            type="button"
+            className="app-knop primair"
+            disabled={bezig}
+            onClick={() => doe(() => window.career.apparaatStart())}
+          >
+            {t(language, "dev.start")}
+          </button>
+        </>
+      ) : !stand.url ? (
+        <p className="app-label">{t(language, "dev.noAddress")}</p>
+      ) : (
+        <>
+          <QrCode tekst={stand.url} label={t(language, "dev.qr")} />
+          <span className="app-apparaat-uitleg">{t(language, "dev.scan")}</span>
+          {/*
+            Het adres er ook in letters bij: voor een camera die de code niet
+            pakt, en om te zien of het wel het goede netwerk is.
+          */}
+          <code className="app-apparaat-url">{stand.url}</code>
+          <span
+            className={
+              stand.kijkers > 0 ? "app-apparaat-kijkers aan" : "app-apparaat-kijkers"
+            }
+          >
+            {stand.kijkers > 0
+              ? t(language, "dev.watching", { count: stand.kijkers })
+              : t(language, "dev.nobody")}
+          </span>
+          <p className="app-apparaat-noot">{t(language, "dev.wifi")}</p>
+          <p className="app-apparaat-noot">{t(language, "dev.firewall")}</p>
+          <div className="app-apparaat-knoppen">
+            <button
+              type="button"
+              className="app-knop"
+              disabled={bezig}
+              title={t(language, "dev.newLinkHint")}
+              onClick={() => doe(() => window.career.apparaatNieuw())}
+            >
+              {t(language, "dev.newLink")}
+            </button>
+            <button
+              type="button"
+              className="app-knop"
+              disabled={bezig}
+              onClick={() => doe(() => window.career.apparaatStop())}
+            >
+              {t(language, "dev.stop")}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Een QR-code als SVG: zwart op wit met vier vakjes witte rand, want zo lezen
+ * alle camera's hem -- ook in de donkere stand, waar een omgekeerde code door
+ * een deel van de telefoons niet herkend wordt. Correctieniveau M: een
+ * vlekje of een weerspiegeling op het scherm mag.
+ */
+function QrCode({ tekst, label }: { tekst: string; label: string }): JSX.Element {
+  const { maat, pad } = useMemo(() => {
+    const code = qrcode(0, "M");
+    code.addData(tekst);
+    code.make();
+    const aantal = code.getModuleCount();
+    const delen: string[] = [];
+    for (let rij = 0; rij < aantal; rij += 1) {
+      for (let kolom = 0; kolom < aantal; kolom += 1) {
+        if (code.isDark(rij, kolom)) delen.push(`M${kolom + 4} ${rij + 4}h1v1h-1z`);
+      }
+    }
+    return { maat: aantal + 8, pad: delen.join("") };
+  }, [tekst]);
+  return (
+    <svg
+      className="app-apparaat-qr"
+      viewBox={`0 0 ${maat} ${maat}`}
+      role="img"
+      aria-label={label}
+      shapeRendering="crispEdges"
+    >
+      <rect width={maat} height={maat} fill="#ffffff" />
+      <path d={pad} fill="#000000" />
+    </svg>
+  );
+}
+
 function KaartjesApp({
   set,
   language,

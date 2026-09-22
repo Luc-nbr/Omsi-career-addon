@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, net, protocol, screen, shell } from 'electron'
-import { cpSync, existsSync } from 'node:fs'
+import { cpSync, existsSync, readdirSync } from 'node:fs'
 import { dirname, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Worker } from 'node:worker_threads'
@@ -62,6 +62,14 @@ import { readOverlayLayout, writeOverlayLayout } from '../core/overlayLayout'
 import { receiptHeightMicrons, RECEIPT_WIDTH_MICRONS } from '../core/receipt'
 import { difference, readKnown, writeKnown } from '../core/installed'
 import { readSettings, writeSettings, type Settings } from '../core/settings'
+import {
+  apparaatBeeld,
+  apparaatStand,
+  nieuweSleutel,
+  startApparaat,
+  stopApparaat,
+  type ApparaatBronnen
+} from './apparaat'
 import { formatTime } from '../shared/format'
 import {
   busfotoAdres,
@@ -1270,6 +1278,33 @@ function pushFrame(): void {
   if (signature === lastFrame) return
   lastFrame = signature
   overlayWindow.webContents.send('overlay:frame', frame)
+  apparaatBeeld(frameVoorApparaat(frame))
+}
+
+/**
+ * Wat een telefoon of tablet van het beeld krijgt: alleen wat de navigatie
+ * nodig heeft.
+ *
+ * Niet het personeelsnummer en de pincode. Die staan in het beeld voor de
+ * overlay, die op deze pc draait; de webpagina is te openen door iedereen die
+ * het adres heeft, en dat adres is een QR-code die op een scherm heeft gestaan.
+ */
+function frameVoorApparaat(frame: {
+  connected: boolean
+  laadt: boolean
+  status?: unknown
+  vehicle?: unknown
+  duty?: unknown
+  ibis?: unknown
+}): unknown {
+  return {
+    connected: frame.connected,
+    laadt: frame.laadt,
+    status: frame.status,
+    vehicle: frame.vehicle,
+    duty: frame.duty,
+    ibis: frame.ibis
+  }
 }
 
 /**
@@ -1346,6 +1381,8 @@ function closeOverlay(): void {
   if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.destroy()
   overlayWindow = null
   announceOverlay()
+  // Zonder overlay komen er geen beelden meer; de telefoon toont dan geen oude dienst.
+  apparaatBeeld({ connected: false })
 }
 
 function openOverlay(duty: Duty, ibis?: IbisPlan): void {
@@ -1655,6 +1692,88 @@ function prepareSituation(
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Vraag = (event: Electron.IpcMainInvokeEvent, ...args: any[]) => unknown
+
+/**
+ * Halteposities van een kaart. Het doorlezen van de tegels kost een fractie
+ * van een seconde tot ruim een seconde, dus eenmaal per kaart.
+ */
+async function geometrieVoor(folder: string): Promise<MapGeometry> {
+  /*
+   * Meetellen als voorgrondwerk: het voorwerk op de achtergrond wacht hierop.
+   */
+  voorgrondBezig += 1
+  try {
+    // Staat de kaart nog nergens, dan leest de werker hem; anders komt hij
+    // zo van schijf. Het hoofdproces legt in geen van beide gevallen stil.
+    await zorgVoorKaart(folder)
+    return mapGeometry(folder)
+  } finally {
+    voorgrondBezig -= 1
+  }
+}
+
+/**
+ * De route van elke rit van een dienst, als lijn over de kaart.
+ *
+ * Dit gaat naar de werker: het rijstrokennet van een kaart opbouwen kost tot
+ * een seconde, en dat gebeurt precies op het moment dat de speler een dienst
+ * aanwijst.
+ */
+async function routesVoor(
+  folder: string,
+  legs: Array<{ tripFile: string; stopIds: string[] }>
+): Promise<TripRoute[]> {
+  try {
+    return await werkerVraag<TripRoute[]>({ soort: 'routes', folder, legs })
+  } catch (fout) {
+    logFout('routes via de werker', fout)
+    return laag().routes(folder, legs)
+  }
+}
+
+/**
+ * Wat de webserver voor telefoon en tablet van de app mag weten.
+ *
+ * De kaart en de routes zijn altijd die van de dienst in de overlay. De
+ * telefoon vraagt er niet om met een naam of een pad, zodat niemand op het
+ * netwerk de server een ander bestand kan laten lezen.
+ */
+function apparaatBronnen(): ApparaatBronnen {
+  const paginas = join(__dirname, '../renderer')
+  return {
+    paginas,
+    icoon: zoekApparaatIcoon(paginas),
+    start: () => {
+      const instellingen = readSettings(userData())
+      return { taal: instellingen.language, animaties: instellingen.animaties, versie: __APP_VERSION__ }
+    },
+    geometrie: async () => {
+      const kaart = currentDuty()?.mapFolder
+      return kaart ? geometrieVoor(kaart) : undefined
+    },
+    routes: async () => {
+      const dienst = currentDuty()
+      if (!dienst) return undefined
+      return routesVoor(
+        dienst.mapFolder,
+        dienst.legs.map(({ tripFile, stopIds }) => ({ tripFile, stopIds }))
+      )
+    },
+    log
+  }
+}
+
+/** Het icoon dat vite bij het bouwen een naam met een vingerafdruk gaf. */
+function zoekApparaatIcoon(paginas: string): string | undefined {
+  try {
+    const naam = readdirSync(join(paginas, 'assets')).find((bestand) =>
+      /^apparaat-icoon-[\w-]+\.png$/.test(bestand)
+    )
+    return naam ? join(paginas, 'assets', naam) : undefined
+  } catch {
+    return undefined
+  }
+}
 
 function handle(kanaal: string, doen: Vraag): void {
   ipcMain.handle(kanaal, async (event, ...args) => {
@@ -1996,20 +2115,7 @@ function registerHandlers(): void {
    * Halteposities van een kaart. Het doorlezen van de tegels kost een fractie
    * van een seconde tot ruim een seconde, dus eenmaal per kaart.
    */
-  handle('map:geometry', async (_event, folder: string): Promise<MapGeometry> => {
-    /*
-     * Meetellen als voorgrondwerk: het voorwerk op de achtergrond wacht hierop.
-     */
-    voorgrondBezig += 1
-    try {
-      // Staat de kaart nog nergens, dan leest de werker hem; anders komt hij
-      // zo van schijf. Het hoofdproces legt in geen van beide gevallen stil.
-      await zorgVoorKaart(folder)
-      return mapGeometry(folder)
-    } finally {
-      voorgrondBezig -= 1
-    }
-  })
+  handle('map:geometry', (_event, folder: string): Promise<MapGeometry> => geometrieVoor(folder))
 
   /**
    * De route van elke rit van een dienst, als lijn over de kaart. Eenmaal per
@@ -2025,19 +2131,46 @@ function registerHandlers(): void {
    */
   handle(
     'map:routes',
-    async (
-      _event,
-      folder: string,
-      legs: Array<{ tripFile: string; stopIds: string[] }>
-    ): Promise<TripRoute[]> => {
-      try {
-        return await werkerVraag<TripRoute[]>({ soort: 'routes', folder, legs })
-      } catch (fout) {
-        logFout('routes via de werker', fout)
-        return laag().routes(folder, legs)
-      }
-    }
+    (_event, folder: string, legs: Array<{ tripFile: string; stopIds: string[] }>): Promise<TripRoute[]> =>
+      routesVoor(folder, legs)
   )
+
+  /*
+   * De navigatie op een telefoon of tablet; zie main/apparaat.ts.
+   *
+   * De sleutel en de poort worden bewaard, zodat een bladwijzer of een icoon op
+   * het beginscherm van de telefoon na een herstart van de app nog werkt.
+   */
+  handle('apparaat:start', async () => {
+    const nu = readSettings(userData())
+    const sleutel = nu.apparaatSleutel ?? nieuweSleutel()
+    const { poort, ...stand } = await startApparaat({ sleutel, poort: nu.apparaatPoort }, apparaatBronnen())
+    if (stand.aan && (sleutel !== nu.apparaatSleutel || poort !== nu.apparaatPoort)) {
+      writeSettings(userData(), { apparaatSleutel: sleutel, apparaatPoort: poort })
+    }
+    if (stand.fout) log(`apparaat: starten mislukt: ${stand.fout}`)
+    // Meteen een beeld, anders ziet een telefoon die nu scant pas iets als er iets verandert.
+    lastFrame = undefined
+    pushFrame()
+    return stand
+  })
+  handle('apparaat:stop', () => {
+    stopApparaat()
+    return apparaatStand()
+  })
+  handle('apparaat:stand', () => apparaatStand())
+  handle('apparaat:nieuw', async () => {
+    writeSettings(userData(), { apparaatSleutel: nieuweSleutel() })
+    stopApparaat()
+    const nu = readSettings(userData())
+    const { poort: _poort, ...stand } = await startApparaat(
+      { sleutel: nu.apparaatSleutel ?? nieuweSleutel(), poort: nu.apparaatPoort },
+      apparaatBronnen()
+    )
+    lastFrame = undefined
+    pushFrame()
+    return stand
+  })
 
   /*
    * De instellingen en de toetsen van OMSI zelf.
@@ -3203,6 +3336,7 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.on('before-quit', () => {
+    stopApparaat()
     sluitBusfotoVenster()
     closeOverlay()
     sluitLopendeDienstAf()

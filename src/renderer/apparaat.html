@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="nl" data-thema="donker">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self'; manifest-src 'self'"
+    />
+    <!-- viewport-fit=cover: de kaart loopt door tot achter de inkeping en de ronde hoeken. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0e1522" />
+    <!-- Op het beginscherm gezet opent hij zonder adresbalk, als een app. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="OMSI Nav" />
+    <link rel="apple-touch-icon" href="./src/assets/apparaat-icoon.png" />
+    <link rel="icon" type="image/png" href="./src/assets/apparaat-icoon.png" />
+    <title>OMSI Enhancer</title>
+  </head>
+  <!-- overlay-body voor de letter en de kleuren van de overlay (theme.css), apparaat-body voor de rest. -->
+  <body class="overlay-body apparaat-body">
+    <div id="root"></div>
+    <script type="module" src="./src/apparaat.tsx"></script>
+  </body>
+</html>

@@ -117,6 +117,16 @@ export interface Settings {
    * Begint op 0.32, de maat die er stond toen het nog vastlag.
    */
   navDeel?: number
+  /**
+   * De geheime sleutel in het adres van de webpagina voor je telefoon of tablet
+   * (zie main/apparaat.ts), en de poort waarop die luistert.
+   *
+   * Bewaard, zodat een bladwijzer of een icoon op het beginscherm van de telefoon
+   * na een herstart van de app nog werkt. "Nieuwe link" in de overlay maakt een
+   * nieuwe sleutel, en dan werkt de oude nergens meer.
+   */
+  apparaatSleutel?: string
+  apparaatPoort?: number
 }
 
 function settingsPath(userDataPath: string): string {
@@ -131,6 +141,18 @@ function settingsPath(userDataPath: string): string {
 function geldigNavDeel(waarde: unknown): number | undefined {
   return typeof waarde === 'number' && Number.isFinite(waarde)
     ? Math.min(0.62, Math.max(0.18, waarde))
+    : undefined
+}
+
+/** Een sleutel zoals `randomBytes(...).toString('base64url')` hem maakt, anders niets. */
+function geldigeSleutel(waarde: unknown): string | undefined {
+  return typeof waarde === 'string' && /^[A-Za-z0-9_-]{16,64}$/.test(waarde) ? waarde : undefined
+}
+
+/** Een poort die een gewoon programma mag openen. */
+function geldigePoort(waarde: unknown): number | undefined {
+  return typeof waarde === 'number' && Number.isInteger(waarde) && waarde >= 1024 && waarde <= 65535
+    ? waarde
     : undefined
 }
 
@@ -156,7 +178,9 @@ export function readSettings(userDataPath: string): Settings {
         raw.overlayWaarschuwing && typeof raw.overlayWaarschuwing === 'object'
           ? raw.overlayWaarschuwing
           : undefined,
-      navDeel: geldigNavDeel(raw.navDeel)
+      navDeel: geldigNavDeel(raw.navDeel),
+      apparaatSleutel: geldigeSleutel(raw.apparaatSleutel),
+      apparaatPoort: geldigePoort(raw.apparaatPoort)
     }
   } catch {
     return {
@@ -222,7 +246,9 @@ export function writeSettings(userDataPath: string, settings: Partial<Settings>)
      * scheiding op het rijscherm kwam nooit in settings.json en sprong elke
      * keer dat het rijscherm openging terug naar 0.32.
      */
-    navDeel: geldigNavDeel(settings.navDeel) ?? current.navDeel
+    navDeel: geldigNavDeel(settings.navDeel) ?? current.navDeel,
+    apparaatSleutel: geldigeSleutel(settings.apparaatSleutel) ?? current.apparaatSleutel,
+    apparaatPoort: geldigePoort(settings.apparaatPoort) ?? current.apparaatPoort
   }
   const path = settingsPath(userDataPath)
   mkdirSync(dirname(path), { recursive: true })
