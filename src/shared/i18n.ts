@@ -3521,6 +3521,12 @@ const TEXT = {
     fr: 'Pas encore de service. Lancez un service dans OMSI Enhancer et la carte apparaîtra ici d’elle-même.',
     nl: 'Nog geen dienst. Begin een dienst in OMSI Enhancer, dan komt de kaart hier vanzelf.'
   },
+  'ovl.ticketFromBus': {
+    en: 'Selected on the ticket machine in the bus.',
+    de: 'An der Fahrscheinmaschine im Bus gewählt.',
+    fr: 'Choisi sur la billetterie du bus.',
+    nl: 'Gekozen op de kaartautomaat in de bus.'
+  },
   'ovl.ticketsNone': {
     en: 'This map has no tickets: nothing is sold here.',
     de: 'Diese Karte hat keine Fahrscheine: hier wird nichts verkauft.',

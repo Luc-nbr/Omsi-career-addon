@@ -131,6 +131,12 @@ const MIN_DRIVEN_KM = 1
  * het niet kent — dan mag de app er geen conclusie aan verbinden.
  */
 const BIT = {
+  /*
+   * Welk kaartje er in de bus gekozen is. `GivenTicket` is geen teller maar de
+   * keuze van de chauffeur op de kaartautomaat: -1 als er niets gekozen is, en
+   * anders de plek in het kaartpakket van de kaart. Niet elke bus heeft hem.
+   */
+  ticket: 9,
   lightsLow: 17,
   blinkerLeft: 18,
   blinkerRight: 19,
@@ -290,6 +296,11 @@ export interface LiveStatus {
   entryRequest: boolean
   exitRequest: boolean
   doorsOpen: boolean
+  /**
+   * Het kaartje dat in de bus gekozen is, als plek in het kaartpakket van de
+   * kaart. Niets als de bus het niet doorgeeft of er niets gekozen is.
+   */
+  ticketKeuze?: number
   /** De rit waar je volgens de dienstkaart nu mee bezig bent. */
   legIndex: number
   leg?: DutyLeg
@@ -707,6 +718,8 @@ export function describeLive(
     entryRequest: data.entryRequest > 0.5,
     exitRequest: data.exitRequest > 0.5,
     doorsOpen: data.entryOpen > 0.5 || data.exitOpen > 0.5,
+    ticketKeuze:
+      has(data, BIT.ticket) && data.ticket >= 0 ? Math.round(data.ticket) : undefined,
     legIndex,
     metresToStop:
       fromMenu && data.mem && data.mem.nextDist >= 0 && data.mem.nextDist < 20000

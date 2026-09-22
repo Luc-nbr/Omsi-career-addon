@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useRef,
   useState,
   type CSSProperties,
   type JSX,
@@ -113,6 +114,21 @@ export function Telefoon({
   const [manoeuvre, setManoeuvre] = useState<Manoeuvre>();
   const [limit, setLimit] = useState<number>();
 
+  /*
+   * De deur open is het moment van de kaartverkoop.
+   *
+   * Zolang je rijdt kijk je naar de kaart; zodra er iemand instapt heb je de
+   * kaartjes nodig, en dan hoor je niet eerst een balkje onderin te moeten
+   * zoeken. Alleen bij het opengaan: doe je de app daarna zelf dicht, dan
+   * blijft dat zo tot de volgende halte.
+   */
+  const deurOpen = Boolean(frame.status?.doorsOpen);
+  const deurStond = useRef(deurOpen);
+  useEffect(() => {
+    if (deurOpen && !deurStond.current) setApp("kaartjes");
+    deurStond.current = deurOpen;
+  }, [deurOpen]);
+
   if (!stand.aangemeld) {
     return <AanmeldPaneel stand={stand} acties={acties} language={language} />;
   }
@@ -142,7 +158,11 @@ export function Telefoon({
               onVanaf={acties.pauze}
             />
           ) : app === "kaartjes" ? (
-            <KaartjesApp set={frame.kaartjes} language={language} />
+            <KaartjesApp
+              set={frame.kaartjes}
+              keuze={frame.status?.ticketKeuze}
+              language={language}
+            />
           ) : extra && app === extra.id ? (
             extra.scherm
           ) : (
@@ -758,9 +778,12 @@ function DienstOpdracht({
  */
 function KaartjesApp({
   set,
+  keuze,
   language,
 }: {
   set?: Kaartset;
+  /** Wat er in de bus gekozen is (GivenTicket); dan hoeft het hier niet nog eens. */
+  keuze?: number;
   language: Language;
 }): JSX.Element {
   const [gekozen, setGekozen] = useState<Kaartje>();
@@ -772,6 +795,20 @@ function KaartjesApp({
     setGekozen(undefined);
     setGegeven(0);
   }, [set?.naam]);
+
+  /*
+   * Kiest de chauffeur het kaartje op de automaat in de bus, dan staat het hier
+   * meteen goed. OMSI geeft die keuze door als plek in het kaartpakket
+   * (`GivenTicket`); wat de passagier wil en waarmee hij betaalt -- de regel
+   * die OMSI linksboven toont -- geeft het spel niet door, dus dat tel je zelf
+   * aan met de knoppen hieronder.
+   */
+  const uitDeBus = keuze !== undefined ? set?.kaartjes[keuze] : undefined;
+  useEffect(() => {
+    if (!uitDeBus) return;
+    setGekozen(uitDeBus);
+    setGegeven(0);
+  }, [uitDeBus]);
 
   if (!set || set.kaartjes.length === 0) {
     return <p className="app-leeg">{t(language, "ovl.ticketsNone")}</p>;
@@ -826,6 +863,11 @@ function KaartjesApp({
             <span className="kaartnaam">{gekozen.naam}</span>
             <span className="kaartprijs">{euro(prijs)}</span>
           </div>
+
+          {/* Waarom het al gekozen is, zodat niemand denkt dat de app iets verzint. */}
+          {uitDeBus === gekozen && (
+            <p className="kaartbron">{t(language, "ovl.ticketFromBus")}</p>
+          )}
 
           {/*
             Tik aan wat hij geeft. Optellen en niet vervangen: iemand geeft

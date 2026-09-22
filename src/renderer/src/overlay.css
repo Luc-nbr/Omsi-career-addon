@@ -2121,6 +2121,13 @@
  * een armlengte afstand door een telefooncamera gelezen worden. De uitleg
  * eronder is klein, want die lees je één keer.
  */
+/* Waar de keuze vandaan komt: de automaat in de bus, niet de app. */
+.kaartbron {
+  margin: 6px 0 0;
+  color: var(--vel-zacht);
+  font-size: 11.5px;
+}
+
 .app-apparaat {
   display: flex;
   flex-direction: column;
