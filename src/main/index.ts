@@ -79,6 +79,7 @@ import {
   sluitOmsi,
   type OverlayInOmsi
 } from '../core/omsiProces'
+import { kaartjesVoor, type Kaartset } from '../core/kaartjes'
 import { leesKnoppen, zetKnop, type Schakelbaar, type Uitkomst as OverlayUitkomst, type OverlayKnoppen } from '../core/overlayknop'
 import { writeSituation } from '../core/situation'
 import { presetStartup } from '../core/startup'
@@ -1200,6 +1201,27 @@ function laadtOmsi(verbonden: boolean): boolean {
   return omsiLaadt
 }
 
+/**
+ * De kaartset van een kaart, eenmaal gelezen.
+ *
+ * `pushFrame` loopt tien keer per seconde; een bestand openen hoort daar niet
+ * bij. De set verandert niet zolang je op dezelfde kaart rijdt.
+ */
+const kaartsetCache = new Map<string, ReturnType<typeof kaartjesVoor>>()
+function kaartsetVoorOverlay(mapFolder: string | undefined): Kaartset | undefined {
+  if (!mapFolder) return undefined
+  if (!kaartsetCache.has(mapFolder)) {
+    let gevonden: Kaartset | undefined
+    try {
+      gevonden = kaartjesVoor(omsi(), mapFolder)
+    } catch {
+      // Een kaart zonder kaartverkoop is geen fout; dan blijft de app leeg.
+    }
+    kaartsetCache.set(mapFolder, gevonden)
+  }
+  return kaartsetCache.get(mapFolder)
+}
+
 function pushFrame(): void {
   if (!overlayWindow || overlayWindow.isDestroyed()) return
   /*
@@ -1219,6 +1241,14 @@ function pushFrame(): void {
     vehicle: vehicleOnMap(live, duty),
     duty,
     ibis: overlayIbis,
+    /*
+     * De kaartjes van deze kaart gaan mee in het beeld. Ze veranderen niet
+     * tijdens een dienst, maar de overlay heeft geen eigen brug naar het
+     * hoofdproces -- hij krijgt alleen beelden toegestuurd. Het kost niets: het
+     * beeld wordt pas verstuurd als er iets aan verandert, en een kaartset is
+     * een handvol regels.
+     */
+    kaartjes: kaartsetVoorOverlay(duty?.mapFolder),
     editing: overlayEditing
   }
 

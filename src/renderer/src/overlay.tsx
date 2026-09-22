@@ -12,6 +12,7 @@ import {
 import { createRoot } from 'react-dom/client'
 import type { MapGeometry } from '../../core/geo'
 import type { IbisPlan } from '../../core/ibis'
+import { wisselgeld, type Kaartje, type Kaartset } from '../../shared/kaartjes'
 import type { LiveStatus } from '../../core/live'
 import type { Duty, DutyLeg } from '../../core/types'
 import type { CareerApi } from '../../shared/api'
@@ -97,7 +98,7 @@ function same(a: Box | undefined, b: Box | undefined): boolean {
 }
 
 /** De apps op het toestel, in de volgorde van het balkje onderin. */
-type OverlayApp = 'kaart' | 'dienst' | 'pauze' | 'rit'
+type OverlayApp = 'kaart' | 'dienst' | 'pauze' | 'rit' | 'kaartjes'
 
 interface Frame {
   status?: LiveStatus
@@ -110,6 +111,8 @@ interface Frame {
   connected: boolean
   /** OMSI staat open, maar de kaart laadt nog: de plugin geeft pas daarna iets door. */
   laadt?: boolean
+  /** De kaartsoorten van deze kaart, met hun prijzen; zie core/kaartjes.ts. */
+  kaartjes?: Kaartset
   /** In de bewerkstand neemt de overlay muisklikken aan. */
   editing: boolean
 }
@@ -505,6 +508,8 @@ function Overlay(): JSX.Element | null {
                   vanaf={pauzeVanaf}
                   onVanaf={setPauzeVanaf}
                 />
+              ) : app === 'kaartjes' ? (
+                <KaartjesApp set={frame?.kaartjes} language={language} />
               ) : (
                 <RitApp status={status} language={language} />
               )}
@@ -940,6 +945,12 @@ function Dock({
       id: 'rit',
       label: 'ovl.appTrip',
       pad: 'M4 20V10h4v10H4Zm6 0V4h4v16h-4Zm6 0v-7h4v7h-4Z'
+    },
+    {
+      id: 'kaartjes',
+      label: 'ovl.appTickets',
+      // Een kaartje met een knip in de zijkant, zoals in Icoon.tsx.
+      pad: 'M3 6.5h18v4a2 2 0 0 0 0 3.8v4H3v-4a2 2 0 0 0 0-3.8ZM5 8.5v1.1a4 4 0 0 1 0 5.4v1.1h14v-1.1a4 4 0 0 1 0-5.4V8.5Zm4 1.6h1.6v4.6H9Zm4 0h1.6v4.6H13Z'
     }
   ]
   return (
@@ -1823,3 +1834,131 @@ function clamp(value: number, low: number, high: number): number {
 }
 
 createRoot(document.getElementById('root')!).render(<Overlay />)
+
+/**
+ * De kaartjes-app: wat kost dit kaartje, en wat krijgt hij terug.
+ *
+ * WAAROM DIT ZO WEINIG WEET
+ * OMSI vertelt niet dat er iemand een kaartje wil, welk kaartje, of hoeveel geld
+ * hij aangeeft. Nagemeten: geen enkele systeemvariabele gaat over kaartjes of
+ * geld, de `PAX_`-variabelen gaan alleen over deuren, en het kaartprinterscript
+ * van een bus krijgt van buiten alleen IBIS-timing, stroomrails en taal binnen.
+ * Het spel zegt wat iemand wil met een geluidje en verder niets. Zie
+ * `core/kaartjes.ts`.
+ *
+ * Wat de app dus niet doet: raden wat er gevraagd wordt. Wat hij wel doet: de
+ * kaartsoorten van deze kaart met hun prijzen tonen, en het rekenwerk uit handen
+ * nemen -- want dát is wat je achter het stuur niet wilt doen.
+ *
+ * Het wisselgeld staat uitgesplitst in munten en biljetten, grootste eerst. "Een
+ * van twee euro, een van twintig cent" is bruikbaar terwijl je rijdt; "2,20"
+ * moet je alsnog zelf uit de lade puzzelen.
+ */
+function KaartjesApp({
+  set,
+  language
+}: {
+  set?: Kaartset
+  language: Language
+}): JSX.Element {
+  const [gekozen, setGekozen] = useState<Kaartje>()
+  /** Wat de passagier tot nu toe heeft aangegeven, in centen. */
+  const [gegeven, setGegeven] = useState(0)
+
+  /* Wisselt de kaart, dan slaat de vorige keuze nergens meer op. */
+  useEffect(() => {
+    setGekozen(undefined)
+    setGegeven(0)
+  }, [set?.naam])
+
+  if (!set || set.kaartjes.length === 0) {
+    return <p className="app-leeg">{t(language, 'ovl.ticketsNone')}</p>
+  }
+
+  const prijs = gekozen ? Math.round(gekozen.prijs * 100) : 0
+  const terug = gegeven - prijs
+  const munten = terug > 0 ? wisselgeld(terug) : []
+  const euro = (cent: number): string => (cent / 100).toFixed(2)
+
+  /* De coupures waarmee een passagier betaalt; grootste eerst zoals in de lade. */
+  const COUPURES = [2000, 1000, 500, 200, 100, 50, 20, 10]
+
+  return (
+    <div className="kaartjes">
+      {!gekozen ? (
+        <ul className="kaartlijst">
+          {set.kaartjes.map((kaartje) => (
+            <li key={kaartje.naam}>
+              <button type="button" onClick={() => setGekozen(kaartje)}>
+                <span className="kaartnaam">{kaartje.naam}</span>
+                <span className="kaartprijs">{kaartje.prijs.toFixed(2)}</span>
+              </button>
+              {kaartje.maxHaltes > 0 && (
+                <small>{t(language, 'ovl.ticketStops', { count: kaartje.maxHaltes })}</small>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <>
+          <div className="kaartkop">
+            <button type="button" className="kaartterug" onClick={() => { setGekozen(undefined); setGegeven(0) }}>
+              ‹
+            </button>
+            <span className="kaartnaam">{gekozen.naam}</span>
+            <span className="kaartprijs">{euro(prijs)}</span>
+          </div>
+
+          {/*
+            Tik aan wat hij geeft. Optellen en niet vervangen: iemand geeft
+            twee euro en dan nog een vijftig, en dat is drie handelingen aan
+            de balie maar één bedrag.
+          */}
+          <div className="coupures">
+            {COUPURES.map((cent) => (
+              <button key={cent} type="button" onClick={() => setGegeven((t) => t + cent)}>
+                {euro(cent)}
+              </button>
+            ))}
+          </div>
+
+          <div className="kaartsom">
+            <span>{t(language, 'ovl.ticketGiven')}</span>
+            <b>{euro(gegeven)}</b>
+            <button type="button" className="kaartwis" onClick={() => setGegeven(0)}>
+              {t(language, 'ovl.ticketClear')}
+            </button>
+          </div>
+
+          {gegeven > 0 && (
+            <div className={`kaartterugbedrag ${terug < 0 ? 'tekort' : ''}`}>
+              {terug < 0 ? (
+                <>
+                  <span>{t(language, 'ovl.ticketShort')}</span>
+                  <b>{euro(-terug)}</b>
+                </>
+              ) : (
+                <>
+                  <span>{t(language, 'ovl.ticketChange')}</span>
+                  <b>{euro(terug)}</b>
+                  <div className="kaartmunten">
+                    {munten.length === 0 ? (
+                      <em>{t(language, 'ovl.ticketExact')}</em>
+                    ) : (
+                      munten.map((m) => (
+                        <span key={m.cent}>
+                          {m.aantal}&times;&nbsp;{euro(m.cent)}
+                        </span>
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+

@@ -2941,6 +2941,30 @@ const TEXT = {
   'ovl.appMap': { en: 'Map', de: 'Karte', fr: 'Carte', nl: 'Kaart' },
   'ovl.appDuty': { en: 'Duty', de: 'Dienst', fr: 'Service', nl: 'Dienst' },
   'ovl.appBreak': { en: 'Break', de: 'Pause', fr: 'Pause', nl: 'Pauze' },
+  /*
+   * De kaartjes-app in de overlay. Wat er niet in staat: iets over wat de
+   * passagier vraagt of geeft -- OMSI geeft dat niet door, zie core/kaartjes.ts.
+   * De app rekent, hij raadt niet.
+   */
+  'ovl.appTickets': { en: 'Tickets', de: 'Fahrscheine', fr: 'Billets', nl: 'Kaartjes' },
+  'ovl.ticketsNone': {
+    en: 'This map has no tickets: nothing is sold here.',
+    de: 'Diese Karte hat keine Fahrscheine: hier wird nichts verkauft.',
+    fr: 'Cette carte n’a pas de billets : on n’en vend pas ici.',
+    nl: 'Deze kaart heeft geen kaartjes: hier wordt niets verkocht.'
+  },
+  'ovl.ticketStops': {
+    en: 'up to {count} stops',
+    de: 'bis {count} Haltestellen',
+    fr: 'jusqu’à {count} arrêts',
+    nl: 'tot {count} haltes'
+  },
+  'ovl.ticketGiven': { en: 'Given', de: 'Gegeben', fr: 'Donné', nl: 'Gegeven' },
+  'ovl.ticketClear': { en: 'Clear', de: 'Zurücksetzen', fr: 'Effacer', nl: 'Wissen' },
+  'ovl.ticketChange': { en: 'Change', de: 'Rückgeld', fr: 'Monnaie', nl: 'Terug' },
+  /* Te weinig aangenomen; dan hoort er te staan hoeveel er nog bij moet. */
+  'ovl.ticketShort': { en: 'Still to pay', de: 'Fehlt noch', fr: 'Reste à payer', nl: 'Nog te betalen' },
+  'ovl.ticketExact': { en: 'exact', de: 'passend', fr: 'compte juste', nl: 'gepast' },
   'ovl.appTrip': { en: 'Trip', de: 'Fahrt', fr: 'Course', nl: 'Rit' },
   'ovl.appNoDuty': {
     en: 'No duty running.',

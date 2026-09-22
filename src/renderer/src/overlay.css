@@ -1473,3 +1473,204 @@
   color: var(--vel-zacht, #8d9bad);
   font-weight: 400;
 }
+
+/*
+ * DE KAARTJES-APP
+ *
+ * Dit wordt gelezen terwijl je rijdt, dus alles is groter dan elders in de
+ * overlay en de knoppen zijn te raken zonder te mikken. Het wisselgeld is het
+ * grootste getal op het scherm, met de munten eronder: dat is waar je naar
+ * kijkt, de rest is aanloop.
+ */
+.kaartjes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.app-leeg {
+  margin: 12px 2px;
+  color: var(--vel-zacht);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* ---- de lijst met kaartsoorten ---- */
+
+.kaartlijst {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kaartlijst button {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--vel-overlay-rand);
+  border-radius: var(--radius-klein);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.kaartlijst button:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.kaartlijst small {
+  display: block;
+  padding: 2px 12px 0;
+  color: var(--vel-zacht);
+  font-size: 11.5px;
+}
+
+.kaartnaam {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.kaartprijs {
+  flex: none;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+/* ---- het gekozen kaartje ---- */
+
+.kaartkop {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--vel-overlay-rand);
+}
+
+.kaartkop .kaartnaam {
+  flex: 1;
+}
+
+.kaartterug {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--vel-overlay-rand);
+  border-radius: var(--radius-klein);
+  background: transparent;
+  color: inherit;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* ---- wat hij aangeeft ---- */
+
+.coupures {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.coupures button {
+  padding: 12px 4px;
+  border: 1px solid var(--vel-overlay-rand);
+  border-radius: var(--radius-klein);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums lining-nums;
+  cursor: pointer;
+}
+
+.coupures button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.kaartsom {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.kaartsom > span {
+  color: var(--vel-zacht);
+  font-size: 12px;
+}
+
+.kaartsom b {
+  flex: 1;
+  font-size: 17px;
+}
+
+.kaartwis {
+  padding: 4px 10px;
+  border: 1px solid var(--vel-overlay-rand);
+  border-radius: var(--radius-rond);
+  background: transparent;
+  color: var(--vel-zacht);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+/* ---- het wisselgeld: het grootste getal op het scherm ---- */
+
+.kaartterugbedrag {
+  padding: 12px;
+  border-radius: var(--radius-klein);
+  background: rgba(26, 138, 79, 0.18);
+  border: 1px solid var(--optijd);
+}
+
+.kaartterugbedrag > span {
+  display: block;
+  color: var(--vel-zacht);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.kaartterugbedrag b {
+  display: block;
+  font-size: 34px;
+  line-height: 1.1;
+}
+
+/* Te weinig aangenomen is geen wisselgeld; dan dezelfde rode als "te laat". */
+.kaartterugbedrag.tekort {
+  background: rgba(217, 58, 48, 0.18);
+  border-color: var(--laat);
+}
+
+.kaartmunten {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.kaartmunten span {
+  padding: 4px 9px;
+  border-radius: var(--radius-rond);
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.kaartmunten em {
+  color: var(--vel-zacht);
+  font-size: 13px;
+  font-style: normal;
+}
