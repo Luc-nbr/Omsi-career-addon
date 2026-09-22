@@ -12,6 +12,7 @@ import type { Duty } from "../../core/types";
 import { useT } from "./language";
 import { Icoon as Pictogram, ICONEN } from "./Icoon";
 import { RouteMap } from "./RouteMap";
+import { kantel, kantelLos } from "./beweging";
 import "./setup.css";
 
 /**
@@ -800,6 +801,9 @@ export function Setup({
             className="tegels"
             data-stap={stap}
             data-aantal={Math.min(tegels.length, 4)}
+            /* Kantelen naar de muis, zoals de tegels in het hoofdmenu; zie beweging.ts. */
+            onPointerMove={(event) => kantel(event, ".tegel", 5)}
+            onPointerLeave={kantelLos}
           >
             {tegels.map((tegel, index) => (
               <button

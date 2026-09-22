@@ -39,6 +39,31 @@ const TEXT = {
     fr: 'Bonjour {naam}',
     nl: 'Dag {naam}'
   },
+  // De begroeting volgt de klok; zie `dagdeel` in beweging.ts.
+  'hub.titleMorning': {
+    en: 'Good morning, {naam}',
+    de: 'Guten Morgen, {naam}',
+    fr: 'Bonjour, {naam}',
+    nl: 'Goedemorgen {naam}'
+  },
+  'hub.titleAfternoon': {
+    en: 'Good afternoon, {naam}',
+    de: 'Guten Tag, {naam}',
+    fr: 'Bon après-midi, {naam}',
+    nl: 'Goedemiddag {naam}'
+  },
+  'hub.titleEvening': {
+    en: 'Good evening, {naam}',
+    de: 'Guten Abend, {naam}',
+    fr: 'Bonsoir, {naam}',
+    nl: 'Goedenavond {naam}'
+  },
+  'hub.titleNight': {
+    en: 'Night shift, {naam}?',
+    de: 'Nachtschicht, {naam}?',
+    fr: 'Service de nuit, {naam} ?',
+    nl: 'Nachtdienst, {naam}?'
+  },
   'hub.intro': {
     en: 'How do you want to drive today?',
     de: 'Wie möchtest du heute fahren?',

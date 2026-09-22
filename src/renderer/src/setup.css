@@ -3705,3 +3705,341 @@
     -webkit-line-clamp: 1;
   }
 }
+
+/* ---- het hoofdmenu: een achtergrond, glas, en beweging die op jou reageert ----
+ *
+ * Op verzoek van Luc: een afbeelding achter het hoofdmenu (een nachtelijke weg
+ * met lijnen en haltes in de donkere stand, dezelfde overdag in de lichte), de
+ * vellen als glas erop, en meer beweging.
+ *
+ * Die beweging is er alleen bij het binnenkomen, een keer, en als jij iets
+ * doet. Niets loopt uit zichzelf door: de app staat vaak naast OMSI open, en
+ * elk beeld dat dit venster ververst kost het spel er een. Zie beweging.ts.
+ */
+.hub {
+  --glas: rgba(11, 16, 31, 0.56);
+  --glas-rand: rgba(255, 255, 255, 0.1);
+  --glas-schaduw: 0 18px 50px rgba(0, 0, 0, 0.38);
+  isolation: isolate;
+}
+
+:root[data-thema='licht'] .hub {
+  --glas: rgba(247, 250, 253, 0.64);
+  --glas-rand: rgba(255, 255, 255, 0.75);
+  --glas-schaduw: 0 18px 50px rgba(30, 60, 110, 0.16);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-thema]) .hub {
+    --glas: rgba(247, 250, 253, 0.64);
+    --glas-rand: rgba(255, 255, 255, 0.75);
+    --glas-schaduw: 0 18px 50px rgba(30, 60, 110, 0.16);
+  }
+}
+
+/*
+ * De achtergrond. Een laag groter dan het venster, zodat hij kan meeschuiven
+ * met de muis (`--hx`/`--hy`, van -1 tot 1) zonder dat er een rand vrijkomt,
+ * en bij het binnenkomen een keer van dichtbij naar zijn plek zakt.
+ */
+.hub::before {
+  content: '';
+  position: fixed;
+  inset: -28px;
+  z-index: -1;
+  background: #0a1122 url('./assets/achtergrond/hub-nacht.webp') center / cover no-repeat;
+  translate: calc(var(--hx, 0) * -16px) calc(var(--hy, 0) * -10px);
+  transition: translate 700ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: hub-grond-in 1400ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  pointer-events: none;
+}
+
+:root[data-thema='licht'] .hub::before {
+  background-color: #e6edf7;
+  background-image: url('./assets/achtergrond/hub-dag.webp');
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-thema]) .hub::before {
+    background-color: #e6edf7;
+    background-image: url('./assets/achtergrond/hub-dag.webp');
+  }
+}
+
+@keyframes hub-grond-in {
+  from {
+    opacity: 0;
+    scale: 1.08;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+/* Glas: half doorzichtig en wat erachter ligt vervaagd, zoals bij de kaartkeuze. */
+.hub > .vel {
+  border-color: var(--glas-rand);
+  background: var(--glas);
+  box-shadow: var(--glas-schaduw);
+  backdrop-filter: blur(20px) saturate(1.3);
+}
+
+/* ---- binnenkomen: de balk, het vel, de kop, de tegels een voor een, de rest ---- */
+
+.hub-balk {
+  animation: hub-zak-in 480ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.hub-vel {
+  animation: hub-vel-in 560ms cubic-bezier(0.2, 0.8, 0.2, 1) 80ms both;
+}
+
+.hub-kop {
+  animation: hub-kom-op 520ms cubic-bezier(0.2, 0.8, 0.2, 1) 180ms both;
+}
+
+.hub-tegel {
+  animation: hub-tegel-in 640ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(260ms + var(--i, 0) * 90ms);
+}
+
+.hub-onder {
+  animation: hub-kom-op 560ms cubic-bezier(0.2, 0.8, 0.2, 1) 560ms both;
+}
+
+@keyframes hub-zak-in {
+  from {
+    opacity: 0;
+    translate: 0 -10px;
+  }
+}
+
+/* Het vel staat met `transform` in het midden; de beweging gaat daarom via `translate`. */
+@keyframes hub-vel-in {
+  from {
+    opacity: 0;
+    translate: 0 24px;
+    scale: 0.985;
+  }
+}
+
+@keyframes hub-kom-op {
+  from {
+    opacity: 0;
+    translate: 0 12px;
+  }
+}
+
+@keyframes hub-tegel-in {
+  from {
+    opacity: 0;
+    translate: 0 28px;
+    scale: 0.96;
+  }
+}
+
+/* ---- de tegels: kantelen naar de muis, met een glans en een foto die meebeweegt ---- */
+
+.hub-tegel {
+  transform: perspective(1100px) rotateX(var(--kx, 0deg)) rotateY(var(--ky, 0deg));
+  transition:
+    transform 450ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    scale 160ms ease-out,
+    border-color 120ms ease-out,
+    box-shadow 160ms ease-out;
+}
+
+/* Onder de muis volgt de tegel direct; laat je los, dan veert hij in 450 ms terug. */
+.hub-tegel[data-kantelt] {
+  transition:
+    transform 90ms linear,
+    scale 160ms ease-out,
+    border-color 120ms ease-out,
+    box-shadow 160ms ease-out;
+}
+
+.hub-tegel:hover {
+  box-shadow: 0 22px 44px rgba(0, 0, 0, 0.32);
+}
+
+.hub-tegel[aria-pressed='true']:hover {
+  box-shadow:
+    0 0 0 2px var(--route),
+    0 22px 48px rgba(42, 117, 247, 0.34);
+}
+
+.hub-tegel:active {
+  scale: 0.985;
+}
+
+/* De foto schuift tegen de muis in: diepte, alsof hij achter het glas ligt. */
+.hub-tegel .hub-tegel-foto,
+.hub-tegel:hover .hub-tegel-foto {
+  transform: scale(1.08) translate(calc(var(--px, 0) * -1.6%), calc(var(--py, 0) * -1.4%));
+  transition: transform 450ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.hub-tegel[data-kantelt] .hub-tegel-foto {
+  transition-duration: 90ms;
+}
+
+.hub-tegel-glans {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: radial-gradient(
+    circle at var(--gx, 50%) var(--gy, 50%),
+    rgba(255, 255, 255, 0.22),
+    rgba(255, 255, 255, 0) 45%
+  );
+  opacity: 0;
+  transition: opacity 220ms ease-out;
+  pointer-events: none;
+}
+
+.hub-tegel[data-kantelt] .hub-tegel-glans {
+  opacity: 1;
+}
+
+.hub-tegel-tekst {
+  position: relative;
+  z-index: 1;
+}
+
+.hub-tegel-icoon {
+  transition:
+    translate 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    background-color 160ms ease-out;
+}
+
+.hub-tegel:hover .hub-tegel-icoon {
+  translate: 0 -3px;
+}
+
+/* ---- de knoppen onderaan: het pictogram schuift een stapje, indrukken voel je ---- */
+
+.hub-knop,
+.hub-paneel {
+  transition:
+    border-color 120ms ease-out,
+    background-color 160ms ease-out,
+    translate 160ms ease-out,
+    scale 120ms ease-out;
+}
+
+.hub-knop:hover,
+.hub-paneel:hover {
+  background: var(--glas);
+  translate: 0 -2px;
+}
+
+.hub-knop:active,
+.hub-paneel:active {
+  scale: 0.985;
+}
+
+.hub-knop svg {
+  transition: translate 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.hub-knop:hover svg {
+  translate: 2px 0;
+}
+
+/* De staat van dienst is een knop naar het hele overzicht; bij zweven wijst hij die kant op. */
+.hub-paneel {
+  position: relative;
+}
+
+.hub-paneel::after {
+  content: '\2192';
+  position: absolute;
+  top: 18px;
+  right: 22px;
+  color: var(--vel-zacht);
+  font-size: 18px;
+  opacity: 0;
+  translate: -6px 0;
+  transition:
+    opacity 180ms ease-out,
+    translate 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.hub-paneel:hover::after {
+  opacity: 1;
+  translate: 0 0;
+}
+
+/* ---- dezelfde kanteling voor de tegels in de stappen (kaarten, bussen) ---- */
+
+.tegels .tegel {
+  position: relative;
+  transform: perspective(900px) rotateX(var(--kx, 0deg)) rotateY(var(--ky, 0deg));
+}
+
+.tegels .tegel:hover {
+  transform: perspective(900px) rotateX(var(--kx, 0deg)) rotateY(var(--ky, 0deg)) translateY(-3px);
+}
+
+.tegels .tegel[data-kantelt] {
+  transition:
+    background-color 120ms ease-out,
+    border-color 120ms ease-out,
+    color 120ms ease-out,
+    opacity 120ms ease-out,
+    transform 90ms linear;
+}
+
+.tegels .tegel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    circle at var(--gx, 50%) var(--gy, 50%),
+    rgba(255, 255, 255, 0.16),
+    rgba(255, 255, 255, 0) 50%
+  );
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+  pointer-events: none;
+}
+
+.tegels .tegel[data-kantelt]::after {
+  opacity: 1;
+}
+
+/* ---- minder beweging: alles staat stil, niets kantelt ---- */
+@media (prefers-reduced-motion: reduce) {
+  .hub::before,
+  .hub-balk,
+  .hub-vel,
+  .hub-kop,
+  .hub-tegel,
+  .hub-onder {
+    animation: none;
+  }
+
+  .hub::before {
+    translate: none;
+  }
+
+  .hub-tegel,
+  .tegels .tegel,
+  .tegels .tegel:hover {
+    transform: none;
+  }
+
+  .hub-tegel .hub-tegel-foto,
+  .hub-tegel:hover .hub-tegel-foto {
+    transform: none;
+  }
+
+  .hub-tegel:hover .hub-tegel-icoon,
+  .hub-knop:hover,
+  .hub-paneel:hover,
+  .hub-knop:hover svg {
+    translate: none;
+  }
+}

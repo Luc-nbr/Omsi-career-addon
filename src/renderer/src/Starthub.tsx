@@ -1,4 +1,4 @@
-import type { JSX, ReactNode } from "react";
+import type { CSSProperties, JSX, ReactNode } from "react";
 import { LANGUAGES, loose, t, type Language } from "../../shared/i18n";
 import { formatDuration } from "../../shared/format";
 import type { CareerSummary, GameMode } from "../../core/career";
@@ -6,6 +6,14 @@ import { Flag } from "./Flag";
 import { Icoon } from "./Icoon";
 import { ThemaKnop, type Thema } from "./ThemaKnop";
 import { Versie } from "./Versie";
+import {
+  dagdeel,
+  kantel,
+  kantelLos,
+  meebewegen,
+  meebewegenLos,
+  useOptellen,
+} from "./beweging";
 import carriereFoto from "./assets/modi/carriere.webp";
 import dienstFoto from "./assets/modi/dienst.webp";
 import vrijFoto from "./assets/modi/vrij.webp";
@@ -95,12 +103,36 @@ export function Starthub({
   onMeldingWeg,
   dialoog,
 }: Props): JSX.Element {
+  /*
+   * De cijfers tellen op bij het binnenkomen. Ze komen een tel later binnen dan
+   * het scherm (de staat van dienst wordt apart gelezen); dan tellen ze vanaf
+   * daar. Zie `useOptellen`.
+   */
+  const diensten = useOptellen(samenvatting?.duties ?? 0);
+  const minuten = useOptellen(samenvatting?.minutes ?? 0);
+  const kilometers = useOptellen(samenvatting?.km ?? 0, 1200);
+  const vergunningen = useOptellen(samenvatting?.licences ?? 0);
   const uren = samenvatting
-    ? formatDuration(samenvatting.minutes, language)
+    ? formatDuration(Math.round(minuten), language)
     : undefined;
 
+  /*
+   * De begroeting volgt de klok: 's ochtends goedemorgen, 's avonds goedenavond,
+   * en wie na middernacht nog start, zit kennelijk in de nachtdienst.
+   */
+  const groet = {
+    ochtend: "hub.titleMorning",
+    middag: "hub.titleAfternoon",
+    avond: "hub.titleEvening",
+    nacht: "hub.titleNight",
+  } as const;
+
   return (
-    <div className="hub">
+    <div
+      className="hub"
+      onPointerMove={meebewegen}
+      onPointerLeave={meebewegenLos}
+    >
       <header className="vel hub-balk">
         <span className="hub-merk">OMSI Enhancer</span>
         <Versie klasse="hub-versie" />
@@ -123,7 +155,7 @@ export function Starthub({
 
       <main className="hub-vel vel">
         <div className="hub-kop">
-          <h1>{t(language, "hub.title", { naam: chauffeur })}</h1>
+          <h1>{t(language, groet[dagdeel()], { naam: chauffeur })}</h1>
           <p>{t(language, "hub.intro")}</p>
         </div>
 
@@ -144,13 +176,18 @@ export function Starthub({
         )}
 
         {/* De hoofdkeuze: drie tegels, en niets anders even groot. */}
-        <div className="hub-tegels">
-          {MODI.map((naam) => (
+        <div
+          className="hub-tegels"
+          onPointerMove={(event) => kantel(event, ".hub-tegel", 7)}
+          onPointerLeave={kantelLos}
+        >
+          {MODI.map((naam, index) => (
             <button
               key={naam}
               type="button"
               className="hub-tegel"
               data-modus={naam}
+              style={{ "--i": index } as CSSProperties}
               aria-pressed={naam === modus}
               onClick={() => onModus(naam)}
             >
@@ -165,6 +202,8 @@ export function Starthub({
                 alt=""
                 draggable={false}
               />
+              {/* Het licht dat de muis volgt; zie `kantel`. */}
+              <span className="hub-tegel-glans" aria-hidden="true" />
               <span className="hub-tegel-tekst">
                 <span className="hub-tegel-icoon">
                   <Icoon
@@ -210,7 +249,7 @@ export function Starthub({
             <span className="hub-paneel-kop">{t(language, "hub.record")}</span>
             <span className="hub-cijfers">
               <span>
-                <b>{samenvatting?.duties ?? 0}</b>
+                <b>{Math.round(diensten)}</b>
                 {t(language, "hub.duties")}
               </span>
               <span>
@@ -218,11 +257,11 @@ export function Starthub({
                 {t(language, "hub.hours")}
               </span>
               <span>
-                <b>{Math.round(samenvatting?.km ?? 0)}</b>
+                <b>{Math.round(kilometers)}</b>
                 {t(language, "hub.km")}
               </span>
               <span>
-                <b>{samenvatting?.licences ?? 0}</b>
+                <b>{Math.round(vergunningen)}</b>
                 {t(language, "hub.licences")}
               </span>
             </span>
