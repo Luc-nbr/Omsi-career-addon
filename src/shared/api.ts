@@ -613,6 +613,8 @@ export interface CareerApi {
   chooseProfilePhoto(id: string): Promise<CareerPayload>
   /** Haalt de foto weer weg; de tegel valt dan terug op het monogram. */
   clearProfilePhoto(id: string): Promise<CareerPayload>
+  /** Vinkt af dat de chauffeur zijn personeelsnummer en pincode gezien heeft. */
+  dienstpasGezien(): Promise<CareerPayload>
   /** Leest uit OMSI's eigen situatiebestand wat er van de dienst terechtkwam. */
   checkSession(): Promise<SessionResult>
   completeDuty(

@@ -2174,7 +2174,16 @@ function AanmeldPaneel({
   /* Zonder gegevens valt er niets na te kijken; dan maar door. */
   if (!chauffeur?.personeelsnummer || !chauffeur?.pincode) {
     return (
-      <div className="aanmelden">
+    /*
+     * data-hit, anders gebeurt er niets als je drukt.
+     *
+     * Het overlayvenster laat muisklikken door naar OMSI -- het ligt over het
+     * hele scherm, dus een venster dat klikken opvangt vangt ze overal op.
+     * Alleen waar `data-hit` staat wordt de muis even opgevraagd. Dat stond er
+     * niet, en dus was dit een plaatje van een cijferblok: de klik ging dwars
+     * door de toetsen heen naar de bus erachter.
+     */
+      <div className="aanmelden" data-hit>
         <p className="aanmeld-uitleg">{t(language, "ovl.signonNone")}</p>
         <button type="button" className="aanmeld-door" onClick={onAangemeld}>
           {t(language, "ovl.signonSkip")}
@@ -2191,7 +2200,7 @@ function AanmeldPaneel({
   };
 
   return (
-    <div className="aanmelden">
+    <div className="aanmelden" data-hit>
       <p className="aanmeld-kop">{t(language, "ovl.signonTitle")}</p>
       <p className="aanmeld-uitleg">
         {t(language, stap === "nummer" ? "ovl.signonNumber" : "ovl.signonPin")}
@@ -2256,7 +2265,7 @@ function DienstOpdracht({
 }): JSX.Element {
   const klok = (minuten: number): string => formatTime(minuten);
   return (
-    <div className="opdracht">
+    <div className="opdracht" data-hit>
       <p className="opdracht-kop">{t(language, "ovl.dutyOrder")}</p>
       {chauffeur && <p className="opdracht-naam">{chauffeur.naam}</p>}
 

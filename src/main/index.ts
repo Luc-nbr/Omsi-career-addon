@@ -2842,6 +2842,20 @@ function registerHandlers(): void {
     return bewaarFoto(id, naam)
   })
 
+  /*
+   * De dienstgegevens zijn gezien. Eenmalig, en daarna nooit meer uit zichzelf.
+   *
+   * Dit gaat door het profiel heen en niet door de instellingen: het nummer
+   * hoort bij de chauffeur en niet bij de installatie, dus een tweede chauffeur
+   * op dezelfde pc krijgt zijn eigen pas ook een keer te zien.
+   */
+  handle('career:pas:gezien', () => {
+    if (!career || career.pasGezien) return careerPayload()
+    career = { ...career, pasGezien: true }
+    writeProfile(userData(), career)
+    return careerPayload()
+  })
+
   handle('career:photo:clear', (_event, id: string) => {
     clearProfilePhoto(userData(), id)
     return bewaarFoto(id, undefined)

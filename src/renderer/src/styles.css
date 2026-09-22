@@ -839,11 +839,20 @@ input[type='range'] {
   z-index: 50;
 }
 
+/*
+ * Een venstertje heeft een eigen grond nodig, geen glas.
+ *
+ * Het stond op `--panel`, en dat is op een vel doorzichtig geworden: een kaart
+ * die al op een vel ligt hoeft dat vel niet nog eens te tinten. Maar dit ligt
+ * niet op het vel -- het ligt op een donker waas over het hele scherm.
+ * Doorzichtig betekende hier dus de inkt van het vel op dat waas, en in de
+ * lichte stand is dat donker op donker. Dus het vel zelf, dekkend.
+ */
 .dialog {
   position: relative;
   overflow: hidden;
   width: min(440px, calc(100vw - 48px));
-  background: var(--panel);
+  background: var(--vel, var(--panel));
   border: 1px solid var(--line);
   border-radius: 16px;
   padding: 26px 26px 20px;

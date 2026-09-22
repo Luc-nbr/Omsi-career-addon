@@ -1,14 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type JSX } from 'react'
-import type { GameMode } from '../../core/career'
-import type { Duty } from '../../core/types'
-import type { LiveStatus } from '../../core/live'
-import type { VehiclePosition } from '../../core/vehicle'
-import type { LineSummary } from '../../core/duty'
-import { EXAM_LIMITS } from '../../core/exam'
-import type { IbisPlan } from '../../core/ibis'
-import type { PluginStatus } from '../../core/pluginInstall'
-import type { Vehicle } from '../../core/vehicles'
-import { WEATHER_KINDS, type WeatherKind } from '../../shared/weather'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type JSX,
+} from "react";
+import type { GameMode } from "../../core/career";
+import type { Duty } from "../../core/types";
+import type { LiveStatus } from "../../core/live";
+import type { VehiclePosition } from "../../core/vehicle";
+import type { LineSummary } from "../../core/duty";
+import { EXAM_LIMITS } from "../../core/exam";
+import type { IbisPlan } from "../../core/ibis";
+import type { PluginStatus } from "../../core/pluginInstall";
+import type { Vehicle } from "../../core/vehicles";
+import { WEATHER_KINDS, type WeatherKind } from "../../shared/weather";
 import {
   TIME_WINDOWS,
   type Assignment,
@@ -24,15 +32,15 @@ import {
   type HofOffer,
   type OmsiState,
   type SessionResult,
-  type YardOption
-} from '../../shared/api'
-import { formatDuration, formatTime } from '../../shared/format'
-import { Dienstoverzicht } from './Dienstoverzicht'
-import { DutyCard } from './DutyCard'
-import { Flag } from './Flag'
-import { GameSetup } from './GameSetup'
-import { Profiel } from './Profiel'
-import { RunningDuty } from './RunningDuty'
+  type YardOption,
+} from "../../shared/api";
+import { formatDuration, formatTime } from "../../shared/format";
+import { Dienstoverzicht } from "./Dienstoverzicht";
+import { DutyCard } from "./DutyCard";
+import { Flag } from "./Flag";
+import { GameSetup } from "./GameSetup";
+import { Profiel } from "./Profiel";
+import { RunningDuty } from "./RunningDuty";
 import {
   Setup,
   STAPPEN,
@@ -40,28 +48,34 @@ import {
   type Kruimel,
   type Rij,
   type Stap,
-  type Tegel
-} from './Setup'
-import { StartingDialog } from './StartingDialog'
-import { LiveDienst } from './LiveDienst'
-import { HofDialog } from './HofDialog'
-import { BusDialog } from './BusDialog'
-import { Busrit } from './Busrit'
-import { Chauffeurstart } from './Chauffeurstart'
-import { Taalkeuze } from './Taalkeuze'
-import { Welkom } from './Welkom'
-import { Klaarzetten } from './Klaarzetten'
-import { Busplaatjes } from './Busplaatjes'
-import { Icoon } from './Icoon'
-import { Starthub } from './Starthub'
-import { ThemaKnop, type Thema } from './ThemaKnop'
-import { Versie } from './Versie'
-import { DEFAULT_LANGUAGE, LANGUAGES, t, type Language } from '../../shared/i18n'
-import { LanguageProvider } from './language'
+  type Tegel,
+} from "./Setup";
+import { StartingDialog } from "./StartingDialog";
+import { LiveDienst } from "./LiveDienst";
+import { HofDialog } from "./HofDialog";
+import { BusDialog } from "./BusDialog";
+import { Busrit } from "./Busrit";
+import { Chauffeurstart } from "./Chauffeurstart";
+import { Taalkeuze } from "./Taalkeuze";
+import { Welkom } from "./Welkom";
+import { Klaarzetten } from "./Klaarzetten";
+import { Busplaatjes } from "./Busplaatjes";
+import { Icoon } from "./Icoon";
+import { Starthub } from "./Starthub";
+import { Dienstpas } from "./Dienstpas";
+import { ThemaKnop, type Thema } from "./ThemaKnop";
+import { Versie } from "./Versie";
+import {
+  DEFAULT_LANGUAGE,
+  LANGUAGES,
+  t,
+  type Language,
+} from "../../shared/i18n";
+import { LanguageProvider } from "./language";
 
 declare global {
   interface Window {
-    career: CareerApi
+    career: CareerApi;
   }
 }
 
@@ -73,7 +87,7 @@ declare global {
  * is goedkoper dan een bestand splitsen om er één functie uit te halen.
  */
 function busnaam(bus: Vehicle): string {
-  return [bus.manufacturer, bus.type].filter(Boolean).join(' ') || bus.folder
+  return [bus.manufacturer, bus.type].filter(Boolean).join(" ") || bus.folder;
 }
 
 /**
@@ -83,16 +97,20 @@ function busnaam(bus: Vehicle): string {
  * 3 Tuerer - Voith" of "628c LF - 5HP502". Het eerste stuk is het type, de rest
  * de uitvoering. Het merk staat apart in `manufacturer` en is altijd gevuld.
  */
-function ontleedBus(bus: Vehicle): { merk: string; type: string; uitvoering: string } {
+function ontleedBus(bus: Vehicle): {
+  merk: string;
+  type: string;
+  uitvoering: string;
+} {
   const delen = bus.type
-    .split(' - ')
+    .split(" - ")
     .map((deel) => deel.trim())
-    .filter(Boolean)
+    .filter(Boolean);
   return {
     merk: bus.manufacturer || bus.folder,
     type: delen[0] || bus.folder,
-    uitvoering: delen.slice(1).join(' · ') || bus.paint || '—'
-  }
+    uitvoering: delen.slice(1).join(" · ") || bus.paint || "—",
+  };
 }
 
 /**
@@ -103,11 +121,11 @@ function ontleedBus(bus: Vehicle): { merk: string; type: string; uitvoering: str
  * dubbeldekker. Beter een vorm die meestal klopt dan overal hetzelfde blokje.
  */
 function busvorm(tekst: string): Busvorm {
-  const laag = tekst.toLowerCase()
-  if (/gelenk|artic|18c|19c/.test(laag)) return 'geleed'
-  if (/doppeldeck|double ?deck/.test(laag)) return 'dubbel'
-  if (/midi|10c|o530k|kurz/.test(laag)) return 'midi'
-  return 'solo'
+  const laag = tekst.toLowerCase();
+  if (/gelenk|artic|18c|19c/.test(laag)) return "geleed";
+  if (/doppeldeck|double ?deck/.test(laag)) return "dubbel";
+  if (/midi|10c|o530k|kurz/.test(laag)) return "midi";
+  return "solo";
 }
 
 /*
@@ -115,22 +133,22 @@ function busvorm(tekst: string): Busvorm {
  * kleine omrekeningen, hier bij elkaar omdat ze elkaars omgekeerde zijn.
  */
 function isoVanDag(year: number, dayOfYear: number): string {
-  const datum = new Date(Date.UTC(year, 0, 1))
-  datum.setUTCDate(dayOfYear)
-  return datum.toISOString().slice(0, 10)
+  const datum = new Date(Date.UTC(year, 0, 1));
+  datum.setUTCDate(dayOfYear);
+  return datum.toISOString().slice(0, 10);
 }
 
 function dagVanIso(iso: string): { year: number; dayOfYear: number } {
-  const datum = new Date(`${iso}T00:00:00Z`)
-  const begin = Date.UTC(datum.getUTCFullYear(), 0, 1)
+  const datum = new Date(`${iso}T00:00:00Z`);
+  const begin = Date.UTC(datum.getUTCFullYear(), 0, 1);
   return {
     year: datum.getUTCFullYear(),
-    dayOfYear: Math.round((datum.getTime() - begin) / 86400000) + 1
-  }
+    dayOfYear: Math.round((datum.getTime() - begin) / 86400000) + 1,
+  };
 }
 
 /** Dienstlengtes die je kunt kiezen, in minuten. Korter dan een half uur niet. */
-const LENGTHS = [30, 45, 60, 90, 120, 150, 180, 240, 300, 360, 420, 480]
+const LENGTHS = [30, 45, 60, 90, 120, 150, 180, 240, 300, 360, 420, 480];
 
 /*
  * Welke stappen elke modus langsloopt.
@@ -145,16 +163,20 @@ const LENGTHS = [30, 45, 60, 90, 120, 150, 180, 240, 300, 360, 420, 480]
  * belooft ook niets.
  */
 const STAPPEN_DIENST: readonly Stap[] = STAPPEN.filter(
-  (naam) => naam !== 'line' && naam !== 'licence'
-)
-const STAPPEN_CARRIERE: readonly Stap[] = STAPPEN.filter((naam) => naam !== 'line')
-const STAPPEN_VRIJ: readonly Stap[] = STAPPEN.filter((naam) => naam !== 'licence')
+  (naam) => naam !== "line" && naam !== "licence",
+);
+const STAPPEN_CARRIERE: readonly Stap[] = STAPPEN.filter(
+  (naam) => naam !== "line",
+);
+const STAPPEN_VRIJ: readonly Stap[] = STAPPEN.filter(
+  (naam) => naam !== "licence",
+);
 
 /**
  * Welk scherm er staat. De app begint altijd bij de chauffeur en gaat dan naar
  * de modus; daarna pas komt het rijden in beeld.
  */
-type Screen = 'profiles' | 'modes' | 'drive' | 'game' | 'profiel'
+type Screen = "profiles" | "modes" | "drive" | "game" | "profiel";
 
 /*
  * De stand van de plugin werd hier als los regeltje getoond, in vier smaken --
@@ -165,41 +187,42 @@ type Screen = 'profiles' | 'modes' | 'drive' | 'game' | 'profiel'
  */
 
 export function App(): JSX.Element {
-  const [ready, setReady] = useState(false)
-  const [error, setError] = useState<string>()
-  const [maps, setMaps] = useState<MapSummary[]>([])
-  const [vehicles, setVehicles] = useState<Vehicle[]>([])
-  const [career, setCareer] = useState<CareerPayload>()
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string>();
+  const [maps, setMaps] = useState<MapSummary[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [career, setCareer] = useState<CareerPayload>();
 
-  const [screen, setScreen] = useState<Screen>('profiles')
-  const [mode, setMode] = useState<GameMode>('service')
+  const [screen, setScreen] = useState<Screen>("profiles");
+  const [mode, setMode] = useState<GameMode>("service");
 
-  const [mapFolder, setMapFolder] = useState('')
-  const [lengthIndex, setLengthIndex] = useState(4)
-  const [timeWindow, setTimeWindow] = useState<DutyRequest['window']>('heledag')
+  const [mapFolder, setMapFolder] = useState("");
+  const [lengthIndex, setLengthIndex] = useState(4);
+  const [timeWindow, setTimeWindow] =
+    useState<DutyRequest["window"]>("heledag");
   /** Leeg betekent: elke lijn van deze kaart mag. */
-  const [lineFile, setLineFile] = useState('')
-  const [lines, setLines] = useState<LineSummary[]>([])
+  const [lineFile, setLineFile] = useState("");
+  const [lines, setLines] = useState<LineSummary[]>([]);
 
-  const [duties, setDuties] = useState<Assignment[]>([])
-  const [selected, setSelected] = useState<number>()
+  const [duties, setDuties] = useState<Assignment[]>([]);
+  const [selected, setSelected] = useState<number>();
   /** Leeg betekent: de bus gebruiken die de app voorstelt. */
-  const [vehicleOverride, setVehicleOverride] = useState('')
+  const [vehicleOverride, setVehicleOverride] = useState("");
   /*
    * Het wagenpark dat de chauffeur zelf aanwijst, en wat er te kiezen valt.
    * Leeg betekent: laat de app kiezen. De keuze gaat mee naar de IBIS, en van
    * daar naar de situatie -- het is dus één keuze en niet twee.
    */
-  const [yardOverride, setYardOverride] = useState('')
-  const [yards, setYards] = useState<YardOption[]>([])
+  const [yardOverride, setYardOverride] = useState("");
+  const [yards, setYards] = useState<YardOption[]>([]);
   /*
    * Hoe OMSI de vorige keer draaide. Alleen volledig scherm is een bericht
    * waard: dan ligt de overlay over een spel dat het scherm exclusief opeist,
    * en dat kan op een zwart beeld uitlopen.
    */
-  const [schermmodus, setSchermmodus] = useState<'volledig' | 'venster'>()
+  const [schermmodus, setSchermmodus] = useState<"volledig" | "venster">();
   /** Start de app OMSI in een venster? Standaard ja; zie settings.ts waarom. */
-  const [inVenster, setInVenster] = useState(true)
+  const [inVenster, setInVenster] = useState(true);
   /** Geen OMSI gevonden: dan vraagt de app waar het staat. */
   /*
    * Waar OMSI staat, en of de speler dat zelf heeft bevestigd.
@@ -210,8 +233,8 @@ export function App(): JSX.Element {
    * de doosversie, twee kopieën naast elkaar. Eén keer bevestigen, en daarna
    * weet de app het in plaats van dat hij het denkt.
    */
-  const [omsi, setOmsi] = useState<OmsiState>()
-  const [omsiBezig, setOmsiBezig] = useState(false)
+  const [omsi, setOmsi] = useState<OmsiState>();
+  const [omsiBezig, setOmsiBezig] = useState(false);
   /*
    * Het klaarzetten van de kaarten: de laatste stap van het installeren.
    *
@@ -220,35 +243,37 @@ export function App(): JSX.Element {
    * deze sessie niet meer -- het klaarzetten loopt dan gewoon door op de
    * achtergrond.
    */
-  const [kaartenStand, setKaartenStand] = useState<KaartenStand>()
-  const [klaarzettenOverslaan, setKlaarzettenOverslaan] = useState(false)
+  const [kaartenStand, setKaartenStand] = useState<KaartenStand>();
+  const [klaarzettenOverslaan, setKlaarzettenOverslaan] = useState(false);
   useEffect(() => {
-    let staat = true
+    let staat = true;
     void window.career.screenMode().then((modus) => {
-      if (staat) setSchermmodus(modus)
-    })
+      if (staat) setSchermmodus(modus);
+    });
     void window.career.settings().then((settings) => {
-      if (staat) setInVenster(settings.windowedOmsi)
-    })
+      if (staat) setInVenster(settings.windowedOmsi);
+    });
     return () => {
-      staat = false
-    }
-  }, [])
-  const [ibis, setIbis] = useState<IbisPlan>()
-  const [busy, setBusy] = useState(false)
-  const [started, setStarted] = useState(false)
+      staat = false;
+    };
+  }, []);
+  const [ibis, setIbis] = useState<IbisPlan>();
+  const [busy, setBusy] = useState(false);
+  const [started, setStarted] = useState(false);
   /*
    * Waar de speler in de opzet staat. Begint bij de kaart: profiel koos hij al
    * bij binnenkomst, en de bus kan pas als de dienst bekend is.
    */
-  const [stap, setStap] = useState<Stap>('map')
+  const [stap, setStap] = useState<Stap>("map");
   /** Staat de invulregel voor een nieuwe chauffeur open, en wat staat erin? */
-  const [nieuweChauffeur, setNieuweChauffeur] = useState<string>()
+  const [nieuweChauffeur, setNieuweChauffeur] = useState<string>();
   /** Waar de speler in de buskeuze staat: merk, dan type, dan uitvoering. */
-  const [busMerk, setBusMerk] = useState<string>()
-  const [busType, setBusType] = useState<string>()
+  const [busMerk, setBusMerk] = useState<string>();
+  const [busType, setBusType] = useState<string>();
   /** Op de busstap: kies je een bus, het hof-bestand, of zet je hoven over? */
-  const [busScherm, setBusScherm] = useState<'bus' | 'kleur' | 'hof' | 'overzetten'>('bus')
+  const [busScherm, setBusScherm] = useState<
+    "bus" | "kleur" | "hof" | "overzetten"
+  >("bus");
   /*
    * De kleurstelling: wat OMSI in zijn plaatsingsvenster "Appearance" noemt.
    *
@@ -258,10 +283,12 @@ export function App(): JSX.Element {
    * `kleurBus` is de uitvoering waarvan het vierde niveau de kleurstellingen
    * toont; `kleurLijsten` houdt per bus de lijst vast (null: hij heeft er geen).
    */
-  const [busKleur, setBusKleur] = useState<{ pad: string; naam: string }>()
-  const [kleurBus, setKleurBus] = useState<string>()
-  const [kleurLijsten, setKleurLijsten] = useState<Record<string, BusKleurstellingen | null>>({})
-  const gevraagdeKleuren = useRef(new Set<string>())
+  const [busKleur, setBusKleur] = useState<{ pad: string; naam: string }>();
+  const [kleurBus, setKleurBus] = useState<string>();
+  const [kleurLijsten, setKleurLijsten] = useState<
+    Record<string, BusKleurstellingen | null>
+  >({});
+  const gevraagdeKleuren = useRef(new Set<string>());
   /*
    * Bussen die de kaart van deze dienst niet kennen.
    *
@@ -271,8 +298,8 @@ export function App(): JSX.Element {
    * een handvol bussen terwijl je er vijftig hebt, en hier staat waarom, met
    * wat eraan te doen is.
    */
-  const [hofAanbod, setHofAanbod] = useState<HofOffer[]>([])
-  const [hofBezig, setHofBezig] = useState(false)
+  const [hofAanbod, setHofAanbod] = useState<HofOffer[]>([]);
+  const [hofBezig, setHofBezig] = useState(false);
   /*
    * Het aanbod voor de bus die nu gekozen is.
    *
@@ -280,7 +307,7 @@ export function App(): JSX.Element {
    * elk wagenpark zegt "0 van 2 bestemmingen". Dan weet de app precies wat er
    * mis is en welk bestand het oplost, en hoort hij dat te vragen.
    */
-  const [busAanbod, setBusAanbod] = useState<HofOffer>()
+  const [busAanbod, setBusAanbod] = useState<HofOffer>();
   /*
    * Wat er voor déze dienst bij deze bus te halen valt.
    *
@@ -289,7 +316,7 @@ export function App(): JSX.Element {
    * dan hoort de tegel "wagenpark erbij halen" er ook bij te horen. Hij bleef
    * weg omdat de bus kaartbreed genoeg kende.
    */
-  const [ritAanbod, setRitAanbod] = useState<HofOffer>()
+  const [ritAanbod, setRitAanbod] = useState<HofOffer>();
   /*
    * En het beste wagenpark dat er bij deze bus gelegd kán worden, ook als het
    * niet beter is dan wat hij al heeft. Daar hangt de knop aan die er altijd
@@ -303,8 +330,8 @@ export function App(): JSX.Element {
    * zodra een tegel in beeld komt, bewaren zodra hij binnen is, en tot die tijd
    * het icoon laten staan. Een tweede keer komt hij van schijf.
    */
-  const [busFotos, setBusFotos] = useState<Record<string, string>>({})
-  const gevraagdeFotos = useRef(new Set<string>())
+  const [busFotos, setBusFotos] = useState<Record<string, string>>({});
+  const gevraagdeFotos = useRef(new Set<string>());
 
   /*
    * Het maken van alle foto's in één keer: bij het installeren als vraag, en
@@ -314,63 +341,73 @@ export function App(): JSX.Element {
    * dan komt het scherm er ook niet, anders flitst het even voor wie hem al
    * gehad heeft. `busfotoScherm` staat open als iemand op de knop drukte.
    */
-  const [busfotoStand, setBusfotoStand] = useState<BusfotoStand>()
-  const [busfotosGevraagd, setBusfotosGevraagd] = useState<boolean>()
-  const [busfotoScherm, setBusfotoScherm] = useState<'installatie' | 'bijwerken'>()
+  const [busfotoStand, setBusfotoStand] = useState<BusfotoStand>();
+  const [busfotosGevraagd, setBusfotosGevraagd] = useState<boolean>();
+  const [busfotoScherm, setBusfotoScherm] = useState<
+    "installatie" | "bijwerken"
+  >();
 
-  const vraagBusfoto = useCallback((relatiefPad: string, kleurstelling?: string) => {
-    // Per kleurstelling een eigen foto; zonder kleurstelling de sleutel van altijd.
-    const sleutel = kleurstelling ? `${relatiefPad}|${kleurstelling}` : relatiefPad
-    if (!relatiefPad || gevraagdeFotos.current.has(sleutel)) return
-    gevraagdeFotos.current.add(sleutel)
-    void window.career
-      .busFoto(relatiefPad, kleurstelling)
-      .then((adres) => {
-        if (adres) setBusFotos((oud) => ({ ...oud, [sleutel]: adres }))
-      })
-      .catch(() => undefined)
-  }, [])
+  const vraagBusfoto = useCallback(
+    (relatiefPad: string, kleurstelling?: string) => {
+      // Per kleurstelling een eigen foto; zonder kleurstelling de sleutel van altijd.
+      const sleutel = kleurstelling
+        ? `${relatiefPad}|${kleurstelling}`
+        : relatiefPad;
+      if (!relatiefPad || gevraagdeFotos.current.has(sleutel)) return;
+      gevraagdeFotos.current.add(sleutel);
+      void window.career
+        .busFoto(relatiefPad, kleurstelling)
+        .then((adres) => {
+          if (adres) setBusFotos((oud) => ({ ...oud, [sleutel]: adres }));
+        })
+        .catch(() => undefined);
+    },
+    [],
+  );
 
   /** De kleurstellingen van een bus, één keer per bus opgevraagd. */
   const vraagKleurstellingen = useCallback(
     async (relatiefPad: string): Promise<BusKleurstellingen | null> => {
-      const bekend = kleurLijsten[relatiefPad]
-      if (bekend !== undefined) return bekend
-      gevraagdeKleuren.current.add(relatiefPad)
-      const lijst = (await window.career.busKleurstellingen(relatiefPad).catch(() => undefined)) ?? null
-      setKleurLijsten((oud) => ({ ...oud, [relatiefPad]: lijst }))
-      return lijst
+      const bekend = kleurLijsten[relatiefPad];
+      if (bekend !== undefined) return bekend;
+      gevraagdeKleuren.current.add(relatiefPad);
+      const lijst =
+        (await window.career
+          .busKleurstellingen(relatiefPad)
+          .catch(() => undefined)) ?? null;
+      setKleurLijsten((oud) => ({ ...oud, [relatiefPad]: lijst }));
+      return lijst;
     },
-    [kleurLijsten]
-  )
+    [kleurLijsten],
+  );
 
   const [ritKandidaat, setRitKandidaat] = useState<{
-    file: string
-    matched: number
-    known: number
-    total: number
+    file: string;
+    matched: number;
+    known: number;
+    total: number;
     /** Past de veldindeling bij deze bus? Zo niet, dan zegt het scherm dat erbij. */
-    past: boolean
+    past: boolean;
     /** Het wagenpark van deze kaart ligt er al; dan valt er niets te halen. */
-    alAanwezig?: boolean
-  }>()
+    alAanwezig?: boolean;
+  }>();
   /*
    * Of de vraag over de aanbevolen bus al gesteld is voor deze dienst.
    *
    * Eenmaal per dienst: wie "zelf kiezen" aanklikt hoort niet bij elke stap
    * terug opnieuw dezelfde vraag te krijgen.
    */
-  const [busGevraagd, setBusGevraagd] = useState('')
+  const [busGevraagd, setBusGevraagd] = useState("");
   /** Weggeklikt voor deze bus; dan niet opnieuw vragen tot je iets anders kiest. */
-  const [hofGevraagd, setHofGevraagd] = useState('')
+  const [hofGevraagd, setHofGevraagd] = useState("");
   /** Gaat omhoog zodra er een wagenpark is neergezet; dan opnieuw kijken. */
-  const [hofTeller, setHofTeller] = useState(0)
-  const [overlayOpen, setOverlayOpen] = useState(false)
-  const [note, setNote] = useState<string>()
-  const [plugin, setPlugin] = useState<PluginStatus>()
-  const [starting, setStarting] = useState(false)
+  const [hofTeller, setHofTeller] = useState(0);
+  const [overlayOpen, setOverlayOpen] = useState(false);
+  const [note, setNote] = useState<string>();
+  const [plugin, setPlugin] = useState<PluginStatus>();
+  const [starting, setStarting] = useState(false);
   /** Wat OMSI tijdens het rijden doorgeeft; voedt het compacte scherm. */
-  const [session, setSession] = useState<SessionResult>()
+  const [session, setSession] = useState<SessionResult>();
   /*
    * Wat de bus op dit moment doorgeeft.
    *
@@ -378,26 +415,26 @@ export function App(): JSX.Element {
    * de cijfers over de hele dienst. Voor een dienstregeling die meeloopt is meer
    * nodig: welke rit, welke halte, en hoeveel je daar voor of achter ligt.
    */
-  const [live, setLive] = useState<LiveStatus>()
+  const [live, setLive] = useState<LiveStatus>();
   /** Waar de bus op de kaart staat; hiermee wordt het venster een navigatie. */
-  const [liveBus, setLiveBus] = useState<VehiclePosition>()
-  const [connected, setConnected] = useState(false)
+  const [liveBus, setLiveBus] = useState<VehiclePosition>();
+  const [connected, setConnected] = useState(false);
   /** OMSI staat open maar de plugin zegt nog niets: de kaart laadt. */
-  const [omsiLaadt, setOmsiLaadt] = useState(false)
+  const [omsiLaadt, setOmsiLaadt] = useState(false);
   /** Wat de laatste keer kijken opleverde; staat in de balk bovenaan. */
-  const [checked, setChecked] = useState<string>()
-  const [checking, setChecking] = useState(false)
-  const [printers, setPrinters] = useState<PrinterInfo[]>([])
-  const [printer, setPrinter] = useState('')
-  const finishRef = useRef<(() => Promise<void>) | undefined>(undefined)
-  const [language, setLanguage] = useState<Language>(DEFAULT_LANGUAGE)
+  const [checked, setChecked] = useState<string>();
+  const [checking, setChecking] = useState(false);
+  const [printers, setPrinters] = useState<PrinterInfo[]>([]);
+  const [printer, setPrinter] = useState("");
+  const finishRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const [language, setLanguage] = useState<Language>(DEFAULT_LANGUAGE);
   /*
    * Dag of nacht. `systeem` volgt Windows en is de beginstand; wie het knopje
    * indrukt legt het vast. De opmaak hangt aan een attribuut op de wortel --
    * theme.css valt zonder dat attribuut terug op prefers-color-scheme -- dus
    * zetten of weghalen is alles wat hier hoeft te gebeuren.
    */
-  const [thema, setThema] = useState<Thema>('systeem')
+  const [thema, setThema] = useState<Thema>("systeem");
 
   /*
    * Vrij rijden: wat er op de ritstap staat.
@@ -407,14 +444,16 @@ export function App(): JSX.Element {
    * tijdvak van de kaart -- 1988 in Spandau, 2016 in HafenCity -- want een bus
    * uit het verkeerde decennium is geen vrije keuze maar een vergissing.
    */
-  const [vrijeHalte, setVrijeHalte] = useState('')
-  const [vrijeDatum, setVrijeDatum] = useState('')
-  const [vrijeTijd, setVrijeTijd] = useState('08:00')
-  const [vrijWeer, setVrijWeer] = useState<WeatherKind>('clear')
+  const [vrijeHalte, setVrijeHalte] = useState("");
+  const [vrijeDatum, setVrijeDatum] = useState("");
+  const [vrijeTijd, setVrijeTijd] = useState("08:00");
+  const [vrijWeer, setVrijWeer] = useState<WeatherKind>("clear");
   /** De haltes van de kaart, om te kiezen waar de bus komt te staan. */
-  const [vrijeHaltes, setVrijeHaltes] = useState<Array<{ id: string; name: string }>>([])
+  const [vrijeHaltes, setVrijeHaltes] = useState<
+    Array<{ id: string; name: string }>
+  >([]);
   /** De bus die de app bij deze kaart voorstelt; bij vrij rijden is er geen dienst. */
-  const [vrijeTip, setVrijeTip] = useState<Vehicle>()
+  const [vrijeTip, setVrijeTip] = useState<Vehicle>();
 
   /*
    * Carriere: de vergunningstap toont wat je mag, of het examen dat daarachter
@@ -422,8 +461,8 @@ export function App(): JSX.Element {
    * over dezelfde vraag -- waar mag ik rijden -- en de tweede is het antwoord
    * op "nog nergens".
    */
-  const [examenScherm, setExamenScherm] = useState(false)
-  const [examenLijn, setExamenLijn] = useState('')
+  const [examenScherm, setExamenScherm] = useState(false);
+  const [examenLijn, setExamenLijn] = useState("");
 
   /*
    * Lijst of tegels op de kaartstap.
@@ -431,70 +470,70 @@ export function App(): JSX.Element {
    * Hoort net als de taal bij deze computer en niet bij de chauffeur, en blijft
    * staan: wie de tegels wil, wil ze morgen weer.
    */
-  const [kaartweergave, setKaartweergave] = useState<'lijst' | 'tegels'>('tegels')
+  const [kaartweergave, setKaartweergave] = useState<"lijst" | "tegels">(
+    "tegels",
+  );
 
   /*
    * De taalkeuze van de allereerste start; `undefined` zolang we het niet
    * weten, want dan hoort er nog niets in beeld te komen.
    */
-  const [taalGekozen, setTaalGekozen] = useState<boolean>()
+  const [taalGekozen, setTaalGekozen] = useState<boolean>();
 
   /*
    * De bus die oversteekt bij Verder. Een teller en geen `true`: twee keer
    * drukken hoort een tweede bus te laten vertrekken, en met een nieuwe sleutel
    * begint de animatie werkelijk opnieuw.
    */
-  const [busrit, setBusrit] = useState(0)
+  const [busrit, setBusrit] = useState(0);
   /*
    * Wat er te melden valt als je na een dienst in het hoofdmenu terugkomt: de
    * uitkomst van de rit, of dat hij geannuleerd is. Stond eerst onderaan het vel
    * van de busstap, en daar bleef je dan hangen met een lege remise.
    */
-  const [hubMelding, setHubMelding] = useState<string>()
+  const [hubMelding, setHubMelding] = useState<string>();
   /*
    * Wat het hoofdproces over OMSI te melden heeft tijdens een dienst: gecrasht,
    * vastgelopen, of overlays erin die je weg wilt. Zie `bewaakOmsi`.
    */
-  const [omsiMelding, setOmsiMelding] = useState<OmsiMelding>()
+  const [omsiMelding, setOmsiMelding] = useState<OmsiMelding>();
   /** Met welk tabblad de instellingen openen; de melding over overlays wijst naar "Overlays". */
-  const [instellingenTab, setInstellingenTab] = useState<'overlays'>()
-
+  const [instellingenTab, setInstellingenTab] = useState<"overlays">();
 
   // De taalkeuze staat los van de chauffeur; hij hoort bij deze computer.
   useEffect(() => {
     void window.career.settings().then((settings) => {
-      setLanguage(settings.language)
-      setThema(settings.theme ?? 'systeem')
-      setKaartweergave(settings.mapView ?? 'tegels')
-      setTaalGekozen(settings.languageChosen === true)
-      setBusfotosGevraagd(settings.busPhotosOffered === true)
-    })
-  }, [])
+      setLanguage(settings.language);
+      setThema(settings.theme ?? "systeem");
+      setKaartweergave(settings.mapView ?? "tegels");
+      setTaalGekozen(settings.languageChosen === true);
+      setBusfotosGevraagd(settings.busPhotosOffered === true);
+    });
+  }, []);
 
-  const kiesKaartweergave = useCallback((next: 'lijst' | 'tegels') => {
-    setKaartweergave(next)
-    void window.career.saveSettings({ mapView: next })
-  }, [])
-
+  const kiesKaartweergave = useCallback((next: "lijst" | "tegels") => {
+    setKaartweergave(next);
+    void window.career.saveSettings({ mapView: next });
+  }, []);
 
   useEffect(() => {
-    if (thema === 'systeem') delete document.documentElement.dataset.thema
-    else document.documentElement.dataset.thema = thema
-  }, [thema])
+    if (thema === "systeem") delete document.documentElement.dataset.thema;
+    else document.documentElement.dataset.thema = thema;
+  }, [thema]);
 
   const kiesThema = useCallback((next: Thema) => {
-    setThema(next)
-    void window.career.saveSettings({ theme: next })
-  }, [])
+    setThema(next);
+    void window.career.saveSettings({ theme: next });
+  }, []);
 
   useEffect(() => {
-    document.documentElement.lang = language
-  }, [language])
+    document.documentElement.lang = language;
+  }, [language]);
 
   const chooseLanguage = useCallback((next: Language) => {
-    setLanguage(next)
-    void window.career.saveSettings({ language: next })
-  }, [])
+    setLanguage(next);
+    void window.career.saveSettings({ language: next });
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -504,38 +543,38 @@ export function App(): JSX.Element {
          * hierna komt -- kaarten, bussen, het profiel -- hangt aan die map, dus
          * er valt niets te laden zolang die niet vaststaat.
          */
-        const staat = await window.career.omsiState()
-        setOmsi(staat)
+        const staat = await window.career.omsiState();
+        setOmsi(staat);
         /*
          * De chauffeurs staan in de gebruikersmap en niet in OMSI, dus die
          * kunnen we altijd lezen. Dat moet ook: de eerste start vraagt eerst om
          * een taal, dan om een chauffeur, en pas daarna waar OMSI staat -- en
          * om te weten of er al een chauffeur is, moet dit binnen zijn.
          */
-        const eersteChauffeurs = await window.career.career()
-        setCareer(eersteChauffeurs)
-        if (!staat.confirmed) return
+        const eersteChauffeurs = await window.career.career();
+        setCareer(eersteChauffeurs);
+        if (!staat.confirmed) return;
         const [loadedMaps, loadedVehicles, loadedCareer] = await Promise.all([
           window.career.maps(),
           window.career.vehicles(),
-          window.career.career()
-        ])
-        setMaps(loadedMaps)
-        setVehicles(loadedVehicles)
-        setCareer(loadedCareer)
-        setMapFolder(loadedMaps[0]?.folder ?? '')
-        setReady(true)
+          window.career.career(),
+        ]);
+        setMaps(loadedMaps);
+        setVehicles(loadedVehicles);
+        setCareer(loadedCareer);
+        setMapFolder(loadedMaps[0]?.folder ?? "");
+        setReady(true);
         // Losstaand: de overlay-plugin klaarzetten mag de rest niet ophouden.
-        void window.career.pluginStatus().then(setPlugin)
+        void window.career.pluginStatus().then(setPlugin);
         void window.career.printers().then((found) => {
-          setPrinters(found)
-          setPrinter(found[0]?.name ?? '')
-        })
+          setPrinters(found);
+          setPrinter(found[0]?.name ?? "");
+        });
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : String(cause))
+        setError(cause instanceof Error ? cause.message : String(cause));
       }
-    })()
-  }, [])
+    })();
+  }, []);
 
   /*
    * Bij binnenkomst op de lijnstap staat de bovenste regel gemarkeerd, terwijl
@@ -544,16 +583,18 @@ export function App(): JSX.Element {
    * echt, en licht de route meteen op.
    */
   useEffect(() => {
-    if (stap !== 'line' || lineFile || lines.length === 0 || busy) return
-    const eerste = lines[0].lineFile
-    setLineFile(eerste)
-    void generateRef.current?.(eerste)
-  }, [stap, lineFile, lines, busy])
+    if (stap !== "line" || lineFile || lines.length === 0 || busy) return;
+    const eerste = lines[0].lineFile;
+    setLineFile(eerste);
+    void generateRef.current?.(eerste);
+  }, [stap, lineFile, lines, busy]);
 
-
-  const selectedMap = useMemo(() => maps.find((m) => m.folder === mapFolder), [maps, mapFolder])
-  const assignment = selected !== undefined ? duties[selected] : undefined
-  const duty = assignment?.duty
+  const selectedMap = useMemo(
+    () => maps.find((m) => m.folder === mapFolder),
+    [maps, mapFolder],
+  );
+  const assignment = selected !== undefined ? duties[selected] : undefined;
+  const duty = assignment?.duty;
 
   /*
    * Welke bussen deze kaart niet kennen. Alleen kijken -- er wordt pas iets in
@@ -563,32 +604,32 @@ export function App(): JSX.Element {
    */
   useEffect(() => {
     if (!mapFolder) {
-      setHofAanbod([])
-      return
+      setHofAanbod([]);
+      return;
     }
-    let geldig = true
+    let geldig = true;
     void window.career
       .hofOffers(mapFolder)
       .then((aanbod) => {
-        if (geldig) setHofAanbod(aanbod)
+        if (geldig) setHofAanbod(aanbod);
       })
       .catch(() => {
-        if (geldig) setHofAanbod([])
-      })
+        if (geldig) setHofAanbod([]);
+      });
     return () => {
-      geldig = false
-    }
-  }, [mapFolder, hofTeller])
+      geldig = false;
+    };
+  }, [mapFolder, hofTeller]);
 
   /*
    * De aangenomen dienst staat in het profiel. Na het laden, na een herstart of
    * na het wisselen van profiel wordt hij hier teruggezet, en zolang hij er is
    * valt er niets anders te kiezen.
    */
-  const active = career?.state?.activeDuty
-  const confirmed = Boolean(active)
-  const exam = active?.exam
-  const activeKey = active ? `${career?.state?.id}|${active.confirmedAt}` : ''
+  const active = career?.state?.activeDuty;
+  const confirmed = Boolean(active);
+  const exam = active?.exam;
+  const activeKey = active ? `${career?.state?.id}|${active.confirmedAt}` : "";
   useEffect(() => {
     /*
      * Geen lopende dienst -- een verse chauffeur, of net geannuleerd -- dan
@@ -596,20 +637,20 @@ export function App(): JSX.Element {
      * van de vorige chauffeur gewoon staan, met knoppen en al.
      */
     if (!active) {
-      setDuties([])
-      setSelected(undefined)
-      setStarted(false)
-      setVehicleOverride('')
-      return
+      setDuties([]);
+      setSelected(undefined);
+      setStarted(false);
+      setVehicleOverride("");
+      return;
     }
-    const held = active.assignment as Assignment
-    setMapFolder(held.duty.mapFolder)
-    setDuties([held])
-    setSelected(0)
-    setVehicleOverride(active.vehicleOverride)
-    setStarted(Boolean(active.startedAt))
-    if (active.mode) setMode(active.mode)
-  }, [activeKey])
+    const held = active.assignment as Assignment;
+    setMapFolder(held.duty.mapFolder);
+    setDuties([held]);
+    setSelected(0);
+    setVehicleOverride(active.vehicleOverride);
+    setStarted(Boolean(active.startedAt));
+    if (active.mode) setMode(active.mode);
+  }, [activeKey]);
 
   /*
    * In dienst en carriere wordt de lijn niet gekozen maar gelopen.
@@ -622,7 +663,7 @@ export function App(): JSX.Element {
    *
    * Alleen bij vrij rijden blijft de keuze staan; daar stel je je rit zelf samen.
    */
-  const lijnVrij = mode !== 'free'
+  const lijnVrij = mode !== "free";
 
   /*
    * Van modus wisselen zet je terug op de kaart.
@@ -632,7 +673,7 @@ export function App(): JSX.Element {
    * daar niet bestaat: de balk wijst nergens naar en de knop doet iets anders
    * dan er staat. De kaart is de eerste stap die alle drie gemeen hebben.
    */
-  const vorigeModus = useRef<GameMode | undefined>(undefined)
+  const vorigeModus = useRef<GameMode | undefined>(undefined);
   useEffect(() => {
     /*
      * Alleen bij een echte wisseling, en niet bij het eerste beeld: de modus
@@ -640,19 +681,19 @@ export function App(): JSX.Element {
      * die dienst hier weggooien zou precies het tegenovergestelde zijn van
      * terughalen.
      */
-    const vorige = vorigeModus.current
-    vorigeModus.current = mode
-    if (vorige === undefined || vorige === mode) return
-    setStap('map')
-    setExamenScherm(false)
-    setDuties([])
-    setSelected(undefined)
-  }, [mode])
+    const vorige = vorigeModus.current;
+    vorigeModus.current = mode;
+    if (vorige === undefined || vorige === mode) return;
+    setStap("map");
+    setExamenScherm(false);
+    setDuties([]);
+    setSelected(undefined);
+  }, [mode]);
   useEffect(() => {
-    if (!lijnVrij || stap !== 'duty' || busy || confirmed) return
-    if (duties.length > 0 || !mapFolder) return
-    void generateRef.current?.()
-  }, [lijnVrij, stap, busy, confirmed, duties.length, mapFolder])
+    if (!lijnVrij || stap !== "duty" || busy || confirmed) return;
+    if (duties.length > 0 || !mapFolder) return;
+    void generateRef.current?.();
+  }, [lijnVrij, stap, busy, confirmed, duties.length, mapFolder]);
 
   /*
    * Wat de ritstap van vrij rijden nodig heeft: de haltes van de kaart om uit
@@ -660,43 +701,43 @@ export function App(): JSX.Element {
    * voorstellen. Alleen in die modus, want alleen daar bestaat die stap.
    */
   useEffect(() => {
-    if (mode !== 'free' || !mapFolder) {
-      setVrijeHaltes([])
-      setVrijeTip(undefined)
-      return
+    if (mode !== "free" || !mapFolder) {
+      setVrijeHaltes([]);
+      setVrijeTip(undefined);
+      return;
     }
-    let geldig = true
+    let geldig = true;
     void window.career.geometry(mapFolder).then((gevonden) => {
-      if (!geldig) return
+      if (!geldig) return;
       setVrijeHaltes(
         (gevonden?.stops ?? [])
           .filter((halte) => halte.name)
           .map((halte) => ({ id: halte.id, name: halte.name }))
-          .sort((a, b) => a.name.localeCompare(b.name))
-      )
-    })
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      );
+    });
     void window.career
       .suggestVehicle(mapFolder)
       .then((bus) => {
-        if (geldig) setVrijeTip(bus)
+        if (geldig) setVrijeTip(bus);
       })
       .catch(() => {
         // Geen voorstel is geen fout; dan kies je zelf uit alles.
-      })
+      });
     return () => {
-      geldig = false
-    }
-  }, [mode, mapFolder])
+      geldig = false;
+    };
+  }, [mode, mapFolder]);
 
   /*
    * De datum begint in het tijdvak van de kaart, en de halte gaat weg zodra je
    * een andere kaart kiest: een halte-id van Spandau bestaat niet op Grundorf.
    */
   useEffect(() => {
-    if (mode !== 'free' || !selectedMap) return
-    setVrijeDatum(isoVanDag(selectedMap.year, selectedMap.dayOfYear || 180))
-    setVrijeHalte('')
-  }, [mode, selectedMap?.folder])
+    if (mode !== "free" || !selectedMap) return;
+    setVrijeDatum(isoVanDag(selectedMap.year, selectedMap.dayOfYear || 180));
+    setVrijeHalte("");
+  }, [mode, selectedMap?.folder]);
 
   /*
    * Opnieuw diensten zoeken zodra je de lengte of het dagdeel verzet.
@@ -707,16 +748,16 @@ export function App(): JSX.Element {
    * het slepen tien keer per seconde een nieuwe waarde en elke zoektocht loopt
    * door het hele rittennet.
    */
-  const vraagRef = useRef<string | undefined>(undefined)
+  const vraagRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    const sleutel = `${lengthIndex}|${timeWindow}`
+    const sleutel = `${lengthIndex}|${timeWindow}`;
     // De eerste keer is geen wijziging maar de beginstand.
     if (vraagRef.current === undefined) {
-      vraagRef.current = sleutel
-      return
+      vraagRef.current = sleutel;
+      return;
     }
-    if (vraagRef.current === sleutel) return
-    vraagRef.current = sleutel
+    if (vraagRef.current === sleutel) return;
+    vraagRef.current = sleutel;
     /*
      * Zonder gekozen lijn ook zoeken.
      *
@@ -725,10 +766,13 @@ export function App(): JSX.Element {
      * van gekozen is `lineFile` daar leeg -- en dus deed de schuif niets meer.
      * Een lege lijn is geen ontbrekende lijn maar "elke lijn".
      */
-    if (confirmed || !mapFolder) return
-    const wacht = setTimeout(() => void generateRef.current?.(lineFile || undefined), 400)
-    return () => clearTimeout(wacht)
-  }, [lengthIndex, timeWindow, lineFile, confirmed, mapFolder])
+    if (confirmed || !mapFolder) return;
+    const wacht = setTimeout(
+      () => void generateRef.current?.(lineFile || undefined),
+      400,
+    );
+    return () => clearTimeout(wacht);
+  }, [lengthIndex, timeWindow, lineFile, confirmed, mapFolder]);
 
   /*
    * Eens per seconde, en alleen tijdens het rijden. De plugin schrijft tien keer
@@ -737,133 +781,136 @@ export function App(): JSX.Element {
    */
   useEffect(() => {
     if (!started || !duty) {
-      setLive(undefined)
-      setLiveBus(undefined)
-      return
+      setLive(undefined);
+      setLiveBus(undefined);
+      return;
     }
-    let geldig = true
+    let geldig = true;
     /*
      * Wat we de vorige keer zagen. Zonder deze vergelijking zette elke tel een
      * nieuw object in de toestand, en dan tekent React het hele scherm opnieuw
      * -- inclusief de kaart -- ook als er niets veranderd is. Naast een draaiend
      * spel is dat werk dat je in beelden per seconde terugziet.
      */
-    let vorige = ''
+    let vorige = "";
     const haal = (): void => {
       /*
        * Niet tekenen wat niemand ziet. Staat het venster geminimaliseerd of
        * achter het spel zonder zichtbaar te zijn, dan hoeft de kaart niet mee
        * te lopen; bij het terugkomen is hij binnen een tel weer bij.
        */
-      if (document.visibilityState === 'hidden') return
+      if (document.visibilityState === "hidden") return;
       void window.career
         .liveStatus()
         .then((stand) => {
-          if (!geldig) return
-          const sleutel = JSON.stringify(stand)
-          if (sleutel === vorige) return
-          vorige = sleutel
-          setLive(stand.status)
-          setLiveBus(stand.vehicle)
+          if (!geldig) return;
+          const sleutel = JSON.stringify(stand);
+          if (sleutel === vorige) return;
+          vorige = sleutel;
+          setLive(stand.status);
+          setLiveBus(stand.vehicle);
         })
         .catch(() => {
-          if (!geldig) return
-          vorige = ''
-          setLive(undefined)
-          setLiveBus(undefined)
-        })
-    }
-    haal()
-    const klok = setInterval(haal, 1000)
-    const wakker = (): void => haal()
-    document.addEventListener('visibilitychange', wakker)
+          if (!geldig) return;
+          vorige = "";
+          setLive(undefined);
+          setLiveBus(undefined);
+        });
+    };
+    haal();
+    const klok = setInterval(haal, 1000);
+    const wakker = (): void => haal();
+    document.addEventListener("visibilitychange", wakker);
     return () => {
-      geldig = false
-      clearInterval(klok)
-      document.removeEventListener('visibilitychange', wakker)
-    }
-  }, [started, duty])
+      geldig = false;
+      clearInterval(klok);
+      document.removeEventListener("visibilitychange", wakker);
+    };
+  }, [started, duty]);
 
   /** De lijnen van de gekozen kaart; die zijn er voor de route- en examenkeuze. */
   useEffect(() => {
     if (!mapFolder) {
-      setLines([])
-      return
+      setLines([]);
+      return;
     }
-    let current = true
+    let current = true;
     void window.career
       .lines(mapFolder)
       .then((found) => {
-        if (current) setLines(found)
+        if (current) setLines(found);
       })
       .catch(() => {
-        if (current) setLines([])
-      })
+        if (current) setLines([]);
+      });
     return () => {
-      current = false
-    }
-  }, [mapFolder])
+      current = false;
+    };
+  }, [mapFolder]);
 
   // Een lijn van de vorige kaart bestaat hier niet; die keuze vervalt.
   useEffect(() => {
-    setLineFile('')
-  }, [mapFolder])
+    setLineFile("");
+  }, [mapFolder]);
 
   const vehicle = useMemo(() => {
-    if (vehicleOverride) return vehicles.find((v) => v.relativePath === vehicleOverride)
-    return assignment?.vehicle ?? undefined
-  }, [vehicleOverride, vehicles, assignment])
+    if (vehicleOverride)
+      return vehicles.find((v) => v.relativePath === vehicleOverride);
+    return assignment?.vehicle ?? undefined;
+  }, [vehicleOverride, vehicles, assignment]);
 
   /** Voertuigen gegroepeerd per map, anders is de lijst van 351 onleesbaar. */
   const vehicleGroups = useMemo(() => {
-    const groups = new Map<string, Vehicle[]>()
+    const groups = new Map<string, Vehicle[]>();
     for (const item of vehicles) {
-      const list = groups.get(item.folder) ?? []
-      list.push(item)
-      groups.set(item.folder, list)
+      const list = groups.get(item.folder) ?? [];
+      list.push(item);
+      groups.set(item.folder, list);
     }
-    return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]))
-  }, [vehicles])
+    return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [vehicles]);
 
   /** Bestemmingscodes hangen aan de bus en aan het tijdvak van de kaart. */
   useEffect(() => {
     if (!duty || !vehicle || !selectedMap) {
-      setIbis(undefined)
-      return
+      setIbis(undefined);
+      return;
     }
-    let current = true
-    void window.career.ibis(duty, vehicle, selectedMap.year, yardOverride || undefined).then((plan) => {
-      if (current) setIbis(plan)
-    })
+    let current = true;
+    void window.career
+      .ibis(duty, vehicle, selectedMap.year, yardOverride || undefined)
+      .then((plan) => {
+        if (current) setIbis(plan);
+      });
     return () => {
-      current = false
-    }
-  }, [duty, vehicle, selectedMap, yardOverride])
+      current = false;
+    };
+  }, [duty, vehicle, selectedMap, yardOverride]);
 
   /* En of er voor de bestemmingen van deze dienst een beter wagenpark bestaat. */
   useEffect(() => {
     if (!duty || !vehicle) {
-      setRitAanbod(undefined)
-      setRitKandidaat(undefined)
-      return
+      setRitAanbod(undefined);
+      setRitKandidaat(undefined);
+      return;
     }
     void window.career
       .hofCandidate(duty, vehicle.folder)
       .then((kandidaat) => setRitKandidaat(kandidaat))
-      .catch(() => setRitKandidaat(undefined))
-    let geldig = true
+      .catch(() => setRitKandidaat(undefined));
+    let geldig = true;
     void window.career
       .hofOfferForDuty(duty, vehicle.folder)
       .then((aanbod) => {
-        if (geldig) setRitAanbod(aanbod)
+        if (geldig) setRitAanbod(aanbod);
       })
       .catch(() => {
-        if (geldig) setRitAanbod(undefined)
-      })
+        if (geldig) setRitAanbod(undefined);
+      });
     return () => {
-      geldig = false
-    }
-  }, [duty, vehicle, hofTeller])
+      geldig = false;
+    };
+  }, [duty, vehicle, hofTeller]);
 
   /*
    * Welke wagenparken er naast deze bus liggen. Wisselt de bus, dan vervalt de
@@ -871,17 +918,19 @@ export function App(): JSX.Element {
    */
   useEffect(() => {
     if (!duty || !vehicle || !selectedMap) {
-      setYards([])
-      return
+      setYards([]);
+      return;
     }
-    let current = true
-    void window.career.yards(duty, vehicle, selectedMap.year).then((options) => {
-      if (current) setYards(options)
-    })
+    let current = true;
+    void window.career
+      .yards(duty, vehicle, selectedMap.year)
+      .then((options) => {
+        if (current) setYards(options);
+      });
     return () => {
-      current = false
-    }
-  }, [duty, vehicle, selectedMap, hofTeller])
+      current = false;
+    };
+  }, [duty, vehicle, selectedMap, hofTeller]);
 
   /*
    * Kent deze bus de kaart helemaal niet, dan vragen we of we het wagenpark
@@ -897,21 +946,21 @@ export function App(): JSX.Element {
    * bestemmingsfilms weg.
    */
   useEffect(() => {
-    const sleutel = vehicle ? `${mapFolder}|${vehicle.folder}` : ''
+    const sleutel = vehicle ? `${mapFolder}|${vehicle.folder}` : "";
     if (!mapFolder || !vehicle || sleutel === hofGevraagd) {
-      setBusAanbod(undefined)
-      return
+      setBusAanbod(undefined);
+      return;
     }
     /*
      * Alleen overslaan als de bus het werkelijk zelf afkan. Zonder wagenparken
      * kan hij dat nooit, dus dan gaan we door naar de vraag.
      */
     if (yards.length > 0) {
-      const beste = Math.max(0, ...yards.map((yard) => yard.known))
-      const nodig = Math.max(1, Math.ceil((yards[0]?.total ?? 0) / 2))
+      const beste = Math.max(0, ...yards.map((yard) => yard.known));
+      const nodig = Math.max(1, Math.ceil((yards[0]?.total ?? 0) / 2));
       if (beste >= nodig) {
-        setBusAanbod(undefined)
-        return
+        setBusAanbod(undefined);
+        return;
       }
     }
     /*
@@ -923,27 +972,30 @@ export function App(): JSX.Element {
      * een aanbod, maar een bus die er veertig kent en geen van de twee van
      * jouw dienst, heeft dat niet. Luc: "ik krijg geen popup".
      */
-    let geldig = true
+    let geldig = true;
     const vraag = duty
       ? window.career
           .hofOfferForDuty(duty, vehicle.folder)
-          .then((aanbod) => aanbod ?? window.career.hofOfferFor(mapFolder, vehicle.folder))
-      : window.career.hofOfferFor(mapFolder, vehicle.folder)
+          .then(
+            (aanbod) =>
+              aanbod ?? window.career.hofOfferFor(mapFolder, vehicle.folder),
+          )
+      : window.career.hofOfferFor(mapFolder, vehicle.folder);
     void vraag
       .then((aanbod) => {
-        if (geldig) setBusAanbod(aanbod)
+        if (geldig) setBusAanbod(aanbod);
       })
       .catch(() => {
-        if (geldig) setBusAanbod(undefined)
-      })
+        if (geldig) setBusAanbod(undefined);
+      });
     return () => {
-      geldig = false
-    }
-  }, [mapFolder, vehicle, yards, hofGevraagd, hofTeller, duty])
+      geldig = false;
+    };
+  }, [mapFolder, vehicle, yards, hofGevraagd, hofTeller, duty]);
 
   useEffect(() => {
-    setYardOverride('')
-  }, [vehicleOverride, assignment])
+    setYardOverride("");
+  }, [vehicleOverride, assignment]);
 
   /**
    * Genereert een dienst en legt hem voor.
@@ -956,17 +1008,19 @@ export function App(): JSX.Element {
    * `generate` staat verderop en gebruikt van alles dat hierboven nog niet
    * bestaat; een verwijzing is hier goedkoper dan de volgorde omgooien.
    */
-  const generateRef = useRef<((onlyLine?: string) => Promise<void>) | undefined>(undefined)
+  const generateRef = useRef<
+    ((onlyLine?: string) => Promise<void>) | undefined
+  >(undefined);
 
   const generate = useCallback(
     async (onlyLine?: string) => {
-      if (confirmed) return
-      setBusy(true)
-      setError(undefined)
-      setNote(undefined)
-      setSelected(undefined)
-      setStarted(false)
-      setVehicleOverride('')
+      if (confirmed) return;
+      setBusy(true);
+      setError(undefined);
+      setNote(undefined);
+      setSelected(undefined);
+      setStarted(false);
+      setVehicleOverride("");
       try {
         const found = await window.career.listDuties({
           mapFolder,
@@ -981,48 +1035,61 @@ export function App(): JSX.Element {
            * de dienst daar gewoon overheen te lopen.
            */
           lineFiles:
-            mode === 'career'
+            mode === "career"
               ? (career?.state?.licences ?? [])
                   .filter((vergunning) => vergunning.mapFolder === mapFolder)
                   .map((vergunning) => vergunning.lineFile)
-              : undefined
-        })
+              : undefined,
+        });
         if (found.length === 0) {
-          setDuties([])
+          setDuties([]);
           setError(
-            t(language, 'app.noDuty', { length: formatDuration(LENGTHS[lengthIndex], language) })
-          )
-          return
+            t(language, "app.noDuty", {
+              length: formatDuration(LENGTHS[lengthIndex], language),
+            }),
+          );
+          return;
         }
         /*
          * Er komen er meerdere terug, en sinds het opzetscherm de dienstenlijst
          * toont leggen we ze allemaal voor in plaats van er één uit te loten.
          * Op vertrektijd, want zo leest een dienstregeling: van vroeg naar laat.
          */
-        const opTijd = [...found].sort((a, b) => a.duty.start - b.duty.start)
-        setDuties(opTijd)
-        setSelected(0)
+        const opTijd = [...found].sort((a, b) => a.duty.start - b.duty.start);
+        setDuties(opTijd);
+        setSelected(0);
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : String(cause))
+        setError(cause instanceof Error ? cause.message : String(cause));
       } finally {
-        setBusy(false)
+        setBusy(false);
       }
     },
-    [mapFolder, lengthIndex, timeWindow, lineFile, language, confirmed]
-  )
+    [mapFolder, lengthIndex, timeWindow, lineFile, language, confirmed],
+  );
 
   // De verwijzing bijwerken, zodat het effect hierboven de laatste versie pakt.
   useEffect(() => {
-    generateRef.current = generate
-  }, [generate])
+    generateRef.current = generate;
+  }, [generate]);
 
   const confirmDuty = useCallback(
-    async (asExam?: { lineFile: string; lineNumbers: string[]; basic: boolean }) => {
-      if (!assignment || confirmed) return
-      setCareer(await window.career.confirmDuty(assignment, vehicleOverride, mode, asExam))
+    async (asExam?: {
+      lineFile: string;
+      lineNumbers: string[];
+      basic: boolean;
+    }) => {
+      if (!assignment || confirmed) return;
+      setCareer(
+        await window.career.confirmDuty(
+          assignment,
+          vehicleOverride,
+          mode,
+          asExam,
+        ),
+      );
     },
-    [assignment, confirmed, vehicleOverride, mode]
-  )
+    [assignment, confirmed, vehicleOverride, mode],
+  );
 
   /*
    * Na een dienst -- afgerond of geannuleerd -- terug naar het begin.
@@ -1033,88 +1100,98 @@ export function App(): JSX.Element {
    * staan, de remise, en die was leeg omdat de dienst er niet meer was.
    */
   const naarBegin = useCallback((melding?: string) => {
-    setBusScherm('bus')
-    setBusMerk(undefined)
-    setBusType(undefined)
-    setKleurBus(undefined)
-    setBusKleur(undefined)
-    setStap('map')
-    setNote(undefined)
-    setHubMelding(melding)
-    setScreen('modes')
-  }, [])
+    setBusScherm("bus");
+    setBusMerk(undefined);
+    setBusType(undefined);
+    setKleurBus(undefined);
+    setBusKleur(undefined);
+    setStap("map");
+    setNote(undefined);
+    setHubMelding(melding);
+    setScreen("modes");
+  }, []);
 
   const cancelDuty = useCallback(async () => {
-    if (!confirmed || !window.confirm(t(language, 'act.cancelAsk'))) return
-    setCareer(await window.career.cancelDuty())
-    setDuties([])
-    setSelected(undefined)
-    setStarted(false)
-    setStarting(false)
-    naarBegin(t(language, 'done.cancelled'))
-  }, [confirmed, language, naarBegin])
+    if (!confirmed || !window.confirm(t(language, "act.cancelAsk"))) return;
+    setCareer(await window.career.cancelDuty());
+    setDuties([]);
+    setSelected(undefined);
+    setStarted(false);
+    setStarting(false);
+    naarBegin(t(language, "done.cancelled"));
+  }, [confirmed, language, naarBegin]);
 
   /**
    * Dienst starten. Dit zet de situatie klaar in OMSI -- datum, tijd, bus bij de
    * halte en de dienstregeling -- en start daarna pas het spel. Er is geen aparte
    * knop meer voor het klaarzetten; dat hoort bij starten.
    */
-  const begin = useCallback(async (alBevestigd = false, herstart = false) => {
-    /*
-     * `confirmed` komt uit de loopbaanstatus en die is er pas een tik later. Wie
-     * in één druk bevestigt en start, weet zelf dat het net gebeurd is; daarom
-     * mag hij dat hier zeggen in plaats van te wachten tot de status volgt.
-     */
-    if (!duty || (!confirmed && !alBevestigd)) return
-    setBusy(true)
-    setNote(t(language, 'start.preparing'))
-    try {
-      const result = await window.career.beginDuty({
-        duty,
-        ibis,
-        vehiclePath: vehicle?.relativePath,
-        kleurstelling:
-          busKleur && busKleur.pad === vehicle?.relativePath ? busKleur.naam : undefined,
-        herstart,
-        date: assignment?.date,
-        lineNumber: ibis?.line || duty.legs[0]?.lineNumber || '',
-        terminus: duty.legs[0]?.terminus ?? '',
-        yard: ibis?.yard
-      })
-      setStarted(true)
+  const begin = useCallback(
+    async (alBevestigd = false, herstart = false) => {
       /*
-       * De overlay hoort pas in beeld te komen als het spel er is. Draait OMSI
-       * al met de plugin, dan is dat nu; anders blijft het venstertje staan tot
-       * de plugin gegevens doorgeeft en gaat de overlay op dat moment open.
+       * `confirmed` komt uit de loopbaanstatus en die is er pas een tik later. Wie
+       * in één druk bevestigt en start, weet zelf dat het net gebeurd is; daarom
+       * mag hij dat hier zeggen in plaats van te wachten tot de status volgt.
        */
-      if (result.connected) {
-        setOverlayOpen(await window.career.setOverlay(duty, true, ibis))
-      }
-      setStarting(!result.connected)
-
-      const lines: string[] = []
-      if (result.prepareError) {
-        lines.push(t(language, 'start.failed', { reason: result.prepareError }))
-      } else {
-        lines.push(t(language, 'start.ready', { map: duty.mapName }))
-        if (result.prepared?.timetableSet) lines.push(t(language, 'start.timetableSet'))
+      if (!duty || (!confirmed && !alBevestigd)) return;
+      setBusy(true);
+      setNote(t(language, "start.preparing"));
+      try {
+        const result = await window.career.beginDuty({
+          duty,
+          ibis,
+          vehiclePath: vehicle?.relativePath,
+          kleurstelling:
+            busKleur && busKleur.pad === vehicle?.relativePath
+              ? busKleur.naam
+              : undefined,
+          herstart,
+          date: assignment?.date,
+          lineNumber: ibis?.line || duty.legs[0]?.lineNumber || "",
+          terminus: duty.legs[0]?.terminus ?? "",
+          yard: ibis?.yard,
+        });
+        setStarted(true);
         /*
-         * Lukte het klaarzetten niet, dan hoort dat er te staan. Tot nu toe
-         * werd dat wel uitgerekend maar nergens gezegd: je las "alles staat
-         * klaar" en kwam vervolgens op de kaart van de vorige keer uit, zonder
-         * dat iets verklaarde waarom.
+         * De overlay hoort pas in beeld te komen als het spel er is. Draait OMSI
+         * al met de plugin, dan is dat nu; anders blijft het venstertje staan tot
+         * de plugin gegevens doorgeeft en gaat de overlay op dat moment open.
          */
-        const klaar = result.prepared?.startup
-        if (klaar && !(klaar.lastMap && klaar.lastSituation)) {
-          lines.push(t(language, 'start.presetFailed', { map: duty.mapName }))
+        if (result.connected) {
+          setOverlayOpen(await window.career.setOverlay(duty, true, ibis));
         }
+        setStarting(!result.connected);
+
+        const lines: string[] = [];
+        if (result.prepareError) {
+          lines.push(
+            t(language, "start.failed", { reason: result.prepareError }),
+          );
+        } else {
+          lines.push(t(language, "start.ready", { map: duty.mapName }));
+          if (result.prepared?.timetableSet)
+            lines.push(t(language, "start.timetableSet"));
+          /*
+           * Lukte het klaarzetten niet, dan hoort dat er te staan. Tot nu toe
+           * werd dat wel uitgerekend maar nergens gezegd: je las "alles staat
+           * klaar" en kwam vervolgens op de kaart van de vorige keer uit, zonder
+           * dat iets verklaarde waarom.
+           */
+          const klaar = result.prepared?.startup;
+          if (klaar && !(klaar.lastMap && klaar.lastSituation)) {
+            lines.push(
+              t(language, "start.presetFailed", { map: duty.mapName }),
+            );
+          }
+        }
+        if (result.running) lines.push(t(language, "start.alreadyRunning"));
+        setNote(lines.join(" "));
+      } finally {
+        setBusy(false);
       }
-      if (result.running) lines.push(t(language, 'start.alreadyRunning'))
-      setNote(lines.join(' '))
-    } finally {
-      setBusy(false)
-    }
-  }, [duty, confirmed, ibis, vehicle, assignment, language, busKleur])
+    },
+    [duty, confirmed, ibis, vehicle, assignment, language, busKleur],
+  );
 
   /**
    * Eén druk op START: de dienst aannemen en meteen beginnen.
@@ -1125,10 +1202,10 @@ export function App(): JSX.Element {
    * aan een eigen knop.
    */
   const startAlles = useCallback(async () => {
-    if (!assignment || busy) return
-    if (!confirmed) await confirmDuty()
-    await begin(true)
-  }, [assignment, busy, confirmed, confirmDuty, begin])
+    if (!assignment || busy) return;
+    if (!confirmed) await confirmDuty();
+    await begin(true);
+  }, [assignment, busy, confirmed, confirmDuty, begin]);
 
   /**
    * Vrij rijden: klaarzetten en starten.
@@ -1139,40 +1216,43 @@ export function App(): JSX.Element {
    * dienstregelingsmenu daar ook meteen op.
    */
   const startVrij = useCallback(async () => {
-    if (!selectedMap || !vrijeDatum || busy) return
-    const bus = vehicleOverride || vrijeTip?.relativePath
-    if (!bus) return
-    setBusy(true)
-    setError(undefined)
-    setNote(t(language, 'start.preparing'))
+    if (!selectedMap || !vrijeDatum || busy) return;
+    const bus = vehicleOverride || vrijeTip?.relativePath;
+    if (!bus) return;
+    setBusy(true);
+    setError(undefined);
+    setNote(t(language, "start.preparing"));
     try {
-      const [uren, minuten] = vrijeTijd.split(':').map(Number)
-      const wanneer = dagVanIso(vrijeDatum)
+      const [uren, minuten] = vrijeTijd.split(":").map(Number);
+      const wanneer = dagVanIso(vrijeDatum);
       const result = await window.career.startFree({
         mapFolder,
         lineFile: lineFile || undefined,
         vehiclePath: bus,
-        kleurstelling: busKleur && busKleur.pad === bus ? busKleur.naam : undefined,
+        kleurstelling:
+          busKleur && busKleur.pad === bus ? busKleur.naam : undefined,
         stopId: vrijeHalte || undefined,
         year: wanneer.year,
         dayOfYear: wanneer.dayOfYear,
         minutes: (uren || 0) * 60 + (minuten || 0),
-        weather: vrijWeer
-      })
-      const regels: string[] = [t(language, 'free.ready', { map: selectedMap.name })]
-      if (result.running) regels.push(t(language, 'start.alreadyRunning'))
-      setNote(regels.join(' '))
+        weather: vrijWeer,
+      });
+      const regels: string[] = [
+        t(language, "free.ready", { map: selectedMap.name }),
+      ];
+      if (result.running) regels.push(t(language, "start.alreadyRunning"));
+      setNote(regels.join(" "));
       /*
        * Hetzelfde venstertje als bij een dienst: het spel wordt gestart en tot
        * het er is, staat er iets dat dat zegt. Zonder dienst blijft de overlay
        * dicht -- er valt niets op te tonen.
        */
-      setStarting(!result.running)
+      setStarting(!result.running);
     } catch (cause) {
-      setNote(undefined)
-      setError(cause instanceof Error ? cause.message : String(cause))
+      setNote(undefined);
+      setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
   }, [
     selectedMap,
@@ -1186,8 +1266,8 @@ export function App(): JSX.Element {
     vrijeHalte,
     vrijWeer,
     language,
-    busKleur
-  ])
+    busKleur,
+  ]);
 
   /**
    * Carriere: examen afleggen op de aangewezen lijn.
@@ -1198,36 +1278,36 @@ export function App(): JSX.Element {
    */
   const doeExamen = useCallback(
     async (line: LineSummary, basic: boolean) => {
-      setBusy(true)
-      setError(undefined)
-      setNote(undefined)
+      setBusy(true);
+      setError(undefined);
+      setNote(undefined);
       try {
-        const gevonden = await window.career.examDuty(mapFolder, line.lineFile)
+        const gevonden = await window.career.examDuty(mapFolder, line.lineFile);
         if (!gevonden) {
-          setError(t(language, 'exam.none'))
-          return
+          setError(t(language, "exam.none"));
+          return;
         }
-        setDuties([gevonden])
-        setSelected(0)
-        setVehicleOverride('')
-        setStarted(false)
+        setDuties([gevonden]);
+        setSelected(0);
+        setVehicleOverride("");
+        setStarted(false);
         setCareer(
-          await window.career.confirmDuty(gevonden, '', 'career', {
+          await window.career.confirmDuty(gevonden, "", "career", {
             lineFile: line.lineFile,
             lineNumbers: line.lineNumbers,
-            basic
-          })
-        )
-        setExamenScherm(false)
-        setStap('bus')
+            basic,
+          }),
+        );
+        setExamenScherm(false);
+        setStap("bus");
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : String(cause))
+        setError(cause instanceof Error ? cause.message : String(cause));
       } finally {
-        setBusy(false)
+        setBusy(false);
       }
     },
-    [mapFolder, language]
-  )
+    [mapFolder, language],
+  );
 
   /**
    * Opnieuw kijken wat er in de OMSI-map staat.
@@ -1238,47 +1318,53 @@ export function App(): JSX.Element {
    * is gekomen sinds de vorige keer.
    */
   const checkInstalled = useCallback(async () => {
-    setChecking(true)
-    setChecked(undefined)
+    setChecking(true);
+    setChecked(undefined);
     try {
-      const found = await window.career.checkInstalled()
-      setMaps(found.maps)
-      setVehicles(found.vehicles)
+      const found = await window.career.checkInstalled();
+      setMaps(found.maps);
+      setVehicles(found.vehicles);
       // Een kaart die weg is, kan niet gekozen blijven.
       if (!found.maps.some((item) => item.folder === mapFolder)) {
-        setMapFolder(found.maps[0]?.folder ?? '')
+        setMapFolder(found.maps[0]?.folder ?? "");
       }
 
-      const buses = new Set(found.vehicles.map((item) => item.folder)).size
+      const buses = new Set(found.vehicles.map((item) => item.folder)).size;
       if (found.first) {
-        setChecked(t(language, 'check.first', { maps: found.maps.length, buses }))
-        return
+        setChecked(
+          t(language, "check.first", { maps: found.maps.length, buses }),
+        );
+        return;
       }
-      const parts: string[] = []
+      const parts: string[] = [];
       if (found.addedMaps.length > 0) {
-        parts.push(t(language, 'check.newMaps', { items: found.addedMaps.join(', ') }))
+        parts.push(
+          t(language, "check.newMaps", { items: found.addedMaps.join(", ") }),
+        );
       }
       if (found.addedBuses.length > 0) {
-        parts.push(t(language, 'check.newBuses', { items: found.addedBuses.join(', ') }))
+        parts.push(
+          t(language, "check.newBuses", { items: found.addedBuses.join(", ") }),
+        );
       }
       if (found.removedMaps.length > 0 || found.removedBuses.length > 0) {
         parts.push(
-          t(language, 'check.gone', {
-            items: [...found.removedMaps, ...found.removedBuses].join(', ')
-          })
-        )
+          t(language, "check.gone", {
+            items: [...found.removedMaps, ...found.removedBuses].join(", "),
+          }),
+        );
       }
       setChecked(
         parts.length > 0
-          ? parts.join(' ')
-          : t(language, 'check.nothing', { maps: found.maps.length, buses })
-      )
+          ? parts.join(" ")
+          : t(language, "check.nothing", { maps: found.maps.length, buses }),
+      );
     } catch (cause) {
-      setChecked(cause instanceof Error ? cause.message : String(cause))
+      setChecked(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      setChecking(false)
+      setChecking(false);
     }
-  }, [language, mapFolder])
+  }, [language, mapFolder]);
 
   /*
    * Busplaatjes bijwerken: eerst opnieuw in Vehicles kijken, dan tekenen.
@@ -1289,33 +1375,41 @@ export function App(): JSX.Element {
    * plaatje van. Het nakijken hier is hetzelfde als de knop op de kaartstap.
    */
   const bijwerkenBusfotos = useCallback(async () => {
-    if (busfotoStand?.loopt) return
+    if (busfotoStand?.loopt) return;
     /*
      * Het nakijken duurt een paar seconden. Zolang staat de ronde al als
      * lopend, met wat er gebeurt: anders meldt het scherm "alles is klaar"
      * voordat er ook maar gekeken is.
      */
     setBusfotoStand((oud) => ({
-      ...(oud ?? { klaar: 0, totaal: 0, resterend: 0, zonder: 0, gemaakt: 0, duur: 0, verwerkt: 0 }),
+      ...(oud ?? {
+        klaar: 0,
+        totaal: 0,
+        resterend: 0,
+        zonder: 0,
+        gemaakt: 0,
+        duur: 0,
+        verwerkt: 0,
+      }),
       loopt: true,
       gemaakt: 0,
       duur: 0,
       verwerkt: 0,
-      bezig: t(language, 'photos.looking')
-    }))
-    await checkInstalled()
-    setBusfotoStand(await window.career.busfotosMaken())
-  }, [busfotoStand?.loopt, checkInstalled, language])
+      bezig: t(language, "photos.looking"),
+    }));
+    await checkInstalled();
+    setBusfotoStand(await window.career.busfotosMaken());
+  }, [busfotoStand?.loopt, checkInstalled, language]);
 
   const createProfile = useCallback(async (name: string) => {
-    setCareer(await window.career.createProfile(name))
-    setScreen('modes')
-  }, [])
+    setCareer(await window.career.createProfile(name));
+    setScreen("modes");
+  }, []);
 
   const chooseProfile = useCallback(async (id: string) => {
-    setCareer(await window.career.selectProfile(id))
-    setScreen('modes')
-  }, [])
+    setCareer(await window.career.selectProfile(id));
+    setScreen("modes");
+  }, []);
 
   /**
    * Zolang de dienst loopt kijken we of hij is uitgereden: eindtijd voorbij en
@@ -1323,62 +1417,65 @@ export function App(): JSX.Element {
    */
   useEffect(() => {
     if (!started) {
-      setSession(undefined)
-      setConnected(false)
-      setOmsiLaadt(false)
-      return
+      setSession(undefined);
+      setConnected(false);
+      setOmsiLaadt(false);
+      return;
     }
     const look = (): void => {
       void window.career.checkSession().then((result) => {
-        setSession(result)
-        if (result.dutyComplete) void finishRef.current?.()
-      })
+        setSession(result);
+        if (result.dutyComplete) void finishRef.current?.();
+      });
       void window.career.liveConnected().then((verbonden) => {
-        setConnected(verbonden)
+        setConnected(verbonden);
         /*
          * Nog geen gegevens: staat OMSI dan al open? De kaart laden duurde op
          * Lucs pc drie en een halve minuut, en al die tijd zei dit scherm "Wacht
          * op OMSI". Alleen zolang er niets binnenkomt, want het is `tasklist`.
          */
-        if (verbonden) setOmsiLaadt(false)
-        else void window.career.omsiRunning().then(setOmsiLaadt)
-      })
-    }
+        if (verbonden) setOmsiLaadt(false);
+        else void window.career.omsiRunning().then(setOmsiLaadt);
+      });
+    };
     // Meteen kijken, anders staat het scherm de eerste vijf seconden leeg.
-    look()
-    const timer = setInterval(look, 5000)
-    return () => clearInterval(timer)
-  }, [started])
+    look();
+    const timer = setInterval(look, 5000);
+    return () => clearInterval(timer);
+  }, [started]);
 
   // De stand van de overlay komt uit het hoofdproces; hij gaat ook dicht vanuit
   // de overlay zelf of bij het afronden, en dan moet de knop dat weten.
   useEffect(() => {
-    void window.career.overlayIsOpen().then(setOverlayOpen)
-    return window.career.onOverlayState(setOverlayOpen)
-  }, [])
+    void window.career.overlayIsOpen().then(setOverlayOpen);
+    return window.career.onOverlayState(setOverlayOpen);
+  }, []);
 
   const toggleOverlay = useCallback(async () => {
-    if (!duty && !overlayOpen) return
-    setOverlayOpen(await window.career.setOverlay(duty, !overlayOpen, ibis))
-  }, [duty, overlayOpen, ibis])
+    if (!duty && !overlayOpen) return;
+    setOverlayOpen(await window.career.setOverlay(duty, !overlayOpen, ibis));
+  }, [duty, overlayOpen, ibis]);
 
   /**
    * Afronden. Een examenrit gaat naar de examencommissie in plaats van naar het
    * logboek: daar hangt een vergunning aan vast, geen loon.
    */
   const finish = useCallback(async () => {
-    if (!duty || !vehicle) return
-    setBusy(true)
+    if (!duty || !vehicle) return;
+    setBusy(true);
     /* Wat er over de rit te zeggen valt; dat komt in het hoofdmenu te staan. */
-    let uitkomst: string | undefined
+    let uitkomst: string | undefined;
     try {
-      const result = await window.career.checkSession()
+      const result = await window.career.checkSession();
       /*
        * Hoeveel stevige stops er bij deze dienst horen voordat het opvalt. Een
        * op de tien haltes, en minstens twee: op een rit van veertien haltes is
        * één auto die invoegt geen slecht rijgedrag.
        */
-      const ruimteVoorRemmen = Math.max(2, Math.round((duty?.totalStops ?? 0) / 10))
+      const ruimteVoorRemmen = Math.max(
+        2,
+        Math.round((duty?.totalStops ?? 0) / 10),
+      );
       if (exam) {
         const payload = await window.career.finishExam(
           duty,
@@ -1387,31 +1484,35 @@ export function App(): JSX.Element {
             delayMinutes: result.delayMinutes,
             harshBrakes: result.harshBrakes,
             harshAccels: result.harshAccels,
-            topSpeed: result.topSpeed
+            topSpeed: result.topSpeed,
           },
-          exam.basic
-        )
-        setCareer(payload)
-        const verdict = payload.state?.exams[0]
-        uitkomst = (
-          verdict?.passed
-            ? t(language, 'exam.granted', { line: verdict.lineNumbers.join('/') || verdict.lineFile })
-            : t(language, 'exam.again')
-        )
+          exam.basic,
+        );
+        setCareer(payload);
+        const verdict = payload.state?.exams[0];
+        uitkomst = verdict?.passed
+          ? t(language, "exam.granted", {
+              line: verdict.lineNumbers.join("/") || verdict.lineFile,
+            })
+          : t(language, "exam.again");
       } else {
         setCareer(
-          await window.career.completeDuty(duty, `${vehicle.manufacturer} ${vehicle.type}`, {
-            stopsDone: result.stopsDone,
-            drivenKm: result.drivenKm,
-            delayMinutes: result.delayMinutes,
-            harshBrakes: result.harshBrakes,
-            harshAccels: result.harshAccels,
-            tickets: result.tickets,
-            collisions: result.collisions,
-            fuelUsed: result.fuelUsed
-          })
-        )
-        uitkomst = (
+          await window.career.completeDuty(
+            duty,
+            `${vehicle.manufacturer} ${vehicle.type}`,
+            {
+              stopsDone: result.stopsDone,
+              drivenKm: result.drivenKm,
+              delayMinutes: result.delayMinutes,
+              harshBrakes: result.harshBrakes,
+              harshAccels: result.harshAccels,
+              tickets: result.tickets,
+              collisions: result.collisions,
+              fuelUsed: result.fuelUsed,
+            },
+          ),
+        );
+        uitkomst =
           /*
            * Zonder gemeten kilometers valt er niets over de rit te zeggen. Dat
            * gebeurt als de kilometerteller van de bus onzin gaf; dan is "je reed
@@ -1428,32 +1529,36 @@ export function App(): JSX.Element {
                 gebeurtenis, en de chauffeur hoort er als eerste over te lezen.
               */
               (result.collisions ?? 0) > 0
-              ? t(language, 'done.collision', {
+              ? t(language, "done.collision", {
                   km: (result.drivenKm ?? 0).toFixed(1),
-                  count: result.collisions ?? 0
+                  count: result.collisions ?? 0,
                 })
               : t(
                   language,
-                  (result.harshBrakes ?? 0) > ruimteVoorRemmen ? 'done.harsh' : 'done.smooth',
-                  { km: (result.drivenKm ?? 0).toFixed(1), count: result.harshBrakes ?? 0 }
+                  (result.harshBrakes ?? 0) > ruimteVoorRemmen
+                    ? "done.harsh"
+                    : "done.smooth",
+                  {
+                    km: (result.drivenKm ?? 0).toFixed(1),
+                    count: result.harshBrakes ?? 0,
+                  },
                 )
-            : t(language, 'done.nothing')
-        )
+            : t(language, "done.nothing");
       }
-      setDuties([])
-      setSelected(undefined)
-      setStarted(false)
-      setOverlayOpen(false)
+      setDuties([]);
+      setSelected(undefined);
+      setStarted(false);
+      setOverlayOpen(false);
       // De uitkomst gaat mee naar het hoofdmenu; zie `naarBegin`.
-      naarBegin(uitkomst)
+      naarBegin(uitkomst);
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
-  }, [duty, vehicle, exam, language, naarBegin])
+  }, [duty, vehicle, exam, language, naarBegin]);
 
   useEffect(() => {
-    finishRef.current = finish
-  }, [finish])
+    finishRef.current = finish;
+  }, [finish]);
 
   /*
    * Zodra de OMSI-map vaststaat: beginnen met het klaarzetten van de kaarten,
@@ -1461,19 +1566,19 @@ export function App(): JSX.Element {
    * wordt overgeslagen, dus dit is bij de tweede start meteen voorbij.
    */
   useEffect(() => {
-    if (!omsi?.confirmed) return undefined
-    let geldig = true
+    if (!omsi?.confirmed) return undefined;
+    let geldig = true;
     void window.career.kaartenVoorbereiden().then((stand) => {
-      if (geldig) setKaartenStand(stand)
-    })
+      if (geldig) setKaartenStand(stand);
+    });
     const opzeggen = window.career.opKaartenWarm((stand) => {
-      if (geldig) setKaartenStand(stand)
-    })
+      if (geldig) setKaartenStand(stand);
+    });
     return () => {
-      geldig = false
-      opzeggen()
-    }
-  }, [omsi?.confirmed])
+      geldig = false;
+      opzeggen();
+    };
+  }, [omsi?.confirmed]);
 
   /*
    * Hoe ver de busfoto's zijn, en meeluisteren terwijl er getekend wordt.
@@ -1483,49 +1588,49 @@ export function App(): JSX.Element {
    * zonder dat die stap er zelf om hoeft te vragen.
    */
   useEffect(() => {
-    if (!omsi?.confirmed) return undefined
-    let geldig = true
+    if (!omsi?.confirmed) return undefined;
+    let geldig = true;
     const opzeggen = window.career.opBusfotos((stand) => {
-      if (!geldig) return
-      setBusfotoStand(stand)
-      const laatste = stand.laatste
+      if (!geldig) return;
+      setBusfotoStand(stand);
+      const laatste = stand.laatste;
       if (laatste) {
-        gevraagdeFotos.current.add(laatste.relativePath)
+        gevraagdeFotos.current.add(laatste.relativePath);
         setBusFotos((oud) =>
           oud[laatste.relativePath] === laatste.adres
             ? oud
-            : { ...oud, [laatste.relativePath]: laatste.adres }
-        )
+            : { ...oud, [laatste.relativePath]: laatste.adres },
+        );
       }
-    })
+    });
     return () => {
-      geldig = false
-      opzeggen()
-    }
-  }, [omsi?.confirmed])
+      geldig = false;
+      opzeggen();
+    };
+  }, [omsi?.confirmed]);
 
   /* Meldingen over OMSI: de laatste bij het openen, en nieuwe zodra ze komen. */
   useEffect(() => {
-    let geldig = true
+    let geldig = true;
     void window.career.omsiMelding().then((melding) => {
-      if (geldig && melding) setOmsiMelding(melding)
-    })
+      if (geldig && melding) setOmsiMelding(melding);
+    });
     const opzeggen = window.career.opOmsiMelding((melding) => {
-      if (!geldig) return
-      setOmsiMelding(melding)
+      if (!geldig) return;
+      setOmsiMelding(melding);
       /*
        * Een crash of vastloper hoort de speler meteen te zien, ook als hij net
        * in het hoofdmenu of de instellingen staat: dan naar de lopende dienst,
        * waar de knop om opnieuw te starten staat. Een melding over overlays is
        * geen haast; die wacht tot hij daar zelf komt.
        */
-      if (melding.soort !== 'overlays') setScreen('drive')
-    })
+      if (melding.soort !== "overlays") setScreen("drive");
+    });
     return () => {
-      geldig = false
-      opzeggen()
-    }
-  }, [])
+      geldig = false;
+      opzeggen();
+    };
+  }, []);
 
   /*
    * Tellen voor de vraag bij het installeren, en alleen dan.
@@ -1534,7 +1639,9 @@ export function App(): JSX.Element {
    * tellen kost een werker een doorloop van Vehicles. Wie de
    * vraag al gehad heeft hoeft niet geteld te worden; de knoppen tellen zelf.
    */
-  const kaartenBezig = Boolean(kaartenStand && kaartenStand.resterend > 0 && !klaarzettenOverslaan)
+  const kaartenBezig = Boolean(
+    kaartenStand && kaartenStand.resterend > 0 && !klaarzettenOverslaan,
+  );
 
   /*
    * Rechts in de bovenbalk, op elk scherm met de stappen: het hoofdmenu en de
@@ -1552,9 +1659,9 @@ export function App(): JSX.Element {
         <button
           type="button"
           className="balk-knop"
-          aria-label={t(language, 'nav.home')}
-          title={t(language, 'nav.home')}
-          onClick={() => setScreen('modes')}
+          aria-label={t(language, "nav.home")}
+          title={t(language, "nav.home")}
+          onClick={() => setScreen("modes")}
         >
           <Icoon naam="thuis" />
         </button>
@@ -1563,10 +1670,10 @@ export function App(): JSX.Element {
         <button
           type="button"
           className="balk-knop"
-          aria-label={t(language, 'nav.settings')}
-          title={t(language, 'nav.settings')}
-          aria-current={screen === 'game' ? 'page' : undefined}
-          onClick={() => setScreen('game')}
+          aria-label={t(language, "nav.settings")}
+          title={t(language, "nav.settings")}
+          aria-current={screen === "game" ? "page" : undefined}
+          onClick={() => setScreen("game")}
         >
           <Icoon naam="stuur" />
         </button>
@@ -1586,17 +1693,18 @@ export function App(): JSX.Element {
         </button>
       ))}
     </>
-  )
+  );
   useEffect(() => {
-    if (!omsi?.confirmed || busfotosGevraagd !== false || kaartenBezig) return undefined
-    let geldig = true
+    if (!omsi?.confirmed || busfotosGevraagd !== false || kaartenBezig)
+      return undefined;
+    let geldig = true;
     void window.career.busfotosStand().then((stand) => {
-      if (geldig) setBusfotoStand((oud) => (oud?.loopt ? oud : stand))
-    })
+      if (geldig) setBusfotoStand((oud) => (oud?.loopt ? oud : stand));
+    });
     return () => {
-      geldig = false
-    }
-  }, [omsi?.confirmed, busfotosGevraagd, kaartenBezig])
+      geldig = false;
+    };
+  }, [omsi?.confirmed, busfotosGevraagd, kaartenBezig]);
 
   /*
    * Het eerste dat iemand van deze app ziet: waar staat OMSI?
@@ -1612,7 +1720,8 @@ export function App(): JSX.Element {
    * Staat hier boven de schermen omdat de volgorde ervan afhangt: eerst de
    * taal, dan een chauffeur, en pas daarna de vraag waar OMSI staat.
    */
-  const eersteStart = Boolean(career) && (!career?.state || (career?.profiles.length ?? 0) === 0)
+  const eersteStart =
+    Boolean(career) && (!career?.state || (career?.profiles.length ?? 0) === 0);
 
   /*
    * De allereerste vraag: in welke taal lees je dit? Alles hierna is tekst.
@@ -1621,12 +1730,15 @@ export function App(): JSX.Element {
     return (
       <Taalkeuze
         onKies={(taal) => {
-          setLanguage(taal)
-          setTaalGekozen(true)
-          void window.career.saveSettings({ language: taal, languageChosen: true })
+          setLanguage(taal);
+          setTaalGekozen(true);
+          void window.career.saveSettings({
+            language: taal,
+            languageChosen: true,
+          });
         }}
       />
-    )
+    );
   }
 
   /*
@@ -1645,24 +1757,24 @@ export function App(): JSX.Element {
         language={language}
         bezig={busy}
         onAanmaken={(naam) => {
-          void window.career.createProfile(naam).then(setCareer)
+          void window.career.createProfile(naam).then(setCareer);
         }}
       />
-    )
+    );
   }
 
   /* En pas daarna: waar staat OMSI? */
   if (omsi && !omsi.confirmed) {
     const kiezen = async (): Promise<void> => {
-      setOmsiBezig(true)
+      setOmsiBezig(true);
       try {
-        const uit = await window.career.browseOmsi()
+        const uit = await window.career.browseOmsi();
         // Geannuleerd: dan blijft staan wat er stond, zonder waarschuwing.
-        if (uit.wrong || uit.path) setOmsi({ ...uit, confirmed: false })
+        if (uit.wrong || uit.path) setOmsi({ ...uit, confirmed: false });
       } finally {
-        setOmsiBezig(false)
+        setOmsiBezig(false);
       }
-    }
+    };
     return (
       <LanguageProvider language={language}>
         <Welkom
@@ -1674,8 +1786,8 @@ export function App(): JSX.Element {
           bezig={omsiBezig}
           onKiezen={() => void kiezen()}
           onBevestig={() => {
-            if (!omsi.path) return
-            setOmsiBezig(true)
+            if (!omsi.path) return;
+            setOmsiBezig(true);
             void window.career
               .confirmOmsi(omsi.path)
               .then((uit) => {
@@ -1683,14 +1795,14 @@ export function App(): JSX.Element {
                  * Opnieuw beginnen in plaats van de halve app bijwerken: alles
                  * wat er staat is geladen zonder dat deze map vaststond.
                  */
-                if (uit.confirmed) window.location.reload()
-                else setOmsi({ ...uit, confirmed: false })
+                if (uit.confirmed) window.location.reload();
+                else setOmsi({ ...uit, confirmed: false });
               })
-              .finally(() => setOmsiBezig(false))
+              .finally(() => setOmsiBezig(false));
           }}
         />
       </LanguageProvider>
-    )
+    );
   }
 
   /*
@@ -1711,7 +1823,7 @@ export function App(): JSX.Element {
           onOverslaan={() => setKlaarzettenOverslaan(true)}
         />
       </LanguageProvider>
-    )
+    );
   }
 
   /*
@@ -1723,16 +1835,17 @@ export function App(): JSX.Element {
    * ze allemaal al heeft, slaat hem ongemerkt over.
    */
   const busfotoVraag =
-    busfotosGevraagd === false && Boolean(busfotoStand && busfotoStand.resterend > 0)
+    busfotosGevraagd === false &&
+    Boolean(busfotoStand && busfotoStand.resterend > 0);
   if (busfotoStand && (busfotoScherm || busfotoVraag)) {
-    const aanleiding = busfotoScherm ?? 'installatie'
+    const aanleiding = busfotoScherm ?? "installatie";
     const afronden = (): void => {
-      setBusfotoScherm(undefined)
+      setBusfotoScherm(undefined);
       if (busfotosGevraagd === false) {
-        setBusfotosGevraagd(true)
-        void window.career.saveSettings({ busPhotosOffered: true })
+        setBusfotosGevraagd(true);
+        void window.career.saveSettings({ busPhotosOffered: true });
       }
-    }
+    };
     return (
       <LanguageProvider language={language}>
         <Busplaatjes
@@ -1749,46 +1862,46 @@ export function App(): JSX.Element {
              * voordat iemand de uitkomst zag of op Verder drukte -- en dan werd
              * ook niet onthouden dat de vraag gesteld is.
              */
-            setBusfotoScherm(aanleiding)
+            setBusfotoScherm(aanleiding);
             // Meteen als lopend, anders staat tot de eerste melding de uitkomst in beeld.
             setBusfotoStand(
               (oud) =>
                 oud && {
                   ...oud,
                   loopt: true,
-                  bezig: t(language, 'photos.looking'),
+                  bezig: t(language, "photos.looking"),
                   gemaakt: 0,
                   duur: 0,
-                  verwerkt: 0
-                }
-            )
-            void window.career.busfotosMaken().then(setBusfotoStand)
+                  verwerkt: 0,
+                },
+            );
+            void window.career.busfotosMaken().then(setBusfotoStand);
           }}
           onStoppen={() => {
-            void window.career.busfotosStoppen()
+            void window.career.busfotosStoppen();
           }}
           onKlaar={afronden}
         />
       </LanguageProvider>
-    )
+    );
   }
 
   if (error && !ready) {
     return (
       <div className="main">
-        <h1>{t(language, 'app.errorTitle')}</h1>
+        <h1>{t(language, "app.errorTitle")}</h1>
         <p className="subtitle">{error}</p>
       </div>
-    )
+    );
   }
 
   if (!ready) {
     return (
       <div className="main">
-        <h1>{t(language, 'app.loading')}</h1>
-        <p className="subtitle">{t(language, 'app.loadingSub')}</p>
+        <h1>{t(language, "app.loading")}</h1>
+        <p className="subtitle">{t(language, "app.loadingSub")}</p>
       </div>
-    )
+    );
   }
 
   /*
@@ -1801,7 +1914,7 @@ export function App(): JSX.Element {
    * binnenkomen hoort staat eromheen: je staat van dienst, de instellingen van
    * OMSI en wie er rijdt.
    */
-  if (screen === 'modes' && career?.state) {
+  if (screen === "modes" && career?.state) {
     return (
       <LanguageProvider language={language}>
         <Starthub
@@ -1812,24 +1925,49 @@ export function App(): JSX.Element {
           chauffeur={career.state.driver}
           samenvatting={career.summary ?? undefined}
           modus={mode}
-          lopend={active ? (active.mode ?? 'service') : undefined}
+          lopend={active ? (active.mode ?? "service") : undefined}
           onModus={(gekozen) => {
-            setMode(gekozen)
-            setScreen('drive')
+            setMode(gekozen);
+            setScreen("drive");
           }}
-          onStaatVanDienst={() => setScreen('profiel')}
-          onInstellingen={() => setScreen('game')}
-          onChauffeur={() => setScreen('profiles')}
+          onStaatVanDienst={() => setScreen("profiel")}
+          onInstellingen={() => setScreen("game")}
+          onChauffeur={() => setScreen("profiles")}
           onLogboek={() => void window.career.logboekOpenen()}
           melding={hubMelding}
           onMeldingWeg={() => setHubMelding(undefined)}
           onBusplaatjes={() => {
-            setBusfotoScherm('bijwerken')
-            void bijwerkenBusfotos()
+            setBusfotoScherm("bijwerken");
+            void bijwerkenBusfotos();
           }}
+          /*
+            De dienstpas, eenmaal, bij binnenkomst.
+
+            Hier en niet ergens in de opzet: dit is het eerste scherm na het
+            kiezen van een profiel, er wordt nog niets van je gevraagd, en de
+            staat van dienst is hiervandaan te bereiken -- dus de knop "laat zien
+            waar" heeft hier betekenis. Bij een verse installatie valt het samen
+            met het aanmaken van je eerste chauffeur; bij wie de app al had, met
+            de eerste start waarin de gegevens erbij gekomen zijn.
+          */
+          dialoog={
+            !career.state.pasGezien &&
+            career.state.personeelsnummer &&
+            career.state.pincode ? (
+              <Dienstpas
+                chauffeur={career.state.driver}
+                personeelsnummer={career.state.personeelsnummer}
+                pincode={career.state.pincode}
+                onGezien={() =>
+                  void window.career.dienstpasGezien().then(setCareer)
+                }
+                onStaatVanDienst={() => setScreen("profiel")}
+              />
+            ) : undefined
+          }
         />
       </LanguageProvider>
-    )
+    );
   }
 
   /*
@@ -1860,65 +1998,75 @@ export function App(): JSX.Element {
    * is er geen, en juist daar kies je een bus uit alle 342 en loop je de kans
    * er een te pakken die de kaart niet kent.
    */
-  if (busScherm === 'overzetten' && mapFolder) {
+  if (busScherm === "overzetten" && mapFolder) {
     const terug = (): void => {
-      setBusScherm('bus')
-      setBusMerk(undefined)
-      setBusType(undefined)
-    }
+      setBusScherm("bus");
+      setBusMerk(undefined);
+      setBusType(undefined);
+    };
     return (
       <LanguageProvider language={language}>
         <Setup
           stap="bus"
-          titel={t(language, 'setup.hofTitle')}
-          onderschrift={t(language, 'setup.hofIntro', { count: hofAanbod.length })}
+          titel={t(language, "setup.hofTitle")}
+          onderschrift={t(language, "setup.hofIntro", {
+            count: hofAanbod.length,
+          })}
           kruimels={[
-            { label: t(language, 'setup.busTitle'), onDoen: terug },
-            { label: t(language, 'setup.hofTitle') }
+            { label: t(language, "setup.busTitle"), onDoen: terug },
+            { label: t(language, "setup.hofTitle") },
           ]}
           koppen={[
-            t(language, 'setup.hofBus'),
-            t(language, 'setup.hofNow'),
-            t(language, 'setup.hofAfter')
+            t(language, "setup.hofBus"),
+            t(language, "setup.hofNow"),
+            t(language, "setup.hofAfter"),
           ]}
           rijen={hofAanbod.map((item) => ({
             id: item.folder,
             cellen: [
               item.folder,
-              t(language, 'setup.hofOf', { known: item.known, total: item.total }),
-              t(language, 'setup.hofOf', { known: item.offerMatched ?? 0, total: item.total })
-            ] as [string, string, string]
+              t(language, "setup.hofOf", {
+                known: item.known,
+                total: item.total,
+              }),
+              t(language, "setup.hofOf", {
+                known: item.offerMatched ?? 0,
+                total: item.total,
+              }),
+            ] as [string, string, string],
           }))}
           gekozen={-1}
           onKies={() => {}}
           vullend
           keuzeloos
-          voet={t(language, 'setup.hofFoot')}
+          voet={t(language, "setup.hofFoot")}
           bezig={hofBezig}
-          startTekst={hofBezig ? t(language, 'setup.hofBusy') : t(language, 'setup.hofDo')}
+          startTekst={
+            hofBezig ? t(language, "setup.hofBusy") : t(language, "setup.hofDo")
+          }
           onStart={() => {
-            if (hofBezig) return
-            setHofBezig(true)
+            if (hofBezig) return;
+            setHofBezig(true);
             void window.career
               .placeHofs(
                 mapFolder,
-                hofAanbod.map((item) => item.folder)
+                hofAanbod.map((item) => item.folder),
               )
               .then(async (result) => {
-                setNote(t(language, 'setup.hofDone', { count: result.placed }))
+                setNote(t(language, "setup.hofDone", { count: result.placed }));
                 /*
                  * Opnieuw ophalen: met de nieuwe bestanden erbij staan er bussen
                  * in het menu die er zojuist nog niet waren.
                  */
-                setHofAanbod(await window.career.hofOffers(mapFolder))
-                terug()
+                setHofAanbod(await window.career.hofOffers(mapFolder));
+                terug();
               })
-              .finally(() => setHofBezig(false))
+              .finally(() => setHofBezig(false));
           }}
           rechtsInBalk={balkRechts}
         />
       </LanguageProvider>
-    )
+    );
   }
 
   /*
@@ -1962,7 +2110,7 @@ export function App(): JSX.Element {
         printer={printer}
         onPrinterChange={setPrinter}
       />
-    ) : null
+    ) : null;
 
     /*
      * De melding over OMSI, bovenaan de lopende dienst.
@@ -1975,47 +2123,56 @@ export function App(): JSX.Element {
      * overlays er in het spel zaten.
      */
     const overlayNamen = (omsiMelding?.overlays ?? [])
-      .filter((item) => item.soort !== 'opentrack')
-      .map((item) => t(language, `ovl.naam.${item.soort as 'steam'}` as const))
-      .join(', ')
+      .filter((item) => item.soort !== "opentrack")
+      .map((item) => t(language, `ovl.naam.${item.soort as "steam"}` as const))
+      .join(", ");
     const omsiTijd = omsiMelding
-      ? new Date(omsiMelding.tijd).toLocaleTimeString(language, { hour: '2-digit', minute: '2-digit' })
-      : ''
+      ? new Date(omsiMelding.tijd).toLocaleTimeString(language, {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "";
     const omsiBanner = omsiMelding ? (
       <div className="omsimelding">
         <p>
-          {omsiMelding.soort === 'crash'
-            ? t(language, 'omsi.crash', { tijd: omsiTijd })
-            : omsiMelding.soort === 'vast'
-              ? t(language, 'omsi.vast', { tijd: omsiTijd })
-              : t(language, 'omsi.overlays', { namen: overlayNamen })}
-          {omsiMelding.soort !== 'overlays' && overlayNamen
-            ? ` ${t(language, 'omsi.inHetSpel', { namen: overlayNamen })}`
-            : ''}
+          {omsiMelding.soort === "crash"
+            ? t(language, "omsi.crash", { tijd: omsiTijd })
+            : omsiMelding.soort === "vast"
+              ? t(language, "omsi.vast", { tijd: omsiTijd })
+              : t(language, "omsi.overlays", { namen: overlayNamen })}
+          {omsiMelding.soort !== "overlays" && overlayNamen
+            ? ` ${t(language, "omsi.inHetSpel", { namen: overlayNamen })}`
+            : ""}
         </p>
-        {omsiMelding.soort === 'crash' && <p className="omsimelding-klein">{t(language, 'omsi.herstartUitleg')}</p>}
+        {omsiMelding.soort === "crash" && (
+          <p className="omsimelding-klein">
+            {t(language, "omsi.herstartUitleg")}
+          </p>
+        )}
         <div className="omsimelding-knoppen">
-          {omsiMelding.soort === 'crash' && (
+          {omsiMelding.soort === "crash" && (
             <button
               type="button"
               className="btn"
               disabled={busy}
               onClick={() => {
-                setOmsiMelding(undefined)
-                void window.career.vergeetOmsiMelding()
-                void begin(true, true)
+                setOmsiMelding(undefined);
+                void window.career.vergeetOmsiMelding();
+                void begin(true, true);
               }}
             >
-              {t(language, 'omsi.herstart')}
+              {t(language, "omsi.herstart")}
             </button>
           )}
-          {omsiMelding.soort === 'vast' && omsiMelding.pid !== undefined && (
+          {omsiMelding.soort === "vast" && omsiMelding.pid !== undefined && (
             <button
               type="button"
               className="btn"
-              onClick={() => void window.career.sluitOmsi(omsiMelding.pid as number)}
+              onClick={() =>
+                void window.career.sluitOmsi(omsiMelding.pid as number)
+              }
             >
-              {t(language, 'omsi.afsluiten')}
+              {t(language, "omsi.afsluiten")}
             </button>
           )}
           {overlayNamen && (
@@ -2023,26 +2180,26 @@ export function App(): JSX.Element {
               type="button"
               className="btn secondary"
               onClick={() => {
-                setInstellingenTab('overlays')
-                setScreen('game')
+                setInstellingenTab("overlays");
+                setScreen("game");
               }}
             >
-              {t(language, 'omsi.bekijken')}
+              {t(language, "omsi.bekijken")}
             </button>
           )}
           <button
             type="button"
             className="btn secondary"
             onClick={() => {
-              setOmsiMelding(undefined)
-              void window.career.vergeetOmsiMelding()
+              setOmsiMelding(undefined);
+              void window.career.vergeetOmsiMelding();
             }}
           >
-            {t(language, 'omsi.negeren')}
+            {t(language, "omsi.negeren")}
           </button>
         </div>
       </div>
-    ) : undefined
+    ) : undefined;
 
     return (
       <LanguageProvider language={language}>
@@ -2057,15 +2214,15 @@ export function App(): JSX.Element {
            * lijn en een dienst hebt gekozen" terwijl de dienst al reed.
            */
           duty={duty}
-          titel={t(language, 'run.title')}
-          onderschrift={t(language, 'run.intro', { map: duty.mapName })}
-          koppen={['', '', '']}
+          titel={t(language, "run.title")}
+          onderschrift={t(language, "run.intro", { map: duty.mapName })}
+          koppen={["", "", ""]}
           rijen={[]}
           gekozen={0}
           onKies={() => {}}
           voet=""
           onStart={() => void finish()}
-          startTekst={t(language, 'act.finish')}
+          startTekst={t(language, "act.finish")}
           bezig={busy}
           /*
            * De kaart blijft naast het vel staan: tijdens het rijden is dat de
@@ -2075,22 +2232,27 @@ export function App(): JSX.Element {
            */
           metKaart
           navigatie={{
-            routeMode: live ? 'active' : 'all',
+            routeMode: live ? "active" : "all",
             activeLeg: live?.legIndex,
             nextStopId:
               live && live.stopIndex !== undefined
                 ? duty.legs[live.legIndex]?.stopIds[live.stopIndex]
                 : undefined,
-            vehicle: liveBus ? { ...liveBus, speedKmh: live?.speedKmh ?? 0 } : undefined
+            vehicle: liveBus
+              ? { ...liveBus, speedKmh: live?.speedKmh ?? 0 }
+              : undefined,
           }}
           inhoud={
             <>
               {starting && (
                 <StartingDialog
                   onDone={() => {
-                    setStarting(false)
-                    setNote(t(language, 'app.omsiReady'))
-                    if (duty) void window.career.setOverlay(duty, true, ibis).then(setOverlayOpen)
+                    setStarting(false);
+                    setNote(t(language, "app.omsiReady"));
+                    if (duty)
+                      void window.career
+                        .setOverlay(duty, true, ibis)
+                        .then(setOverlayOpen);
                   }}
                   onDismiss={() => setStarting(false)}
                 />
@@ -2119,7 +2281,7 @@ export function App(): JSX.Element {
           }
         />
       </LanguageProvider>
-    )
+    );
   }
 
   /*
@@ -2138,8 +2300,8 @@ export function App(): JSX.Element {
    * overzetten, en de dienst die loopt.
    */
   {
-    const gekozen = selected ?? 0
-    const gekozenDuty = duties[gekozen]?.duty
+    const gekozen = selected ?? 0;
+    const gekozenDuty = duties[gekozen]?.duty;
     /*
      * De bus die de app zelf zou kiezen staat vooraan; die past het best bij de
      * dienst, en wie iets anders wil scrollt maar. Alle andere bussen blijven
@@ -2153,9 +2315,9 @@ export function App(): JSX.Element {
     const leegOpDeKaart: Duty | undefined = selectedMap && {
       mapFolder: selectedMap.folder,
       mapName: selectedMap.name,
-      lineFile: '',
-      tourNumber: '',
-      depot: '',
+      lineFile: "",
+      tourNumber: "",
+      depot: "",
       legs: [],
       signOn: 0,
       start: 0,
@@ -2164,9 +2326,9 @@ export function App(): JSX.Element {
       totalStops: 0,
       lineNumbers: [],
       days: 0,
-      period: 0
-    }
-    const kaartDuty = gekozenDuty ?? leegOpDeKaart
+      period: 0,
+    };
+    const kaartDuty = gekozenDuty ?? leegOpDeKaart;
 
     /*
      * Welke bussen er op de busstap staan.
@@ -2176,15 +2338,16 @@ export function App(): JSX.Element {
      * geen dienst om tegen te passen -- daar is de aanbeveling de bus die op
      * deze kaart het meest rondrijdt, en verder staat alles gewoon open.
      */
-    const aanbevolenBus = mode === 'free' ? vrijeTip?.relativePath : vehicle?.relativePath
+    const aanbevolenBus =
+      mode === "free" ? vrijeTip?.relativePath : vehicle?.relativePath;
     const bussen =
-      gekozenDuty || mode === 'free'
+      gekozenDuty || mode === "free"
         ? [...vehicles].sort((a, b) => {
-            if (a.relativePath === aanbevolenBus) return -1
-            if (b.relativePath === aanbevolenBus) return 1
-            return busnaam(a).localeCompare(busnaam(b))
+            if (a.relativePath === aanbevolenBus) return -1;
+            if (b.relativePath === aanbevolenBus) return 1;
+            return busnaam(a).localeCompare(busnaam(b));
           })
-        : []
+        : [];
 
     /* Welke stap het scherm toont: het profiel- en modusscherm horen erbij. */
     /*
@@ -2192,28 +2355,30 @@ export function App(): JSX.Element {
      * daar hoor je weer terug te komen als je klaar bent.
      */
     const opzetStap: Stap =
-      eersteStart || screen === 'profiles' || screen === 'profiel'
-        ? 'profile'
-        : screen === 'modes' || screen === 'game'
-          ? 'mode'
-          : stap
+      eersteStart || screen === "profiles" || screen === "profiel"
+        ? "profile"
+        : screen === "modes" || screen === "game"
+          ? "mode"
+          : stap;
 
-    const profielen = career?.profiles ?? []
-    const huidigProfiel = career?.state?.driver ?? ''
+    const profielen = career?.profiles ?? [];
+    const huidigProfiel = career?.state?.driver ?? "";
 
     /*
      * De vraag over de aanbevolen bus: alleen op de busstap, alleen als er een
      * aanbeveling is, en alleen zolang de speler er nog niets van gevonden heeft.
      */
-    const busSleutel = duty ? `${duty.mapFolder}|${duty.tourNumber}|${duty.start}` : ''
+    const busSleutel = duty
+      ? `${duty.mapFolder}|${duty.tourNumber}|${duty.start}`
+      : "";
     const toonBusVraag =
-      stap === 'bus' &&
-      busScherm === 'bus' &&
+      stap === "bus" &&
+      busScherm === "bus" &&
       !busMerk &&
       !confirmed &&
       Boolean(assignment?.vehicle) &&
-      busSleutel !== '' &&
-      busGevraagd !== busSleutel
+      busSleutel !== "" &&
+      busGevraagd !== busSleutel;
 
     /* Wat elke tegelweergave op de busstap gemeen heeft. */
     /*
@@ -2226,33 +2391,36 @@ export function App(): JSX.Element {
      * bestemmingen van die dienst; anders om die van de kaart.
      */
     const plaatsWagenpark = (): void => {
-      if (hofBezig || !vehicle) return
-      setHofBezig(true)
+      if (hofBezig || !vehicle) return;
+      setHofBezig(true);
       const gedaan = duty
         ? window.career.placeHofCandidate(duty, vehicle.folder)
         : window.career
             .placeHofs(mapFolder, [vehicle.folder])
-            .then((uit) => ({ placed: uit.placed, file: undefined as string | undefined }))
+            .then((uit) => ({
+              placed: uit.placed,
+              file: undefined as string | undefined,
+            }));
       void gedaan
         .then((uitkomst) => {
           setNote(
             uitkomst.placed > 0
               ? uitkomst.file
-                ? t(language, 'setup.yardAdded', { file: uitkomst.file })
-                : t(language, 'setup.hofDone', { count: uitkomst.placed })
-              : t(language, 'setup.yardAddNone')
-          )
-          setHofTeller((n) => n + 1)
+                ? t(language, "setup.yardAdded", { file: uitkomst.file })
+                : t(language, "setup.hofDone", { count: uitkomst.placed })
+              : t(language, "setup.yardAddNone"),
+          );
+          setHofTeller((n) => n + 1);
         })
-        .finally(() => setHofBezig(false))
-    }
+        .finally(() => setHofBezig(false));
+    };
 
     const leegBus = {
-      koppen: ['', '', ''] as [string, string, string],
+      koppen: ["", "", ""] as [string, string, string],
       rijen: [] as Rij[],
       index: 0,
       kies: () => {},
-      voet: '',
+      voet: "",
       /*
        * Busplaatjes bijwerken, hier waar de plaatjes staan.
        *
@@ -2266,19 +2434,26 @@ export function App(): JSX.Element {
               <span>
                 {/* Zolang er nog gekeken wordt is er niets te tellen: geen "0 van 0". */}
                 {busfotoStand.totaal > 0
-                  ? t(language, 'photos.syncBusy', {
+                  ? t(language, "photos.syncBusy", {
                       klaar: busfotoStand.klaar,
-                      totaal: busfotoStand.totaal
+                      totaal: busfotoStand.totaal,
                     })
-                  : t(language, 'photos.looking')}
+                  : t(language, "photos.looking")}
               </span>
-              <button type="button" onClick={() => void window.career.busfotosStoppen()}>
-                {t(language, 'photos.stop')}
+              <button
+                type="button"
+                onClick={() => void window.career.busfotosStoppen()}
+              >
+                {t(language, "photos.stop")}
               </button>
             </>
           ) : (
-            <button type="button" disabled={checking} onClick={() => void bijwerkenBusfotos()}>
-              {t(language, 'photos.sync')}
+            <button
+              type="button"
+              disabled={checking}
+              onClick={() => void bijwerkenBusfotos()}
+            >
+              {t(language, "photos.sync")}
             </button>
           )}
         </div>
@@ -2286,8 +2461,10 @@ export function App(): JSX.Element {
       /* Zie `plaatsWagenpark`: op elk busscherm bereikbaar, niet alleen op de remise. */
       tweede: vehicle
         ? {
-            tekst: hofBezig ? t(language, 'setup.hofBusy') : t(language, 'setup.yardAdd'),
-            onDoen: plaatsWagenpark
+            tekst: hofBezig
+              ? t(language, "setup.hofBusy")
+              : t(language, "setup.yardAdd"),
+            onDoen: plaatsWagenpark,
           }
         : undefined,
       /*
@@ -2295,83 +2472,90 @@ export function App(): JSX.Element {
        * de dienst aan en beginnen hem; vrij rijden heeft geen dienst om aan te
        * nemen en zet alleen de situatie klaar.
        */
-      verder: () => void (mode === 'free' ? startVrij() : startAlles()),
-      knop: t(language, 'setup.start')
-    }
+      verder: () => void (mode === "free" ? startVrij() : startAlles()),
+      knop: t(language, "setup.start"),
+    };
 
     const vel = ((): {
-      stap: Stap
-      titel: string
-      onderschrift: string
-      koppen: [string, string, string]
-      rijen: Rij[]
-      index: number
-      kies: (index: number) => void
-      voet: string
-      verder: () => void
-      knop: string
-      tegels?: Tegel[]
-      kruimels?: Kruimel[]
-      tweede?: { tekst: string; onDoen: () => void }
-      vullend?: boolean
-      keuzeloos?: boolean
-      regelaars?: ReactNode
+      stap: Stap;
+      titel: string;
+      onderschrift: string;
+      koppen: [string, string, string];
+      rijen: Rij[];
+      index: number;
+      kies: (index: number) => void;
+      voet: string;
+      verder: () => void;
+      knop: string;
+      tegels?: Tegel[];
+      kruimels?: Kruimel[];
+      tweede?: { tekst: string; onDoen: () => void };
+      vullend?: boolean;
+      keuzeloos?: boolean;
+      regelaars?: ReactNode;
       /** Een formulier in plaats van een lijst; alleen de ritstap van vrij rijden. */
-      vrij?: ReactNode
+      vrij?: ReactNode;
     } => {
       /*
        * De staat van dienst. Hetzelfde vel als de chauffeursstap waar hij aan
        * hangt, met de lijst vervangen door de cijfers; de hoofdknop brengt je
        * terug naar de chauffeurs, want er valt hier niets te kiezen.
        */
-      if (opzetStap === 'profile' && screen === 'profiel') {
+      if (opzetStap === "profile" && screen === "profiel") {
         return {
-          stap: 'profile' as Stap,
-          titel: t(language, 'prof.title'),
-          onderschrift: t(language, 'prof.intro'),
-          koppen: ['', '', ''] as [string, string, string],
+          stap: "profile" as Stap,
+          titel: t(language, "prof.title"),
+          onderschrift: t(language, "prof.intro"),
+          koppen: ["", "", ""] as [string, string, string],
           rijen: [],
           index: 0,
           kies: () => {},
-          voet: '',
-          verder: () => setScreen('profiles'),
-          knop: t(language, 'setup.back')
-        }
+          voet: "",
+          verder: () => setScreen("profiles"),
+          knop: t(language, "setup.back"),
+        };
       }
 
-      if (opzetStap === 'profile') {
+      if (opzetStap === "profile") {
         /*
          * De eerste start is dezelfde stap zonder chauffeurs. Geen apart
          * welkomstscherm dus: wie de app voor het eerst opent staat gewoon op
          * stap een, met de uitleg erbij en het invulveld al open.
          */
         return {
-          stap: 'profile' as Stap,
-          titel: eersteStart ? t(language, 'welcome.title') : t(language, 'setup.driverTitle'),
+          stap: "profile" as Stap,
+          titel: eersteStart
+            ? t(language, "welcome.title")
+            : t(language, "setup.driverTitle"),
           onderschrift: eersteStart
-            ? t(language, 'welcome.intro')
-            : t(language, 'setup.driverIntro'),
+            ? t(language, "welcome.intro")
+            : t(language, "setup.driverIntro"),
           koppen: [
-            t(language, 'setup.colDriver'),
-            t(language, 'setup.colDuties'),
-            t(language, 'setup.colDriven')
+            t(language, "setup.colDriver"),
+            t(language, "setup.colDuties"),
+            t(language, "setup.colDriven"),
           ],
           rijen: profielen.map((item) => ({
             id: item.id,
             cellen: [
               item.driver,
               String(item.duties),
-              formatDuration(item.minutes, language)
+              formatDuration(item.minutes, language),
             ] as [string, string, string],
             klok: true,
             actie: {
-              label: t(language, 'setup.deleteDriver'),
+              label: t(language, "setup.deleteDriver"),
               gevaarlijk: true,
               onDoen: () => {
-                if (!window.confirm(t(language, 'setup.deleteAsk', { name: item.driver }))) return
-                void window.career.deleteProfile(item.id).then(setCareer)
-              }
-            }
+                if (
+                  !window.confirm(
+                    t(language, "setup.deleteAsk", { name: item.driver }),
+                  )
+                )
+                  return;
+                void window.career.deleteProfile(item.id).then(setCareer);
+              },
+            },
           })),
           /*
            * Chauffeurs als tegels, net als de kaarten.
@@ -2409,9 +2593,9 @@ export function App(): JSX.Element {
                   foto: item.photo
                     ? `omsifoto://chauffeur/${encodeURIComponent(item.photo)}?v=${item.photoAt ?? 0}`
                     : undefined,
-                  onder: t(language, 'setup.driverTile', {
+                  onder: t(language, "setup.driverTile", {
                     count: item.duties,
-                    time: formatDuration(item.minutes, language)
+                    time: formatDuration(item.minutes, language),
                   }),
                   gekozen: item.driver === huidigProfiel,
                   /*
@@ -2422,81 +2606,107 @@ export function App(): JSX.Element {
                    */
                   acties: [
                     {
-                      label: t(language, item.photo ? 'setup.photoChange' : 'setup.photoAdd'),
-                      teken: 'foto' as const,
+                      label: t(
+                        language,
+                        item.photo ? "setup.photoChange" : "setup.photoAdd",
+                      ),
+                      teken: "foto" as const,
                       onDoen: () => {
-                        void window.career.chooseProfilePhoto(item.id).then(setCareer)
-                      }
+                        void window.career
+                          .chooseProfilePhoto(item.id)
+                          .then(setCareer);
+                      },
                     },
                     ...(item.photo
                       ? [
                           {
-                            label: t(language, 'setup.photoRemove'),
-                            teken: 'fotoweg' as const,
+                            label: t(language, "setup.photoRemove"),
+                            teken: "fotoweg" as const,
                             onDoen: () => {
-                              void window.career.clearProfilePhoto(item.id).then(setCareer)
-                            }
-                          }
+                              void window.career
+                                .clearProfilePhoto(item.id)
+                                .then(setCareer);
+                            },
+                          },
                         ]
                       : []),
                     {
-                      label: t(language, 'setup.deleteDriver'),
+                      label: t(language, "setup.deleteDriver"),
                       gevaarlijk: true,
                       onDoen: () => {
-                        if (!window.confirm(t(language, 'setup.deleteAsk', { name: item.driver })))
-                          return
-                        void window.career.deleteProfile(item.id).then(setCareer)
-                      }
-                    }
+                        if (
+                          !window.confirm(
+                            t(language, "setup.deleteAsk", {
+                              name: item.driver,
+                            }),
+                          )
+                        )
+                          return;
+                        void window.career
+                          .deleteProfile(item.id)
+                          .then(setCareer);
+                      },
+                    },
                   ],
                   onDoen: () => {
-                    void window.career.selectProfile(item.id).then(setCareer)
-                  }
+                    void window.career.selectProfile(item.id).then(setCareer);
+                  },
                 }))
               : undefined,
-          index: Math.max(0, profielen.findIndex((item) => item.driver === huidigProfiel)),
+          index: Math.max(
+            0,
+            profielen.findIndex((item) => item.driver === huidigProfiel),
+          ),
           kies: (index) => {
-            const id = profielen[index]?.id
-            if (id) void window.career.selectProfile(id).then(setCareer)
+            const id = profielen[index]?.id;
+            if (id) void window.career.selectProfile(id).then(setCareer);
           },
           voet: eersteStart
-            ? t(language, 'welcome.accountIntro')
+            ? t(language, "welcome.accountIntro")
             : t(
                 language,
-                profielen.length === 1 ? 'setup.driverFootOne' : 'setup.driverFoot',
-                { count: profielen.length }
+                profielen.length === 1
+                  ? "setup.driverFootOne"
+                  : "setup.driverFoot",
+                { count: profielen.length },
               ),
           verder: () => {
-            const gekozenProfiel = profielen[Math.max(0, profielen.findIndex((i) => i.driver === huidigProfiel))]
-            if (gekozenProfiel) void chooseProfile(gekozenProfiel.id)
+            const gekozenProfiel =
+              profielen[
+                Math.max(
+                  0,
+                  profielen.findIndex((i) => i.driver === huidigProfiel),
+                )
+              ];
+            if (gekozenProfiel) void chooseProfile(gekozenProfiel.id);
           },
-          knop: t(language, 'setup.next')
-        }
+          knop: t(language, "setup.next"),
+        };
       }
-      if (opzetStap === 'mode' && screen === 'game') {
+      if (opzetStap === "mode" && screen === "game") {
         return {
-          stap: 'mode' as Stap,
-          titel: t(language, 'cfg.title'),
-          onderschrift: t(language, 'cfg.intro'),
-          koppen: ['', '', ''] as [string, string, string],
+          stap: "mode" as Stap,
+          titel: t(language, "cfg.title"),
+          onderschrift: t(language, "cfg.intro"),
+          koppen: ["", "", ""] as [string, string, string],
           rijen: [],
           index: 0,
           kies: () => {},
-          voet: '',
-          verder: () => setScreen('modes'),
-          knop: t(language, 'setup.back')
-        }
+          voet: "",
+          verder: () => setScreen("modes"),
+          knop: t(language, "setup.back"),
+        };
       }
-      if (opzetStap === 'mode') {
-        const modi: GameMode[] = ['career', 'service', 'free']
+      if (opzetStap === "mode") {
+        const modi: GameMode[] = ["career", "service", "free"];
         return {
-          stap: 'mode' as Stap,
-          titel: t(language, 'setup.modeTitle'),
-          onderschrift: t(language, 'setup.modeIntro'),
+          stap: "mode" as Stap,
+          titel: t(language, "setup.modeTitle"),
+          onderschrift: t(language, "setup.modeIntro"),
           koppen: [
-            t(language, 'setup.colMode'),
-            t(language, 'setup.colLicences'),
-            t(language, 'setup.colStatus')
+            t(language, "setup.colMode"),
+            t(language, "setup.colLicences"),
+            t(language, "setup.colStatus"),
           ],
           rijen: modi.map((naam) => ({
             id: naam,
@@ -2507,25 +2717,27 @@ export function App(): JSX.Element {
                * als ontbrekende gegevens, terwijl het antwoord gewoon is dat
                * deze modus geen vergunningen kent.
                */
-              naam === 'career'
+              naam === "career"
                 ? String(career?.summary?.licences ?? 0)
-                : t(language, 'setup.modeNoLicences'),
-              active && (active.mode ?? 'service') === naam ? t(language, 'setup.modeRunning') : ''
-            ] as [string, string, string]
+                : t(language, "setup.modeNoLicences"),
+              active && (active.mode ?? "service") === naam
+                ? t(language, "setup.modeRunning")
+                : "",
+            ] as [string, string, string],
           })),
           index: Math.max(0, modi.indexOf(mode)),
-          kies: (index) => setMode(modi[index] ?? 'service'),
+          kies: (index) => setMode(modi[index] ?? "service"),
           /*
            * De voet vertelt wat de aangewezen modus betekent. Het oude scherm
            * zette die uitleg onder elke kaart; hier is maar één regel nodig,
            * want er is er ook maar één aangewezen.
            */
           voet: t(language, `mode.${mode}Intro` as const),
-          verder: () => setScreen('drive'),
-          knop: t(language, 'setup.next')
-        }
+          verder: () => setScreen("drive"),
+          knop: t(language, "setup.next"),
+        };
       }
-      if (stap === 'map') {
+      if (stap === "map") {
         /*
          * Dezelfde stap, twee vormen.
          *
@@ -2537,29 +2749,34 @@ export function App(): JSX.Element {
          * tegel doet hetzelfde als een regel: hij kiest de kaart en gaat door.
          */
         const naarVolgende = (): void =>
-          setStap(mode === 'free' ? 'line' : mode === 'career' ? 'licence' : 'duty')
-        const gekozenKaart = maps.find((item) => item.folder === mapFolder)
+          setStap(
+            mode === "free" ? "line" : mode === "career" ? "licence" : "duty",
+          );
+        const gekozenKaart = maps.find((item) => item.folder === mapFolder);
         const wisselaar = (
           <div
             className="weergavekeuze"
             role="group"
-            aria-label={t(language, 'setup.viewSwitch')}
+            aria-label={t(language, "setup.viewSwitch")}
           >
-            {(['lijst', 'tegels'] as const).map((vorm) => (
+            {(["lijst", "tegels"] as const).map((vorm) => (
               <button
                 key={vorm}
                 type="button"
                 aria-pressed={kaartweergave === vorm}
                 onClick={() => kiesKaartweergave(vorm)}
               >
-                {t(language, vorm === 'lijst' ? 'setup.viewList' : 'setup.viewTiles')}
+                {t(
+                  language,
+                  vorm === "lijst" ? "setup.viewList" : "setup.viewTiles",
+                )}
               </button>
             ))}
           </div>
-        )
+        );
         return {
-          stap: 'map',
-          titel: t(language, 'setup.mapTitle'),
+          stap: "map",
+          titel: t(language, "setup.mapTitle"),
           /*
            * Bovenin staat welke kaart het is.
            *
@@ -2570,20 +2787,23 @@ export function App(): JSX.Element {
            * jaar erbij. Zonder keuze staat de vraag er nog.
            */
           onderschrift: gekozenKaart
-            ? `${gekozenKaart.name} · ${t(language, 'setup.mapTile', {
+            ? `${gekozenKaart.name} · ${t(language, "setup.mapTile", {
                 count: gekozenKaart.tours,
-                year: gekozenKaart.year
+                year: gekozenKaart.year,
               })}`
-            : t(language, 'setup.mapIntro'),
+            : t(language, "setup.mapIntro"),
           regelaars: wisselaar,
           tegels:
-            kaartweergave === 'tegels'
+            kaartweergave === "tegels"
               ? maps.map((item) => ({
                   id: item.folder,
                   titel: item.name,
                   /* De afbeelding die OMSI zelf bij de kaart heeft staan. */
                   beeld: `omsikaart://kaart/${encodeURIComponent(item.folder)}`,
-                  onder: t(language, 'setup.mapTile', { count: item.tours, year: item.year }),
+                  onder: t(language, "setup.mapTile", {
+                    count: item.tours,
+                    year: item.year,
+                  }),
                   gekozen: item.folder === mapFolder,
                   /*
                    * Een tegel kiest de kaart, en verder niets.
@@ -2594,21 +2814,28 @@ export function App(): JSX.Element {
                    * is staat bovenin. Het overzicht met het net komt bij de
                    * stap erna, waar het altijd al stond.
                    */
-                  onDoen: () => setMapFolder(item.folder)
+                  onDoen: () => setMapFolder(item.folder),
                 }))
               : undefined,
           koppen: [
-            t(language, 'setup.colMap'),
-            t(language, 'setup.colTours'),
-            t(language, 'setup.colYear')
+            t(language, "setup.colMap"),
+            t(language, "setup.colTours"),
+            t(language, "setup.colYear"),
           ],
           rijen: maps.map((item) => ({
             id: item.folder,
-            cellen: [item.name, String(item.tours), String(item.year)] as [string, string, string]
+            cellen: [item.name, String(item.tours), String(item.year)] as [
+              string,
+              string,
+              string,
+            ],
           })),
-          index: Math.max(0, maps.findIndex((item) => item.folder === mapFolder)),
-          kies: (index) => setMapFolder(maps[index]?.folder ?? ''),
-          voet: checked ?? t(language, 'setup.mapFoot', { count: maps.length }),
+          index: Math.max(
+            0,
+            maps.findIndex((item) => item.folder === mapFolder),
+          ),
+          kies: (index) => setMapFolder(maps[index]?.folder ?? ""),
+          voet: checked ?? t(language, "setup.mapFoot", { count: maps.length }),
           /*
            * Opnieuw kijken wat er staat.
            *
@@ -2619,11 +2846,11 @@ export function App(): JSX.Element {
            * staan, op de plek waar toch al staat hoeveel kaarten er zijn.
            */
           tweede: {
-            tekst: t(language, checking ? 'check.busy' : 'check.button'),
+            tekst: t(language, checking ? "check.busy" : "check.button"),
             onDoen: () => {
-              if (checking) return
-              void checkInstalled()
-            }
+              if (checking) return;
+              void checkInstalled();
+            },
           },
           /*
            * Waar de kaart op uitkomt verschilt per modus: in dienst meteen op
@@ -2631,43 +2858,52 @@ export function App(): JSX.Element {
            * rijden op de lijn.
            */
           verder: naarVolgende,
-          knop: t(language, 'setup.next')
-        }
+          knop: t(language, "setup.next"),
+        };
       }
-      if (stap === 'line') {
+      if (stap === "line") {
         return {
-          stap: 'line',
-          titel: t(language, 'setup.lineTitle'),
-          onderschrift: t(language, 'setup.lineIntro'),
+          stap: "line",
+          titel: t(language, "setup.lineTitle"),
+          onderschrift: t(language, "setup.lineIntro"),
           koppen: [
-            t(language, 'setup.colLine'),
-            t(language, 'setup.colTrips'),
-            t(language, 'setup.colAverage')
+            t(language, "setup.colLine"),
+            t(language, "setup.colTrips"),
+            t(language, "setup.colAverage"),
           ],
           /*
            * Bij vrij rijden hoort "geen lijn" er ook bij, en bovenaan: rijden
            * zonder dienstregeling is daar geen restje maar het uitgangspunt.
            * In de andere modi bestaat deze stap niet.
            */
-          rijen: (mode === 'free'
-            ? [{ lineFile: '', lineNumbers: [t(language, 'setup.noLine')], trips: 0, averageMinutes: 0 } as LineSummary]
+          rijen: (mode === "free"
+            ? [
+                {
+                  lineFile: "",
+                  lineNumbers: [t(language, "setup.noLine")],
+                  trips: 0,
+                  averageMinutes: 0,
+                } as LineSummary,
+              ]
             : []
           )
             .concat(lines)
             .map((item) => ({
-              id: item.lineFile || 'geen',
+              id: item.lineFile || "geen",
               cellen: [
-                item.lineNumbers.join(', ') || item.lineFile,
-                item.lineFile ? String(item.trips) : '—',
-                item.lineFile ? formatDuration(item.averageMinutes, language) : '—'
+                item.lineNumbers.join(", ") || item.lineFile,
+                item.lineFile ? String(item.trips) : "—",
+                item.lineFile
+                  ? formatDuration(item.averageMinutes, language)
+                  : "—",
               ] as [string, string, string],
-              klok: Boolean(item.lineFile)
+              klok: Boolean(item.lineFile),
             })),
           index: Math.max(
             0,
-            (mode === 'free' ? [{ lineFile: '' } as LineSummary] : [])
+            (mode === "free" ? [{ lineFile: "" } as LineSummary] : [])
               .concat(lines)
-              .findIndex((item) => item.lineFile === lineFile)
+              .findIndex((item) => item.lineFile === lineFile),
           ),
           kies: (index) => {
             /*
@@ -2675,38 +2911,41 @@ export function App(): JSX.Element {
              * ene aanroep, alleen eerder -- en daardoor licht de route van de
              * aangeklikte lijn op de kaart op, wat dit scherm belooft.
              */
-            const keuze = (mode === 'free' ? [{ lineFile: '' } as LineSummary] : []).concat(lines)
-            const gekozenLijn = keuze[index]?.lineFile ?? ''
-            setLineFile(gekozenLijn)
+            const keuze = (
+              mode === "free" ? [{ lineFile: "" } as LineSummary] : []
+            ).concat(lines);
+            const gekozenLijn = keuze[index]?.lineFile ?? "";
+            setLineFile(gekozenLijn);
             // Bij vrij rijden hoort hier geen dienst gezocht te worden.
-            if (gekozenLijn && mode !== 'free') void generate(gekozenLijn)
+            if (gekozenLijn && mode !== "free") void generate(gekozenLijn);
           },
-          voet: t(language, 'setup.lineFoot', {
-            map: selectedMap?.name ?? '',
-            count: lines.length
+          voet: t(language, "setup.lineFoot", {
+            map: selectedMap?.name ?? "",
+            count: lines.length,
           }),
           verder: () => {
             /*
              * Bij vrij rijden valt er niets te zoeken: de volgende stap vraagt
              * waar en wanneer je wilt rijden, niet welke dienst je neemt.
              */
-            if (mode === 'free') {
-              setStap('duty')
-              return
+            if (mode === "free") {
+              setStap("duty");
+              return;
             }
             /*
              * Wie een lijn aanklikt heeft de diensten al; wie meteen op Verder
              * drukt nog niet. Dan halen we ze alsnog op, want een dienststap
              * zonder diensten is geen stap maar een muur.
              */
-            if (duties.length > 0) setStap('duty')
-            else void generate(lineFile || undefined).then(() => setStap('duty'))
+            if (duties.length > 0) setStap("duty");
+            else
+              void generate(lineFile || undefined).then(() => setStap("duty"));
           },
-          knop: t(language, 'setup.next')
-        }
+          knop: t(language, "setup.next"),
+        };
       }
-      if (stap === 'bus') {
-        const ontleed = bussen.map((bus) => ({ bus, ...ontleedBus(bus) }))
+      if (stap === "bus") {
+        const ontleed = bussen.map((bus) => ({ bus, ...ontleedBus(bus) }));
 
         /*
          * De bus die de app zelf zou kiezen: die past het best bij de dienst.
@@ -2715,28 +2954,31 @@ export function App(): JSX.Element {
          * anders moet je drie schermen diep zoeken naar wat de app bedoelde.
          */
         /*
-     * Wat er voor deze ene bus te halen valt. Uit het kaartbrede overzicht en
-     * niet uit `busAanbod`: dat laatste verdwijnt zodra je het venstertje hebt
-     * weggeklikt, en de tegel hoort te blijven staan.
-     */
-    /*
-     * Het aanbod voor deze dienst gaat voor: dat gaat over de bestemmingen die
-     * op het scherm staan. Is daar niets, dan blijft het kaartbrede aanbod over
-     * -- dat helpt je op de volgende dienst van dezelfde kaart.
-     */
-    const busHofAanbod = vehicle
-      ? (ritAanbod ?? hofAanbod.find((item) => item.folder === vehicle.folder))
-      : undefined
+         * Wat er voor deze ene bus te halen valt. Uit het kaartbrede overzicht en
+         * niet uit `busAanbod`: dat laatste verdwijnt zodra je het venstertje hebt
+         * weggeklikt, en de tegel hoort te blijven staan.
+         */
+        /*
+         * Het aanbod voor deze dienst gaat voor: dat gaat over de bestemmingen die
+         * op het scherm staan. Is daar niets, dan blijft het kaartbrede aanbod over
+         * -- dat helpt je op de volgende dienst van dezelfde kaart.
+         */
+        const busHofAanbod = vehicle
+          ? (ritAanbod ??
+            hofAanbod.find((item) => item.folder === vehicle.folder))
+          : undefined;
 
-    const tipBus = mode === 'free' ? vrijeTip : assignment?.vehicle
-        const beste = tipBus ? ontleedBus(tipBus) : undefined
-        const nuGekozen = vehicleOverride || (mode === 'free' ? vrijeTip?.relativePath : vehicle?.relativePath)
+        const tipBus = mode === "free" ? vrijeTip : assignment?.vehicle;
+        const beste = tipBus ? ontleedBus(tipBus) : undefined;
+        const nuGekozen =
+          vehicleOverride ||
+          (mode === "free" ? vrijeTip?.relativePath : vehicle?.relativePath);
         const gekozenOntleed = nuGekozen
           ? ontleed.find((item) => item.bus.relativePath === nuGekozen)
-          : undefined
+          : undefined;
         /** Het onderschrift van een tegel, met de aanbeveling erachter. */
         const metTip = (tekst: string, isBeste: boolean): string =>
-          isBeste ? `${tekst} · ${t(language, 'setup.yardSuggested')}` : tekst
+          isBeste ? `${tekst} · ${t(language, "setup.yardSuggested")}` : tekst;
 
         /*
          * Het hof-bestand bepaalt welke eindbestemmingen op het matrixbord
@@ -2753,77 +2995,85 @@ export function App(): JSX.Element {
          * niets en kiest OMSI zelf. Elke tegel krijgt de bus in die kleuren,
          * getekend met de texturen van de kleurstelling.
          */
-        const kleurLijst = kleurBus ? kleurLijsten[kleurBus] : undefined
-        const kleurItem = kleurBus ? ontleed.find((item) => item.bus.relativePath === kleurBus) : undefined
-        if (busScherm === 'kleur' && kleurBus && kleurLijst && kleurItem) {
+        const kleurLijst = kleurBus ? kleurLijsten[kleurBus] : undefined;
+        const kleurItem = kleurBus
+          ? ontleed.find((item) => item.bus.relativePath === kleurBus)
+          : undefined;
+        if (busScherm === "kleur" && kleurBus && kleurLijst && kleurItem) {
           const namen = kleurLijst.lijst
             .map((item) => item.naam)
-            .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
-          for (const naam of namen) vraagBusfoto(kleurBus, naam)
-          const gekozenKleur = busKleur?.pad === kleurBus ? busKleur.naam : undefined
+            .sort((a, b) =>
+              a.localeCompare(b, undefined, { sensitivity: "base" }),
+            );
+          for (const naam of namen) vraagBusfoto(kleurBus, naam);
+          const gekozenKleur =
+            busKleur?.pad === kleurBus ? busKleur.naam : undefined;
           return {
             ...leegBus,
             regelaars: undefined,
-            stap: 'bus' as Stap,
+            stap: "bus" as Stap,
             titel: kleurItem.uitvoering,
-            onderschrift: t(language, 'setup.busPickPaint', { aantal: namen.length }),
+            onderschrift: t(language, "setup.busPickPaint", {
+              aantal: namen.length,
+            }),
             kruimels: [
               {
-                label: t(language, 'setup.busTitle'),
+                label: t(language, "setup.busTitle"),
                 onDoen: () => {
-                  setBusScherm('bus')
-                  setBusMerk(undefined)
-                  setBusType(undefined)
-                }
+                  setBusScherm("bus");
+                  setBusMerk(undefined);
+                  setBusType(undefined);
+                },
               },
               {
                 label: kleurItem.merk,
                 onDoen: () => {
-                  setBusScherm('bus')
-                  setBusMerk(kleurItem.merk)
-                  setBusType(undefined)
-                }
+                  setBusScherm("bus");
+                  setBusMerk(kleurItem.merk);
+                  setBusType(undefined);
+                },
               },
               {
                 label: kleurItem.type,
                 onDoen: () => {
-                  setBusScherm('bus')
-                  setBusMerk(kleurItem.merk)
-                  setBusType(kleurItem.type)
-                }
+                  setBusScherm("bus");
+                  setBusMerk(kleurItem.merk);
+                  setBusType(kleurItem.type);
+                },
               },
-              { label: kleurItem.uitvoering }
+              { label: kleurItem.uitvoering },
             ],
             tegels: [
               {
-                id: '__standaard',
-                titel: t(language, 'setup.paintDefault'),
-                onder: kleurItem.bus.paint || t(language, 'setup.paintDefaultSub'),
+                id: "__standaard",
+                titel: t(language, "setup.paintDefault"),
+                onder:
+                  kleurItem.bus.paint || t(language, "setup.paintDefaultSub"),
                 beeld: busFotos[kleurBus],
-                vorm: busvorm(kleurItem.type + ' ' + kleurItem.uitvoering),
+                vorm: busvorm(kleurItem.type + " " + kleurItem.uitvoering),
                 gekozen: !gekozenKleur,
                 onDoen: () => {
-                  setBusKleur(undefined)
-                  setBusScherm('hof')
-                }
+                  setBusKleur(undefined);
+                  setBusScherm("hof");
+                },
               },
               ...namen.map((naam) => ({
                 id: naam,
                 titel: naam,
                 onder: kleurItem.uitvoering,
                 beeld: busFotos[`${kleurBus}|${naam}`],
-                vorm: busvorm(kleurItem.type + ' ' + kleurItem.uitvoering),
+                vorm: busvorm(kleurItem.type + " " + kleurItem.uitvoering),
                 gekozen: gekozenKleur === naam,
                 onDoen: () => {
-                  setBusKleur({ pad: kleurBus, naam })
-                  setBusScherm('hof')
-                }
-              }))
-            ]
-          }
+                  setBusKleur({ pad: kleurBus, naam });
+                  setBusScherm("hof");
+                },
+              })),
+            ],
+          };
         }
 
-        if (busScherm === 'hof') {
+        if (busScherm === "hof") {
           /*
            * De app heeft de remise al gekozen -- `yardOverride` leeg betekent
            * "neem de best passende". Dit scherm laat alleen zien welke dat is
@@ -2833,53 +3083,62 @@ export function App(): JSX.Element {
             ...leegBus,
             // Over het hof-bestand, niet over plaatjes: de knop hoort hier niet.
             regelaars: undefined,
-            stap: 'bus' as Stap,
-            titel: t(language, 'setup.yardTitle'),
-            onderschrift: t(language, 'setup.yardIntro'),
+            stap: "bus" as Stap,
+            titel: t(language, "setup.yardTitle"),
+            onderschrift: t(language, "setup.yardIntro"),
             kruimels: [
               {
-                label: t(language, 'setup.busTitle'),
+                label: t(language, "setup.busTitle"),
                 onDoen: () => {
-                  setBusScherm('bus')
-                  setBusMerk(undefined)
-                  setBusType(undefined)
-                }
+                  setBusScherm("bus");
+                  setBusMerk(undefined);
+                  setBusType(undefined);
+                },
               },
               ...(busMerk
                 ? [
                     {
                       label: busMerk,
                       onDoen: () => {
-                        setBusScherm('bus')
-                        setBusType(undefined)
-                      }
-                    }
+                        setBusScherm("bus");
+                        setBusType(undefined);
+                      },
+                    },
                   ]
                 : []),
               ...(busType
-                ? [{ label: busType, onDoen: () => setBusScherm('bus') }]
+                ? [{ label: busType, onDoen: () => setBusScherm("bus") }]
                 : []),
               ...(kleurBus && kleurLijst && kleurBus === vehicle?.relativePath
                 ? [
                     {
                       label:
-                        busKleur?.pad === kleurBus ? busKleur.naam : t(language, 'setup.paintDefault'),
-                      onDoen: () => setBusScherm('kleur')
-                    }
+                        busKleur?.pad === kleurBus
+                          ? busKleur.naam
+                          : t(language, "setup.paintDefault"),
+                      onDoen: () => setBusScherm("kleur"),
+                    },
                   ]
                 : []),
-              { label: t(language, 'setup.yardTitle') }
+              { label: t(language, "setup.yardTitle") },
             ],
             tegels: [
               ...yards.map((optie) => ({
                 id: optie.name,
                 titel: optie.name,
                 onder:
-                  t(language, 'setup.yardKnows', { known: optie.known, total: optie.total }) +
-                  (optie.suggested ? ` · ${t(language, 'setup.yardSuggested')}` : ''),
-                icoon: 'hof' as const,
-                gekozen: (yardOverride || yards.find((y) => y.suggested)?.name) === optie.name,
-                onDoen: () => setYardOverride(optie.name)
+                  t(language, "setup.yardKnows", {
+                    known: optie.known,
+                    total: optie.total,
+                  }) +
+                  (optie.suggested
+                    ? ` · ${t(language, "setup.yardSuggested")}`
+                    : ""),
+                icoon: "hof" as const,
+                gekozen:
+                  (yardOverride || yards.find((y) => y.suggested)?.name) ===
+                  optie.name,
+                onDoen: () => setYardOverride(optie.name),
               })),
               /*
                * En er een bij halen.
@@ -2906,66 +3165,70 @@ export function App(): JSX.Element {
               ...(vehicle && duty
                 ? [
                     {
-                      id: '__nieuw__',
-                      titel: t(language, 'setup.yardAdd'),
+                      id: "__nieuw__",
+                      titel: t(language, "setup.yardAdd"),
                       onder: hofBezig
-                        ? t(language, 'setup.hofBusy')
+                        ? t(language, "setup.hofBusy")
                         : ritKandidaat
-                          ? t(language, 'setup.yardAddFrom', {
+                          ? t(language, "setup.yardAddFrom", {
                               file: ritKandidaat.file,
-                              matched: ritKandidaat.matched
+                              matched: ritKandidaat.matched,
                             })
                           : busHofAanbod
-                            ? t(language, 'setup.yardAddFrom', {
-                                file: busHofAanbod.offerFile ?? '',
-                                matched: busHofAanbod.offerMatched ?? 0
+                            ? t(language, "setup.yardAddFrom", {
+                                file: busHofAanbod.offerFile ?? "",
+                                matched: busHofAanbod.offerMatched ?? 0,
                               })
-                            : t(language, 'setup.yardAddNone'),
-                      icoon: 'hof' as const,
+                            : t(language, "setup.yardAddNone"),
+                      icoon: "hof" as const,
                       /* Al aanwezig of niets gevonden: dan is er niets te doen. */
                       uit: ritKandidaat?.alAanwezig
-                        ? t(language, 'setup.yardAddHave', { file: ritKandidaat.file })
+                        ? t(language, "setup.yardAddHave", {
+                            file: ritKandidaat.file,
+                          })
                         : ritKandidaat || busHofAanbod
                           ? undefined
-                          : t(language, 'setup.yardAddNone'),
+                          : t(language, "setup.yardAddNone"),
                       onDoen: () => {
-                        if (hofBezig) return
-                        setHofBezig(true)
+                        if (hofBezig) return;
+                        setHofBezig(true);
                         void window.career
                           .placeHofCandidate(duty, vehicle.folder)
                           .then((result) => {
                             setNote(
                               result.placed > 0 && result.file
-                                ? t(language, 'setup.yardAdded', { file: result.file })
-                                : t(language, 'setup.yardAddNone')
-                            )
+                                ? t(language, "setup.yardAdded", {
+                                    file: result.file,
+                                  })
+                                : t(language, "setup.yardAddNone"),
+                            );
                             /*
                              * De lijst wagenparken van deze bus opnieuw ophalen;
                              * er ligt er nu een bij, en die hoort meteen naast
                              * de andere te staan.
                              */
-                            setHofTeller((n) => n + 1)
+                            setHofTeller((n) => n + 1);
                           })
-                          .finally(() => setHofBezig(false))
-                      }
-                    }
+                          .finally(() => setHofBezig(false));
+                      },
+                    },
                   ]
-                : [])
-            ]
-          }
+                : []),
+            ],
+          };
         }
-
 
         /* Niveau een: de merken, met hoeveel bussen er onder hangen. */
         if (!busMerk) {
-          const merken = new Map<string, number>()
-          for (const item of ontleed) merken.set(item.merk, (merken.get(item.merk) ?? 0) + 1)
+          const merken = new Map<string, number>();
+          for (const item of ontleed)
+            merken.set(item.merk, (merken.get(item.merk) ?? 0) + 1);
           return {
             ...leegBus,
-            stap: 'bus' as Stap,
-            titel: t(language, 'setup.busTitle'),
-            onderschrift: t(language, 'setup.busIntro'),
-            kruimels: [{ label: t(language, 'setup.busTitle') }],
+            stap: "bus" as Stap,
+            titel: t(language, "setup.busTitle"),
+            onderschrift: t(language, "setup.busIntro"),
+            kruimels: [{ label: t(language, "setup.busTitle") }],
             /*
              * Alleen als er werkelijk iets te halen valt. Staat alles goed, dan
              * hoort hier niets te staan: een knop die niets doet is erger dan
@@ -2974,8 +3237,10 @@ export function App(): JSX.Element {
             tweede:
               hofAanbod.length > 0
                 ? {
-                    tekst: t(language, 'setup.hofOffer', { count: hofAanbod.length }),
-                    onDoen: () => setBusScherm('overzetten')
+                    tekst: t(language, "setup.hofOffer", {
+                      count: hofAanbod.length,
+                    }),
+                    onDoen: () => setBusScherm("overzetten"),
                   }
                 : undefined,
             tegels: [...merken.entries()]
@@ -2984,36 +3249,43 @@ export function App(): JSX.Element {
                 id: merk,
                 titel: merk,
                 onder: metTip(
-                  t(language, aantal === 1 ? 'setup.busCountOne' : 'setup.busCount', {
-                    count: aantal
-                  }),
-                  merk === beste?.merk
+                  t(
+                    language,
+                    aantal === 1 ? "setup.busCountOne" : "setup.busCount",
+                    {
+                      count: aantal,
+                    },
+                  ),
+                  merk === beste?.merk,
                 ),
                 monogram: merk,
                 gekozen: merk === gekozenOntleed?.merk,
                 onDoen: () => {
-                  setBusScherm('bus')
-                  setBusMerk(merk)
-                }
-              }))
-          }
+                  setBusScherm("bus");
+                  setBusMerk(merk);
+                },
+              })),
+          };
         }
 
         /* Niveau twee: de types van dat merk. */
         if (!busType) {
-          const types = new Map<string, number>()
+          const types = new Map<string, number>();
           for (const item of ontleed) {
-            if (item.merk !== busMerk) continue
-            types.set(item.type, (types.get(item.type) ?? 0) + 1)
+            if (item.merk !== busMerk) continue;
+            types.set(item.type, (types.get(item.type) ?? 0) + 1);
           }
           return {
             ...leegBus,
-            stap: 'bus' as Stap,
+            stap: "bus" as Stap,
             titel: busMerk,
-            onderschrift: t(language, 'setup.busPickType'),
+            onderschrift: t(language, "setup.busPickType"),
             kruimels: [
-              { label: t(language, 'setup.busTitle'), onDoen: () => setBusMerk(undefined) },
-              { label: busMerk }
+              {
+                label: t(language, "setup.busTitle"),
+                onDoen: () => setBusMerk(undefined),
+              },
+              { label: busMerk },
             ],
             tegels: [...types.entries()]
               .sort((a, b) => a[0].localeCompare(b[0]))
@@ -3021,62 +3293,69 @@ export function App(): JSX.Element {
                 id: type,
                 titel: type,
                 onder: metTip(
-                  t(language, aantal === 1 ? 'setup.busCountOne' : 'setup.busCount', {
-                    count: aantal
-                  }),
-                  busMerk === beste?.merk && type === beste?.type
+                  t(
+                    language,
+                    aantal === 1 ? "setup.busCountOne" : "setup.busCount",
+                    {
+                      count: aantal,
+                    },
+                  ),
+                  busMerk === beste?.merk && type === beste?.type,
                 ),
-                vorm: busvorm(busMerk + ' ' + type),
-                gekozen: busMerk === gekozenOntleed?.merk && type === gekozenOntleed?.type,
+                vorm: busvorm(busMerk + " " + type),
+                gekozen:
+                  busMerk === gekozenOntleed?.merk &&
+                  type === gekozenOntleed?.type,
                 onDoen: () => {
-                  setBusScherm('bus')
-                  setBusType(type)
-                }
-              }))
-          }
+                  setBusScherm("bus");
+                  setBusType(type);
+                },
+              })),
+          };
         }
 
         /* Niveau drie: de uitvoeringen, en daar kies je er echt een. */
         const uitvoeringen = ontleed.filter(
-          (item) => item.merk === busMerk && item.type === busType
-        )
+          (item) => item.merk === busMerk && item.type === busType,
+        );
         /*
          * De foto's erbij vragen zodra dit scherm er is. Eén tegelijk, achter
          * elkaar; het hoofdproces zet ze in de rij en bewaart ze op schijf.
          */
         for (const item of uitvoeringen) {
-          vraagBusfoto(item.bus.relativePath)
+          vraagBusfoto(item.bus.relativePath);
           // De lijst met kleurstellingen alvast, voor het aantal op de tegel.
           if (!gevraagdeKleuren.current.has(item.bus.relativePath)) {
-            void vraagKleurstellingen(item.bus.relativePath)
+            void vraagKleurstellingen(item.bus.relativePath);
           }
         }
         return {
           ...leegBus,
-          stap: 'bus' as Stap,
+          stap: "bus" as Stap,
           titel: busType,
-          onderschrift: t(language, 'setup.busPickTrim'),
+          onderschrift: t(language, "setup.busPickTrim"),
           kruimels: [
             {
-              label: t(language, 'setup.busTitle'),
+              label: t(language, "setup.busTitle"),
               onDoen: () => {
-                setBusMerk(undefined)
-                setBusType(undefined)
-              }
+                setBusMerk(undefined);
+                setBusType(undefined);
+              },
             },
             { label: busMerk, onDoen: () => setBusType(undefined) },
-            { label: busType }
+            { label: busType },
           ],
           tegels: uitvoeringen.map((item) => ({
             id: item.bus.relativePath,
             titel: item.uitvoering,
             onder: metTip(
               kleurLijsten[item.bus.relativePath]
-                ? t(language, 'setup.paintCount', {
-                    aantal: kleurLijsten[item.bus.relativePath]?.lijst.length ?? 0
+                ? t(language, "setup.paintCount", {
+                    aantal:
+                      kleurLijsten[item.bus.relativePath]?.lijst.length ?? 0,
                   })
                 : item.bus.paint,
-              item.bus.relativePath === assignment?.vehicle?.relativePath
+              item.bus.relativePath === assignment?.vehicle?.relativePath,
             ),
             /*
              * De bus zelf op de tegel.
@@ -3087,29 +3366,31 @@ export function App(): JSX.Element {
              * zijn eigen model; tot dat plaatje er is blijft het icoon staan.
              */
             beeld: busFotos[item.bus.relativePath],
-            vorm: busvorm(item.type + ' ' + item.uitvoering),
-            gekozen: (vehicleOverride || vehicle?.relativePath) === item.bus.relativePath,
+            vorm: busvorm(item.type + " " + item.uitvoering),
+            gekozen:
+              (vehicleOverride || vehicle?.relativePath) ===
+              item.bus.relativePath,
             onDoen: () => {
               /*
                * De bus vastleggen. Heeft hij kleurstellingen, dan eerst die
                * keuze, zoals "Appearance" in OMSI; anders meteen door naar de
                * remise, het laatste dat nog kan verschillen.
                */
-              const pad = item.bus.relativePath
-              setVehicleOverride(pad)
-              setBusKleur((oud) => (oud?.pad === pad ? oud : undefined))
+              const pad = item.bus.relativePath;
+              setVehicleOverride(pad);
+              setBusKleur((oud) => (oud?.pad === pad ? oud : undefined));
               void vraagKleurstellingen(pad).then((lijst) => {
                 if (lijst && lijst.lijst.length > 0) {
-                  setKleurBus(pad)
-                  setBusScherm('kleur')
+                  setKleurBus(pad);
+                  setBusScherm("kleur");
                 } else {
-                  setKleurBus(undefined)
-                  setBusScherm('hof')
+                  setKleurBus(undefined);
+                  setBusScherm("hof");
                 }
-              })
-            }
-          }))
-        }
+              });
+            },
+          })),
+        };
       }
 
       /*
@@ -3125,41 +3406,52 @@ export function App(): JSX.Element {
        * zonder rijexamen valt er niets te rijden, dus is er ook niets te tonen
        * behalve de weg daarheen.
        */
-      if (stap === 'licence') {
-        const vergunningen = career?.state?.licences ?? []
-        const hier = vergunningen.filter((item) => item.mapFolder === mapFolder)
+      if (stap === "licence") {
+        const vergunningen = career?.state?.licences ?? [];
+        const hier = vergunningen.filter(
+          (item) => item.mapFolder === mapFolder,
+        );
         const teLeren = lines.filter(
-          (lijn) => !hier.some((item) => item.lineFile === lijn.lineFile)
-        )
+          (lijn) => !hier.some((item) => item.lineFile === lijn.lineFile),
+        );
         // Een vergunning waar dan ook betekent: het rijexamen is gehaald.
-        const gekwalificeerd = vergunningen.length > 0
-        const examenNu = examenScherm || !gekwalificeerd || hier.length === 0
-        const examenKeuze = teLeren.find((lijn) => lijn.lineFile === examenLijn) ?? teLeren[0]
+        const gekwalificeerd = vergunningen.length > 0;
+        const examenNu = examenScherm || !gekwalificeerd || hier.length === 0;
+        const examenKeuze =
+          teLeren.find((lijn) => lijn.lineFile === examenLijn) ?? teLeren[0];
 
         if (examenNu) {
           return {
-            stap: 'licence' as Stap,
-            titel: t(language, gekwalificeerd ? 'exam.lineTitle' : 'exam.title'),
-            onderschrift: t(language, gekwalificeerd ? 'exam.lineIntro' : 'exam.intro'),
+            stap: "licence" as Stap,
+            titel: t(
+              language,
+              gekwalificeerd ? "exam.lineTitle" : "exam.title",
+            ),
+            onderschrift: t(
+              language,
+              gekwalificeerd ? "exam.lineIntro" : "exam.intro",
+            ),
             koppen: [
-              t(language, 'setup.colLine'),
-              t(language, 'setup.colTrips'),
-              t(language, 'setup.colAverage')
+              t(language, "setup.colLine"),
+              t(language, "setup.colTrips"),
+              t(language, "setup.colAverage"),
             ],
             rijen: teLeren.map((lijn) => ({
               id: lijn.lineFile,
               cellen: [
-                lijn.lineNumbers.join(', ') || lijn.lineFile,
+                lijn.lineNumbers.join(", ") || lijn.lineFile,
                 String(lijn.trips),
-                formatDuration(lijn.averageMinutes, language)
+                formatDuration(lijn.averageMinutes, language),
               ] as [string, string, string],
-              klok: true
+              klok: true,
             })),
             index: Math.max(
               0,
-              teLeren.findIndex((lijn) => lijn.lineFile === examenKeuze?.lineFile)
+              teLeren.findIndex(
+                (lijn) => lijn.lineFile === examenKeuze?.lineFile,
+              ),
             ),
-            kies: (index) => setExamenLijn(teLeren[index]?.lineFile ?? ''),
+            kies: (index) => setExamenLijn(teLeren[index]?.lineFile ?? ""),
             /*
              * Waar je op beoordeeld wordt, in een regel. De oude wereld zette
              * daar een lijstje van vier voor; dat is hetzelfde vier keer zo
@@ -3168,32 +3460,39 @@ export function App(): JSX.Element {
              */
             voet:
               teLeren.length === 0
-                ? t(language, 'setup.examNone', { map: selectedMap?.name ?? '' })
-                : t(language, 'setup.examFoot', { delay: EXAM_LIMITS.delayMinutes }),
+                ? t(language, "setup.examNone", {
+                    map: selectedMap?.name ?? "",
+                  })
+                : t(language, "setup.examFoot", {
+                    delay: EXAM_LIMITS.delayMinutes,
+                  }),
             /*
              * Terug naar je vergunningen -- maar alleen als je er hier hebt.
              * Wie nog niets heeft, kan nergens heen terug.
              */
             tweede:
               gekwalificeerd && hier.length > 0
-                ? { tekst: t(language, 'pick.cancel'), onDoen: () => setExamenScherm(false) }
+                ? {
+                    tekst: t(language, "pick.cancel"),
+                    onDoen: () => setExamenScherm(false),
+                  }
                 : undefined,
             verder: () => {
-              if (!examenKeuze || busy) return
-              void doeExamen(examenKeuze, !gekwalificeerd)
+              if (!examenKeuze || busy) return;
+              void doeExamen(examenKeuze, !gekwalificeerd);
             },
-            knop: t(language, busy ? 'exam.searching' : 'exam.start')
-          }
+            knop: t(language, busy ? "exam.searching" : "exam.start"),
+          };
         }
 
         return {
-          stap: 'licence' as Stap,
-          titel: t(language, 'setup.licTitle'),
-          onderschrift: t(language, 'setup.licIntro'),
+          stap: "licence" as Stap,
+          titel: t(language, "setup.licTitle"),
+          onderschrift: t(language, "setup.licIntro"),
           koppen: [
-            t(language, 'setup.colLine'),
-            t(language, 'setup.colSince'),
-            t(language, 'setup.colKind')
+            t(language, "setup.colLine"),
+            t(language, "setup.colSince"),
+            t(language, "setup.colKind"),
           ],
           /*
            * Geen keuze maar een overzicht: de dienst loopt over al je lijnen
@@ -3204,30 +3503,33 @@ export function App(): JSX.Element {
           rijen: hier.map((item) => ({
             id: `${item.mapFolder}|${item.lineFile}`,
             cellen: [
-              item.lineNumbers.join(', ') || item.lineFile,
+              item.lineNumbers.join(", ") || item.lineFile,
               item.earnedAt.slice(0, 10),
-              t(language, item.basic ? 'setup.licKindBasic' : 'setup.licKindLine')
-            ] as [string, string, string]
+              t(
+                language,
+                item.basic ? "setup.licKindBasic" : "setup.licKindLine",
+              ),
+            ] as [string, string, string],
           })),
           index: 0,
           kies: () => {},
           voet: t(
             language,
             hier.length === 0
-              ? 'setup.licFootNone'
+              ? "setup.licFootNone"
               : hier.length === 1
-                ? 'setup.licFootOne'
-                : 'setup.licFoot',
-            { count: hier.length, map: selectedMap?.name ?? '' }
+                ? "setup.licFootOne"
+                : "setup.licFoot",
+            { count: hier.length, map: selectedMap?.name ?? "" },
           ),
           tweede:
             teLeren.length > 0
               ? {
-                  tekst: t(language, 'setup.licLearn'),
+                  tekst: t(language, "setup.licLearn"),
                   onDoen: () => {
-                    setExamenLijn('')
-                    setExamenScherm(true)
-                  }
+                    setExamenLijn("");
+                    setExamenScherm(true);
+                  },
                 }
               : undefined,
           /*
@@ -3236,11 +3538,11 @@ export function App(): JSX.Element {
            * carriere alleen de vergunde lijnen meegeeft.
            */
           verder: () => {
-            if (duties.length > 0) setStap('duty')
-            else void generate().then(() => setStap('duty'))
+            if (duties.length > 0) setStap("duty");
+            else void generate().then(() => setStap("duty"));
           },
-          knop: t(language, 'setup.next')
-        }
+          knop: t(language, "setup.next"),
+        };
       }
 
       /*
@@ -3255,27 +3557,30 @@ export function App(): JSX.Element {
        * De kaart blijft ernaast staan: waar je begint is een plek, en die hoort
        * te zien te zijn terwijl je hem aanwijst.
        */
-      if (mode === 'free') {
+      if (mode === "free") {
         return {
-          stap: 'duty' as Stap,
-          titel: t(language, 'setup.freeTitle'),
-          onderschrift: t(language, 'setup.freeIntro'),
-          koppen: ['', '', ''] as [string, string, string],
+          stap: "duty" as Stap,
+          titel: t(language, "setup.freeTitle"),
+          onderschrift: t(language, "setup.freeIntro"),
+          koppen: ["", "", ""] as [string, string, string],
           rijen: [],
           index: 0,
           kies: () => {},
-          voet: t(language, 'setup.freeFoot', {
-            map: selectedMap?.name ?? '',
-            time: vrijeTijd
+          voet: t(language, "setup.freeFoot", {
+            map: selectedMap?.name ?? "",
+            time: vrijeTijd,
           }),
-          verder: () => setStap('bus'),
-          knop: t(language, 'setup.next'),
+          verder: () => setStap("bus"),
+          knop: t(language, "setup.next"),
           vrij: (
             <div className="vrijerit">
               <label className="vrijveld">
-                <span>{t(language, 'free.stop')}</span>
-                <select value={vrijeHalte} onChange={(event) => setVrijeHalte(event.target.value)}>
-                  <option value="">{t(language, 'free.stopAuto')}</option>
+                <span>{t(language, "free.stop")}</span>
+                <select
+                  value={vrijeHalte}
+                  onChange={(event) => setVrijeHalte(event.target.value)}
+                >
+                  <option value="">{t(language, "free.stopAuto")}</option>
                   {vrijeHaltes.map((halte) => (
                     <option key={halte.id} value={halte.id}>
                       {halte.name}
@@ -3286,7 +3591,7 @@ export function App(): JSX.Element {
 
               <div className="vrijpaar">
                 <label className="vrijveld">
-                  <span>{t(language, 'free.date')}</span>
+                  <span>{t(language, "free.date")}</span>
                   <input
                     type="date"
                     value={vrijeDatum}
@@ -3294,7 +3599,7 @@ export function App(): JSX.Element {
                   />
                 </label>
                 <label className="vrijveld">
-                  <span>{t(language, 'free.time')}</span>
+                  <span>{t(language, "free.time")}</span>
                   <input
                     type="time"
                     value={vrijeTijd}
@@ -3304,7 +3609,7 @@ export function App(): JSX.Element {
               </div>
 
               <div className="vrijveld">
-                <span>{t(language, 'free.weather')}</span>
+                <span>{t(language, "free.weather")}</span>
                 <div className="regelaar-chips">
                   {WEATHER_KINDS.map((soort) => (
                     <button
@@ -3319,16 +3624,18 @@ export function App(): JSX.Element {
                 </div>
               </div>
 
-              {!lineFile && <p className="vrijnoot">{t(language, 'free.noLine')}</p>}
+              {!lineFile && (
+                <p className="vrijnoot">{t(language, "free.noLine")}</p>
+              )}
             </div>
-          )
-        }
+          ),
+        };
       }
 
       return {
-        stap: 'duty',
-        titel: `${t(language, 'setup.duties')}${gekozenDuty ? ` · ${gekozenDuty.lineNumbers[0] ?? ''}` : ''}`,
-        onderschrift: t(language, 'setup.pick'),
+        stap: "duty",
+        titel: `${t(language, "setup.duties")}${gekozenDuty ? ` · ${gekozenDuty.lineNumbers[0] ?? ""}` : ""}`,
+        onderschrift: t(language, "setup.pick"),
         /*
          * De dienstgenerator wandelt door het rittennet en geeft juist voorrang
          * aan een andere lijn -- zie `appetite` in core/duty.ts. Maar hoe lang
@@ -3340,7 +3647,9 @@ export function App(): JSX.Element {
           <>
             <div className="regelaar">
               <div className="regelaar-kop">
-                <label htmlFor="dienstlengte">{t(language, 'app.length')}</label>
+                <label htmlFor="dienstlengte">
+                  {t(language, "app.length")}
+                </label>
                 <span className="regelaar-waarde">
                   {formatDuration(LENGTHS[lengthIndex], language)}
                 </span>
@@ -3358,10 +3667,12 @@ export function App(): JSX.Element {
 
             <div className="regelaar">
               <div className="regelaar-kop">
-                <label>{t(language, 'app.daypart')}</label>
+                <label>{t(language, "app.daypart")}</label>
               </div>
               <div className="regelaar-chips">
-                {(Object.keys(TIME_WINDOWS) as Array<DutyRequest['window']>).map((key) => (
+                {(
+                  Object.keys(TIME_WINDOWS) as Array<DutyRequest["window"]>
+                ).map((key) => (
                   <button
                     key={key}
                     type="button"
@@ -3377,30 +3688,30 @@ export function App(): JSX.Element {
           </>
         ),
         koppen: [
-          t(language, 'setup.departure'),
-          t(language, 'setup.arrival'),
-          t(language, 'setup.duration')
+          t(language, "setup.departure"),
+          t(language, "setup.arrival"),
+          t(language, "setup.duration"),
         ],
         rijen: duties.map((item, index) => ({
           id: `${item.duty.tourNumber}-${item.duty.start}-${index}`,
           cellen: [
             formatTime(item.duty.start),
             formatTime(item.duty.end),
-            formatDuration(item.duty.durationMinutes, language)
+            formatDuration(item.duty.durationMinutes, language),
           ] as [string, string, string],
           klok: true,
           /*
            * En wat je in die dienst gaat doen. Alleen bij de regel die je
            * aanwijst -- acht van deze blokken tegelijk is geen lijst meer.
            */
-          detail: <Dienstoverzicht duty={item.duty} />
+          detail: <Dienstoverzicht duty={item.duty} />,
         })),
         index: gekozen,
         kies: setSelected,
         voet: t(
           language,
-          duties.length === 1 ? 'setup.availableOne' : 'setup.available',
-          { line: gekozenDuty?.lineNumbers[0] ?? '', count: duties.length }
+          duties.length === 1 ? "setup.availableOne" : "setup.available",
+          { line: gekozenDuty?.lineNumbers[0] ?? "", count: duties.length },
         ),
         /*
          * Er komt elke keer iets anders uit -- de dienst wordt uit de
@@ -3409,16 +3720,16 @@ export function App(): JSX.Element {
          * dan haal je een ander.
          */
         tweede: {
-          tekst: t(language, busy ? 'setup.searching' : 'setup.regenerate'),
+          tekst: t(language, busy ? "setup.searching" : "setup.regenerate"),
           onDoen: () => {
-            if (busy || confirmed) return
-            void generateRef.current?.(lineFile || undefined)
-          }
+            if (busy || confirmed) return;
+            void generateRef.current?.(lineFile || undefined);
+          },
         },
-        verder: () => setStap('bus'),
-        knop: t(language, 'setup.next')
-      }
-    })()
+        verder: () => setStap("bus"),
+        knop: t(language, "setup.next"),
+      };
+    })();
 
     return (
       <LanguageProvider language={language}>
@@ -3447,21 +3758,29 @@ export function App(): JSX.Element {
            * Op de kaartstap is er nog geen dienst; dan tekent het vel het net
            * van de kaart die je aanwijst.
            */
-          netkaart={opzetStap === 'map' && mapFolder ? mapFolder : undefined}
+          netkaart={opzetStap === "map" && mapFolder ? mapFolder : undefined}
           onStart={() => {
-            setBusrit((nu) => nu + 1)
-            vel.verder()
+            setBusrit((nu) => nu + 1);
+            vel.verder();
           }}
           startTekst={vel.knop}
           bezig={busy}
           stappen={
-            mode === 'career' ? STAPPEN_CARRIERE : mode === 'free' ? STAPPEN_VRIJ : STAPPEN_DIENST
+            mode === "career"
+              ? STAPPEN_CARRIERE
+              : mode === "free"
+                ? STAPPEN_VRIJ
+                : STAPPEN_DIENST
           }
           /*
            * Bij vrij rijden staat op de plek van de dienst je eigen rit; dan
            * hoort de balk dat ook te zeggen.
            */
-          stapnamen={mode === 'free' ? { duty: t(language, 'setup.step.free') } : undefined}
+          stapnamen={
+            mode === "free"
+              ? { duty: t(language, "setup.step.free") }
+              : undefined
+          }
           tegels={vel.tegels}
           kruimels={vel.kruimels}
           vullend={vel.vullend}
@@ -3475,27 +3794,41 @@ export function App(): JSX.Element {
            * allebei in de oude wereld en hadden hier geen plek meer.
            */
           waarschuwing={
-            stap === 'bus' && (schermmodus === 'volledig' || plugin?.error || plugin?.changed) ? (
+            stap === "bus" &&
+            (schermmodus === "volledig" || plugin?.error || plugin?.changed) ? (
               <>
-                {schermmodus === 'volledig' && (
+                {schermmodus === "volledig" && (
                   <>
-                    <p>{t(language, inVenster ? 'app.fullscreenFixed' : 'app.fullscreen')}</p>
+                    <p>
+                      {t(
+                        language,
+                        inVenster ? "app.fullscreenFixed" : "app.fullscreen",
+                      )}
+                    </p>
                     <label>
                       <input
                         type="checkbox"
                         checked={inVenster}
                         onChange={(event) => {
-                          const aan = event.target.checked
-                          setInVenster(aan)
-                          void window.career.saveSettings({ windowedOmsi: aan })
+                          const aan = event.target.checked;
+                          setInVenster(aan);
+                          void window.career.saveSettings({
+                            windowedOmsi: aan,
+                          });
                         }}
                       />
-                      {t(language, 'app.windowed')}
+                      {t(language, "app.windowed")}
                     </label>
                   </>
                 )}
-                {plugin?.error && <p>{t(language, 'app.pluginError', { error: plugin.error })}</p>}
-                {plugin?.changed && !plugin.error && <p>{t(language, 'app.pluginUpdated')}</p>}
+                {plugin?.error && (
+                  <p>
+                    {t(language, "app.pluginError", { error: plugin.error })}
+                  </p>
+                )}
+                {plugin?.changed && !plugin.error && (
+                  <p>{t(language, "app.pluginUpdated")}</p>
+                )}
               </>
             ) : undefined
           }
@@ -3512,96 +3845,105 @@ export function App(): JSX.Element {
                 yard={assignment.yard}
                 onZelf={() => setBusGevraagd(busSleutel)}
                 onDoorgaan={() => {
-                  setBusGevraagd(busSleutel)
+                  setBusGevraagd(busSleutel);
                   /*
                    * De remise erachteraan: dat is het laatste dat nog kan
                    * verschillen, en hij staat al goed -- je ziet hem dus vooral
                    * om te weten dat hij klopt.
                    */
-                  setVehicleOverride(assignment.vehicle!.relativePath)
-                  setBusScherm('hof')
+                  setVehicleOverride(assignment.vehicle!.relativePath);
+                  setBusScherm("hof");
                 }}
               />
             ) : busAanbod && vehicle && duty ? (
               <HofDialog
-                bus={`${vehicle.manufacturer} ${vehicle.type}`.trim() || vehicle.folder}
+                bus={
+                  `${vehicle.manufacturer} ${vehicle.type}`.trim() ||
+                  vehicle.folder
+                }
                 aanbod={busAanbod}
                 bezig={hofBezig}
                 onNee={() => {
-                  setHofGevraagd(`${duty.mapFolder}|${vehicle.folder}`)
-                  setBusAanbod(undefined)
+                  setHofGevraagd(`${duty.mapFolder}|${vehicle.folder}`);
+                  setBusAanbod(undefined);
                 }}
                 onJa={() => {
-                  if (hofBezig) return
-                  setHofBezig(true)
+                  if (hofBezig) return;
+                  setHofBezig(true);
                   void window.career
                     .placeHofs(mapFolder, [vehicle.folder])
                     .then(async (result) => {
-                      setNote(t(language, 'setup.hofDone', { count: result.placed }))
-                      setHofGevraagd(`${duty.mapFolder}|${vehicle.folder}`)
-                      setBusAanbod(undefined)
+                      setNote(
+                        t(language, "setup.hofDone", { count: result.placed }),
+                      );
+                      setHofGevraagd(`${duty.mapFolder}|${vehicle.folder}`);
+                      setBusAanbod(undefined);
                       // De wagenparken opnieuw ophalen; er ligt er nu een bij.
-                      setHofTeller((n) => n + 1)
-                      setHofAanbod(await window.career.hofOffers(mapFolder))
+                      setHofTeller((n) => n + 1);
+                      setHofAanbod(await window.career.hofOffers(mapFolder));
                     })
-                    .finally(() => setHofBezig(false))
+                    .finally(() => setHofBezig(false));
                 }}
               />
             ) : undefined
           }
           tweede={
             vel.tweede ??
-            (opzetStap === 'profile'
+            (opzetStap === "profile"
               ? [
                   {
-                    tekst: t(language, 'setup.newDriver'),
-                    onDoen: () => setNieuweChauffeur('')
+                    tekst: t(language, "setup.newDriver"),
+                    onDoen: () => setNieuweChauffeur(""),
                   },
                   /*
                    * Wat de chauffeur die je net aanwees heeft gereden. Hij hoort
                    * hier omdat je hier een chauffeur kiest, en het antwoord op
                    * "welke van de twee ben ik ook alweer" staat in zijn cijfers.
                    */
-                  ...(career?.state && career.summary && screen !== 'profiel'
+                  ...(career?.state && career.summary && screen !== "profiel"
                     ? [
                         {
-                          tekst: t(language, 'prof.open'),
-                          onDoen: () => setScreen('profiel')
-                        }
+                          tekst: t(language, "prof.open"),
+                          onDoen: () => setScreen("profiel"),
+                        },
                       ]
-                    : [])
+                    : []),
                 ]
-              : opzetStap === 'mode' && screen !== 'game'
-                ? { tekst: t(language, 'setup.omsiSettings'), onDoen: () => setScreen('game') }
+              : opzetStap === "mode" && screen !== "game"
+                ? {
+                    tekst: t(language, "setup.omsiSettings"),
+                    onDoen: () => setScreen("game"),
+                  }
                 : undefined)
           }
           invoer={
-            (nieuweChauffeur !== undefined || eersteStart) && opzetStap === 'profile'
+            (nieuweChauffeur !== undefined || eersteStart) &&
+            opzetStap === "profile"
               ? {
-                  waarde: nieuweChauffeur ?? '',
-                  plaatshouder: t(language, 'welcome.name'),
+                  waarde: nieuweChauffeur ?? "",
+                  plaatshouder: t(language, "welcome.name"),
                   onWaarde: setNieuweChauffeur,
                   onBevestig: () => {
-                    const naam = (nieuweChauffeur ?? '').trim()
-                    if (!naam) return
-                    setNieuweChauffeur(undefined)
-                    void createProfile(naam)
+                    const naam = (nieuweChauffeur ?? "").trim();
+                    if (!naam) return;
+                    setNieuweChauffeur(undefined);
+                    void createProfile(naam);
                   },
-                  onAnnuleer: () => setNieuweChauffeur(undefined)
+                  onAnnuleer: () => setNieuweChauffeur(undefined),
                 }
               : undefined
           }
           inhoud={
-            screen === 'game' ? (
+            screen === "game" ? (
               <GameSetup
                 language={language}
                 onBack={() => {
-                  setInstellingenTab(undefined)
-                  setScreen('modes')
+                  setInstellingenTab(undefined);
+                  setScreen("modes");
                 }}
                 beginTab={instellingenTab}
               />
-            ) : screen === 'profiel' && career?.state && career.summary ? (
+            ) : screen === "profiel" && career?.state && career.summary ? (
               <Profiel state={career.state} summary={career.summary} />
             ) : (
               vel.vrij
@@ -3628,45 +3970,48 @@ export function App(): JSX.Element {
            */
           onTerug={(() => {
             const balk =
-              mode === 'career'
+              mode === "career"
                 ? STAPPEN_CARRIERE
-                : mode === 'free'
+                : mode === "free"
                   ? STAPPEN_VRIJ
-                  : STAPPEN_DIENST
+                  : STAPPEN_DIENST;
 
-            if (opzetStap === 'bus') {
-              if (busScherm === 'hof') {
+            if (opzetStap === "bus") {
+              if (busScherm === "hof") {
                 // Terug naar de kleurstelling als je daarlangs kwam.
-                const viaKleur = kleurBus && kleurBus === vehicle?.relativePath && kleurLijsten[kleurBus]
-                return () => setBusScherm(viaKleur ? 'kleur' : 'bus')
+                const viaKleur =
+                  kleurBus &&
+                  kleurBus === vehicle?.relativePath &&
+                  kleurLijsten[kleurBus];
+                return () => setBusScherm(viaKleur ? "kleur" : "bus");
               }
-              if (busScherm === 'kleur') return () => setBusScherm('bus')
-              if (busType) return () => setBusType(undefined)
-              if (busMerk) return () => setBusMerk(undefined)
+              if (busScherm === "kleur") return () => setBusScherm("bus");
+              if (busType) return () => setBusType(undefined);
+              if (busMerk) return () => setBusMerk(undefined);
             }
             // In het examen terug naar je vergunningen, als je er hebt.
-            if (opzetStap === 'licence' && examenScherm) {
-              return () => setExamenScherm(false)
+            if (opzetStap === "licence" && examenScherm) {
+              return () => setExamenScherm(false);
             }
 
-            const hier = balk.indexOf(opzetStap)
-            const vorige = hier > 0 ? balk[hier - 1] : undefined
-            if (!vorige) return undefined
+            const hier = balk.indexOf(opzetStap);
+            const vorige = hier > 0 ? balk[hier - 1] : undefined;
+            if (!vorige) return undefined;
             return () => {
-              setError(undefined)
-              setNote(undefined)
-              if (vorige === 'profile') {
-                setScreen('profiles')
-                return
+              setError(undefined);
+              setNote(undefined);
+              if (vorige === "profile") {
+                setScreen("profiles");
+                return;
               }
-              if (vorige === 'mode') {
-                setScreen('modes')
-                return
+              if (vorige === "mode") {
+                setScreen("modes");
+                return;
               }
-              setScreen('drive')
-              if (vorige === 'licence') setExamenScherm(false)
-              setStap(vorige)
-            }
+              setScreen("drive");
+              if (vorige === "licence") setExamenScherm(false);
+              setStap(vorige);
+            };
           })()}
           onStap={(naar) => {
             /*
@@ -3674,29 +4019,28 @@ export function App(): JSX.Element {
              * dienstenlijst van een lijn die je net hebt losgelaten, is geen
              * keuze meer maar een val.
              */
-            if (naar === 'profile') {
-              setScreen('profiles')
-              return
+            if (naar === "profile") {
+              setScreen("profiles");
+              return;
             }
-            if (naar === 'mode') {
-              setScreen('modes')
-              return
+            if (naar === "mode") {
+              setScreen("modes");
+              return;
             }
-            setScreen('drive')
-            if (naar === 'map' || naar === 'line' || naar === 'licence') {
-              setDuties([])
-              setSelected(undefined)
+            setScreen("drive");
+            if (naar === "map" || naar === "line" || naar === "licence") {
+              setDuties([]);
+              setSelected(undefined);
             }
             // Terug op de vergunningstap begin je bij het overzicht, niet in een examen.
-            if (naar === 'licence') setExamenScherm(false)
+            if (naar === "licence") setExamenScherm(false);
             // Een melding hoort bij de stap waar hij ontstond; verderop zegt hij niets meer.
-            setError(undefined)
-            setNote(undefined)
-            setStap(naar)
+            setError(undefined);
+            setNote(undefined);
+            setStap(naar);
           }}
         />
       </LanguageProvider>
-    )
+    );
   }
-
 }

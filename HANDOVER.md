@@ -710,10 +710,20 @@ is, staat in de commentaren bij de wijzigingen zelf:
   blauw halen op vijftien pixels nergens 4.5 -- niet op hun eigen tint en ook niet
   op het kale vel. Het cijfer staat op veertig en houdt de kleur.
 
+**Wat er nog onder de grens staat, en met opzet:** wit op de blauwe hoofdknop
+(`--route`, #2a75f7) haalt 4.21 in plaats van 4.5. Dat is in beide standen
+hetzelfde en het geldt voor elke hoofdknop in de app, dus het is geen fout van
+een scherm maar de kleur zelf. `--route-diep` (#1b5fd0) zou 5.84 halen, maar die
+is nu de zweefkleur; hem naar voren halen vraagt dus ook een nieuwe, diepere
+zweefkleur. **Dit is aan de gebruiker, niet aan de volgende AI.** De proef meldt
+het elke keer, en dat hoort ook zo.
+
 **Nog niet nagerekend** zijn de overige oude schermen (de volledige dienstkaart in
-het venster achter "Bekijk volledige dienst", de routekaart, de dialogen). De
-proef tekent nu alleen `RunningDuty` en `LiveDienst`; wie er meer bij zet, breidt
-`entry` in dat bestand uit.
+het venster achter "Bekijk volledige dienst", de routekaart, het wachtvenster).
+De proef tekent `RunningDuty`, `LiveDienst`, `Dienstpas` en `HofDialog`; wie er
+meer bij zet, breidt `entry` in dat bestand uit. Let op: `entry` is een
+template-literal, dus een accent grave in een commentaar erbinnen sluit de
+string en geeft een foutmelding die nergens naar de oorzaak wijst.
 
 **Verder open:**
 
@@ -921,11 +931,39 @@ het navigatiepaneel, `PANELS[1]`, het paneel met de appbalk eronder:
    codes in de IBIS; tot die tijd staat daar alleen "meld je eerst aan op de
    telefoon" (`ovl.signonFirst`).
 
+**Alles wat je in de overlay kunt indrukken heeft `data-hit` nodig.** Het
+overlayvenster ligt over het hele scherm en laat muisklikken dóór naar OMSI --
+anders zou het ze overal opvangen. Alleen waar `[data-hit]` in de bovenliggende
+elementen staat, wordt de muis even opgevraagd (zie de `mousemove`-luisteraar in
+`overlay.tsx` en `overlayHit` in `main/index.ts`). Het cijferblok stond er
+zonder, en dus was het een plaatje: je zag de toetsen, maar de klik ging dwars
+door de bus in. Dit kost je niets bij het bouwen en niets bij het typen -- het
+valt pas op als je het in het spel probeert. Zet het op het buitenste blok van
+elk nieuw paneel dat een knop bevat.
+
 Nagerekend met `scripts/probe-aanmelden.cjs`: het telt de toetsen per paneel (12
 in het navigatiepaneel, 0 in het dienstpaneel), kijkt of de appbalk en de kaart
 er zolang niet zijn, tikt een verkeerd nummer in, dan het goede, dan de pincode,
 en drukt op "dienst aanvaarden" om te zien of de balk en de IBIS-stap terugkomen.
 Met een uitvoermap erachter schrijft hij er twee plaatjes bij.
+
+**De dienstpas laat de gegevens eenmaal zien** (sinds 22-09-2026). De cijfers
+werden stilletjes aangemaakt, en dat liet de chauffeur achter met een cijferblok
+in de bus en geen idee wat hij moest intoetsen -- de gebruiker: "ook kon ik
+nergens zien wat mijn code is en waar ik die aanmaak". Dus:
+
+- `Dienstpas.tsx` -- een venstertje met het nummer, de pincode en waar ze blijven
+  staan, plus een knop die je meteen naar je staat van dienst brengt.
+- Het hangt in de `dialoog`-sleuf van `Starthub.tsx`. Dat is het eerste scherm na
+  het kiezen van een profiel, en het moest **binnen** het `.hub`-element, want
+  daar hangen de kleuren aan; ernaast valt het terug op de oude glaswereld en
+  staat het in de lichte stand donker op donker.
+- `CareerState.pasGezien` onthoudt dat het geweest is, via `career:pas:gezien` in
+  het hoofdproces. Het staat in het profiel en niet bij de instellingen: het
+  nummer hoort bij de chauffeur, dus een tweede chauffeur op dezelfde pc krijgt
+  zijn pas ook een keer te zien. Een profiel van voor deze versie heeft de vlag
+  niet en krijgt het venster dus bij de eerstvolgende start.
+- Proef: `scripts/probe-dienstpas.cjs`, met `--donker` voor de andere stand.
 
 Nog niet gebouwd:
 

@@ -1893,9 +1893,14 @@
  * "Moment geduld" komt uit de oude wereld en bracht haar glas mee, precies op
  * het moment dat je het spel in gaat. Binnen dit scherm draagt het dezelfde
  * kleuren als de rest.
+ *
+ * De starthub staat er sinds de dienstpas bij: dat venstertje hangt daar, en het
+ * hoort er hetzelfde uit te zien als elk ander venster in deze wereld. Zonder
+ * `.hub` erbij viel het terug op de knoppen van de oude glaswereld.
  */
 
-.setup .backdrop {
+.setup .backdrop,
+.hub .backdrop {
   position: fixed;
   inset: 0;
   display: grid;
@@ -1904,7 +1909,8 @@
   z-index: 5;
 }
 
-.setup .dialog {
+.setup .dialog,
+.hub .dialog {
   width: min(460px, calc(100vw - 48px));
   padding: 24px;
   background: var(--vel);
@@ -1916,24 +1922,28 @@
 }
 
 /* De gloed van de glaswereld hoort hier niet; die vulde het glas. */
-.setup .dialog .glow {
+.setup .dialog .glow,
+.hub .dialog .glow {
   display: none;
 }
 
-.setup .dialog h2 {
+.setup .dialog h2,
+.hub .dialog h2 {
   margin: 0 0 8px;
   font-size: 22px;
   font-weight: 700;
 }
 
-.setup .dialog p {
+.setup .dialog p,
+.hub .dialog p {
   margin: 0 0 18px;
   color: var(--vel-zacht);
   font-size: 14px;
   line-height: 1.45;
 }
 
-.setup .dialog .btn {
+.setup .dialog .btn,
+.hub .dialog .btn {
   border: 0;
   border-radius: var(--radius-klein);
   background: var(--route);
@@ -1947,26 +1957,69 @@
  * het wagenpark schrijft in de spelmap, dus de stille knop mag niet de
  * opvallende zijn.
  */
-.setup .dialog .dialog-actions {
+.setup .dialog .dialog-actions,
+.hub .dialog .dialog-actions {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
 }
 
-.setup .dialog .btn {
+.setup .dialog .btn,
+.hub .dialog .btn {
   padding: 10px 18px;
   cursor: pointer;
 }
 
-.setup .dialog .btn.ghost {
+.setup .dialog .btn.ghost,
+.hub .dialog .btn.ghost {
   border: 1px solid var(--vel-rand);
   background: transparent;
   color: var(--vel-ink);
 }
 
-.setup .dialog .btn:disabled {
+.setup .dialog .btn:disabled,
+.hub .dialog .btn:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/*
+ * DE DIENSTPAS
+ *
+ * De twee getallen staan groot en met lucht tussen de cijfers, want ze worden
+ * overgetypt op een cijferblok in een rijdende bus. Achter puntjes zetten heeft
+ * geen zin -- er valt hier niets te beschermen, zie `core/career.ts` -- en dan
+ * is onleesbaar maken alleen maar hinderlijk.
+ */
+.pas-cijfers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 36px;
+  margin: 0 0 16px;
+  padding: 14px 18px;
+  border: 1px solid var(--vel-lijn);
+  border-radius: var(--radius-klein);
+}
+
+.pas-cijfers > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pas-cijfers span {
+  color: var(--vel-zacht);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pas-cijfers b {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 0.12em;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 

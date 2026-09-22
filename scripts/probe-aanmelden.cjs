@@ -91,6 +91,14 @@ app.whenReady().then(async () => {
     inDienst: document.querySelectorAll('.panel-dienst .cijferblok button').length,
     // Een telefoon waarop je nog niet aangemeld bent, heeft ook geen appbalk.
     balk: document.querySelectorAll('.panel-navigatie .dock button').length,
+    /*
+     * Vangt het cijferblok de muis? Het venster laat klikken door naar OMSI,
+     * behalve waar data-hit staat. Zonder dat was dit een plaatje: je zag de
+     * toetsen wel, maar de klik ging dwars door de bus in.
+     */
+    toetsenVangen: [...document.querySelectorAll('.cijferblok button')].every((b) =>
+      b.closest('[data-hit]')
+    ),
     kaart: Boolean(document.querySelector('.panel-navigatie .route-map')),
     // En het dienstpaneel verwijst alleen maar naar de telefoon.
     dienstpaneel: document.querySelector('.panel-dienst .panel-body')?.textContent.trim(),
@@ -133,6 +141,7 @@ app.whenReady().then(async () => {
   await wait(700)
   const naPin = await js(venster, `({
     opdracht: Boolean(document.querySelector('.panel-navigatie .opdracht')),
+    tekenVangt: Boolean(document.querySelector('.opdracht-teken')?.closest('[data-hit]')),
     regels: [...document.querySelectorAll('.opdracht-lijst dd')].map((d) => d.textContent.trim()),
     knop: document.querySelector('.opdracht-teken')?.textContent.trim(),
     cijferblok: document.querySelectorAll('.cijferblok button').length
@@ -158,6 +167,8 @@ app.whenReady().then(async () => {
 
   const goed =
     eerst.inTelefoon === 12 &&
+    eerst.toetsenVangen &&
+    naPin.tekenVangt &&
     eerst.inDienst === 0 &&
     eerst.balk === 0 &&
     !eerst.kaart &&

@@ -95,6 +95,7 @@ const api: CareerApi = {
   deleteProfile: (id) => ipcRenderer.invoke('career:delete', id),
   chooseProfilePhoto: (id) => ipcRenderer.invoke('career:photo', id),
   clearProfilePhoto: (id) => ipcRenderer.invoke('career:photo:clear', id),
+  dienstpasGezien: () => ipcRenderer.invoke('career:pas:gezien'),
   checkSession: () => ipcRenderer.invoke('duty:session'),
   completeDuty: (duty, vehicle, measured) =>
     ipcRenderer.invoke('career:complete', duty, vehicle, measured),

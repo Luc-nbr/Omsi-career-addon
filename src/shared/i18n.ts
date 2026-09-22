@@ -2536,6 +2536,35 @@ const TEXT = {
     fr: 'C’est avec cela que vous prenez votre service sur le téléphone de la superposition.',
     nl: 'Hiermee meld je je aan op de telefoon in de overlay, voordat je dienst begint.'
   },
+  /*
+   * De dienstpas: het venstertje dat de gegevens eenmalig laat zien. De toon is
+   * die van een remise die je aanneemt, niet die van een app die iets meldt.
+   */
+  'pas.title': {
+    en: 'Your staff number',
+    de: 'Deine Personalnummer',
+    fr: 'Votre matricule',
+    nl: 'Je personeelsnummer'
+  },
+  'pas.body': {
+    en: 'Welcome aboard, {driver}. The depot has taken you on; these are your details. You sign on with them on the phone in the overlay, before every duty.',
+    de: 'Willkommen an Bord, {driver}. Der Betriebshof hat dich eingestellt; das sind deine Daten. Damit meldest du dich vor jedem Dienst am Telefon im Overlay an.',
+    fr: 'Bienvenue, {driver}. Le dépôt vous a engagé ; voici vos informations. Vous prenez votre service avec elles sur le téléphone de la superposition.',
+    nl: 'Welkom bij de club, {driver}. De remise heeft je aangenomen; dit zijn je gegevens. Hiermee meld je je voor elke dienst aan op de telefoon in de overlay.'
+  },
+  'pas.where': {
+    en: 'Forgotten them? They stay on your service record — you never have to remember them.',
+    de: 'Vergessen? Sie stehen in deiner Dienstakte -- auswendig lernen musst du sie nie.',
+    fr: 'Oublies ? Ils restent sur votre feuille de service -- inutile de les retenir.',
+    nl: 'Kwijt? Ze blijven in je staat van dienst staan -- onthouden hoeft dus nooit.'
+  },
+  'pas.show': {
+    en: 'Show me where',
+    de: 'Zeig mir wo',
+    fr: 'Montrez-moi où',
+    nl: 'Laat zien waar'
+  },
+  'pas.ok': { en: 'Noted', de: 'Notiert', fr: 'Noté', nl: 'Genoteerd' },
   'prof.duties': { en: 'Duties', de: 'Dienste', fr: 'Services', nl: 'Diensten' },
   'prof.behindWheel': { en: 'At the wheel', de: 'Am Steuer', fr: 'Au volant', nl: 'Achter het stuur' },
   'prof.driven': { en: 'Driven', de: 'Gefahren', fr: 'Parcourus', nl: 'Gereden' },
@@ -2968,11 +2997,12 @@ const TEXT = {
   },
   'ovl.signonPin': { en: 'Your PIN', de: 'Deine PIN', fr: 'Votre code', nl: 'Je pincode' },
   /* Wie zijn nummer kwijt is, leest het terug in de app; dat hoort er te staan. */
+  /* "Kijk in de app" was te vaag: er staat nu bij waar in de app. */
   'ovl.signonWrong': {
-    en: 'Not known here — look it up in the app',
-    de: 'Hier nicht bekannt — schau in der App nach',
-    fr: 'Inconnu ici — vérifiez dans l’application',
-    nl: 'Hier niet bekend — kijk in de app'
+    en: 'Not known here — it is on your service record in the app',
+    de: 'Hier nicht bekannt — sie steht in der App in deiner Dienstakte',
+    fr: 'Inconnu ici — il figure sur votre feuille de service dans l’application',
+    nl: 'Hier niet bekend — hij staat in de app bij je staat van dienst'
   },
   'ovl.signonClear': { en: 'Clear', de: 'Löschen', fr: 'Effacer', nl: 'Wissen' },
   'ovl.signonNone': {

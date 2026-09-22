@@ -16,6 +16,10 @@
  * kleuren het vertragingsvak en de rit waar je in zit, en die kleuren -- rood,
  * groen, blauw -- zijn juist de plekken waar het mis kan gaan.
  *
+ * De venstertjes staan er apart bij, want die liggen niet op het vel maar op een
+ * donker waas over het hele scherm. Dat is een andere ondergrond en dus een
+ * andere som -- en precies waar het een keer misging.
+ *
  * OMSI wordt niet aangeraakt: de dienst is verzonnen en er wordt niets gelezen
  * of geschreven buiten de tijdelijke map.
  */
@@ -95,6 +99,8 @@ import './src/renderer/src/profiel.css'
 import { LanguageProvider } from './src/renderer/src/language'
 import { LiveDienst } from './src/renderer/src/LiveDienst'
 import { RunningDuty } from './src/renderer/src/RunningDuty'
+import { Dienstpas } from './src/renderer/src/Dienstpas'
+import { HofDialog } from './src/renderer/src/HofDialog'
 
 const duty = ${JSON.stringify(duty)}
 
@@ -142,6 +148,36 @@ function Scherm() {
             )
           })}
         </div>
+      </div>
+
+      {/*
+        De venstertjes. Ze liggen binnen de hub en het opzetvel, want daar hangen
+        hun kleuren aan; naast die elementen vallen ze terug op de oude
+        glaswereld. Het waas is doorzichtig, dus ze staan onder elkaar in plaats
+        van op elkaar -- anders meet de teller het ene venster door het andere
+        heen.
+
+        (Let op: dit hele blok staat in een template-literal. Een accent grave
+        hierin sluit die string, en dan klapt de proef eruit met een foutmelding
+        die nergens naar de oorzaak wijst.)
+      */}
+      <div className="hub" style={{ position: 'relative', height: '380px' }}>
+        <Dienstpas
+          chauffeur="Luc"
+          personeelsnummer="481902"
+          pincode="7341"
+          onGezien={() => {}}
+          onStaatVanDienst={() => {}}
+        />
+      </div>
+      <div className="setup" style={{ position: 'relative', height: '380px' }}>
+        <HofDialog
+          bus="Mercedes-Benz Citaro"
+          aanbod={{ known: 0, total: 87, offerFile: 'Rheinhausen.hof', offerMatched: 84 }}
+          bezig={false}
+          onJa={() => {}}
+          onNee={() => {}}
+        />
       </div>
     </LanguageProvider>
   )

@@ -178,6 +178,15 @@ export interface CareerState {
    */
   personeelsnummer?: string
   pincode?: string
+  /**
+   * Heeft deze chauffeur zijn dienstgegevens al een keer te zien gekregen?
+   *
+   * Ze worden stilletjes aangemaakt, en dat is precies het probleem dat dit
+   * oplost: je kunt je niet aanmelden met een nummer waarvan je niet weet dat
+   * het bestaat, laat staan waar het staat. Dus laat de app het eenmalig zien
+   * en onthoudt dat. Terugkijken kan daarna bij de staat van dienst.
+   */
+  pasGezien?: boolean
   entries: CareerEntry[]
   activeDuty?: ActiveDuty
   /** Waar de chauffeur op mag rijden in de carrièremodus. */
@@ -260,6 +269,8 @@ function uitJson(parsed: Partial<CareerState>): CareerState {
     personeelsnummer:
       typeof parsed.personeelsnummer === 'string' ? parsed.personeelsnummer : undefined,
     pincode: typeof parsed.pincode === 'string' ? parsed.pincode : undefined,
+    /* Ontbreekt hij, dan is de pas nog niet getoond -- ook bij een oud profiel. */
+    pasGezien: parsed.pasGezien === true,
     entries: Array.isArray(parsed.entries) ? parsed.entries : [],
     activeDuty:
       parsed.activeDuty && typeof parsed.activeDuty === 'object' && parsed.activeDuty.assignment

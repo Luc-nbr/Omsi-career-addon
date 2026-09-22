@@ -1,38 +1,46 @@
-import type { JSX } from 'react'
-import { LANGUAGES, loose, t, type Language } from '../../shared/i18n'
-import { formatDuration } from '../../shared/format'
-import type { CareerSummary, GameMode } from '../../core/career'
-import { Flag } from './Flag'
-import { Icoon } from './Icoon'
-import { ThemaKnop, type Thema } from './ThemaKnop'
-import { Versie } from './Versie'
+import type { JSX, ReactNode } from "react";
+import { LANGUAGES, loose, t, type Language } from "../../shared/i18n";
+import { formatDuration } from "../../shared/format";
+import type { CareerSummary, GameMode } from "../../core/career";
+import { Flag } from "./Flag";
+import { Icoon } from "./Icoon";
+import { ThemaKnop, type Thema } from "./ThemaKnop";
+import { Versie } from "./Versie";
 
 interface Props {
-  language: Language
-  onLanguage: (language: Language) => void
-  thema: Thema
-  onThema: (thema: Thema) => void
+  /**
+   * Een venstertje over de hub heen.
+   *
+   * Het staat binnen `.hub` en niet ernaast, want daar hangen de kleuren aan:
+   * een venster dat buiten dat element valt, krijgt de donkere kleuren van de
+   * oude glaswereld terug en staat in de lichte stand donker op donker.
+   */
+  dialoog?: ReactNode;
+  language: Language;
+  onLanguage: (language: Language) => void;
+  thema: Thema;
+  onThema: (thema: Thema) => void;
   /** De naam van de chauffeur die nu rijdt. */
-  chauffeur: string
-  samenvatting?: CareerSummary
+  chauffeur: string;
+  samenvatting?: CareerSummary;
   /** De modus waarop de app nu staat; die tegel staat aangewezen. */
-  modus: GameMode
+  modus: GameMode;
   /** Loopt er een dienst, en zo ja in welke modus? */
-  lopend?: GameMode
-  onModus: (modus: GameMode) => void
-  onStaatVanDienst: () => void
-  onInstellingen: () => void
-  onChauffeur: () => void
+  lopend?: GameMode;
+  onModus: (modus: GameMode) => void;
+  onStaatVanDienst: () => void;
+  onInstellingen: () => void;
+  onChauffeur: () => void;
   /** Het logboek van de app in de verkenner tonen. */
-  onLogboek: () => void
+  onLogboek: () => void;
   /** Van de bussen die nog geen foto hebben er een maken. */
-  onBusplaatjes: () => void
+  onBusplaatjes: () => void;
   /** Wat er na de laatste dienst te melden valt: de uitkomst, of dat hij geannuleerd is. */
-  melding?: string
-  onMeldingWeg?: () => void
+  melding?: string;
+  onMeldingWeg?: () => void;
 }
 
-const MODI: GameMode[] = ['career', 'service', 'free']
+const MODI: GameMode[] = ["career", "service", "free"];
 
 /**
  * Het hoofdscherm: waar je binnenkomt en waar je kiest wat je gaat doen.
@@ -69,9 +77,12 @@ export function Starthub({
   onLogboek,
   onBusplaatjes,
   melding,
-  onMeldingWeg
+  onMeldingWeg,
+  dialoog,
 }: Props): JSX.Element {
-  const uren = samenvatting ? formatDuration(samenvatting.minutes, language) : undefined
+  const uren = samenvatting
+    ? formatDuration(samenvatting.minutes, language)
+    : undefined;
 
   return (
     <div className="hub">
@@ -97,8 +108,8 @@ export function Starthub({
 
       <main className="hub-vel vel">
         <div className="hub-kop">
-          <h1>{t(language, 'hub.title', { naam: chauffeur })}</h1>
-          <p>{t(language, 'hub.intro')}</p>
+          <h1>{t(language, "hub.title", { naam: chauffeur })}</h1>
+          <p>{t(language, "hub.intro")}</p>
         </div>
 
         {/* De uitkomst van de dienst die net klaar is; weg met één klik. */}
@@ -106,7 +117,11 @@ export function Starthub({
           <div className="hub-melding" role="status">
             <span>{melding}</span>
             {onMeldingWeg && (
-              <button type="button" onClick={onMeldingWeg} aria-label={t(language, 'hub.dismiss')}>
+              <button
+                type="button"
+                onClick={onMeldingWeg}
+                aria-label={t(language, "hub.dismiss")}
+              >
                 ×
               </button>
             )}
@@ -124,12 +139,26 @@ export function Starthub({
               onClick={() => onModus(naam)}
             >
               <span className="hub-tegel-icoon">
-                <Icoon naam={naam === 'career' ? 'licence' : naam === 'service' ? 'duty' : 'map'} />
+                <Icoon
+                  naam={
+                    naam === "career"
+                      ? "licence"
+                      : naam === "service"
+                        ? "duty"
+                        : "map"
+                  }
+                />
               </span>
-              <span className="hub-tegel-naam">{t(language, `mode.${naam}` as const)}</span>
-              <span className="hub-tegel-uitleg">{t(language, `mode.${naam}Intro` as const)}</span>
+              <span className="hub-tegel-naam">
+                {t(language, `mode.${naam}` as const)}
+              </span>
+              <span className="hub-tegel-uitleg">
+                {t(language, `mode.${naam}Intro` as const)}
+              </span>
               {lopend === naam && (
-                <span className="hub-tegel-stand">{t(language, 'setup.modeRunning')}</span>
+                <span className="hub-tegel-stand">
+                  {t(language, "setup.modeRunning")}
+                </span>
               )}
             </button>
           ))}
@@ -137,39 +166,49 @@ export function Starthub({
 
         <div className="hub-onder">
           {/* Wat je tot nu toe deed. De hele staat van dienst zit erachter. */}
-          <button type="button" className="hub-paneel" onClick={onStaatVanDienst}>
-            <span className="hub-paneel-kop">{t(language, 'hub.record')}</span>
+          <button
+            type="button"
+            className="hub-paneel"
+            onClick={onStaatVanDienst}
+          >
+            <span className="hub-paneel-kop">{t(language, "hub.record")}</span>
             <span className="hub-cijfers">
               <span>
                 <b>{samenvatting?.duties ?? 0}</b>
-                {t(language, 'hub.duties')}
+                {t(language, "hub.duties")}
               </span>
               <span>
-                <b>{uren ?? '0'}</b>
-                {t(language, 'hub.hours')}
+                <b>{uren ?? "0"}</b>
+                {t(language, "hub.hours")}
               </span>
               <span>
                 <b>{Math.round(samenvatting?.km ?? 0)}</b>
-                {t(language, 'hub.km')}
+                {t(language, "hub.km")}
               </span>
               <span>
                 <b>{samenvatting?.licences ?? 0}</b>
-                {t(language, 'hub.licences')}
+                {t(language, "hub.licences")}
               </span>
             </span>
             <span className="hub-rang">
-              {samenvatting ? loose(language, `rank.${samenvatting.rank}`, samenvatting.rank) : ''}
+              {samenvatting
+                ? loose(
+                    language,
+                    `rank.${samenvatting.rank}`,
+                    samenvatting.rank,
+                  )
+                : ""}
             </span>
           </button>
 
           <div className="hub-knoppen">
             <button type="button" className="hub-knop" onClick={onInstellingen}>
               <Icoon naam="stuur" />
-              {t(language, 'setup.omsiSettings')}
+              {t(language, "setup.omsiSettings")}
             </button>
             <button type="button" className="hub-knop" onClick={onChauffeur}>
               <Icoon naam="profile" />
-              {t(language, 'hub.driver', { naam: chauffeur })}
+              {t(language, "hub.driver", { naam: chauffeur })}
             </button>
             {/*
               Voor de bussen die later kwamen: de installatie maakte de foto's
@@ -177,16 +216,17 @@ export function Starthub({
             */}
             <button type="button" className="hub-knop" onClick={onBusplaatjes}>
               <Icoon naam="bus" />
-              {t(language, 'photos.sync')}
+              {t(language, "photos.sync")}
             </button>
             {/* Voor als er iets misgaat: het logboek, waar het ook staat. */}
             <button type="button" className="hub-knop" onClick={onLogboek}>
               <Icoon naam="logboek" />
-              {t(language, 'hub.log')}
+              {t(language, "hub.log")}
             </button>
           </div>
         </div>
       </main>
+      {dialoog}
     </div>
-  )
+  );
 }
