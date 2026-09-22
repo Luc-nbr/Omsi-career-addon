@@ -620,6 +620,11 @@ export function Setup({
     <div
       ref={rootRef}
       className="setup"
+      /*
+       * De stap ook hier, en niet alleen op het vel: de kaartkeuze krijgt een
+       * foto achter het hele venster, en die hangt aan dit element.
+       */
+      data-stap={stap}
       data-vol={beeldvullend ? "ja" : rijdend ? "rijdend" : "nee"}
       data-sleept={sleept ? "ja" : undefined}
       style={

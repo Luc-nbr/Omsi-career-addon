@@ -1214,6 +1214,64 @@
   height: calc(100% - 85px - 115px);
 }
 
+/* ---- de kaartkeuze: een foto achter het venster, en glas erop ----
+ *
+ * Op verzoek van Luc: bij het kiezen van de kaart ligt er een stad achter de
+ * hele app -- 's nachts in de donkere stand, overdag in de lichte -- en liggen
+ * de balk, het vel en de knoppen er als glas overheen. Het midden van beide
+ * foto's is rustig (daar ligt het vel), het leven zit aan de randen.
+ *
+ * Alleen op deze stap. Vanaf de lijn ligt de kaart van OMSI zelf eronder, en
+ * die is de ondergrond waar het daar om gaat. Staat de lijst in plaats van de
+ * tegels, dan komt de netkaart rechts over de foto heen: ook dan wint de kaart.
+ */
+.setup[data-stap='map'] {
+  --glas: rgba(11, 16, 31, 0.56);
+  --glas-knop: rgba(11, 16, 31, 0.62);
+  --glas-rand: rgba(255, 255, 255, 0.1);
+  --glas-schaduw: 0 18px 50px rgba(0, 0, 0, 0.38);
+  background: #0a1122 url('./assets/achtergrond/nacht.webp') center / cover no-repeat;
+}
+
+:root[data-thema='licht'] .setup[data-stap='map'] {
+  --glas: rgba(247, 250, 253, 0.62);
+  --glas-knop: rgba(247, 250, 253, 0.7);
+  --glas-rand: rgba(255, 255, 255, 0.7);
+  --glas-schaduw: 0 18px 50px rgba(30, 60, 110, 0.18);
+  background-color: #dde8f6;
+  background-image: url('./assets/achtergrond/dag.webp');
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-thema]) .setup[data-stap='map'] {
+    --glas: rgba(247, 250, 253, 0.62);
+    --glas-knop: rgba(247, 250, 253, 0.7);
+    --glas-rand: rgba(255, 255, 255, 0.7);
+    --glas-schaduw: 0 18px 50px rgba(30, 60, 110, 0.18);
+    background-color: #dde8f6;
+    background-image: url('./assets/achtergrond/dag.webp');
+  }
+}
+
+/*
+ * Glas: half doorzichtig, en wat erachter ligt vervaagd. Zonder de vervaging
+ * lopen de lichtjes van de stad door de namen van de kaarten heen; met twintig
+ * pixels blijft het een gloed.
+ */
+.setup[data-stap='map'] .vel,
+.setup[data-stap='map'] .tweedeknop,
+.setup[data-stap='map'] .terugknop {
+  border-color: var(--glas-rand);
+  background: var(--glas);
+  box-shadow: var(--glas-schaduw);
+  backdrop-filter: blur(20px) saturate(1.3);
+}
+
+.setup[data-stap='map'] .tweedeknop,
+.setup[data-stap='map'] .terugknop {
+  background: var(--glas-knop);
+}
+
 /* ---- rijdend ----
  *
  * De derde indeling, en de omgekeerde van de keuzestappen.
