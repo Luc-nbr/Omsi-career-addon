@@ -2231,6 +2231,7 @@ export function App(): JSX.Element {
            * bus zich meldt is het de rit die loopt, met hem erop.
            */
           metKaart
+          rijdend
           navigatie={{
             routeMode: live ? "active" : "all",
             activeLeg: live?.legIndex,

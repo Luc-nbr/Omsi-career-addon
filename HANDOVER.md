@@ -975,6 +975,33 @@ Nog niet gebouwd:
 3. **Situatie klaarzetten** — gebouwd. "Dienst starten" schrijft de situatie en
    start daarna pas het spel; de losse knop is weg.
 
+**Het rijscherm heeft een eigen indeling** (sinds 22-09-2026). Er zijn nu drie:
+
+| `data-vol` | wanneer | vel | kaart |
+| --- | --- | --- | --- |
+| `nee` | de keuzestappen | smalle kolom links, `clamp(288px, 27.4%, 420px)` | vult het venster, ondergrond |
+| `ja` | profiel, modus, instellingen | het hele venster | weggelaten |
+| `rijdend` | terwijl je rijdt | alles behalve de kaartkolom | kolom rechts, `clamp(300px, 32%, 480px)`, met eigen rand |
+
+De derde is er gekomen omdat de tweede indeling niet klopte zodra je reed: op dat
+vel staat de hele dienstregeling, de rit die loopt, de cijfers en de knoppen, en
+in 368 pixels werd dat een koker met een schuifbalk waarin een haltenaam als
+"Gesamtschule Hohenkirchen Bussteig 1" niet op een regel paste. De gebruiker:
+"dit menu moet groter en de navigatie mag als een kleiner element in de
+hoofdapp." Op 1344 is het vel nu 843 in plaats van 368.
+
+Twee dingen die erbij horen en makkelijk vergeten worden: het vel wordt korter
+(`calc(100% - 85px - 115px)`) om plaats te maken voor de knoppenrij, en die rij
+houdt op waar de kaart begint. Bij `data-vol='nee'` mag een knop over de kaart
+liggen -- daar is ze de ondergrond -- maar hier is ze een element met een rand,
+en dan is dat gewoon een knop op de verkeerde plek.
+
+Proef: `scripts/probe-rijscherm.cjs`. Hij meet op twee venstermaten of het vel
+breder is dan de oude kolom, of de kaart ernaast staat zonder overlap, of alles
+binnen het venster valt, of de hoofdknop niet over de kaart ligt, en of de lange
+haltenamen op een regel blijven. Met een uitvoermap erachter schrijft hij de
+plaatjes; `--donker` voor de andere stand, `--breedte` voor een eigen maat.
+
 **Nog in het spel na te kijken.** Dat het startscherm van OMSI de dienst al
 geselecteerd heeft, is op bestandsniveau bewezen (`probe-startup.ts`) maar niet
 met eigen ogen gezien: schermafdrukken van OMSI maken lukt niet vanuit deze

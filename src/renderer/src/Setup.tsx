@@ -213,6 +213,17 @@ interface Props {
    */
   metKaart?: boolean
   /**
+   * Het rijscherm: het vel is de hoofdzaak en de kaart staat ernaast.
+   *
+   * Op de keuzestappen is het andersom -- de kaart vult het venster en het vel
+   * is een smalle kolom erop, want je kiest iets en de kaart laat zien wat. Maar
+   * tijdens het rijden staat er van alles op dat vel (de hele dienstregeling,
+   * de rit die loopt, de knoppen) en dat paste niet in 368 pixels: het werd een
+   * koker met een schuifbalk. De gebruiker: "dit menu moet groter en de
+   * navigatie mag als een kleiner element in de hoofdapp."
+   */
+  rijdend?: boolean
+  /**
    * Wat de kaart tijdens het rijden moet weten: welke rit, waar de bus is, en
    * of de route al getekend mag worden.
    */
@@ -432,6 +443,7 @@ export function Setup({
   voetFout,
   regelaars,
   metKaart,
+  rijdend,
   navigatie,
   dialoog,
   vullend,
@@ -503,7 +515,7 @@ export function Setup({
   }, [stap, gekozen, rijen.length])
 
   return (
-    <div className="setup" data-vol={beeldvullend ? 'ja' : 'nee'}>
+    <div className="setup" data-vol={beeldvullend ? 'ja' : rijdend ? 'rijdend' : 'nee'}>
       <div className="setup-kaart">
         {/*
           Zolang er geen dienst gekozen is valt er geen route te tekenen. Dan

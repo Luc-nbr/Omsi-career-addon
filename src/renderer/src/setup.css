@@ -1214,6 +1214,76 @@
   height: calc(100% - 85px - 115px);
 }
 
+/* ---- rijdend ----
+ *
+ * De derde indeling, en de omgekeerde van de keuzestappen.
+ *
+ * Bij het kiezen vult de kaart het venster en ligt er een smalle kolom op: je
+ * wijst iets aan en de kaart laat zien wat dat is. Tijdens het rijden klopt dat
+ * niet meer. Dan staat op dat vel de hele dienstregeling, de rit die loopt, de
+ * cijfers en de knoppen -- en in 368 pixels werd dat een koker met een
+ * schuifbalk waarin een haltenaam als "Gesamtschule Hohenkirchen Bussteig 1"
+ * niet eens op een regel past.
+ *
+ * Dus: het vel krijgt de ruimte, en de navigatie wordt wat ze op dat moment is
+ * -- een apparaat dat ernaast staat. Ze is niet verdwenen en niet kleiner van
+ * betekenis; ze heeft alleen niet meer het hele venster nodig om te tonen waar
+ * de bus rijdt. Ze krijgt daarom ook een eigen rand en schaduw: geen ondergrond
+ * meer maar een element in de app, zoals de gebruiker het vroeg.
+ */
+.setup[data-vol='rijdend'] {
+  /*
+   * Breed genoeg om de route te volgen, smal genoeg om het vel de hoofdzaak te
+   * laten. Op 1344 komt dit uit op 430.
+   */
+  --navbreedte: clamp(300px, 32%, 480px);
+}
+
+.setup[data-vol='rijdend'] .dienstenvel {
+  left: 22px;
+  right: calc(22px + var(--navbreedte) + 16px);
+  width: auto;
+  /* Ruimte onderaan voor de knoppen, net als bij een beeldvullend vel. */
+  height: calc(100% - 85px - 115px);
+}
+
+/*
+ * De knoppen blijven binnen het vel.
+ *
+ * Bij de keuzestappen beginnen ze waar het vel ophoudt en liggen ze dus over de
+ * kaart -- dat kan, want die kaart is daar de ondergrond. Hier is ze een element
+ * met een eigen rand, en dan is een knop die eroverheen valt gewoon een knop op
+ * de verkeerde plek. Dus houden ze op waar de kaart begint.
+ */
+.setup[data-vol='rijdend'] .knoppenrij {
+  right: calc(22px + var(--navbreedte) + 16px);
+}
+
+.setup[data-vol='rijdend'] .setup-kaart {
+  /* Niet meer `inset: 0`: een kolom rechts, even hoog als het vel ernaast. */
+  inset: 85px 22px 30px auto;
+  width: var(--navbreedte);
+  border: 1px solid var(--vel-rand);
+  border-radius: var(--radius);
+  box-shadow: var(--vel-schaduw);
+  overflow: hidden;
+}
+
+/* De knoppen van de kaart horen binnen de kaart te blijven staan. */
+.setup[data-vol='rijdend'] .kaartknoppen {
+  right: 39px;
+  top: 96px;
+}
+
+/*
+ * Bij een breed vel loopt een regel te ver door. De kop en de knoppen houden een
+ * leesbare breedte; de inhoud niet, want dat zijn tegels en lijsten die de
+ * ruimte juist gebruiken.
+ */
+.setup[data-vol='rijdend'] .velonderschrift {
+  max-width: 62ch;
+}
+
 /*
  * Wel beeldvullend, niet uitgerekt: een regel van veertienhonderd pixels lees je
  * niet meer als een regel. De inhoud houdt een leesbare breedte en staat in het
