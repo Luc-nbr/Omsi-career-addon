@@ -9,7 +9,7 @@ import {
   unlinkSync,
   writeFileSync
 } from 'node:fs'
-import { basename, dirname, extname, join } from 'node:path'
+import { basename, dirname, extname, join, resolve } from 'node:path'
 
 /**
  * Een bestand vervangen zonder dat er ooit een half bestand ligt.
@@ -76,12 +76,15 @@ function wachtEven(ms: number): void {
 }
 
 /*
- * Waar kopieën van bestanden in de OMSI-map komen.
+ * Waar kopieën van bestanden van andere programma's komen: de OMSI-map, en
+ * Steams localconfig.vdf (zie core/overlayknop.ts).
  *
- * De modules die options.cfg, keyboard.cfg en gamectrler.cfg schrijven kennen
- * alleen de OMSI-map. De kopieën horen daar niet -- dat is de map van het spel --
- * maar bij de app. Het hoofdproces zet de plek één keer bij het starten; zonder
- * plek (in een proefscript) worden er geen kopieën gemaakt.
+ * De modules die zulke bestanden schrijven kennen alleen hun eigen pad. De
+ * kopieën horen daar niet -- dat is de map van het spel of van Steam -- maar bij
+ * de app. Het hoofdproces zet de plek één keer bij het starten; zonder plek (in
+ * een proefscript) worden er geen kopieën gemaakt. Tot 22-09-2026 zette het
+ * hoofdproces hem nergens, en bleef "eerst een kopie" voor localconfig.vdf een
+ * belofte zonder kopie.
  */
 let kopieMap: string | undefined
 
@@ -104,7 +107,7 @@ export function bewaarKopie(bestand: string): void {
   if (!kopieMap || !existsSync(bestand)) return
   try {
     const naam = basename(bestand)
-    const map = join(kopieMap, naam)
+    const map = join(kopieMap, kopieMapNaam(bestand))
     mkdirSync(map, { recursive: true })
     const bestaand = readdirSync(map)
       .filter((item) => item.endsWith(extname(naam) || '.kopie'))
@@ -122,6 +125,19 @@ export function bewaarKopie(bestand: string): void {
   } catch {
     // Een kopie die niet lukt mag het schrijven zelf niet tegenhouden.
   }
+}
+
+/**
+ * De map met kopieën van één bestand, genoemd naar zijn hele pad.
+ *
+ * Alleen de bestandsnaam was niet genoeg: Steam heeft een localconfig.vdf per
+ * account (userdata\<id>\config), en met twee accounts kwamen hun kopieën samen
+ * in één map "localconfig.vdf" te staan, zonder te zien welke van wie was en met
+ * tien plekken voor die twee samen. Met het pad in de naam staat het account-id
+ * erin.
+ */
+function kopieMapNaam(bestand: string): string {
+  return resolve(bestand).replace(/[\\/:]+/g, '_')
 }
 
 /** Een tijd die op naam sorteert: 20260921-115614-123. */

@@ -423,11 +423,14 @@ export interface OverlayKnopStand {
   aan?: boolean
   /**
    * Waarom hij nu niet om kan. `steam` betekent: Steam draait, en dat schrijft
-   * zijn instellingen bij het afsluiten terug over de onze heen.
+   * zijn instellingen bij het afsluiten terug over de onze heen. `allespellen`:
+   * Steam heeft de overlay voor alle spellen uit, en die schakelaar laat de app
+   * met rust.
+   *
+   * Waar de schakelaar met de hand staat, zegt het scherm zelf in de taal van
+   * de speler; hier stond eerst een vast Nederlands pad.
    */
-  belet?: string
-  /** Waar de schakelaar staat, voor wie hem zelf wil omzetten. */
-  waar?: string
+  belet?: OverlayBelet
 }
 
 export interface OverlayKnoppen {
@@ -435,9 +438,24 @@ export interface OverlayKnoppen {
   gamebar: OverlayKnopStand
 }
 
+/** Zie `Belet` in core/overlayknop.ts. */
+export type OverlayBelet = 'steam' | 'allespellen'
+
+/**
+ * Vaste codes, die het scherm vertaalt (`ovl.knop.reden.*`). Hier ging eerst de
+ * ruwe code of Nodes Engelse foutmelding de zin in: "Did not work: steam".
+ */
+export type OverlayReden =
+  | OverlayBelet
+  | 'nietgevonden'
+  | 'geenblok'
+  | 'lezen'
+  | 'schrijven'
+  | 'register'
+
 export interface OverlayUitkomst {
   gelukt: boolean
-  reden?: string
+  reden?: OverlayReden
   aantal?: number
 }
 

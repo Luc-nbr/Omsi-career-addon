@@ -25,6 +25,7 @@ import {
   setActive,
   setProfilePhoto,
   writeProfile,
+  zorgVoorDienstgegevens,
   PHOTO_EXTENSIONS
 } from '../core/profiles'
 import {
@@ -83,6 +84,7 @@ import { kaartjesVoor, type Kaartset } from '../core/kaartjes'
 import { leesKnoppen, zetKnop, type Schakelbaar, type Uitkomst as OverlayUitkomst, type OverlayKnoppen } from '../core/overlayknop'
 import { writeSituation } from '../core/situation'
 import { presetStartup } from '../core/startup'
+import { zetKopieMap } from '../core/veilig'
 import { trailerOf } from '../core/trailer'
 import { spawnAtStop } from '../core/spawn'
 import { listMaps } from '../core/timetable'
@@ -2634,9 +2636,28 @@ function registerHandlers(): void {
      */
     let prepared: ReturnType<typeof prepareSituation> | undefined
     let prepareError: string | undefined
-    if (request.meerijden) {
+    /*
+     * Meerijden alleen als OMSI nu nog draait. Het scherm weet dat van een
+     * peiling van vijf tellen terug, en de vraag "meerijden of opnieuw?" blijft
+     * staan zolang de speler nadenkt; valt OMSI intussen om (Direct3D-Device
+     * lost), dan startte de app het spel hieronder zonder dat er iets
+     * klaarstond, op het startscherm van de vorige keer.
+     */
+    const running = await isOmsiRunning()
+    const meerijden = request.meerijden === true && running
+    if (meerijden) {
       log(`Meerijden in een draaiend OMSI: niets klaargezet voor ${duty.mapName}`)
+      /*
+       * En wat een eerdere dienst in deze sessie klaarzette, geldt dan ook niet
+       * meer. Bleef het staan, dan zette `herstelStartscherm` die afgeronde
+       * dienst bij het afsluiten van OMSI alsnog in het startscherm -- precies
+       * wat meerijden hierboven belooft niet te doen.
+       */
+      klaargezet = undefined
     } else {
+      if (request.meerijden) {
+        log(`Meerijden gevraagd, maar OMSI draait niet meer: ${duty.mapName} wordt gewoon klaargezet`)
+      }
       try {
         prepared = prepareSituation(
           duty,
@@ -2663,9 +2684,8 @@ function registerHandlers(): void {
      */
     if (live?.alive) openOverlay(duty, ibis)
 
-    // Het spel erbij starten, tenzij het al draait.
+    // Het spel erbij starten, tenzij het al draait (zie `running` hierboven).
     let launched = false
-    const running = await isOmsiRunning()
     if (!running) {
       try {
         launched = (await launchOmsi(omsi(), readSettings(userData()).windowedOmsi)) === 'gestart'
@@ -2683,7 +2703,7 @@ function registerHandlers(): void {
       connected: Boolean(live?.alive),
       launched,
       running,
-      meegereden: request.meerijden === true,
+      meegereden: meerijden,
       prepared,
       prepareError
     }
@@ -2810,7 +2830,13 @@ function registerHandlers(): void {
     if (!chosen) return careerPayload()
     wisselVanChauffeur()
     setActive(userData(), id)
-    career = chosen
+    /*
+     * Ook hier een personeelsnummer voor een chauffeur van voor die versie, niet
+     * alleen bij het opstarten (`resolveActive`). Anders bleef een tweede
+     * chauffeur op deze pc tot de volgende herstart zonder nummer en pincode: geen
+     * dienstpas, en de telefoon in de overlay zei dat hij geen nummer had.
+     */
+    career = zorgVoorDienstgegevens(userData(), chosen)
     return careerPayload()
   })
 
@@ -3100,6 +3126,14 @@ if (!app.requestSingleInstanceLock()) {
     )
     log(`gebruikersgegevens: ${userData()}`)
     if (pad) log(`logboek: ${pad}`)
+    /*
+     * Waar `bewaarKopie` zijn kopieën zet voordat de app in een bestand van een
+     * ander programma schrijft. Dit stond nergens, en dan maakt `bewaarKopie`
+     * stil geen kopie: de overlayknop herschreef Steams localconfig.vdf -- per
+     * account de hele bibliotheek, speeltijd en opties per spel -- zonder dat
+     * er iets was om terug te zetten.
+     */
+    zetKopieMap(join(userData(), 'kopieen', 'andere-programmas'))
     /*
      * Waar de plugin schrijft, niet alleen volgens %LOCALAPPDATA%: in Lucs app
      * stond die niet goed, en dan kwam er nooit verbinding. De lokale AppData

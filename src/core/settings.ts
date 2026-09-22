@@ -111,6 +111,17 @@ function settingsPath(userDataPath: string): string {
   return join(userDataPath, 'settings.json')
 }
 
+/*
+ * Binnen de grenzen houden. Een deel van 0.02 uit een oud of aangepast
+ * bestand zou de kaart tot een streep maken en de scheiding onvindbaar;
+ * NaN zou de hele indeling laten instorten.
+ */
+function geldigNavDeel(waarde: unknown): number | undefined {
+  return typeof waarde === 'number' && Number.isFinite(waarde)
+    ? Math.min(0.62, Math.max(0.18, waarde))
+    : undefined
+}
+
 export function readSettings(userDataPath: string): Settings {
   try {
     const raw = JSON.parse(readFileSync(settingsPath(userDataPath), 'utf8')) as Partial<Settings>
@@ -131,15 +142,7 @@ export function readSettings(userDataPath: string): Settings {
         raw.overlayWaarschuwing && typeof raw.overlayWaarschuwing === 'object'
           ? raw.overlayWaarschuwing
           : undefined,
-      /*
-       * Binnen de grenzen houden. Een deel van 0.02 uit een oud of aangepast
-       * bestand zou de kaart tot een streep maken en de scheiding onvindbaar;
-       * NaN zou de hele indeling laten instorten.
-       */
-      navDeel:
-        typeof raw.navDeel === 'number' && Number.isFinite(raw.navDeel)
-          ? Math.min(0.62, Math.max(0.18, raw.navDeel))
-          : undefined
+      navDeel: geldigNavDeel(raw.navDeel)
     }
   } catch {
     return {
@@ -191,7 +194,13 @@ export function writeSettings(userDataPath: string, settings: Partial<Settings>)
     overlayWaarschuwing:
       settings.overlayWaarschuwing && typeof settings.overlayWaarschuwing === 'object'
         ? { ...current.overlayWaarschuwing, ...settings.overlayWaarschuwing }
-        : current.overlayWaarschuwing
+        : current.overlayWaarschuwing,
+    /*
+     * Stond hier niet bij, en `clean` vervangt het hele bestand: de versleepte
+     * scheiding op het rijscherm kwam nooit in settings.json en sprong elke
+     * keer dat het rijscherm openging terug naar 0.32.
+     */
+    navDeel: geldigNavDeel(settings.navDeel) ?? current.navDeel
   }
   const path = settingsPath(userDataPath)
   mkdirSync(dirname(path), { recursive: true })

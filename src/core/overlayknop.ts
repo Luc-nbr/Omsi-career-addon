@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { logFout } from './logboek'
 import { bewaarKopie, schrijfVeilig } from './veilig'
 
 /**
@@ -41,17 +42,38 @@ import { bewaarKopie, schrijfVeilig } from './veilig'
 /** Wat de app werkelijk kan omzetten. */
 export type Schakelbaar = 'steam' | 'gamebar'
 
+/**
+ * Waarom een schakelaar nu niet om kan.
+ *
+ * Vaste codes en geen zinnen: de renderer vertaalt ze. Hier stonden eerst een
+ * Nederlands pad ("Steam → Instellingen → In-game") en ruwe foutteksten, en die
+ * kreeg een Engelse, Duitse of Franse gebruiker zo in beeld. Waar de schakelaar
+ * met de hand staat, weet de renderer uit welke van de twee het is.
+ *
+ * - `steam`: Steam draait, en schrijft zijn instellingen bij het afsluiten terug
+ *   over de onze heen.
+ * - `allespellen`: Steam heeft de overlay voor alle spellen uit. Die schakelaar
+ *   laat de app met rust; zie {@link zetSteam}.
+ */
+export type Belet = 'steam' | 'allespellen'
+
+/**
+ * Waarom omzetten niet lukte; ook vaste codes, om dezelfde reden als
+ * {@link Belet}. De foutmelding zelf gaat het logboek in.
+ */
+export type Reden =
+  | Belet
+  | 'nietgevonden'
+  | 'geenblok'
+  | 'lezen'
+  | 'schrijven'
+  | 'register'
+
 export interface KnopStand {
   /** Staat de overlay aan? `undefined` als het niet vast te stellen is. */
   aan?: boolean
-  /**
-   * Waarom hij nu niet te schakelen is. Leeg betekent: hij kan om.
-   * Bijvoorbeeld "Steam draait" -- dat programma schrijft zijn instellingen bij
-   * het afsluiten terug en zou onze wijziging overschrijven.
-   */
-  belet?: string
-  /** Waar de schakelaar staat, zodat het ook met de hand kan. */
-  waar?: string
+  /** Waarom hij nu niet te schakelen is. Leeg betekent: hij kan om. */
+  belet?: Belet
 }
 
 /* ---------------------------------------------------------------- register */
@@ -121,9 +143,11 @@ const OMSI_APPID = '252530'
 /**
  * De twee schakelaars van Steam, elk op hun eigen plek in het bestand.
  *
- * `EnableGameOverlay` geldt voor alles, `OverlayAppEnable` voor één spel. Ze
- * staan los van elkaar, en de app zet ze allebei -- anders zet je er één uit en
- * blijft de andere aan zonder dat iemand ziet waarom de overlay er toch is.
+ * `EnableGameOverlay` geldt voor alle spellen, `OverlayAppEnable` voor één. De
+ * overlay verschijnt in OMSI alleen als ze allebei aan staan. De app leest ze
+ * dus allebei, maar zet alleen die van OMSI om. Eerst zette hij ook de algemene
+ * om, in het bestand van elk account: "uit" gold dan ook voor The Bus, TSW en
+ * Assetto Corsa op deze machine, waar niemand om had gevraagd.
  *
  * WAAROM OP PAD EN NIET OP NAAM
  * Een localconfig.vdf draagt dezelfde sleutel op meer plekken. In dat van deze
@@ -204,7 +228,12 @@ function inhoudVan(tekst: string, pad: readonly string[]): string | undefined {
   return span ? tekst.slice(span.open, span.sluit + 1) : undefined
 }
 
-function leesSteamVlaggen(tekst: string): { algemeen?: boolean; perSpel?: boolean } {
+interface SteamVlaggen {
+  algemeen?: boolean
+  perSpel?: boolean
+}
+
+function leesSteamVlaggen(tekst: string): SteamVlaggen {
   const alg = inhoudVan(tekst, PAD_ALGEMEEN)?.match(/"EnableGameOverlay"\s+"(\d)"/)
   const spel = inhoudVan(tekst, PAD_PER_SPEL)?.match(/"OverlayAppEnable"\s+"(\d)"/)
   return {
@@ -213,30 +242,58 @@ function leesSteamVlaggen(tekst: string): { algemeen?: boolean; perSpel?: boolea
   }
 }
 
+/** Staat er in dit bestand iets over de overlay? Zonder vlaggen valt er niets te zeggen. */
+function heeftVlag(vlaggen: SteamVlaggen): boolean {
+  return vlaggen.algemeen !== undefined || vlaggen.perSpel !== undefined
+}
+
+/**
+ * Verschijnt de overlay in OMSI voor dit account?
+ *
+ * Alleen als beide vlaggen aan staan. Hier stond eerst "aan zodra één van de
+ * twee aan staat", en dan las iemand die hem in Steam alleen voor OMSI had
+ * uitgezet (algemeen 1, OMSI 0) "staat aan" -- met een knop ernaast die de
+ * algemene uitzette. Een vlag die ontbreekt staat op wat Steam standaard doet,
+ * en dat is aan.
+ */
+function zichtbaar(vlaggen: SteamVlaggen): boolean {
+  return vlaggen.algemeen !== false && vlaggen.perSpel !== false
+}
+
 export function leesSteam(): KnopStand {
   const configs = steamConfigs()
-  const waar = 'Steam → Instellingen → In-game'
-  if (configs.length === 0) return { waar }
+  if (configs.length === 0) return {}
 
   /*
-   * Aan is aan zodra één van de twee vlaggen aan staat: de overlay verschijnt
-   * dan immers. Zo leest de knop hetzelfde als wat je in het spel ziet.
+   * Aan als hij voor één account in OMSI verschijnt: welk account er straks
+   * speelt weet de app niet (zie `steamConfigs`).
    */
   let aan = false
   let gezien = false
+  let algemeenOveralUit = true
   for (const cfg of configs) {
-    const vlaggen = leesSteamVlaggen(readFileSync(cfg, 'latin1'))
-    for (const v of [vlaggen.algemeen, vlaggen.perSpel]) {
-      if (v === undefined) continue
-      gezien = true
-      if (v) aan = true
+    let vlaggen: SteamVlaggen
+    try {
+      vlaggen = leesSteamVlaggen(readFileSync(cfg, 'latin1'))
+    } catch {
+      // Een bestand dat niet te lezen is, zegt niets over de overlay.
+      continue
     }
+    if (!heeftVlag(vlaggen)) continue
+    gezien = true
+    if (zichtbaar(vlaggen)) aan = true
+    if (vlaggen.algemeen !== false) algemeenOveralUit = false
   }
+  if (!gezien) return {}
 
+  /*
+   * Staat hij uit omdat Steam hem voor alle spellen uit heeft, dan helpt de
+   * knop niet: die zet alleen de vlag van OMSI om. Dan hoort er te staan waar
+   * het wel kan, in plaats van een knop die niets verandert.
+   */
   return {
-    aan: gezien ? aan : undefined,
-    belet: draait('steam.exe') ? 'steam' : undefined,
-    waar
+    aan,
+    belet: !aan && algemeenOveralUit ? 'allespellen' : draait('steam.exe') ? 'steam' : undefined
   }
 }
 
@@ -277,30 +334,87 @@ export function zetVlag(
 export interface Uitkomst {
   gelukt: boolean
   /** Waarom niet, als het niet lukte. */
-  reden?: string
+  reden?: Reden
   /** Hoeveel bestanden of waarden er zijn aangepast. */
   aantal?: number
 }
 
+/**
+ * De overlay van Steam in OMSI aan of uit, voor elk account op deze pc.
+ *
+ * Alleen de vlag van OMSI (`OverlayAppEnable` onder apps/252530) gaat om; de
+ * algemene blijft van de gebruiker, want die geldt voor al zijn spellen. Staat
+ * die uit, dan zegt "aan" dat met `allespellen` in plaats van hem om te zetten.
+ *
+ * Eerst alles lezen en uitrekenen, dan pas schrijven, en lukt een schrijfbeurt
+ * niet, dan gaat wat al geschreven was terug. Zonder dat kwam een fout (een
+ * bestand op alleen-lezen, een scanner die het vasthoudt) als onafgevangen
+ * uitzondering bij het scherm, dat dan niets meldde -- terwijl bij twee
+ * accounts het eerste al omgezet kon zijn en het tweede niet.
+ */
 export function zetSteam(aan: boolean): Uitkomst {
   if (draait('steam.exe')) return { gelukt: false, reden: 'steam' }
   const configs = steamConfigs()
   if (configs.length === 0) return { gelukt: false, reden: 'nietgevonden' }
 
-  let aantal = 0
+  const teSchrijven: Array<{ cfg: string; oud: string; nieuw: string }> = []
+  let geenBlok = false
+  let gezien = false
+  let ergensZichtbaar = false
   for (const cfg of configs) {
-    const oud = readFileSync(cfg, 'latin1')
-    let nieuw = zetVlag(oud, PAD_ALGEMEEN, 'EnableGameOverlay', aan)
-    // Het blok van OMSI hoeft er niet te zijn; dan volstaat de algemene vlag.
-    if (zoekBlok(nieuw, PAD_PER_SPEL)) {
-      nieuw = zetVlag(nieuw, PAD_PER_SPEL, 'OverlayAppEnable', aan)
+    let oud: string
+    try {
+      oud = readFileSync(cfg, 'latin1')
+    } catch (fout) {
+      logFout('Steam-instellingen lezen', fout)
+      return { gelukt: false, reden: 'lezen' }
     }
-    if (nieuw === oud) continue
-    // Eerst een kopie; dit is niet ons bestand.
-    bewaarKopie(cfg)
-    schrijfVeilig(cfg, Buffer.from(nieuw, 'latin1'))
-    aantal++
+    const vlaggen = leesSteamVlaggen(oud)
+    let nieuw = oud
+    if (zoekBlok(oud, PAD_PER_SPEL)) {
+      // Aanzetten hoeft alleen waar hij uit staat; een ontbrekende vlag is al aan.
+      if (!aan || vlaggen.perSpel === false) {
+        nieuw = zetVlag(oud, PAD_PER_SPEL, 'OverlayAppEnable', aan)
+      }
+    } else if (!aan && heeftVlag(vlaggen) && zichtbaar(vlaggen)) {
+      /*
+       * Zonder blok voor OMSI valt er voor dit account alleen iets uit te zetten
+       * met de algemene vlag, en die is niet van ons. Een blok erbij verzinnen
+       * in Steams bestand doet de app niet; de schakelaar in Steam kan het wel.
+       */
+      geenBlok = true
+    }
+    const na = leesSteamVlaggen(nieuw)
+    if (heeftVlag(na)) {
+      gezien = true
+      if (zichtbaar(na)) ergensZichtbaar = true
+    }
+    if (nieuw !== oud) teSchrijven.push({ cfg, oud, nieuw })
   }
+
+  let aantal = 0
+  for (const wijziging of teSchrijven) {
+    try {
+      // Eerst een kopie; dit is niet ons bestand.
+      bewaarKopie(wijziging.cfg)
+      schrijfVeilig(wijziging.cfg, Buffer.from(wijziging.nieuw, 'latin1'))
+      aantal++
+    } catch (fout) {
+      logFout('Steam-instellingen schrijven', fout)
+      for (const eerder of teSchrijven.slice(0, aantal)) {
+        try {
+          schrijfVeilig(eerder.cfg, Buffer.from(eerder.oud, 'latin1'))
+        } catch (terug) {
+          // Dan staat de kopie er nog; zie `bewaarKopie`.
+          logFout('Steam-instellingen terugzetten', terug)
+        }
+      }
+      return { gelukt: false, reden: 'schrijven' }
+    }
+  }
+
+  if (!aan && geenBlok) return { gelukt: false, reden: 'geenblok', aantal }
+  if (aan && gezien && !ergensZichtbaar) return { gelukt: false, reden: 'allespellen', aantal }
   return { gelukt: true, aantal }
 }
 
@@ -330,10 +444,7 @@ export function leesGameBar(): KnopStand {
     // Registerwaarden komen als 0x0 of 0x1 terug.
     if (Number.parseInt(w, 16) !== 0) aan = true
   }
-  return {
-    aan: gezien ? aan : undefined,
-    waar: 'Windows → Instellingen → Gaming → Xbox Game Bar'
-  }
+  return { aan: gezien ? aan : undefined }
 }
 
 export function zetGameBar(aan: boolean): Uitkomst {
@@ -344,7 +455,9 @@ export function zetGameBar(aan: boolean): Uitkomst {
       aantal++
     }
   } catch (oorzaak) {
-    return { gelukt: false, reden: oorzaak instanceof Error ? oorzaak.message : 'register' }
+    // "Command failed: reg add HKCU\..." is geen zin voor het scherm; wel voor het logboek.
+    logFout('Game Bar in het register zetten', oorzaak)
+    return { gelukt: false, reden: 'register' }
   }
   return { gelukt: true, aantal }
 }

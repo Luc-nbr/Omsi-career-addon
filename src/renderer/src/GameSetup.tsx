@@ -13,6 +13,7 @@ import type {
   OmsiOverlays,
   OverlayKnoppen,
   OverlayKnopStand,
+  OverlayReden,
   Schakelbaar
 } from '../../shared/api'
 import { MODIFIER_CODES, SCANCODES } from '../../shared/scancodes'
@@ -157,9 +158,19 @@ function OverlaysTab({ language }: { language: Language }): JSX.Element {
         setKnopNoot(
           uit.gelukt
             ? t(language, 'ovl.knop.gedaan')
-            : t(language, 'ovl.knop.mislukt', { reden: uit.reden ?? '?' })
+            : t(language, 'ovl.knop.mislukt', { reden: redenTekst(language, uit.reden) })
         )
+      } catch {
+        /*
+         * Zonder dit gebeurde er bij een fout zichtbaar niets: geen melding, en
+         * de knop las de stand niet opnieuw. De fout zelf staat in het logboek.
+         */
+        setKnopNoot(t(language, 'ovl.knop.mislukt', { reden: t(language, 'ovl.knop.reden.fout') }))
+      }
+      try {
         setKnoppen(await window.career.overlayKnoppen())
+      } catch {
+        // Dan blijft de vorige stand staan; "Nu kijken in OMSI" leest hem opnieuw.
       } finally {
         setKnopBezig(undefined)
       }
@@ -286,11 +297,13 @@ function OverlayKnop({
   onZet: (welke: Schakelbaar, aan: boolean) => void
 }): JSX.Element | null {
   if (!stand) return null
+  // Uit de taal en niet uit core; zie 'ovl.knop.waar.*'.
+  const waar = t(language, `ovl.knop.waar.${welke}` as const)
   if (stand.aan === undefined) {
     return (
       <p className="note" style={{ marginTop: 10 }}>
         {t(language, 'ovl.knop.onbekend')}
-        {stand.waar ? ` — ${stand.waar}` : ''}
+        {` — ${waar}`}
       </p>
     )
   }
@@ -299,8 +312,11 @@ function OverlayKnop({
       <p className={stand.aan ? 'note warn' : 'note'}>
         {t(language, stand.aan ? 'ovl.knop.staataan' : 'ovl.knop.staatuit')}
       </p>
-      {stand.belet === 'steam' ? (
-        <p className="note warn" style={{ marginTop: 6 }}>{t(language, 'ovl.knop.steamdraait')}</p>
+      {stand.belet ? (
+        /* `allespellen` is geen probleem maar een keuze in Steam; geen waarschuwing. */
+        <p className={stand.belet === 'steam' ? 'note warn' : 'note'} style={{ marginTop: 6 }}>
+          {redenTekst(language, stand.belet)}
+        </p>
       ) : (
         <button
           type="button"
@@ -312,11 +328,18 @@ function OverlayKnop({
           {t(language, stand.aan ? 'ovl.knop.uitzetten' : 'ovl.knop.aanzetten')}
         </button>
       )}
-      {stand.waar && (
-        <p className="note" style={{ marginTop: 6 }}>{stand.waar}</p>
-      )}
+      <p className="note" style={{ marginTop: 6 }}>{waar}</p>
     </div>
   )
+}
+
+/**
+ * De vaste code uit core/overlayknop.ts als zin in de taal van de speler.
+ * `steam` had al een eigen zin, voor wanneer de knop er niet eens staat.
+ */
+function redenTekst(language: Language, reden: OverlayReden | undefined): string {
+  if (!reden) return '?'
+  return t(language, reden === 'steam' ? 'ovl.knop.steamdraait' : (`ovl.knop.reden.${reden}` as const))
 }
 
 /** De schuiven en vinkjes uit options.cfg. */

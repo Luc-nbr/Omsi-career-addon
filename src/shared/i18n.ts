@@ -275,6 +275,72 @@ const TEXT = {
     nl: 'Het lukte niet: {reden}'
   },
   /*
+   * Wat er op de plek van {reden} komt. core/overlayknop.ts geeft vaste codes
+   * terug; eerst kwamen die zelf in de zin ("Did not work: steam"), of de
+   * Engelse foutmelding van `reg add`. Code `steam` gebruikt
+   * 'ovl.knop.steamdraait'.
+   */
+  'ovl.knop.reden.allespellen': {
+    en: 'Steam has its overlay switched off for all games. To have it in OMSI, switch it on in Steam › Settings › In-game — the app leaves that switch alone, because it applies to every game.',
+    de: 'Steam hat sein Overlay für alle Spiele ausgeschaltet. Willst du es in OMSI haben, schalte es in Steam › Einstellungen › Im Spiel ein — die App lässt diesen Schalter in Ruhe, weil er für jedes Spiel gilt.',
+    fr: 'Steam a désactivé son overlay pour tous les jeux. Pour l’avoir dans OMSI, réactivez-le dans Steam › Paramètres › En jeu — l’application ne touche pas à ce réglage, car il vaut pour tous les jeux.',
+    nl: 'Steam heeft zijn overlay voor alle spellen uitgezet. Wil je hem in OMSI, zet hem dan aan in Steam › Instellingen › In-game — de app blijft van die schakelaar af, want hij geldt voor elk spel.'
+  },
+  'ovl.knop.reden.geenblok': {
+    en: 'Steam has no OMSI settings yet for at least one of your accounts, so the app cannot switch it off for OMSI alone there. Do it in Steam: right-click OMSI 2 › Properties.',
+    de: 'Für mindestens eines deiner Steam-Konten gibt es noch keine OMSI-Einstellungen, also kann die App es dort nicht nur für OMSI ausschalten. Mach es in Steam: Rechtsklick auf OMSI 2 › Eigenschaften.',
+    fr: 'pour au moins un de vos comptes Steam, il n’y a pas encore de réglages OMSI : l’application ne peut donc pas la désactiver pour OMSI seul. Faites-le dans Steam : clic droit sur OMSI 2 › Propriétés.',
+    nl: 'voor minstens één van je Steam-accounts staan er nog geen instellingen voor OMSI, dus kan de app hem daar niet alleen voor OMSI uitzetten. Doe het in Steam: rechtsklik op OMSI 2 › Eigenschappen.'
+  },
+  'ovl.knop.reden.nietgevonden': {
+    en: 'Steam’s settings file was not found.',
+    de: 'Die Einstellungsdatei von Steam wurde nicht gefunden.',
+    fr: 'le fichier de réglages de Steam est introuvable.',
+    nl: 'het instellingenbestand van Steam is niet gevonden.'
+  },
+  'ovl.knop.reden.lezen': {
+    en: 'Steam’s settings file could not be read.',
+    de: 'Die Einstellungsdatei von Steam ließ sich nicht lesen.',
+    fr: 'le fichier de réglages de Steam n’a pas pu être lu.',
+    nl: 'het instellingenbestand van Steam was niet te lezen.'
+  },
+  'ovl.knop.reden.schrijven': {
+    en: 'Steam’s settings file could not be written — it may be read-only or held open by another program.',
+    de: 'Die Einstellungsdatei von Steam ließ sich nicht schreiben — vielleicht ist sie schreibgeschützt oder von einem anderen Programm geöffnet.',
+    fr: 'le fichier de réglages de Steam n’a pas pu être écrit — il est peut-être en lecture seule ou ouvert par un autre programme.',
+    nl: 'het instellingenbestand van Steam kon niet worden geschreven — misschien staat het op alleen-lezen of houdt een ander programma het open.'
+  },
+  'ovl.knop.reden.register': {
+    en: 'Windows did not accept the change in the registry.',
+    de: 'Windows hat die Änderung in der Registrierung nicht angenommen.',
+    fr: 'Windows n’a pas accepté la modification dans le registre.',
+    nl: 'Windows nam de wijziging in het register niet aan.'
+  },
+  /* Als de vraag zelf misging; de fout staat dan in het logboek (zie `handle` in main). */
+  'ovl.knop.reden.fout': {
+    en: 'something went wrong; the details are in the app’s log file.',
+    de: 'Etwas ist schiefgelaufen; die Einzelheiten stehen im Logbuch der App.',
+    fr: 'une erreur s’est produite ; les détails sont dans le journal de l’application.',
+    nl: 'er ging iets mis; de details staan in het logboek van de app.'
+  },
+  /*
+   * Waar de schakelaar met de hand staat. Eerst gaf core een vast Nederlands pad
+   * mee, dat in elke taal zo in beeld kwam. Voor Steam de schakelaar van OMSI
+   * zelf, want dat is ook de enige die de app omzet.
+   */
+  'ovl.knop.waar.steam': {
+    en: 'By hand, for OMSI alone: in Steam, right-click OMSI 2 › Properties › General › “Enable the Steam Overlay while in-game”.',
+    de: 'Von Hand, nur für OMSI: in Steam Rechtsklick auf OMSI 2 › Eigenschaften › Allgemein › Steam-Overlay im Spiel.',
+    fr: 'À la main, pour OMSI seul : dans Steam, clic droit sur OMSI 2 › Propriétés › Général › overlay Steam en jeu.',
+    nl: 'Met de hand, alleen voor OMSI: in Steam rechtsklik op OMSI 2 › Eigenschappen › Algemeen › Steam-overlay in het spel.'
+  },
+  'ovl.knop.waar.gamebar': {
+    en: 'By hand: Windows Settings › Gaming › Xbox Game Bar.',
+    de: 'Von Hand: Windows-Einstellungen › Spielen › Xbox Game Bar.',
+    fr: 'À la main : Paramètres Windows › Jeux › Xbox Game Bar.',
+    nl: 'Met de hand: Windows-instellingen › Gaming › Xbox Game Bar.'
+  },
+  /*
    * Wat de schakelaar van Steam niet doet. OMSI heeft Steam-DRM, dus Steam laadt
    * GameOverlayRenderer.dll hoe dan ook in het proces; de schakelaar stopt het
    * tekenen, niet het inhaken. Wie dat niet weet, ziet de DLL in de lijst staan
