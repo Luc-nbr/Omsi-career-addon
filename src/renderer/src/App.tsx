@@ -68,6 +68,7 @@ import { DraaitDialog } from "./DraaitDialog";
 import { HervatDialog } from "./HervatDialog";
 import { ThemaKnop, type Thema } from "./ThemaKnop";
 import { wisselThema } from "./themaOvergang";
+import { Rondleiding } from "./Rondleiding";
 import { Versie } from "./Versie";
 import {
   DEFAULT_LANGUAGE,
@@ -352,6 +353,13 @@ export function App(): JSX.Element {
    */
   const [busfotoStand, setBusfotoStand] = useState<BusfotoStand>();
   const [busfotosGevraagd, setBusfotosGevraagd] = useState<boolean>();
+  /*
+   * De rondleiding: `undefined` zolang de instellingen er nog niet zijn, zodat
+   * hij niet even opflitst bij iemand die hem al gezien heeft. `rondleidingOpen`
+   * is het vraagteken in het hoofdmenu, voor wie hem nog eens wil zien.
+   */
+  const [rondleidingGezien, setRondleidingGezien] = useState<boolean>();
+  const [rondleidingOpen, setRondleidingOpen] = useState(false);
   const [busfotoScherm, setBusfotoScherm] = useState<
     "installatie" | "bijwerken"
   >();
@@ -532,6 +540,7 @@ export function App(): JSX.Element {
       setKaartweergave(settings.mapView ?? "tegels");
       setTaalGekozen(settings.languageChosen === true);
       setBusfotosGevraagd(settings.busPhotosOffered === true);
+      setRondleidingGezien(settings.tourSeen === true);
     });
   }, []);
 
@@ -2179,6 +2188,7 @@ export function App(): JSX.Element {
           onLogboek={() => void window.career.logboekOpenen()}
           melding={hubMelding}
           onMeldingWeg={() => setHubMelding(undefined)}
+          onRondleiding={() => setRondleidingOpen(true)}
           onBusplaatjes={() => {
             setBusfotoScherm("bijwerken");
             void bijwerkenBusfotos();
@@ -2226,6 +2236,26 @@ export function App(): JSX.Element {
                   void window.career.dienstpasGezien().then(setCareer)
                 }
                 onStaatVanDienst={() => setScreen("profiel")}
+              />
+            ) : rondleidingOpen ||
+              /*
+               * Vanzelf alleen bij wie nieuw is: de rondleiding nog nooit gezien,
+               * en nog geen dienst gereden. Wie de app al gebruikte krijgt hem
+               * na deze versie niet ineens voor zijn neus; die vindt hem onder het
+               * vraagteken.
+               */
+              (rondleidingGezien === false &&
+                (career.summary?.duties ?? 0) === 0) ? (
+              <Rondleiding
+                language={language}
+                naam={career.state.driver}
+                onKlaar={() => {
+                  setRondleidingOpen(false);
+                  if (!rondleidingGezien) {
+                    setRondleidingGezien(true);
+                    void window.career.saveSettings({ tourSeen: true });
+                  }
+                }}
               />
             ) : undefined
           }

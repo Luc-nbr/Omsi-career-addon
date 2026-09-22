@@ -42,6 +42,8 @@ interface Props {
   /** Wat er na de laatste dienst te melden valt: de uitkomst, of dat hij geannuleerd is. */
   melding?: string;
   onMeldingWeg?: () => void;
+  /** De rondleiding opnieuw laten zien; zie Rondleiding.tsx. */
+  onRondleiding?: () => void;
 }
 
 const MODI: GameMode[] = ["career", "service", "free"];
@@ -94,6 +96,7 @@ export function Starthub({
   onBusplaatjes,
   melding,
   onMeldingWeg,
+  onRondleiding,
   dialoog,
 }: Props): JSX.Element {
   /*
@@ -126,6 +129,17 @@ export function Starthub({
         <span className="hub-merk">OMSI Enhancer</span>
         <Versie klasse="hub-versie" />
         <div className="balk-rechts">
+          {onRondleiding && (
+            <button
+              type="button"
+              className="hub-hulp"
+              title={t(language, "tour.open")}
+              aria-label={t(language, "tour.open")}
+              onClick={onRondleiding}
+            >
+              ?
+            </button>
+          )}
           <ThemaKnop language={language} thema={thema} onThema={onThema} />
           {LANGUAGES.map((taal) => (
             <button

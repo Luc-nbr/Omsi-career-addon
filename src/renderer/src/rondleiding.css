@@ -1,0 +1,246 @@
+/*
+ * De rondleiding: het donker over het hoofdmenu met een lichtvlek op wat er
+ * besproken wordt, en de uitleg op een vel ernaast.
+ *
+ * Staat binnen `.hub`, dus de kleuren van het vel en het blauw van de route
+ * komen van daar, in de lichte en de donkere stand.
+ */
+.rondleiding {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+
+/*
+ * De lichtvlek is een vak met een schaduw die het hele scherm bedekt: waar het
+ * vak staat is het licht, eromheen is het donker. Van plek naar plek schuift
+ * hij, zodat je ziet waar het volgende over gaat.
+ */
+.rondleiding-gat {
+  position: fixed;
+  border-radius: 16px;
+  box-shadow:
+    0 0 0 2px var(--route),
+    0 0 0 9999px rgba(4, 8, 18, 0.66);
+  pointer-events: none;
+  transition:
+    left 360ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    top 360ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    width 360ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    height 360ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Zonder doel geen blauwe ring: die zou als een stip midden in beeld staan. */
+.rondleiding-gat[data-leeg='ja'] {
+  box-shadow: 0 0 0 9999px rgba(4, 8, 18, 0.66);
+}
+
+.rondleiding-kaart {
+  position: fixed;
+  width: min(380px, calc(100vw - 32px));
+  display: grid;
+  /*
+   * Een kolom die niet breder wordt dan het vel. Zonder `minmax(0, ...)` rekte
+   * de kolom mee met de rij knoppen, en liep de tekst over de rand van het vel.
+   */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  padding: 20px 20px 16px;
+  border: 1px solid var(--vel-rand);
+  border-radius: var(--radius);
+  background: var(--vel);
+  color: var(--vel-ink);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  font-family: var(--letter);
+  transition:
+    left 360ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    top 360ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: rondleiding-in 260ms ease-out both;
+}
+
+/*
+ * De focus staat op het vel voor de toetsen en de schermlezer, niet om te
+ * laten zien: een blauwe ring om het vel gaf een dubbele rand. De knoppen
+ * erin tonen hun focus wel.
+ */
+.rondleiding-kaart:focus,
+.rondleiding-kaart:focus-visible {
+  outline: none;
+}
+
+@keyframes rondleiding-in {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}
+
+.rondleiding-kop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rondleiding-teller {
+  margin: 0;
+  color: var(--route);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.rondleiding-kaart h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+.rondleiding-tekst {
+  margin: 0;
+  color: var(--vel-zacht);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.rondleiding-lijst {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.rondleiding-lijst li::marker {
+  color: var(--route);
+  font-weight: 700;
+}
+
+.rondleiding-voet {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.rondleiding-stippen {
+  display: flex;
+  flex: none;
+  gap: 5px;
+}
+
+.rondleiding-stippen span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  /* De zachte inkt, gedimd: de rand van het vel was in de lichte stand onzichtbaar. */
+  background: var(--vel-zacht);
+  opacity: 0.35;
+  transition:
+    width 200ms ease-out,
+    background-color 200ms ease-out;
+}
+
+.rondleiding-stippen span[data-nu='ja'] {
+  width: 16px;
+  border-radius: 3px;
+  background: var(--route);
+  opacity: 1;
+}
+
+.rondleiding-voet button {
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease-out,
+    border-color 120ms ease-out,
+    color 120ms ease-out;
+}
+
+/* Overslaan staat links, los van de weg vooruit. */
+.rondleiding-over {
+  margin-right: auto;
+  border: 0;
+  background: transparent;
+  color: var(--vel-zacht);
+}
+
+.rondleiding-over:hover {
+  color: var(--vel-ink);
+}
+
+.rondleiding-terug {
+  border: 1px solid var(--vel-rand);
+  background: transparent;
+  color: var(--vel-ink);
+}
+
+.rondleiding-terug:hover {
+  border-color: var(--vel-zacht);
+}
+
+.rondleiding-verder {
+  border: 1px solid var(--route);
+  background: var(--route);
+  color: #ffffff;
+}
+
+.rondleiding-verder:hover {
+  background: #3d84ff;
+}
+
+.rondleiding-voet button:focus-visible {
+  outline: 2px solid var(--route);
+  outline-offset: 2px;
+}
+
+/* Het vraagtekentje in de balk van het hoofdmenu, waarmee de rondleiding terugkomt. */
+.hub-hulp {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--vel-rand);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--vel-zacht);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease-out,
+    color 120ms ease-out;
+}
+
+.hub-hulp:hover {
+  border-color: var(--route);
+  color: var(--route);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rondleiding-gat,
+  .rondleiding-kaart,
+  .rondleiding-stippen span,
+  .rondleiding-voet button {
+    transition: none;
+  }
+
+  .rondleiding-kaart {
+    animation: none;
+  }
+}

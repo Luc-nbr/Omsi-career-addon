@@ -165,6 +165,120 @@ const TEXT = {
     fr: 'Service annulé. Rien n’a été enregistré.',
     nl: 'Dienst geannuleerd. Er is niets geboekt.'
   },
+  // ---- de rondleiding voor nieuwe gebruikers (Rondleiding.tsx) ----
+  'tour.open': { en: 'Show the tour', de: 'Rundgang zeigen', fr: 'Voir la visite guidée', nl: 'Rondleiding bekijken' },
+  'tour.skip': { en: 'Skip', de: 'Überspringen', fr: 'Passer', nl: 'Overslaan' },
+  'tour.back': { en: 'Back', de: 'Zurück', fr: 'Précédent', nl: 'Vorige' },
+  'tour.next': { en: 'Next', de: 'Weiter', fr: 'Suivant', nl: 'Volgende' },
+  'tour.start': { en: 'Start the tour', de: 'Rundgang starten', fr: 'Commencer la visite', nl: 'Rondleiding starten' },
+  'tour.finish': { en: "Let's go", de: "Los geht's", fr: "C'est parti", nl: 'Aan de slag' },
+  'tour.step': { en: 'Step {nu} of {totaal}', de: 'Schritt {nu} von {totaal}', fr: 'Étape {nu} sur {totaal}', nl: 'Stap {nu} van {totaal}' },
+  'tour.welcomeTitle': { en: 'Welcome, {naam}', de: 'Willkommen, {naam}', fr: 'Bienvenue, {naam}', nl: 'Welkom, {naam}' },
+  'tour.welcomeText': {
+    en: 'OMSI Enhancer builds real duties from the timetables of your own OMSI maps, sets up the game for you and rides along in an overlay. In a minute you will know where everything is.',
+    de: 'OMSI Enhancer baut echte Dienste aus den Fahrplänen deiner eigenen OMSI-Karten, richtet das Spiel für dich ein und fährt in einem Overlay mit. In einer Minute weißt du, wo alles ist.',
+    fr: 'OMSI Enhancer crée de vrais services à partir des horaires de vos propres cartes OMSI, prépare le jeu pour vous et vous accompagne dans une surcouche. En une minute, vous saurez où tout se trouve.',
+    nl: 'OMSI Enhancer maakt echte diensten uit de dienstregelingen van je eigen OMSI-kaarten, zet het spel voor je klaar en rijdt met je mee in een overlay. In een minuut weet je waar alles zit.'
+  },
+  'tour.careerTitle': { en: 'Career', de: 'Karriere', fr: 'Carrière', nl: 'Carrière' },
+  'tour.careerText': {
+    en: 'You start as a trainee. The depot has you take a driving test on a route you choose; pass it and you may drive that line. Every new line needs its own test, and every duty moves you up the ranks.',
+    de: 'Du fängst als Azubi an. Der Betriebshof nimmt dir eine Fahrprüfung auf einer Strecke deiner Wahl ab; bestehst du, darfst du diese Linie fahren. Jede neue Linie braucht eine eigene Prüfung, und mit jedem Dienst steigst du im Rang.',
+    fr: "Vous débutez comme stagiaire. Le dépôt vous fait passer un examen sur un itinéraire de votre choix ; réussi, vous pouvez conduire cette ligne. Chaque nouvelle ligne demande son propre examen, et chaque service vous fait monter en grade.",
+    nl: 'Je begint als leerling. De remise laat je een rijexamen doen op een route die je zelf kiest; slaag je, dan mag je die lijn rijden. Elke nieuwe lijn vraagt een eigen examen, en met elke dienst stijg je in rang.'
+  },
+  'tour.serviceTitle': { en: 'Duty', de: 'Dienst', fr: 'Service', nl: 'Dienst' },
+  'tour.serviceText': {
+    en: 'Pick a map and how long you want to drive. The app finds a real run from the timetable, with the bus and depot that belong to it. No licences, no tests.',
+    de: 'Wähle eine Karte und wie lange du fahren willst. Die App sucht einen echten Umlauf aus dem Fahrplan, mit dem passenden Bus und Betriebshof. Keine Lizenzen, keine Prüfungen.',
+    fr: "Choisissez une carte et la durée de conduite. L'application trouve un vrai service dans l'horaire, avec le bus et le dépôt qui vont avec. Pas de licences, pas d'examens.",
+    nl: 'Kies een kaart en hoe lang je wilt rijden. De app zoekt een echte omloop uit de dienstregeling, met de bus en het wagenpark die erbij horen. Geen vergunningen, geen examens.'
+  },
+  'tour.freeTitle': { en: 'Free drive', de: 'Freies Fahren', fr: 'Conduite libre', nl: 'Vrij rijden' },
+  'tour.freeText': {
+    en: 'You choose everything yourself: the line, the bus, the spot, the weather, the date and the time. The app sets it up in OMSI and offers the overlay.',
+    de: 'Du wählst alles selbst: Linie, Bus, Ort, Wetter, Datum und Uhrzeit. Die App richtet es in OMSI ein und bietet das Overlay an.',
+    fr: "Vous choisissez tout : la ligne, le bus, l'emplacement, la météo, la date et l'heure. L'application prépare OMSI et propose la surcouche.",
+    nl: 'Jij kiest alles zelf: de lijn, de bus, de plek, het weer, de datum en de tijd. De app zet het klaar in OMSI en biedt de overlay aan.'
+  },
+  'tour.recordTitle': { en: 'Your service record', de: 'Deine Dienstakte', fr: 'Vos états de service', nl: 'Je staat van dienst' },
+  'tour.recordText': {
+    en: 'Every duty goes into your log here: kilometres, hours, how punctual you were and your rank. Click it for the full overview, with your staff number and PIN.',
+    de: 'Jeder Dienst landet hier in deinem Fahrtenbuch: Kilometer, Stunden, deine Pünktlichkeit und dein Rang. Klick darauf für die ganze Übersicht, mit Personalnummer und PIN.',
+    fr: 'Chaque service arrive ici dans votre journal : kilomètres, heures, ponctualité et grade. Cliquez pour le détail complet, avec votre matricule et votre code.',
+    nl: 'Elke dienst komt hier in je logboek: kilometers, uren, hoe stipt je reed en je rang. Klik erop voor het hele overzicht, met je personeelsnummer en pincode.'
+  },
+  'tour.buttonsTitle': { en: 'Settings and help', de: 'Einstellungen und Hilfe', fr: 'Réglages et aide', nl: 'Instellingen en hulp' },
+  'tour.buttonsText': {
+    en: "OMSI's own settings (graphics, keys, overlays that can freeze the game), your drivers, photos of new buses, and the app's log for when something goes wrong.",
+    de: 'Die Einstellungen von OMSI selbst (Grafik, Tasten, Overlays, die das Spiel einfrieren können), deine Fahrer, Fotos neuer Busse und das Logbuch der App, falls etwas schiefgeht.',
+    fr: "Les réglages d'OMSI (graphismes, touches, surcouches qui peuvent figer le jeu), vos conducteurs, les photos des nouveaux bus, et le journal de l'application en cas de problème.",
+    nl: 'De instellingen van OMSI zelf (beeld, toetsen, overlays die het spel kunnen laten vastlopen), je chauffeurs, foto\'s van nieuwe bussen, en het logboek van de app voor als er iets misgaat.'
+  },
+  'tour.dutyTitle': { en: 'How a duty works', de: 'So fährst du einen Dienst', fr: 'Comment se déroule un service', nl: 'Zo rijd je een dienst' },
+  'tour.dutyText': {
+    en: 'From choosing to your log, in five steps:',
+    de: 'Von der Auswahl bis zum Fahrtenbuch, in fünf Schritten:',
+    fr: "Du choix jusqu'au journal, en cinq étapes :",
+    nl: 'Van kiezen tot logboek, in vijf stappen:'
+  },
+  'tour.duty1': { en: 'Pick a map, a duty and a bus.', de: 'Wähle Karte, Dienst und Bus.', fr: 'Choisissez une carte, un service et un bus.', nl: 'Kies een kaart, een dienst en een bus.' },
+  'tour.duty2': {
+    en: 'Press START: the app prepares the situation and starts OMSI.',
+    de: 'Drück START: Die App bereitet die Situation vor und startet OMSI.',
+    fr: "Appuyez sur START : l'application prépare la situation et lance OMSI.",
+    nl: 'Druk op START: de app zet de situatie klaar en start OMSI.'
+  },
+  'tour.duty3': {
+    en: 'In the bus, sign on with the phone in the overlay, using your staff number and PIN.',
+    de: 'Melde dich im Bus am Telefon im Overlay an, mit Personalnummer und PIN.',
+    fr: 'Dans le bus, identifiez-vous sur le téléphone de la surcouche avec votre matricule et votre code.',
+    nl: 'Meld je in de bus aan op de telefoon in de overlay, met je personeelsnummer en pincode.'
+  },
+  'tour.duty4': {
+    en: 'Enter the line and route on the IBIS; the overlay tells you which codes.',
+    de: 'Gib Linie und Route am IBIS ein; das Overlay sagt dir die Codes.',
+    fr: "Saisissez la ligne et l'itinéraire sur l'IBIS ; la surcouche indique les codes.",
+    nl: 'Toets lijn en route in op de IBIS; de overlay zegt welke codes.'
+  },
+  'tour.duty5': {
+    en: 'Drive. The navigation follows along, and at the end the duty goes into your log.',
+    de: 'Fahr los. Die Navigation läuft mit, und am Ende landet der Dienst in deinem Fahrtenbuch.',
+    fr: 'Roulez. La navigation vous suit, et à la fin le service arrive dans votre journal.',
+    nl: 'Rijd. De navigatie loopt mee, en aan het eind komt de dienst in je logboek.'
+  },
+  'tour.overlayTitle': { en: 'The overlay', de: 'Das Overlay', fr: 'La surcouche', nl: 'De overlay' },
+  'tour.overlayText': {
+    en: 'A see-through window on top of OMSI, with your duty, the navigation and the phone. That is why you play in windowed mode; the app starts OMSI that way.',
+    de: 'Ein durchsichtiges Fenster über OMSI, mit deinem Dienst, der Navigation und dem Telefon. Deshalb spielst du im Fenstermodus; die App startet OMSI so.',
+    fr: "Une fenêtre transparente au-dessus d'OMSI, avec votre service, la navigation et le téléphone. Jouez donc en mode fenêtré ; l'application lance OMSI ainsi.",
+    nl: 'Een doorzichtig venster boven OMSI, met je dienst, de navigatie en de telefoon. Daarom speel je in venstermodus; de app start OMSI zo.'
+  },
+  'tour.overlay1': {
+    en: 'Move a panel by its bar or an edge; at the edge of the screen it snaps into place.',
+    de: 'Verschiebe ein Fenster an der Leiste oder am Rand; am Bildschirmrand rastet es ein.',
+    fr: "Déplacez un panneau par sa barre ou un bord ; au bord de l'écran, il s'aimante.",
+    nl: 'Verplaats een paneel aan de balk of een rand; bij de rand van je scherm klikt het vast.'
+  },
+  'tour.overlay2': {
+    en: 'Bigger, smaller or more see-through: with the buttons in that bar.',
+    de: 'Größer, kleiner oder durchsichtiger: mit den Knöpfen in dieser Leiste.',
+    fr: 'Plus grand, plus petit ou plus transparent : avec les boutons de cette barre.',
+    nl: 'Groter, kleiner of doorzichtiger: met de knopjes in die balk.'
+  },
+  'tour.overlay3': {
+    en: 'Ctrl+Alt+O opens edit mode, where you also choose how often the overlay refreshes.',
+    de: 'Strg+Alt+O öffnet den Bearbeitungsmodus, dort wählst du auch, wie oft das Overlay neu zeichnet.',
+    fr: 'Ctrl+Alt+O ouvre le mode édition, où vous choisissez aussi la fréquence de rafraîchissement de la surcouche.',
+    nl: 'Ctrl+Alt+O opent de bewerkstand; daar kies je ook hoe vaak de overlay ververst.'
+  },
+  'tour.doneTitle': { en: 'Ready to go', de: 'Bereit zur Abfahrt', fr: 'Prêt au départ', nl: 'Klaar voor vertrek' },
+  'tour.doneText': {
+    en: 'This button shows the tour again. Have a good ride!',
+    de: 'Mit diesem Knopf siehst du den Rundgang noch einmal. Gute Fahrt!',
+    fr: 'Ce bouton relance la visite. Bonne route !',
+    nl: 'Met dit knopje zie je de rondleiding opnieuw. Goede rit!'
+  },
   'hub.dismiss': {
     en: 'Close',
     de: 'Schließen',

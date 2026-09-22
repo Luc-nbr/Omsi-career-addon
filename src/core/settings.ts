@@ -85,6 +85,13 @@ export interface Settings {
    */
   busPhotosOffered?: boolean
   /**
+   * Is de rondleiding voor nieuwe gebruikers al gezien of overgeslagen?
+   *
+   * Per computer, net als de taal: een tweede chauffeur op dezelfde pc kent de
+   * app al. Wie hem opnieuw wil zien, drukt op het vraagteken in het hoofdmenu.
+   */
+  tourSeen?: boolean
+  /**
    * Dag of nacht. `systeem` volgt wat Windows zegt en is de beginstand.
    *
    * Los van Windows, want de app wordt 's avonds in een donkere kamer gebruikt
@@ -138,6 +145,7 @@ export function readSettings(userDataPath: string): Settings {
       mapView: raw.mapView === 'lijst' ? 'lijst' : 'tegels',
       languageChosen: raw.languageChosen === true,
       busPhotosOffered: raw.busPhotosOffered === true,
+      tourSeen: raw.tourSeen === true,
       overlayWaarschuwing:
         raw.overlayWaarschuwing && typeof raw.overlayWaarschuwing === 'object'
           ? raw.overlayWaarschuwing
@@ -152,7 +160,8 @@ export function readSettings(userDataPath: string): Settings {
       theme: 'systeem',
       mapView: 'tegels',
       languageChosen: false,
-      busPhotosOffered: false
+      busPhotosOffered: false,
+      tourSeen: false
     }
   }
 }
@@ -191,6 +200,8 @@ export function writeSettings(userDataPath: string, settings: Partial<Settings>)
       typeof settings.busPhotosOffered === 'boolean'
         ? settings.busPhotosOffered
         : current.busPhotosOffered,
+    // Hoort in deze lijst, anders valt hij weg zodra iets anders bewaard wordt (zie navDeel).
+    tourSeen: typeof settings.tourSeen === 'boolean' ? settings.tourSeen : current.tourSeen,
     overlayWaarschuwing:
       settings.overlayWaarschuwing && typeof settings.overlayWaarschuwing === 'object'
         ? { ...current.overlayWaarschuwing, ...settings.overlayWaarschuwing }
