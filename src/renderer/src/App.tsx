@@ -20,6 +20,7 @@ import { WEATHER_KINDS, type WeatherKind } from "../../shared/weather";
 import {
   TIME_WINDOWS,
   type Assignment,
+  type BeginResult,
   type CareerApi,
   type CareerPayload,
   type DutyRequest,
@@ -1245,31 +1246,56 @@ export function App(): JSX.Element {
          * op "Situatie wordt geschreven…" staan, ging de fout nergens heen, en
          * was de herstartknop na een crash weg: die haalt de melding weg voordat
          * hij `begin` aanroept. Alleen om deze aanroep, want wat erna komt hoort
-         * bij een start die wel gelukt is.
+         * bij een `duty:begin` die wel terugkwam.
          */
-        const result = await window.career.beginDuty({
-          duty,
-          ibis,
-          vehiclePath: vehicle?.relativePath,
-          kleurstelling:
-            busKleur && busKleur.pad === vehicle?.relativePath
-              ? busKleur.naam
-              : undefined,
-          herstart,
-          meerijden,
-          date: assignment?.date,
-          lineNumber: ibis?.line || duty.legs[0]?.lineNumber || "",
-          terminus: duty.legs[0]?.terminus ?? "",
-          yard: ibis?.yard,
-        }).catch((cause: unknown) => {
+        let result: BeginResult;
+        try {
+          result = await window.career.beginDuty({
+            duty,
+            ibis,
+            vehiclePath: vehicle?.relativePath,
+            kleurstelling:
+              busKleur && busKleur.pad === vehicle?.relativePath
+                ? busKleur.naam
+                : undefined,
+            herstart,
+            meerijden,
+            date: assignment?.date,
+            lineNumber: ibis?.line || duty.legs[0]?.lineNumber || "",
+            terminus: duty.legs[0]?.terminus ?? "",
+            yard: ibis?.yard,
+          });
+        } catch (cause) {
           setNote(
             t(language, "start.failed", {
               reason: cause instanceof Error ? cause.message : String(cause),
             }),
           );
-          return undefined;
-        });
-        if (!result) return false;
+          return false;
+        }
+        /*
+         * Ook een `duty:begin` die gewoon terugkomt kan betekenen dat er niets
+         * draait. Main vangt het starten van het spel af: zegt de speler nee
+         * tegen het UAC-venster, lukt PowerShell niet, of staat er geen
+         * Omsi.exe, dan komt er `launched: false` terug, en met
+         * `running: false` draaide het spel ook niet al. Dit ging als geslaagd
+         * door: de melding en de herstartknop bleven weg, de voet zei dat OMSI
+         * op de kaart opende, en het opstartvenster wachtte op een spel dat
+         * niet kwam.
+         *
+         * Alleen `launched` en `running`, niet `connected`: na een crash blijft
+         * live.json op alive=true staan (de plugin schrijft alive=false alleen
+         * bij netjes afsluiten), en tot vijftien tellen oud telt hij als vers.
+         * Wie binnen die tijd op "opnieuw starten" drukt, kreeg anders
+         * `connected` terug van een spel dat al weg was.
+         *
+         * Een eigen zin: het klaarzetten is hier juist gelukt, alleen het spel
+         * kwam niet op.
+         */
+        if (!result.launched && !result.running) {
+          setNote(t(language, "start.notLaunched"));
+          return false;
+        }
         setStarted(true);
         /*
          * Wie zelf op START drukt, wil rijden. Dit zat eerst in de voorwaarde om
@@ -1283,7 +1309,18 @@ export function App(): JSX.Element {
          * de plugin gegevens doorgeeft en gaat de overlay op dat moment open.
          */
         if (result.connected) {
-          setOverlayOpen(await window.career.setOverlay(duty, true, ibis));
+          /*
+           * Lukt het openen niet, dan is de dienst toch gestart: OMSI draait en
+           * geeft gegevens door. Ontsnapte de fout hier, dan bleef de voet op
+           * "Situatie wordt geschreven…" staan en was `begin` nooit klaar, dus
+           * wist de herstartknop niet hoe het afliep. De knop voor de overlay
+           * volgt `overlay:state`, dat main bij elke wisseling zelf stuurt.
+           */
+          try {
+            setOverlayOpen(await window.career.setOverlay(duty, true, ibis));
+          } catch {
+            // De overlay is met de knop op het rijscherm opnieuw te openen.
+          }
         }
         setStarting(!result.connected);
 
@@ -1437,16 +1474,34 @@ export function App(): JSX.Element {
     async (line: LineSummary, basic: boolean) => {
       /*
        * Is er al een dienst aangenomen, dan geen nieuw examen maar verder met
-       * die dienst, zoals elke tegel in het hoofdmenu dan doet. Dit zette eerst
-       * het gevonden examen in `duties` en vroeg pas daarna main om het aan te
-       * nemen; main weigert dat zolang er een dienst in het profiel staat, en
-       * dan reed je een ander examen dan het profiel -- en `finishExam`
-       * beoordeelt het examen in het geheugen. Wie nog geen vergunning heeft,
-       * kan op deze stap alleen via deze knop verder: na een herstart van de
-       * app, of na terugklikken in de balk, sta je met een aangenomen examen
-       * weer hier.
+       * die dienst, op de busstap. Dit zette eerst het gevonden examen in
+       * `duties` en vroeg pas daarna main om het aan te nemen; main weigert dat
+       * zolang er een dienst in het profiel staat, en dan reed je een ander
+       * examen dan het profiel -- en `finishExam` beoordeelt het examen in het
+       * geheugen. Wie nog geen vergunning heeft, kan op deze stap alleen via
+       * deze knop verder: na een herstart van de app, of na terugklikken in de
+       * balk, sta je met een aangenomen examen weer hier.
        */
-      if (confirmed) {
+      if (active) {
+        const held = active.assignment as Assignment;
+        /*
+         * De kaart terug op die van de dienst. De kaartstap zit niet op slot,
+         * en wie daar intussen een andere kaart koos, kwam op de busstap met de
+         * dienst van de ene kaart en `mapFolder` van de andere: "Ja" op de
+         * vraag over het wagenpark zette de bussen dan in de verkeerde kaart.
+         */
+        setMapFolder(held.duty.mapFolder);
+        /*
+         * En zeggen waarom er geen examen komt, tenzij de aangenomen dienst het
+         * examen is waar hij om vroeg. Wie een gewone dienst open had staan en
+         * op "Examen starten" drukte, stond zonder een woord op de busstap van
+         * die dienst.
+         */
+        const ditExamen =
+          active.exam?.lineFile === line.lineFile &&
+          held.duty.mapFolder === mapFolder;
+        setError(undefined);
+        if (!ditExamen) setNote(t(language, "app.activeDuty"));
         setExamenScherm(false);
         setStap("bus");
         return;
@@ -1479,7 +1534,7 @@ export function App(): JSX.Element {
         setBusy(false);
       }
     },
-    [mapFolder, language, confirmed],
+    [mapFolder, language, active],
   );
 
   /**
