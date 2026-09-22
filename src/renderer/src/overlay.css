@@ -1487,6 +1487,57 @@
 }
 
 /*
+ * Zijn geld: briefjes en munten die je wegtikt terwijl je ze aanneemt. Een
+ * briefje is breed en licht, een munt is rond -- zodat je ziet wat je pakt
+ * zonder te lezen.
+ */
+.geld {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.geld button {
+  border: 1px solid var(--vel-overlay-rand);
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums lining-nums;
+  cursor: pointer;
+}
+
+.geld .biljet {
+  min-width: 84px;
+  padding: 16px 12px;
+  border-radius: 6px;
+  background: rgba(120, 200, 140, 0.22);
+  font-size: 17px;
+}
+
+.geld .munt {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: rgba(220, 215, 190, 0.22);
+  font-size: 14px;
+}
+
+.geld button:hover {
+  border-color: var(--lijn, #ffd23f);
+}
+
+/* De twee dingen die in OMSI zelf gebeuren; zie `lees_opdracht` in de plugin. */
+.verkoop-doen {
+  display: flex;
+  gap: 8px;
+}
+
+.verkoop-doen .app-knop {
+  flex: 1;
+  margin-top: 2px;
+}
+
+/*
  * De geldwisselaar, zoals de bak naast het stuur: een knop per munt, grootste
  * links. Wat je aantikt gaat van het bedrag af.
  */

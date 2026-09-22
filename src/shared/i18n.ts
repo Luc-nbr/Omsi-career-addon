@@ -3541,6 +3541,30 @@ const TEXT = {
     fr: 'Touchez ce que vous rendez',
     nl: 'Tik aan wat je teruggeeft'
   },
+  'ovl.saleTake': {
+    en: 'Tap away what he hands you',
+    de: 'Tippe weg, was er dir gibt',
+    fr: 'Touchez ce qu’il vous donne',
+    nl: 'Tik weg wat hij je geeft'
+  },
+  'ovl.saleGiveTicket': {
+    en: 'Give ticket',
+    de: 'Fahrschein geben',
+    fr: 'Donner le billet',
+    nl: 'Kaartje geven'
+  },
+  'ovl.saleGiveChangeKey': {
+    en: 'Give change',
+    de: 'Rückgeld geben',
+    fr: 'Rendre la monnaie',
+    nl: 'Wisselgeld teruggeven'
+  },
+  'ovl.saleNotFront': {
+    en: 'OMSI was not in front, so the key did not arrive. Click in the game once and try again.',
+    de: 'OMSI stand nicht im Vordergrund, die Taste kam nicht an. Klicke einmal ins Spiel und versuche es erneut.',
+    fr: 'OMSI n’était pas au premier plan, la touche n’est pas arrivée. Cliquez une fois dans le jeu et réessayez.',
+    nl: 'OMSI stond niet vooraan, dus de toets kwam niet aan. Klik één keer in het spel en probeer het opnieuw.'
+  },
   'ovl.saleDone': { en: 'Settled', de: 'Erledigt', fr: 'Réglé', nl: 'Afgerekend' },
   'ovl.saleExact': {
     en: 'Exact money: nothing to hand back.',

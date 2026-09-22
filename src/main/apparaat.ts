@@ -60,11 +60,13 @@ export interface ApparaatBronnen {
 
 /** Wat een toestel mag vragen. Alles wat er niet in staat, wordt geweigerd. */
 export interface TelefoonOpdracht {
-  wat: 'aanmelden' | 'overslaan' | 'aanvaard' | 'pauze' | 'ibis'
+  wat: 'aanmelden' | 'overslaan' | 'aanvaard' | 'pauze' | 'ibis' | 'toets'
   nummer?: string
   pin?: string
   vanaf?: number
   tripKey?: string
+  /** Welke toets van OMSI; zie `OmsiToets` in shared/telefoon.ts. */
+  toets?: string
 }
 
 /** Een eigen poort, zodat een bladwijzer op de telefoon blijft werken. */
@@ -321,7 +323,7 @@ async function behandel(vraag: IncomingMessage, antwoord: ServerResponse): Promi
       antwoord.writeHead(400, VEILIG)
       return void antwoord.end()
     }
-    const soorten = ['aanmelden', 'overslaan', 'aanvaard', 'pauze', 'ibis']
+    const soorten = ['aanmelden', 'overslaan', 'aanvaard', 'pauze', 'ibis', 'toets']
     if (!opdracht || !soorten.includes(opdracht.wat)) {
       antwoord.writeHead(400, VEILIG)
       return void antwoord.end()

@@ -66,6 +66,7 @@ import {
   LEGE_TELEFOON,
   aanmeldSleutelVan,
   type AanmeldUitslag,
+  type OmsiToets,
   type TelefoonStand
 } from '../shared/telefoon'
 import {
@@ -1361,6 +1362,45 @@ function telefoonGewijzigd(): void {
  * een pincode van vier cijfers is over het netwerk anders zo geraden, en dit
  * kost een chauffeur die zich vertikt niets.
  */
+/*
+ * Een toets van OMSI laten indrukken.
+ *
+ * Het kaartje geven en het wisselgeld teruggeven zijn dingen van het spel, en
+ * het spel doet ze op een toets. De app kan die toets niet zelf afgeven -- dan
+ * komt hij in het venster dat vooraan staat, en dat hoeft OMSI niet te zijn --
+ * maar de plugin draait ín OMSI en mag dat wel. Dus schrijft de app een regel
+ * in `opdracht.txt` naast live.json: een volgnummer, de scancode en de
+ * modifiers zoals ze in `Inputs\keyboard.cfg` staan. Heeft de speler de toets
+ * zelf veranderd, dan gaat die verandering vanzelf mee.
+ */
+let opdrachtNr = 0
+
+function omsiToets(actie: OmsiToets): boolean {
+  const naam = actie === 'kaartje' ? 'ticket_give' : 'change_give'
+  let scancode = 0
+  let modifiers = 0
+  try {
+    const binding = readKeyboard(omsi()).find((item) => item.action === naam)
+    if (!binding) {
+      log(`toets ${naam} staat niet in keyboard.cfg`)
+      return false
+    }
+    scancode = binding.scancode
+    modifiers = binding.modifiers
+  } catch (fout) {
+    logFout('keyboard.cfg lezen', fout)
+    return false
+  }
+  opdrachtNr += 1
+  try {
+    writeFileSync(join(liveMap(), 'opdracht.txt'), `${opdrachtNr} ${scancode} ${modifiers}\n`)
+    return true
+  } catch (fout) {
+    logFout('opdracht schrijven', fout)
+    return false
+  }
+}
+
 function telefoonAanmelden(nummer: string, pin?: string): AanmeldUitslag {
   telefoonBeeld()
   const nu = Date.now()
@@ -1958,6 +1998,8 @@ function apparaatBronnen(): ApparaatBronnen {
           telefoon.ibisReady = String(opdracht.tripKey ?? '')
           telefoonGewijzigd()
           return { ok: true }
+        case 'toets':
+          return { ok: omsiToets(opdracht.toets === 'wisselgeld' ? 'wisselgeld' : 'kaartje') }
       }
     },
     log
@@ -2367,6 +2409,9 @@ function registerHandlers(): void {
     telefoon.ibisReady = String(tripKey ?? '')
     telefoonGewijzigd()
   })
+  handle('telefoon:toets', (_event, actie: OmsiToets) =>
+    omsiToets(actie === 'wisselgeld' ? 'wisselgeld' : 'kaartje')
+  )
 
   handle('apparaat:start', async () => {
     const nu = readSettings(userData())

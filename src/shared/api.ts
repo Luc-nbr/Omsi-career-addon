@@ -9,7 +9,7 @@ import type { MapGeometry } from '../core/geo'
 import type { IbisPlan } from '../core/ibis'
 import type { TripRoute } from '../core/routing'
 import type { PluginStatus } from '../core/pluginInstall'
-import type { AanmeldUitslag } from './telefoon'
+import type { AanmeldUitslag, OmsiToets } from './telefoon'
 import type { Duty } from '../core/types'
 import type { Vehicle } from '../core/vehicles'
 import type { LiveStatus } from '../core/live'
@@ -495,6 +495,12 @@ export interface CareerApi {
   telefoonPauze(vanaf?: number): Promise<void>
   /** "IBIS ingevoerd" voor deze rit. */
   telefoonIbis(tripKey: string): Promise<void>
+  /**
+   * Een toets van OMSI laten indrukken: het kaartje geven of het wisselgeld
+   * teruggeven. Geeft terug of de opdracht weggeschreven is; of hij ook
+   * aankwam, zegt het volgende beeld (`status.opdracht`).
+   */
+  telefoonToets(actie: OmsiToets): Promise<boolean>
   /** De navigatie op een telefoon of tablet: de server aan, en het adres voor de QR-code. */
   apparaatStart(): Promise<ApparaatStand>
   apparaatStop(): Promise<ApparaatStand>

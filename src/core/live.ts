@@ -119,6 +119,9 @@ export interface MemoryData {
    * staat te betalen. Ouder dan de plugin van 22-09-2026 geeft dit niet door,
    * vandaar de vraagtekens.
    */
+  /** Het laatste opdrachtnummer dat de plugin uitvoerde, en of het lukte. */
+  opdracht?: number
+  opdrachtFout?: number
   koper?: number
   ticketSoort?: number
   ticketIndex?: number
@@ -336,6 +339,11 @@ export interface LiveStatus {
   ticketKeuze?: number
   /** Wie er aan de deur een kaartje koopt, en waarvoor; zie `Verkoop`. */
   verkoop?: Verkoop
+  /**
+   * De laatste toets die de app in OMSI liet indrukken: welk nummer, en of het
+   * lukte. Ging het mis, dan stond OMSI niet vooraan.
+   */
+  opdracht?: { nr: number; fout: boolean }
   /** De rit waar je volgens de dienstkaart nu mee bezig bent. */
   legIndex: number
   leg?: DutyLeg
@@ -777,6 +785,10 @@ export function describeLive(
     ticketKeuze:
       has(data, BIT.ticket) && data.ticket >= 0 ? Math.round(data.ticket) : undefined,
     verkoop: verkoopVan(data),
+    opdracht:
+      data.mem && (data.mem.opdracht ?? 0) > 0
+        ? { nr: data.mem.opdracht ?? 0, fout: (data.mem.opdrachtFout ?? 0) > 0 }
+        : undefined,
     legIndex,
     metresToStop:
       fromMenu && data.mem && data.mem.nextDist >= 0 && data.mem.nextDist < 20000

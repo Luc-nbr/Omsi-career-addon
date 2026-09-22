@@ -53,6 +53,15 @@ export interface TelefoonStand {
   pinLengte: number
 }
 
+/**
+ * Wat de telefoon in OMSI zelf kan laten doen.
+ *
+ * Allebei toetsen van het spel (`Inputs\keyboard.cfg`): `ticket_give` en
+ * `change_give`. De plugin drukt ze in, want die draait ín OMSI; zie
+ * `lees_opdracht` in plugin/omsicareer.c.
+ */
+export type OmsiToets = 'kaartje' | 'wisselgeld'
+
 /** Wat er van een poging tot aanmelden terugkomt. */
 export type AanmeldUitslag = 'nummer' | 'aangemeld' | 'fout'
 

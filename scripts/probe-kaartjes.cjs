@@ -171,6 +171,7 @@ app.whenReady().then(async () => {
   await wacht(1800)
   const verkoop = await js(overlay, `({
     scherm: Boolean(document.querySelector('.verkoop')),
+    geld: [...document.querySelectorAll('.geld button')].map((b) => b.textContent),
     kaartje: document.querySelector('.verkoop-kaartje b')?.textContent ?? null,
     prijs: document.querySelector('.verkoop-kaartje span')?.textContent ?? null,
     bedragen: [...document.querySelectorAll('.verkoop-geld dd')].map((d) => d.textContent),
@@ -178,6 +179,23 @@ app.whenReady().then(async () => {
     geraden: [...document.querySelectorAll('.wisselaar button.raad')].map((b) => b.textContent)
   })`)
   console.log('verkoop uit het spel:', JSON.stringify(verkoop))
+
+  /* Eerst zijn geld aannemen: tik de briefjes en munten weg. */
+  const naAannemen = await js(overlay, `(async () => {
+    const wacht = (ms) => new Promise((r) => setTimeout(r, ms));
+    let veilig = 0;
+    while (document.querySelector('.geld button') && veilig++ < 20) {
+      document.querySelector('.geld button').click();
+      await wacht(150);
+    }
+    await wacht(300);
+    return {
+      geldWeg: document.querySelectorAll('.geld button').length,
+      wisselaar: document.querySelectorAll('.wisselaar button').length,
+      doen: [...document.querySelectorAll('.verkoop-doen button')].map((b) => b.textContent)
+    };
+  })()`)
+  console.log('na het aannemen:', JSON.stringify(naAannemen))
 
   /* Teruggeven met de wisselaar: tik de munten aan die hij geraden heeft. */
   const naTeruggeven = await js(overlay, `(async () => {
@@ -190,6 +208,16 @@ app.whenReady().then(async () => {
     };
   })()`)
   console.log('na teruggeven:', JSON.stringify(naTeruggeven))
+
+  /*
+   * En de toets in OMSI: de app schrijft een opdracht naast live.json met de
+   * scancode uit keyboard.cfg. De plugin voert hem uit; hier kijken we alleen
+   * of de opdracht klopt, want OMSI draait in deze proef niet.
+   */
+  await js(overlay, `[...document.querySelectorAll('.verkoop-doen button')][0]?.click()`)
+  await wacht(600)
+  const opdracht = readFileSync(join(live, 'opdracht.txt'), 'utf8').trim()
+  console.log('opdracht voor de plugin:', JSON.stringify(opdracht))
 
   const goed =
     voor.app === 'Kaart' &&
@@ -209,9 +237,13 @@ app.whenReady().then(async () => {
     verkoop.kaartje !== null &&
     verkoop.bedragen[0] === '10.00' &&
     verkoop.bedragen[1] === (10 - prijs).toFixed(2) &&
-    verkoop.munten.length === 6 &&
     naTeruggeven.terug === '0.00' &&
-    naTeruggeven.klaar !== null
+    naTeruggeven.klaar !== null &&
+    verkoop.geld.length > 0 &&
+    naAannemen.geldWeg === 0 &&
+    naAannemen.wisselaar === 6 &&
+    naAannemen.doen.length === 2 &&
+    /^\d+ 20 0$/.test(opdracht)
   console.log(goed ? 'de kaartverkoop klopt' : 'DE KAARTVERKOOP KLOPT NIET')
   app.exit(goed ? 0 : 1)
 })

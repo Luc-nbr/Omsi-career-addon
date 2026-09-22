@@ -233,6 +233,27 @@ static char g_exeVersion[16];
 
 static wchar_t g_path[MAX_PATH];
 static wchar_t g_temp[MAX_PATH];
+/*
+ * OPDRACHTEN VAN DE APP
+ *
+ * De telefoon in de overlay -- of op een iPad -- wil dingen doen die in OMSI
+ * aan een toets hangen: een kaartje geven, wisselgeld teruggeven. Een plugin
+ * kan OMSI daar niet rechtstreeks om vragen, maar hij draait wel ín OMSI, en
+ * daar mag hij een toetsaanslag afgeven.
+ *
+ * De app schrijft `opdracht.txt` naast live.json: een regel met een volgnummer,
+ * een scancode en de modifiers (2 = shift, 4 = ctrl), precies zoals ze in
+ * `Inputs\keyboard.cfg` staan -- dus ook als de speler ze zelf heeft veranderd.
+ * De plugin voert elk nummer één keer uit en zet in live.json welk nummer hij
+ * gedaan heeft, met de uitkomst erbij.
+ *
+ * Alleen als OMSI vooraan staat. Een toets gaat naar het venster dat de aandacht
+ * heeft; stond er een ander programma voor, dan zou de app daar "t" in typen.
+ */
+static wchar_t g_opdrachtPad[MAX_PATH];
+static int g_opdrachtNr;    /* het laatst uitgevoerde nummer */
+static int g_opdrachtFout;  /* 0 gelukt, 1 OMSI stond niet vooraan */
+static ULONGLONG g_opdrachtGekeken;
 static ULONGLONG g_lastWrite;
 static int g_ready;
 
@@ -385,6 +406,90 @@ static DWORD dyn_item(DWORD array, int index, DWORD recordSize) {
   const int length = *(int *)(ULONG_PTR)(array - 4);
   if (length <= 0 || index >= length || length > 100000) return 0;
   return array + (DWORD)index * recordSize;
+}
+
+/* Eén toets, met zijn modifiers, als scancodes -- zo leest OMSI ze ook. */
+static void druk_toets(WORD scancode, int modifiers) {
+  INPUT invoer[6];
+  int n = 0;
+  const WORD SHIFT = 0x2A, CTRL = 0x1D;
+  memset(invoer, 0, sizeof(invoer));
+  if (modifiers & 4) {
+    invoer[n].type = INPUT_KEYBOARD;
+    invoer[n].ki.wScan = CTRL;
+    invoer[n].ki.dwFlags = KEYEVENTF_SCANCODE;
+    n++;
+  }
+  if (modifiers & 2) {
+    invoer[n].type = INPUT_KEYBOARD;
+    invoer[n].ki.wScan = SHIFT;
+    invoer[n].ki.dwFlags = KEYEVENTF_SCANCODE;
+    n++;
+  }
+  invoer[n].type = INPUT_KEYBOARD;
+  invoer[n].ki.wScan = scancode;
+  invoer[n].ki.dwFlags = KEYEVENTF_SCANCODE;
+  n++;
+  invoer[n].type = INPUT_KEYBOARD;
+  invoer[n].ki.wScan = scancode;
+  invoer[n].ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
+  n++;
+  if (modifiers & 2) {
+    invoer[n].type = INPUT_KEYBOARD;
+    invoer[n].ki.wScan = SHIFT;
+    invoer[n].ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
+    n++;
+  }
+  if (modifiers & 4) {
+    invoer[n].type = INPUT_KEYBOARD;
+    invoer[n].ki.wScan = CTRL;
+    invoer[n].ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
+    n++;
+  }
+  SendInput((UINT)n, invoer, sizeof(INPUT));
+}
+
+/** Staat OMSI zelf vooraan? Anders gaat de toets naar een ander programma. */
+static int omsi_vooraan(void) {
+  HWND venster = GetForegroundWindow();
+  DWORD proces = 0;
+  if (!venster) return 0;
+  GetWindowThreadProcessId(venster, &proces);
+  return proces == GetCurrentProcessId();
+}
+
+/*
+ * Kijken of de app iets gevraagd heeft. Hooguit vijf keer per seconde: het is
+ * een bestandje van een regel, maar het hoeft niet bij elk beeld.
+ */
+static void lees_opdracht(void) {
+  if (!g_opdrachtPad[0]) return;
+  const ULONGLONG nu = GetTickCount64();
+  if (nu - g_opdrachtGekeken < 200) return;
+  g_opdrachtGekeken = nu;
+
+  HANDLE bestand = CreateFileW(g_opdrachtPad, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                               NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+  if (bestand == INVALID_HANDLE_VALUE) return;
+  char regel[64];
+  DWORD gelezen = 0;
+  const BOOL ok = ReadFile(bestand, regel, sizeof(regel) - 1, &gelezen, NULL);
+  CloseHandle(bestand);
+  if (!ok || gelezen == 0) return;
+  regel[gelezen] = 0;
+
+  int nr = 0, scancode = 0, modifiers = 0;
+  if (sscanf_s(regel, "%d %d %d", &nr, &scancode, &modifiers) != 3) return;
+  if (nr <= g_opdrachtNr || scancode <= 0 || scancode > 255) return;
+  g_opdrachtNr = nr;
+  if (!omsi_vooraan()) {
+    g_opdrachtFout = 1;
+    meld("opdracht %d overgeslagen: OMSI staat niet vooraan", nr);
+    return;
+  }
+  g_opdrachtFout = 0;
+  druk_toets((WORD)scancode, modifiers);
+  meld("opdracht %d: toets %d (modifiers %d)", nr, scancode, modifiers);
 }
 
 /*
@@ -654,6 +759,7 @@ static void flush_state(int alive) {
       "\"qx\":%.5f,\"qy\":%.5f,\"qz\":%.5f,\"qw\":%.5f,"
       "\"schedActive\":%.2f,\"line\":%d,\"tour\":%d,\"tourEntry\":%d,\"trip\":%d,"
       "\"nextIndex\":%d,\"nextDist\":%.1f,\"delay\":%d,"
+      "\"opdracht\":%d,\"opdrachtFout\":%d,"
       "\"koper\":%d,\"ticketSoort\":%d,\"ticketIndex\":%d,"
       "\"ticketPrijs\":%.2f,\"ticketGegeven\":%.2f,"
       "\"ticketSlecht\":%d,\"ticketKlaar\":%d,"
@@ -662,6 +768,7 @@ static void flush_state(int alive) {
       g_mem.rot[0], g_mem.rot[1], g_mem.rot[2], g_mem.rot[3],
       g_mem.schedActive, g_mem.schedLine, g_mem.schedTour, g_mem.schedTourEntry, g_mem.schedTrip,
       g_mem.schedNextIndex, g_mem.schedNextDist, g_mem.schedDelay,
+      g_opdrachtNr, g_opdrachtFout,
       g_mem.koper, g_mem.ticketSoort, g_mem.ticketIndex,
       g_mem.ticketPrijs, g_mem.ticketGegeven, g_mem.ticketSlecht, g_mem.ticketKlaar,
       g_mem.lineName, g_mem.tourName, g_mem.tripName, g_mem.nextStop);
@@ -731,6 +838,8 @@ static void flush_state(int alive) {
 /* Wordt na de laatste variabele van een beeld aangeroepen. */
 static void maybe_flush(void) {
   ULONGLONG now = GetTickCount64();
+  /* Wat de app vraagt, mag niet op het schrijfritme wachten; zie `lees_opdracht`. */
+  lees_opdracht();
   if (!g_ready || now - g_lastWrite < WRITE_INTERVAL_MS) return;
   g_lastWrite = now;
   read_memory();
@@ -753,6 +862,7 @@ __declspec(dllexport) void __stdcall PluginStart(void *owner) {
   _snwprintf_s(g_path, MAX_PATH, _TRUNCATE, L"%s\\OMSI Career", base);
   CreateDirectoryW(g_path, NULL);
   _snwprintf_s(g_temp, MAX_PATH, _TRUNCATE, L"%s\\OMSI Career\\live.tmp", base);
+  _snwprintf_s(g_opdrachtPad, MAX_PATH, _TRUNCATE, L"%s\\OMSI Career\\opdracht.txt", base);
   _snwprintf_s(g_path, MAX_PATH, _TRUNCATE, L"%s\\OMSI Career\\live.json", base);
 
   memset(g_sys, 0, sizeof(g_sys));

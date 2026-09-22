@@ -6,5 +6,6 @@ call "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\
 if errorlevel 1 exit /b 1
 cd /d "%~dp0"
 if not exist out mkdir out
-cl /nologo /W3 /O2 /LD /MT omsicareer.c /Fe:out\OMSICareerPlugin.dll /Fo:out\ /link /DEF:omsicareer.def /OUT:out\OMSICareerPlugin.dll
+REM user32.lib: de plugin geeft toetsaanslagen af in OMSI (zie lees_opdracht).
+cl /nologo /W3 /O2 /LD /MT omsicareer.c /Fe:out\OMSICareerPlugin.dll /Fo:out\ /link user32.lib /DEF:omsicareer.def /OUT:out\OMSICareerPlugin.dll
 endlocal

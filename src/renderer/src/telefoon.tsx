@@ -16,6 +16,7 @@ import { t, type Language, type TextKey } from "../../shared/i18n";
 import {
   LEGE_TELEFOON,
   type AanmeldUitslag,
+  type OmsiToets,
   type TelefoonStand,
 } from "../../shared/telefoon";
 import type { Verkoop } from "../../core/live";
@@ -68,6 +69,8 @@ export interface TelefoonActies {
   aanvaarden(): void;
   pauze(vanaf?: number): void;
   ibisKlaar(tripKey: string): void;
+  /** Een toets van OMSI laten indrukken; zie `OmsiToets`. */
+  toets(actie: OmsiToets): void;
 }
 
 /** Wat de telefoon van het beeld nodig heeft. */
@@ -171,6 +174,8 @@ export function Telefoon({
               set={frame.kaartjes}
               keuze={frame.status?.ticketKeuze}
               verkoop={frame.status?.verkoop}
+              opdracht={frame.status?.opdracht}
+              acties={acties}
               language={language}
             />
           ) : extra && app === extra.id ? (
@@ -807,16 +812,20 @@ const MUNTEN = [200, 100, 50, 20, 10, 5];
 function Verkoopscherm({
   verkoop,
   set,
-  teruggegeven,
-  onTeruggeven,
+  opdracht,
+  acties,
   language,
 }: {
   verkoop: Verkoop;
   set: Kaartset;
-  teruggegeven: number;
-  onTeruggeven(centen: number): void;
+  opdracht?: { nr: number; fout: boolean };
+  acties: TelefoonActies;
   language: Language;
 }): JSX.Element {
+  /** Wat er met de geldwisselaar al teruggegeven is, in centen. */
+  const [teruggegeven, setTeruggegeven] = useState(0);
+  /** Hoeveel briefjes en munten van zijn geld je al aangenomen hebt. */
+  const [aangenomen, setAangenomen] = useState(0);
   const prijs = Math.round(verkoop.prijs * 100);
   /*
    * De naam komt uit het kaartpakket van de kaart, de prijs uit het spel. Ze
@@ -835,6 +844,17 @@ function Verkoopscherm({
   const euro = (cent: number): string => (cent / 100).toFixed(2);
   /* Wat je bij elkaar zou pakken; de wisselaar telt het af zodra je tikt. */
   const voorstel = wisselgeld(rest);
+
+  /*
+   * Zijn geld als briefjes en munten. OMSI zegt alleen het bedrag; hoe dat in
+   * zijn hand ligt, is de kleinste verzameling die dat bedrag maakt -- en dat
+   * is precies wat iemand je aanreikt. Tik ze weg terwijl je ze aanneemt.
+   */
+  const stukken: number[] = [];
+  for (const soort of wisselgeld(gegeven)) {
+    for (let i = 0; i < soort.aantal; i += 1) stukken.push(soort.cent);
+  }
+  const open = stukken.slice(aangenomen);
 
   return (
     <div className="verkoop" data-hit>
@@ -860,39 +880,90 @@ function Verkoopscherm({
         <p className="verkoop-mopper">{t(language, "ovl.saleBadChange")}</p>
       )}
 
-      {terug > 0 ? (
+      {open.length > 0 ? (
         <>
-          <p className="app-label">{t(language, "ovl.saleGiveBack")}</p>
-          {/* De geldwisselaar van de bus: een knop per munt. */}
-          <div className="wisselaar">
-            {MUNTEN.map((cent) => (
+          <p className="app-label">{t(language, "ovl.saleTake")}</p>
+          <div className="geld">
+            {open.map((cent, index) => (
               <button
-                key={cent}
+                key={`${cent}-${index}`}
                 type="button"
-                className={voorstel.some((m) => m.cent === cent) ? "raad" : undefined}
-                disabled={rest <= 0}
-                onClick={() => onTeruggeven(Math.min(terug, teruggegeven + cent))}
+                className={cent >= 500 ? "biljet" : "munt"}
+                onClick={() => setAangenomen((al) => al + 1)}
               >
                 {euro(cent)}
               </button>
             ))}
           </div>
-          <div className="verkoop-voet">
+        </>
+      ) : (
+        <>
+          {terug > 0 ? (
+            <>
+              <p className="app-label">{t(language, "ovl.saleGiveBack")}</p>
+              {/* De geldwisselaar van de bus: een knop per munt. */}
+              <div className="wisselaar">
+                {MUNTEN.map((cent) => (
+                  <button
+                    key={cent}
+                    type="button"
+                    className={voorstel.some((m) => m.cent === cent) ? "raad" : undefined}
+                    disabled={rest <= 0}
+                    onClick={() => setTeruggegeven((al) => Math.min(terug, al + cent))}
+                  >
+                    {euro(cent)}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="app-label">{t(language, "ovl.saleExact")}</p>
+          )}
+
+          {/*
+            En dan in het spel zelf. Het kaartje geven en het wisselgeld
+            teruggeven zijn toetsen van OMSI; de plugin drukt ze in, omdat die
+            binnen het spel draait. Staat OMSI niet vooraan, dan gebeurt er
+            niets en zegt het volgende beeld dat.
+          */}
+          <div className="verkoop-doen">
             <button
               type="button"
-              className="app-knop"
-              disabled={teruggegeven === 0}
-              onClick={() => onTeruggeven(0)}
+              className="app-knop primair"
+              onClick={() => acties.toets("kaartje")}
             >
-              {t(language, "ovl.signonClear")}
+              {t(language, "ovl.saleGiveTicket")}
             </button>
-            {rest === 0 && (
+            {terug > 0 && (
+              <button
+                type="button"
+                className="app-knop"
+                onClick={() => acties.toets("wisselgeld")}
+              >
+                {t(language, "ovl.saleGiveChangeKey")}
+              </button>
+            )}
+          </div>
+
+          <div className="verkoop-voet">
+            {teruggegeven > 0 && (
+              <button
+                type="button"
+                className="app-knop"
+                onClick={() => setTeruggegeven(0)}
+              >
+                {t(language, "ovl.signonClear")}
+              </button>
+            )}
+            {terug > 0 && rest === 0 && (
               <span className="verkoop-klaar">{t(language, "ovl.saleDone")}</span>
             )}
           </div>
+
+          {opdracht?.fout && (
+            <p className="verkoop-mopper">{t(language, "ovl.saleNotFront")}</p>
+          )}
         </>
-      ) : (
-        <p className="app-label">{t(language, "ovl.saleExact")}</p>
       )}
     </div>
   );
@@ -902,6 +973,8 @@ function KaartjesApp({
   set,
   keuze,
   verkoop,
+  opdracht,
+  acties,
   language,
 }: {
   set?: Kaartset;
@@ -909,14 +982,14 @@ function KaartjesApp({
   keuze?: number;
   /** Wat er aan de deur verkocht wordt, uit het spel zelf; zie core/live.ts. */
   verkoop?: Verkoop;
+  /** Hoe het de laatste toets in OMSI verging. */
+  opdracht?: { nr: number; fout: boolean };
+  acties: TelefoonActies;
   language: Language;
 }): JSX.Element {
   const [gekozen, setGekozen] = useState<Kaartje>();
   /** Wat de passagier tot nu toe heeft aangegeven, in centen. */
   const [gegeven, setGegeven] = useState(0);
-
-  /** Wat er met de geldwisselaar al teruggegeven is, in centen. */
-  const [teruggegeven, setTeruggegeven] = useState(0);
 
   /* Wisselt de kaart, dan slaat de vorige keuze nergens meer op. */
   useEffect(() => {
@@ -925,16 +998,14 @@ function KaartjesApp({
   }, [set?.naam]);
 
   /*
-   * Een andere passagier aan de deur betekent opnieuw beginnen met teruggeven.
-   * De sleutel is wat er aan hem verkocht wordt: een ander kaartje, een andere
-   * prijs of een ander bedrag in zijn hand.
+   * Een andere passagier aan de deur betekent opnieuw beginnen. De sleutel is
+   * wat er aan hem verkocht wordt: een ander kaartje, een andere prijs of een
+   * ander bedrag in zijn hand. Hij staat als `key` op het scherm hieronder, en
+   * dan begint dat vanzelf met een schone lei.
    */
   const verkoopSleutel = verkoop
     ? `${verkoop.kaartje}|${verkoop.prijs}|${verkoop.gegeven}`
     : "";
-  useEffect(() => {
-    setTeruggegeven(0);
-  }, [verkoopSleutel]);
 
   /*
    * Kiest de chauffeur het kaartje op de automaat in de bus, dan staat het hier
@@ -962,10 +1033,11 @@ function KaartjesApp({
   if (verkoop) {
     return (
       <Verkoopscherm
+        key={verkoopSleutel}
         verkoop={verkoop}
         set={set}
-        teruggegeven={teruggegeven}
-        onTeruggeven={setTeruggegeven}
+        opdracht={opdracht}
+        acties={acties}
         language={language}
       />
     );
