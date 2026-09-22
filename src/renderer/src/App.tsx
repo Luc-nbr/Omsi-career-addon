@@ -162,14 +162,19 @@ const LENGTHS = [30, 45, 60, 90, 120, 150, 180, 240, 300, 360, 420, 480];
  * Een stap weglaten is niet hetzelfde als hem uitzetten: wat er niet staat,
  * belooft ook niets.
  */
+/*
+ * Welke stappen er in de balk staan. `rijden` valt er standaard uit: dat scherm
+ * bestaat pas als de dienst loopt, en een stap waar je niet naartoe kunt is geen
+ * stap maar een belofte. Het rijscherm plakt hem er zelf achter.
+ */
 const STAPPEN_DIENST: readonly Stap[] = STAPPEN.filter(
-  (naam) => naam !== "line" && naam !== "licence",
+  (naam) => naam !== "line" && naam !== "licence" && naam !== "rijden",
 );
 const STAPPEN_CARRIERE: readonly Stap[] = STAPPEN.filter(
-  (naam) => naam !== "line",
+  (naam) => naam !== "line" && naam !== "rijden",
 );
 const STAPPEN_VRIJ: readonly Stap[] = STAPPEN.filter(
-  (naam) => naam !== "licence",
+  (naam) => naam !== "licence" && naam !== "rijden",
 );
 
 /**
@@ -650,6 +655,18 @@ export function App(): JSX.Element {
     setVehicleOverride(active.vehicleOverride);
     setStarted(Boolean(active.startedAt));
     if (active.mode) setMode(active.mode);
+    /*
+     * Een dienst die loopt brengt je naar het rijscherm -- eenmaal, hier.
+     *
+     * Dit stond niet in het scherm maar in de voorwaarde eromheen: "loopt er een
+     * dienst, dan is dit het scherm", en die voorwaarde stond boven de
+     * instellingen, de chauffeurs en de staat van dienst. Elke knop in het
+     * hoofdmenu kwam daardoor uit bij de lopende dienst. Nu zegt het rijscherm
+     * alleen nog iets over `screen === 'drive'`, en brengt deze regel je daar
+     * naartoe op het moment dat de dienst verschijnt: bij het aannemen, bij het
+     * starten van de app, en bij het wisselen naar een chauffeur die rijdt.
+     */
+    if (active.startedAt) setScreen("drive");
   }, [activeKey]);
 
   /*
@@ -2084,7 +2101,7 @@ export function App(): JSX.Element {
    * dienst al liep. Een lopende dienst ziet er in elke modus hetzelfde uit: er
    * valt niets meer te kiezen, alleen nog te rijden en af te ronden.
    */
-  if (started && duty) {
+  if (started && duty && screen === "drive") {
     const volledig = assignment ? (
       <DutyCard
         assignment={assignment}
@@ -2204,7 +2221,20 @@ export function App(): JSX.Element {
     return (
       <LanguageProvider language={language}>
         <Setup
-          stap="bus"
+          /*
+           * Zijn eigen stap, met zijn eigen icoontje. Dit stond op "bus", en dan
+           * wees de balk de busstap aan terwijl je allang reed -- alsof je nog
+           * aan het kiezen was.
+           */
+          stap="rijden"
+          stappen={[
+            ...(mode === "career"
+              ? STAPPEN_CARRIERE
+              : mode === "free"
+                ? STAPPEN_VRIJ
+                : STAPPEN_DIENST),
+            "rijden",
+          ]}
           rechtsInBalk={balkRechts}
           waarschuwing={omsiBanner}
           lijn={duty.lineNumbers[0] ?? duty.legs[0]?.lineNumber}
@@ -2273,6 +2303,14 @@ export function App(): JSX.Element {
                 busy={busy}
                 exam={Boolean(exam)}
                 overlayOpen={overlayOpen}
+                chauffeur={
+                  career?.state
+                    ? {
+                        personeelsnummer: career.state.personeelsnummer,
+                        pincode: career.state.pincode,
+                      }
+                    : undefined
+                }
                 onToggleOverlay={toggleOverlay}
                 onCancel={cancelDuty}
                 onFinish={finish}
@@ -2396,12 +2434,10 @@ export function App(): JSX.Element {
       setHofBezig(true);
       const gedaan = duty
         ? window.career.placeHofCandidate(duty, vehicle.folder)
-        : window.career
-            .placeHofs(mapFolder, [vehicle.folder])
-            .then((uit) => ({
-              placed: uit.placed,
-              file: undefined as string | undefined,
-            }));
+        : window.career.placeHofs(mapFolder, [vehicle.folder]).then((uit) => ({
+            placed: uit.placed,
+            file: undefined as string | undefined,
+          }));
       void gedaan
         .then((uitkomst) => {
           setNote(

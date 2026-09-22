@@ -1,31 +1,39 @@
-import { useState, type JSX, type ReactNode } from 'react'
-import type { IbisPlan } from '../../core/ibis'
-import type { Duty } from '../../core/types'
-import type { SessionResult } from '../../shared/api'
-import { formatTime } from '../../shared/format'
-import { punctuality } from '../../shared/status'
-import { RouteViewer } from './DutyMap'
-import { useT } from './language'
-import { RouteCode } from './RouteCode'
+import { useState, type JSX, type ReactNode } from "react";
+import type { IbisPlan } from "../../core/ibis";
+import type { Duty } from "../../core/types";
+import type { SessionResult } from "../../shared/api";
+import { formatTime } from "../../shared/format";
+import { punctuality } from "../../shared/status";
+import { RouteViewer } from "./DutyMap";
+import { useT } from "./language";
+import { RouteCode } from "./RouteCode";
 
 interface Props {
-  duty: Duty
-  ibis?: IbisPlan
+  duty: Duty;
+  ibis?: IbisPlan;
   /** Wat OMSI tot nu toe doorgaf; leeg zolang het spel nog niets meldt. */
-  session?: SessionResult
+  session?: SessionResult;
   /** Geeft de plugin gegevens door? Dan draait het spel echt. */
-  connected: boolean
+  connected: boolean;
   /** OMSI staat open maar laadt de kaart nog; de plugin zegt dan nog niets. */
-  laadt?: boolean
-  busy: boolean
+  laadt?: boolean;
+  busy: boolean;
   /** Een examenrit gaat naar de examencommissie, niet naar het logboek. */
-  exam?: boolean
-  overlayOpen: boolean
-  onToggleOverlay(): void
-  onCancel(): void
-  onFinish(): void
+  exam?: boolean;
+  overlayOpen: boolean;
+  /**
+   * Waarmee je je in de bus aanmeldt op de telefoon in de overlay.
+   *
+   * Ze staan ook bij de staat van dienst, en dat is de plek om ze op te zoeken.
+   * Maar hier hoef je ze niet op te zoeken: dit is het scherm dat openstaat op
+   * het moment dat je in de bus zit en het cijferblok voor je hebt.
+   */
+  chauffeur?: { personeelsnummer?: string; pincode?: string };
+  onToggleOverlay(): void;
+  onCancel(): void;
+  onFinish(): void;
   /** De hele dienstkaart, die achter "Bekijk volledige dienst" schuilgaat. */
-  full: ReactNode
+  full: ReactNode;
 }
 
 /**
@@ -46,133 +54,193 @@ export function RunningDuty({
   busy,
   exam,
   overlayOpen,
+  chauffeur,
   onToggleOverlay,
   onCancel,
   onFinish,
-  full
+  full,
 }: Props): JSX.Element {
-  const [showFull, setShowFull] = useState(false)
-  const [showRoute, setShowRoute] = useState(false)
-  const tr = useT()
+  const [showFull, setShowFull] = useState(false);
+  const [showRoute, setShowRoute] = useState(false);
+  const tr = useT();
 
-  const leg = duty.legs[0]
-  const entry = ibis?.legs[0]
-  const line = ibis?.line || leg.lineNumber
+  const leg = duty.legs[0];
+  const entry = ibis?.legs[0];
+  const line = ibis?.line || leg.lineNumber;
 
   /*
    * Hoe het ervoor staat. Het verschil met de dienstregeling is het enige op
    * dit scherm dat kleur krijgt -- rood te laat, groen op tijd, blauw te vroeg --
    * en het staat groot, want dat is waar een chauffeur op stuurt.
    */
-  const delay = session?.delayMinutes
-  const stand = punctuality(delay === undefined ? undefined : delay * 60)
+  const delay = session?.delayMinutes;
+  const stand = punctuality(delay === undefined ? undefined : delay * 60);
   const verschil =
     delay === undefined
       ? undefined
-      : `${delay > 0 ? '+' : delay < 0 ? '\u2212' : ''}${Math.floor(Math.abs(delay))}:${String(
-          Math.round((Math.abs(delay) % 1) * 60)
-        ).padStart(2, '0')}`
+      : `${delay > 0 ? "+" : delay < 0 ? "\u2212" : ""}${Math.floor(Math.abs(delay))}:${String(
+          Math.round((Math.abs(delay) % 1) * 60),
+        ).padStart(2, "0")}`;
 
   return (
     <section className="card running">
       <header className="duty-head">
         <span className="badge">{line}</span>
         <div>
-          <div className="duty-title">{tr('run.title')}</div>
+          <div className="duty-title">{tr("run.title")}</div>
           <div className="duty-sub">
-            {tr('run.sub', { map: duty.mapName, trips: duty.legs.length })}
+            {tr("run.sub", { map: duty.mapName, trips: duty.legs.length })}
           </div>
         </div>
         <div className="duty-times">
           <b>
             {formatTime(leg.departure)} – {formatTime(leg.arrival)}
           </b>
-          <div className="duty-sub">{tr('run.firstTrip')}</div>
+          <div className="duty-sub">{tr("run.firstTrip")}</div>
         </div>
       </header>
 
       <div className="ibis-grid running-grid">
         <div className="ibis-field">
-          <span>{tr('ibis.line')}</span>
-          <b>{line || '—'}</b>
+          <span>{tr("ibis.line")}</span>
+          <b>{line || "—"}</b>
         </div>
         <div className="ibis-field">
-          <span>{tr('run.route')}</span>
+          <span>{tr("run.route")}</span>
           <b>
             <RouteCode route={entry?.route} kort={entry?.routeShort} />
           </b>
         </div>
         <div className="ibis-field">
-          <span>{tr('run.departs')}</span>
+          <span>{tr("run.departs")}</span>
           <b>{formatTime(leg.departure)}</b>
         </div>
         <div className="ibis-field wide">
-          <span>{tr('run.from')}</span>
-          <b>{leg.stops[0] ?? tr('duty.unknown')}</b>
+          <span>{tr("run.from")}</span>
+          <b>{leg.stops[0] ?? tr("duty.unknown")}</b>
         </div>
         <div className="ibis-field wide">
-          <span>{tr('run.towards')}</span>
+          <span>{tr("run.towards")}</span>
           <b>{leg.terminus}</b>
         </div>
       </div>
+
+      {/*
+        Waarmee je je aanmeldt, in dezelfde vorm als de codes erboven -- want dat
+        is wat het is: nog twee getallen die je overtypt voordat je rijdt. Ze
+        staan er alleen als ze er zijn; een chauffeur van voor deze versie krijgt
+        ze bij de eerste start.
+      */}
+      {chauffeur?.personeelsnummer && chauffeur.pincode && (
+        <div className="ibis-grid running-grid running-pas">
+          <div className="ibis-field">
+            <span>{tr("prof.staffNumber")}</span>
+            <b>{chauffeur.personeelsnummer}</b>
+          </div>
+          <div className="ibis-field">
+            <span>{tr("prof.pin")}</span>
+            <b>{chauffeur.pincode}</b>
+          </div>
+          <p className="running-pas-uitleg">{tr("prof.signonWhy")}</p>
+        </div>
+      )}
 
       {/*
         Het verschil met de dienstregeling, groot en in kleur. Zolang OMSI de
         dienst niet draait valt er niets af te lezen; dan staat er wat er te
         doen is in plaats van een cijfer dat nergens op slaat.
       */}
-      <div className={`running-delta${stand ? ` is-${stand}` : ''}`}>
+      <div className={`running-delta${stand ? ` is-${stand}` : ""}`}>
         {connected && verschil !== undefined && stand ? (
           <>
-            <b>{stand === 'optijd' ? tr('run.onTime') : verschil}</b>
+            <b>{stand === "optijd" ? tr("run.onTime") : verschil}</b>
             <span>
-              {stand === 'laat'
-                ? tr('run.lateWord')
-                : stand === 'vroeg'
-                  ? tr('run.earlyWord')
-                  : tr('run.onScheduleWord')}
+              {stand === "laat"
+                ? tr("run.lateWord")
+                : stand === "vroeg"
+                  ? tr("run.earlyWord")
+                  : tr("run.onScheduleWord")}
             </span>
           </>
         ) : (
-          <span className="running-wait">{tr(laadt ? 'run.loading' : 'run.waiting')}</span>
+          <span className="running-wait">
+            {tr(laadt ? "run.loading" : "run.waiting")}
+          </span>
         )}
       </div>
 
       <p className="note running-status">
-        {connected ? tr('run.driven', { km: (session?.drivenKm ?? 0).toFixed(1) }) : ''}
-        {connected ? ' · ' : ''}
-        {tr('run.stops', { stops: leg.stops.length, minutes: Math.round(leg.minutes) })}
+        {connected
+          ? tr("run.driven", { km: (session?.drivenKm ?? 0).toFixed(1) })
+          : ""}
+        {connected ? " · " : ""}
+        {tr("run.stops", {
+          stops: leg.stops.length,
+          minutes: Math.round(leg.minutes),
+        })}
       </p>
 
       <div className="actions">
-        <button type="button" className="btn secondary" onClick={() => setShowFull(true)}>
-          {tr('run.full')}
+        <button
+          type="button"
+          className="btn secondary"
+          onClick={() => setShowFull(true)}
+        >
+          {tr("run.full")}
         </button>
-        <button type="button" className="btn secondary" onClick={() => setShowRoute(true)}>
-          {tr('run.viewRoute')}
+        <button
+          type="button"
+          className="btn secondary"
+          onClick={() => setShowRoute(true)}
+        >
+          {tr("run.viewRoute")}
         </button>
-        <button type="button" className="btn secondary" onClick={onToggleOverlay}>
-          {tr(overlayOpen ? 'act.overlayHide' : 'act.overlayShow')}
+        <button
+          type="button"
+          className="btn secondary"
+          onClick={onToggleOverlay}
+        >
+          {tr(overlayOpen ? "act.overlayHide" : "act.overlayShow")}
         </button>
-        <button type="button" className="btn" onClick={onFinish} disabled={busy}>
-          {tr(exam ? 'exam.finish' : 'act.finish')}
+        <button
+          type="button"
+          className="btn"
+          onClick={onFinish}
+          disabled={busy}
+        >
+          {tr(exam ? "exam.finish" : "act.finish")}
         </button>
-        <button type="button" className="btn secondary running-cancel" onClick={onCancel} disabled={busy}>
-          {tr('act.cancel')}
+        <button
+          type="button"
+          className="btn secondary running-cancel"
+          onClick={onCancel}
+          disabled={busy}
+        >
+          {tr("act.cancel")}
         </button>
       </div>
-      <p className="note">{tr('run.note')}</p>
+      <p className="note">{tr("run.note")}</p>
 
-      {showRoute && <RouteViewer duty={duty} ibis={ibis} onClose={() => setShowRoute(false)} />}
+      {showRoute && (
+        <RouteViewer
+          duty={duty}
+          ibis={ibis}
+          onClose={() => setShowRoute(false)}
+        />
+      )}
 
       {showFull && (
         <div className="backdrop">
           <section className="dialog proposal">
             <header className="proposal-head">
-              <h2>{tr('run.fullTitle')}</h2>
+              <h2>{tr("run.fullTitle")}</h2>
               <div className="proposal-actions">
-                <button type="button" className="btn secondary" onClick={() => setShowFull(false)}>
-                  {tr('prop.close')}
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={() => setShowFull(false)}
+                >
+                  {tr("prop.close")}
                 </button>
               </div>
             </header>
@@ -181,5 +249,5 @@ export function RunningDuty({
         </div>
       )}
     </section>
-  )
+  );
 }

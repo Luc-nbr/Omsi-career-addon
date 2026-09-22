@@ -155,9 +155,16 @@ export function Starthub({
               <span className="hub-tegel-uitleg">
                 {t(language, `mode.${naam}Intro` as const)}
               </span>
+              {/*
+                De tegel van de modus waarin je rijdt is de weg terug.
+
+                Er stond "loopt", en dat is een mededeling; je moest zelf bedenken
+                dat je erop kon drukken om verder te gaan. Nu staat er wat het
+                doet. De tegel zelf is altijd al een knop geweest.
+              */}
               {lopend === naam && (
-                <span className="hub-tegel-stand">
-                  {t(language, "setup.modeRunning")}
+                <span className="hub-tegel-stand loopt">
+                  {t(language, "hub.resume")}
                 </span>
               )}
             </button>

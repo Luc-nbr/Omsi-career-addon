@@ -55,6 +55,13 @@ const TEXT = {
   'hub.hours': { en: 'driven', de: 'gefahren', fr: 'au volant', nl: 'gereden' },
   'hub.km': { en: 'km', de: 'km', fr: 'km', nl: 'km' },
   'hub.licences': { en: 'licences', de: 'Lizenzen', fr: 'licences', nl: 'vergunningen' },
+  /* Op de tegel van de modus waarin een dienst loopt: de weg terug erheen. */
+  'hub.resume': {
+    en: 'Carry on driving',
+    de: 'Weiterfahren',
+    fr: 'Reprendre le service',
+    nl: 'Verder rijden'
+  },
   'hub.log': {
     en: 'Open the log file',
     de: 'Logbuch öffnen',
@@ -2637,6 +2644,13 @@ const TEXT = {
   /* Bij vrij rijden staat op die plek in de reeks geen dienst maar je eigen rit. */
   'setup.step.free': { en: 'Drive', de: 'Fahrt', fr: 'Trajet', nl: 'Rit' },
   'setup.step.bus': { en: 'Bus', de: 'Bus', fr: 'Bus', nl: 'Bus' },
+  /* De laatste stap, en de enige waarin je niets kiest. */
+  'setup.step.rijden': {
+    en: 'On the road',
+    de: 'Unterwegs',
+    fr: 'En route',
+    nl: 'Rijden'
+  },
   'setup.duties': { en: 'Duties', de: 'Dienste', fr: 'Services', nl: 'Diensten' },
   'setup.pick': {
     en: 'Select a duty to continue',
@@ -2674,6 +2688,13 @@ const TEXT = {
     de: 'Hier gibt es noch nichts zu wählen.',
     fr: 'Rien à choisir ici pour l’instant.',
     nl: 'Hier valt nog niets te kiezen.'
+  },
+  /* De greep tussen de dienst en de kaart op het rijscherm. */
+  'setup.splitter': {
+    en: 'Drag to divide the duty and the map',
+    de: 'Ziehen, um Dienst und Karte aufzuteilen',
+    fr: 'Faites glisser pour partager le service et la carte',
+    nl: 'Versleep om de dienst en de kaart te verdelen'
   },
   'setup.mapSoon': {
     en: 'The map appears here once you have picked a line and a duty.',

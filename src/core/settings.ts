@@ -92,6 +92,19 @@ export interface Settings {
    * merkt er niets van; wie er wel iets van vindt drukt op het knopje.
    */
   theme?: 'systeem' | 'licht' | 'donker'
+  /**
+   * Hoeveel van het rijscherm de navigatie krijgt, als deel van de breedte.
+   *
+   * Op dat scherm staan twee dingen naast elkaar: de dienst en de kaart. Wat
+   * daarvan het grootst hoort te zijn, weet de app niet -- wie op twee schermen
+   * rijdt kijkt vooral naar de kaart, wie de overlay gebruikt juist niet. Dus
+   * mag de gebruiker de scheiding verslepen, en blijft staan waar hij hem zet.
+   *
+   * Een deel en geen aantal pixels: het venster verandert van maat en een vaste
+   * kolom wordt dan op de ene machine een strookje en op de andere de helft.
+   * Begint op 0.32, de maat die er stond toen het nog vastlag.
+   */
+  navDeel?: number
 }
 
 function settingsPath(userDataPath: string): string {
@@ -117,6 +130,15 @@ export function readSettings(userDataPath: string): Settings {
       overlayWaarschuwing:
         raw.overlayWaarschuwing && typeof raw.overlayWaarschuwing === 'object'
           ? raw.overlayWaarschuwing
+          : undefined,
+      /*
+       * Binnen de grenzen houden. Een deel van 0.02 uit een oud of aangepast
+       * bestand zou de kaart tot een streep maken en de scheiding onvindbaar;
+       * NaN zou de hele indeling laten instorten.
+       */
+      navDeel:
+        typeof raw.navDeel === 'number' && Number.isFinite(raw.navDeel)
+          ? Math.min(0.62, Math.max(0.18, raw.navDeel))
           : undefined
     }
   } catch {

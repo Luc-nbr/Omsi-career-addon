@@ -1233,10 +1233,12 @@
  */
 .setup[data-vol='rijdend'] {
   /*
-   * Breed genoeg om de route te volgen, smal genoeg om het vel de hoofdzaak te
-   * laten. Op 1344 komt dit uit op 430.
+   * Hoe breed de navigatie staat. Het deel komt uit de instellingen en is te
+   * verslepen; staat er nog niets, dan 0.32 -- de maat die er stond toen het
+   * nog vastlag. De grenzen staan er los omheen, want een venster van 900 breed
+   * mag geen kaart van 160 pixels opleveren.
    */
-  --navbreedte: clamp(300px, 32%, 480px);
+  --navbreedte: clamp(280px, calc(var(--navdeel, 0.32) * 100%), 62%);
 }
 
 .setup[data-vol='rijdend'] .dienstenvel {
@@ -1267,6 +1269,61 @@
   border-radius: var(--radius);
   box-shadow: var(--vel-schaduw);
   overflow: hidden;
+}
+
+/*
+ * DE GREEP TUSSEN DE TWEE
+ *
+ * Hij ligt in de kier van zestien pixels tussen het vel en de kaart, maar is
+ * zelf breder: een scheiding van zestien pixels vind je niet met de muis, en
+ * een die je moet zoeken gebruik je niet. Zichtbaar is hij pas als je er met de
+ * muis bij komt -- een streep die er altijd staat, staat er ook als je niets
+ * wilt verdelen.
+ */
+.navgreep {
+  position: absolute;
+  top: 85px;
+  bottom: 30px;
+  right: calc(22px + var(--navbreedte) + 2px);
+  width: 12px;
+  z-index: 3;
+  cursor: col-resize;
+  /* Alleen de streep erin krijgt kleur; het vlak eromheen is grijpruimte. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.navgreep::before {
+  content: '';
+  width: 3px;
+  height: 46px;
+  border-radius: var(--radius-rond);
+  background: var(--vel-zacht);
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+.navgreep:hover::before,
+.navgreep:focus-visible::before,
+.setup[data-sleept='ja'] .navgreep::before {
+  opacity: 0.7;
+}
+
+/*
+ * Tijdens het slepen niets selecteren en niets aanwijzen.
+ *
+ * Zonder dit sleep je de haltenamen uit de lijst mee als tekstselectie, en de
+ * kaart denkt dat je hem aan het verschuiven bent.
+ */
+.setup[data-sleept='ja'] {
+  user-select: none;
+  cursor: col-resize;
+}
+
+.setup[data-sleept='ja'] .setup-kaart,
+.setup[data-sleept='ja'] .velinhoud {
+  pointer-events: none;
 }
 
 /* De knoppen van de kaart horen binnen de kaart te blijven staan. */
@@ -3216,6 +3273,27 @@
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
+}
+
+/*
+ * "Verder rijden" is geen stand maar een uitnodiging, en hoort er dus ook uit te
+ * zien als iets waar je heen gaat: de blauwe van de route, met het pijltje dat
+ * op elke hoofdknop in deze app staat.
+ */
+.hub-tegel-stand.loopt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--route);
+}
+
+.hub-tegel-stand.loopt::after {
+  content: '';
+  width: 0;
+  height: 0;
+  border-left: 5px solid currentColor;
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
 }
 
 .hub-onder {

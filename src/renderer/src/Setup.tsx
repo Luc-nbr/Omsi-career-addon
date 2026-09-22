@@ -1,10 +1,18 @@
-import { useEffect, useRef, useState, type CSSProperties, type JSX, type ReactNode } from 'react'
-import type { MapGeometry } from '../../core/geo'
-import type { Duty } from '../../core/types'
-import { useT } from './language'
-import { Icoon as Pictogram, ICONEN } from './Icoon'
-import { RouteMap } from './RouteMap'
-import './setup.css'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type JSX,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
+import type { MapGeometry } from "../../core/geo";
+import type { Duty } from "../../core/types";
+import { useT } from "./language";
+import { Icoon as Pictogram, ICONEN } from "./Icoon";
+import { RouteMap } from "./RouteMap";
+import "./setup.css";
 
 /**
  * De stappen die je aflegt voordat OMSI start, in vaste volgorde.
@@ -16,8 +24,24 @@ import './setup.css'
  * na de kaart, voor de dienst. Dat is waar de vraag hoort die bepaalt wat er in
  * de dienstenlijst komt.
  */
-export const STAPPEN = ['profile', 'mode', 'map', 'line', 'licence', 'duty', 'bus'] as const
-export type Stap = (typeof STAPPEN)[number]
+export const STAPPEN = [
+  "profile",
+  "mode",
+  "map",
+  "line",
+  "licence",
+  "duty",
+  "bus",
+  /*
+   * En dan rijd je. Dit is geen keuze maar wel een scherm, en het hoort in de
+   * balk te staan: anders wijst hij "bus" aan terwijl je allang onderweg bent,
+   * en dan zegt de navigatie van dit scherm iets anders dan het scherm zelf.
+   * Hij staat alleen in de balk zodra de dienst loopt; ervoor valt er niets
+   * naartoe te springen.
+   */
+  "rijden",
+] as const;
+export type Stap = (typeof STAPPEN)[number];
 
 /**
  * Een regel in het vel.
@@ -28,19 +52,19 @@ export type Stap = (typeof STAPPEN)[number]
  * waar hij moet kijken.
  */
 export interface Rij {
-  id: string
+  id: string;
   /** Drie kolommen, in dezelfde volgorde als de koppen. */
-  cellen: [string, string, string]
+  cellen: [string, string, string];
   /** Zet een klokje voor de derde kolom; dat is altijd een tijdsduur. */
-  klok?: boolean
+  klok?: boolean;
   /** Grijs en niet aanklikbaar, met een reden die als titel meekomt. */
-  uit?: string
+  uit?: string;
   /**
    * Een handeling die bij deze regel hoort en niet bij de keuze -- een chauffeur
    * weggooien bijvoorbeeld. Staat achteraan de regel en is een eigen knop, want
    * hij mag nooit per ongeluk meeliften op het aanklikken van de regel zelf.
    */
-  actie?: { label: string; gevaarlijk?: boolean; onDoen: () => void }
+  actie?: { label: string; gevaarlijk?: boolean; onDoen: () => void };
   /**
    * Wat er onder deze regel komt te staan zodra hij aangewezen is.
    *
@@ -48,7 +72,7 @@ export interface Rij {
    * je gaat doen staat hieronder, rit voor rit. Alleen bij de gekozen regel,
    * want acht van die blokken tegelijk is geen lijst meer.
    */
-  detail?: ReactNode
+  detail?: ReactNode;
 }
 
 /**
@@ -59,21 +83,21 @@ export interface Rij {
  * en toont per stap een handvol tegels met de vorm van de bus erop.
  */
 export interface Tegel {
-  id: string
-  titel: string
+  id: string;
+  titel: string;
   /** Wat eronder staat: een aantal, een motor, een uitvoering. */
-  onder?: string
+  onder?: string;
   /** De vorm van de bus; die tekent het icoon. */
-  vorm?: Busvorm
+  vorm?: Busvorm;
   /** Een ander icoon dan een bus, voor wat geen bus is. */
-  icoon?: 'hof'
+  icoon?: "hof";
   /**
    * Een monogram in plaats van een bus: de initialen van het merk in een eigen
    * kleur. Geen nagemaakt logo -- MAN en Mercedes-Benz zijn echte bedrijven en
    * hun merkteken is van hen. Dit lost op waar het om ging: merken die je in
    * een rooster van dertig tegels meteen uit elkaar houdt.
    */
-  monogram?: string
+  monogram?: string;
   /**
    * Een echte afbeelding in plaats van een icoon.
    *
@@ -83,7 +107,7 @@ export interface Tegel {
    * de letters HH. Ontbreekt het bestand, dan valt de tegel terug op het
    * monogram; van de twaalf kaarten hier is dat er een.
    */
-  beeld?: string
+  beeld?: string;
   /**
    * De profielfoto van een chauffeur: rond, op de plek van het monogram.
    *
@@ -93,8 +117,8 @@ export interface Tegel {
    * gecentreerd te blijven staan zoals hij nu staat. Rond bijsnijden op de plek
    * van het monogram houdt beide maten van de chauffeurstegel heel.
    */
-  foto?: string
-  gekozen?: boolean
+  foto?: string;
+  gekozen?: boolean;
   /**
    * Grijs en niet aanklikbaar, met de reden als titel.
    *
@@ -102,7 +126,7 @@ export interface Tegel {
    * niets te halen valt -- anders vraag je je af of de app het wel kan. Dan
    * staat hij er dus uitgeschakeld, met erbij waarom.
    */
-  uit?: string
+  uit?: string;
   /**
    * Handelingen die bij deze tegel horen en niet bij de keuze -- een chauffeur
    * weggooien, zijn foto wisselen.
@@ -112,37 +136,37 @@ export interface Tegel {
    * chauffeurs van regels naar tegels gingen viel dit er stilletjes uit, en toen
    * was er geen enkele manier meer om een chauffeur te verwijderen.
    */
-  acties?: Tegelactie[]
-  onDoen: () => void
+  acties?: Tegelactie[];
+  onDoen: () => void;
 }
 
 /** Een handeling in de hoek van een tegel. */
 export interface Tegelactie {
-  label: string
+  label: string;
   /** Rood bij zweven; alleen voor wat je niet terugkrijgt. */
-  gevaarlijk?: boolean
+  gevaarlijk?: boolean;
   /** Het tekentje; standaard het kruis dat iets weggooit. */
-  teken?: 'kruis' | 'foto' | 'fotoweg'
-  onDoen: () => void
+  teken?: "kruis" | "foto" | "fotoweg";
+  onDoen: () => void;
 }
 
-export type Busvorm = 'solo' | 'geleed' | 'dubbel' | 'midi'
+export type Busvorm = "solo" | "geleed" | "dubbel" | "midi";
 
 /** Een handeling naast de hoofdknop. */
 export interface Nevenknop {
-  tekst: string
-  onDoen: () => void
+  tekst: string;
+  onDoen: () => void;
 }
 
 /** Een kruimel in het spoor terug: merk › type › uitvoering. */
 export interface Kruimel {
-  label: string
-  onDoen?: () => void
+  label: string;
+  onDoen?: () => void;
 }
 
 interface Props {
   /** Waar de speler nu is; alles ervoor is klaar, alles erna nog niet. */
-  stap: Stap
+  stap: Stap;
   /**
    * Welke stappen er in de balk staan.
    *
@@ -151,18 +175,18 @@ interface Props {
    * te kiezen -- en dan hoort die stap er ook niet te staan. Weggelaten betekent
    *: alle stappen.
    */
-  stappen?: readonly Stap[]
+  stappen?: readonly Stap[];
   /** Het lijnnummer voor het gele plaatje; leeg zolang er geen lijn gekozen is. */
-  lijn?: string
-  titel: string
-  onderschrift: string
-  koppen: [string, string, string]
-  rijen: Rij[]
-  gekozen: number
-  onKies: (index: number) => void
-  voet: string
+  lijn?: string;
+  titel: string;
+  onderschrift: string;
+  koppen: [string, string, string];
+  rijen: Rij[];
+  gekozen: number;
+  onKies: (index: number) => void;
+  voet: string;
   /** Waar de kaart onder alles vandaan komt; zonder dienst blijft hij leeg. */
-  duty?: Duty
+  duty?: Duty;
   /**
    * Een kaart zonder dienst: teken het net van déze kaartmap.
    *
@@ -171,12 +195,12 @@ interface Props {
    * en de haltes van die kaart. Luc vroeg erom: "als je er vervolgens een
    * selecteert, zie je idealiter alle details en het netwerk".
    */
-  netkaart?: string
-  onStart: () => void
-  startTekst?: string
-  bezig?: boolean
+  netkaart?: string;
+  onStart: () => void;
+  startTekst?: string;
+  bezig?: boolean;
   /** Terug naar een eerdere stap; de balk is ook de navigatie. */
-  onStap?: (stap: Stap) => void
+  onStap?: (stap: Stap) => void;
   /**
    * Handelingen naast de hoofdknop, bijvoorbeeld iets toevoegen.
    *
@@ -185,7 +209,7 @@ interface Props {
    * allebei niet de weg vooruit zijn. Ze komen in dezelfde rij, links van de
    * hoofdknop, in de volgorde waarin ze hier staan.
    */
-  tweede?: Nevenknop | Nevenknop[]
+  tweede?: Nevenknop | Nevenknop[];
   /**
    * Een stap terug.
    *
@@ -197,13 +221,13 @@ interface Props {
    *
    * Weggelaten op de eerste stap: daar is niets om naar terug te gaan.
    */
-  onTerug?: () => void
+  onTerug?: () => void;
   /**
    * Knoppen die bepalen wat er in de lijst komt te staan -- hoe lang de dienst
    * mag duren, op welk dagdeel. Ze staan boven de lijst en niet erin: ze zijn
    * geen keuze uit de lijst maar de vraag die de lijst oplevert.
    */
-  regelaars?: ReactNode
+  regelaars?: ReactNode;
   /**
    * De kaart naast het vel houden, ook als er vrije inhoud in staat.
    *
@@ -211,7 +235,7 @@ interface Props {
    * OMSI zijn een formulier en hebben niets aan een kaart ernaast. Tijdens het
    * rijden is dat net andersom: dan is de kaart de navigatie.
    */
-  metKaart?: boolean
+  metKaart?: boolean;
   /**
    * Het rijscherm: het vel is de hoofdzaak en de kaart staat ernaast.
    *
@@ -222,17 +246,17 @@ interface Props {
    * koker met een schuifbalk. De gebruiker: "dit menu moet groter en de
    * navigatie mag als een kleiner element in de hoofdapp."
    */
-  rijdend?: boolean
+  rijdend?: boolean;
   /**
    * Wat de kaart tijdens het rijden moet weten: welke rit, waar de bus is, en
    * of de route al getekend mag worden.
    */
   navigatie?: {
-    nextStopId?: string
-    activeLeg?: number
-    routeMode?: 'all' | 'active' | 'none'
-    vehicle?: { x: number; y: number; heading: number; speedKmh: number }
-  }
+    nextStopId?: string;
+    activeLeg?: number;
+    routeMode?: "all" | "active" | "none";
+    vehicle?: { x: number; y: number; heading: number; speedKmh: number };
+  };
   /**
    * Iets wat de speler moet weten voordat hij verder gaat.
    *
@@ -242,30 +266,30 @@ interface Props {
    * beeld kan opleveren. Het staat er alleen als er iets is; een lege doos die
    * altijd meeschuift leert je hem over te slaan.
    */
-  waarschuwing?: ReactNode
+  waarschuwing?: ReactNode;
   /** De voet toont een fout en krijgt daar de kleur van. */
-  voetFout?: boolean
+  voetFout?: boolean;
   /** Een venstertje over het scherm heen; het vel blijft eronder staan. */
-  dialoog?: ReactNode
+  dialoog?: ReactNode;
   /** Het vel over het hele venster, ook zonder tegels of vrije inhoud. */
-  vullend?: boolean
+  vullend?: boolean;
   /** De regels tonen iets, ze zijn geen keuze: geen bolletje, geen markering. */
-  keuzeloos?: boolean
+  keuzeloos?: boolean;
   /**
    * Een invulregel bovenaan de lijst, in dezelfde vorm als een keuzeregel.
    * Bedoeld voor het toevoegen van iets dat er nog niet is.
    */
   invoer?: {
-    waarde: string
-    plaatshouder: string
-    onWaarde: (waarde: string) => void
-    onBevestig: () => void
-    onAnnuleer: () => void
-  }
+    waarde: string;
+    plaatshouder: string;
+    onWaarde: (waarde: string) => void;
+    onBevestig: () => void;
+    onAnnuleer: () => void;
+  };
   /** Een rooster met tegels in plaats van een lijst met regels. */
-  tegels?: Tegel[]
+  tegels?: Tegel[];
   /** Het spoor terug door de niveaus heen. */
-  kruimels?: Kruimel[]
+  kruimels?: Kruimel[];
   /**
    * Een andere naam voor een stap in de balk.
    *
@@ -274,9 +298,9 @@ interface Props {
    * de dienst je rit -- geen dienstenlijst maar waar en wanneer -- en dan hoort
    * er ook "Rit" te staan en niet "Dienst".
    */
-  stapnamen?: Partial<Record<Stap, string>>
+  stapnamen?: Partial<Record<Stap, string>>;
   /** Wat rechts in de stappenbalk hangt; de taalkeuze hoort daar. */
-  rechtsInBalk?: ReactNode
+  rechtsInBalk?: ReactNode;
   /**
    * Iets anders dan een keuzelijst in het vel.
    *
@@ -284,9 +308,8 @@ interface Props {
    * persen zou betekenen dat we er een lijst van doen alsof. Ze krijgen wel
    * dezelfde wereld eromheen: hetzelfde vel, dezelfde balk, dezelfde letters.
    */
-  inhoud?: ReactNode
+  inhoud?: ReactNode;
 }
-
 
 /**
  * De vorm van een bus, getekend en niet gefotografeerd.
@@ -299,7 +322,7 @@ interface Props {
 function Busicoon({ vorm }: { vorm: Busvorm }): JSX.Element {
   return (
     <svg className="busicoon" viewBox="0 0 96 40" aria-hidden="true">
-      {vorm === 'geleed' ? (
+      {vorm === "geleed" ? (
         <>
           <rect x="2" y="8" width="44" height="22" rx="4" />
           <rect x="48" y="10" width="6" height="18" rx="2" opacity="0.5" />
@@ -308,14 +331,14 @@ function Busicoon({ vorm }: { vorm: Busvorm }): JSX.Element {
           <circle cx="40" cy="32" r="4" />
           <circle cx="82" cy="32" r="4" />
         </>
-      ) : vorm === 'dubbel' ? (
+      ) : vorm === "dubbel" ? (
         <>
           <rect x="6" y="2" width="72" height="28" rx="4" />
           <line x1="6" y1="16" x2="78" y2="16" />
           <circle cx="20" cy="32" r="4" />
           <circle cx="66" cy="32" r="4" />
         </>
-      ) : vorm === 'midi' ? (
+      ) : vorm === "midi" ? (
         <>
           <rect x="16" y="10" width="52" height="20" rx="4" />
           <circle cx="28" cy="32" r="4" />
@@ -329,7 +352,7 @@ function Busicoon({ vorm }: { vorm: Busvorm }): JSX.Element {
         </>
       )}
     </svg>
-  )
+  );
 }
 
 /**
@@ -354,11 +377,13 @@ function Monogram({ tekst }: { tekst: string }): JSX.Element {
     .split(/[\s-]+/)
     .filter(Boolean)
     .slice(0, 2)
-    .map((woord) => woord[0]?.toUpperCase() ?? '')
-    .join('')
+    .map((woord) => woord[0]?.toUpperCase() ?? "")
+    .join("");
   return (
-    <span className="monogram">{letters || tekst.slice(0, 2).toUpperCase()}</span>
-  )
+    <span className="monogram">
+      {letters || tekst.slice(0, 2).toUpperCase()}
+    </span>
+  );
 }
 
 /**
@@ -368,12 +393,24 @@ function Monogram({ tekst }: { tekst: string }): JSX.Element {
  * en een gebroken plaatje is lelijker dan geen plaatje. Gaat het laden mis, dan
  * staat er het monogram van de naam, net als bij de bussen.
  */
-function Tegelbeeld({ bron, naam }: { bron: string; naam: string }): JSX.Element {
-  const [mis, setMis] = useState(false)
-  if (mis) return <Monogram tekst={naam} />
+function Tegelbeeld({
+  bron,
+  naam,
+}: {
+  bron: string;
+  naam: string;
+}): JSX.Element {
+  const [mis, setMis] = useState(false);
+  if (mis) return <Monogram tekst={naam} />;
   return (
-    <img className="tegel-beeld" src={bron} alt="" loading="lazy" onError={() => setMis(true)} />
-  )
+    <img
+      className="tegel-beeld"
+      src={bron}
+      alt=""
+      loading="lazy"
+      onError={() => setMis(true)}
+    />
+  );
 }
 
 /**
@@ -384,12 +421,23 @@ function Tegelbeeld({ bron, naam }: { bron: string; naam: string }): JSX.Element
  * teruggezette back-up -- dan staat het monogram er weer, precies zoals de
  * kaarttegel terugvalt als `picture.jpg` ontbreekt.
  */
-function Tegelfoto({ bron, naam }: { bron: string; naam: string }): JSX.Element {
-  const [mis, setMis] = useState(false)
-  if (mis) return <Monogram tekst={naam} />
+function Tegelfoto({
+  bron,
+  naam,
+}: {
+  bron: string;
+  naam: string;
+}): JSX.Element {
+  const [mis, setMis] = useState(false);
+  if (mis) return <Monogram tekst={naam} />;
   return (
-    <img className="profielfoto" src={bron} alt="" onError={() => setMis(true)} />
-  )
+    <img
+      className="profielfoto"
+      src={bron}
+      alt=""
+      onError={() => setMis(true)}
+    />
+  );
 }
 
 function Hoficoon(): JSX.Element {
@@ -401,7 +449,7 @@ function Hoficoon(): JSX.Element {
       <rect x="20" y="22" width="10" height="12" />
       <line x1="58" y1="26" x2="72" y2="26" />
     </svg>
-  )
+  );
 }
 
 /*
@@ -410,7 +458,7 @@ function Hoficoon(): JSX.Element {
  * chauffeursoverzicht. Twee plekken met tekeningen worden twee stijlen.
  */
 function Icoon({ stap, klasse }: { stap: Stap; klasse?: string }): JSX.Element {
-  return <Pictogram naam={stap} klasse={klasse} />
+  return <Pictogram naam={stap} klasse={klasse} />;
 }
 
 /**
@@ -454,11 +502,11 @@ export function Setup({
   inhoud,
   tegels,
   kruimels,
-  stappen
+  stappen,
 }: Props): JSX.Element {
-  const tr = useT()
-  const balk = stappen ?? STAPPEN
-  const nu = balk.indexOf(stap)
+  const tr = useT();
+  const balk = stappen ?? STAPPEN;
+  const nu = balk.indexOf(stap);
 
   /*
    * Voor de kaartstap valt er niets te tonen naast de keuze, dus vult het vel
@@ -473,27 +521,34 @@ export function Setup({
    */
   const beeldvullend =
     !metKaart &&
-    (stap === 'profile' || stap === 'mode' || Boolean(inhoud) || Boolean(tegels) || Boolean(vullend))
+    (stap === "profile" ||
+      stap === "mode" ||
+      Boolean(inhoud) ||
+      Boolean(tegels) ||
+      Boolean(vullend));
 
   /*
    * De kaart hoort bij de kaartmap, niet bij de dienst: wie een andere dienst
    * op dezelfde kaart aanklikt, hoort geen lege ondergrond te zien terwijl de
    * tegels opnieuw gelezen worden.
    */
-  const bedieningRef = useRef<{ zoomBy: (factor: number) => void; refit: () => void }>(undefined)
-  const gekozenRef = useRef<HTMLButtonElement>(null)
-  const [geometry, setGeometry] = useState<MapGeometry>()
-  const kaartmap = duty?.mapFolder ?? netkaart
+  const bedieningRef = useRef<{
+    zoomBy: (factor: number) => void;
+    refit: () => void;
+  }>(undefined);
+  const gekozenRef = useRef<HTMLButtonElement>(null);
+  const [geometry, setGeometry] = useState<MapGeometry>();
+  const kaartmap = duty?.mapFolder ?? netkaart;
   useEffect(() => {
-    if (!kaartmap) return undefined
-    let geldig = true
+    if (!kaartmap) return undefined;
+    let geldig = true;
     void window.career.geometry(kaartmap).then((gevonden) => {
-      if (geldig) setGeometry(gevonden)
-    })
+      if (geldig) setGeometry(gevonden);
+    });
     return () => {
-      geldig = false
-    }
-  }, [kaartmap])
+      geldig = false;
+    };
+  }, [kaartmap]);
 
   /*
    * Bij elke stap opnieuw passend maken. Zonder dit blijft de kaart staan waar
@@ -501,9 +556,56 @@ export function Setup({
    * meter in plaats van de hele lijn.
    */
   useEffect(() => {
-    const tijd = setTimeout(() => bedieningRef.current?.refit(), 60)
-    return () => clearTimeout(tijd)
-  }, [stap, geometry, kaartmap])
+    const tijd = setTimeout(() => bedieningRef.current?.refit(), 60);
+    return () => clearTimeout(tijd);
+  }, [stap, geometry, kaartmap]);
+
+  /*
+   * DE SCHEIDING TUSSEN DE DIENST EN DE KAART, TE VERSLEPEN
+   *
+   * Op het rijscherm staan twee dingen naast elkaar en de app weet niet welk
+   * van de twee voor jou het grootst moet zijn. Wie op een tweede scherm rijdt
+   * kijkt vooral naar de kaart; wie de overlay gebruikt juist niet. Dus mag je
+   * hem verslepen, en blijft hij staan waar je hem zet.
+   *
+   * Bewaard als deel van de breedte en niet als aantal pixels: het venster
+   * verandert van maat, en een vaste kolom wordt dan op de ene machine een
+   * strookje en op de andere de helft.
+   */
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [navDeel, setNavDeel] = useState<number>();
+  const [sleept, setSleept] = useState(false);
+  useEffect(() => {
+    if (!rijdend) return;
+    void window.career
+      .settings()
+      .then((gelezen) => setNavDeel(gelezen.navDeel ?? 0.32));
+  }, [rijdend]);
+
+  const versleep = (start: ReactPointerEvent<HTMLDivElement>): void => {
+    const vak = rootRef.current?.getBoundingClientRect();
+    if (!vak) return;
+    start.currentTarget.setPointerCapture(start.pointerId);
+    setSleept(true);
+    let laatste = navDeel ?? 0.32;
+    const beweeg = (event: PointerEvent): void => {
+      /* Van rechts gemeten, want de kaart hangt aan de rechterrand. */
+      laatste = Math.min(
+        0.62,
+        Math.max(0.18, (vak.right - event.clientX) / vak.width),
+      );
+      setNavDeel(laatste);
+    };
+    const los = (): void => {
+      window.removeEventListener("pointermove", beweeg);
+      window.removeEventListener("pointerup", los);
+      setSleept(false);
+      /* Pas bij loslaten wegschrijven; tijdens het slepen zou dat elke pixel zijn. */
+      void window.career.saveSettings({ navDeel: laatste });
+    };
+    window.addEventListener("pointermove", beweeg);
+    window.addEventListener("pointerup", los);
+  };
 
   /*
    * De lijst opent op zijn keuze. Bij de bus staat de aanbevolen bus bovenaan
@@ -511,11 +613,41 @@ export function Setup({
    * dan zei de voet "de eerste past het best" terwijl je die eerste niet zag.
    */
   useEffect(() => {
-    gekozenRef.current?.scrollIntoView({ block: 'nearest' })
-  }, [stap, gekozen, rijen.length])
+    gekozenRef.current?.scrollIntoView({ block: "nearest" });
+  }, [stap, gekozen, rijen.length]);
 
   return (
-    <div className="setup" data-vol={beeldvullend ? 'ja' : rijdend ? 'rijdend' : 'nee'}>
+    <div
+      ref={rootRef}
+      className="setup"
+      data-vol={beeldvullend ? "ja" : rijdend ? "rijdend" : "nee"}
+      data-sleept={sleept ? "ja" : undefined}
+      style={
+        navDeel !== undefined
+          ? ({ "--navdeel": navDeel } as CSSProperties)
+          : undefined
+      }
+    >
+      {/*
+        De greep tussen de twee. Hij ligt in de kier ertussen en is zelf breder
+        dan die kier, want een scheiding van zestien pixels vind je niet met de
+        muis. Alleen tijdens het rijden: op de keuzestappen is de kaart de
+        ondergrond en valt er niets te verdelen.
+      */}
+      {rijdend && (
+        <div
+          className="navgreep"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={tr("setup.splitter")}
+          onPointerDown={versleep}
+          onDoubleClick={() => {
+            /* Dubbelklik zet hem terug; anders moet je zoeken naar "ongeveer een derde". */
+            setNavDeel(0.32);
+            void window.career.saveSettings({ navDeel: 0.32 });
+          }}
+        />
+      )}
       <div className="setup-kaart">
         {/*
           Zolang er geen dienst gekozen is valt er geen route te tekenen. Dan
@@ -524,7 +656,7 @@ export function Setup({
           een uitgestelde.
         */}
         {!beeldvullend && !(geometry && (duty || netkaart)) && (
-          <p className="kaart-leeg">{tr('setup.mapSoon')}</p>
+          <p className="kaart-leeg">{tr("setup.mapSoon")}</p>
         )}
         {/*
           Niet verbergen maar weglaten. Een kaart die met display:none in beeld
@@ -542,12 +674,12 @@ export function Setup({
              * als route, met de bus erop. Daarbuiten de hele dienst, zodat je
              * ziet wat je kiest.
              */
-            routeMode={navigatie?.routeMode ?? 'all'}
+            routeMode={navigatie?.routeMode ?? "all"}
             nextStopId={navigatie?.nextStopId}
             activeLeg={navigatie?.activeLeg}
             vehicle={navigatie?.vehicle}
             bediening={(b) => {
-              bedieningRef.current = b
+              bedieningRef.current = b;
             }}
           />
         )}
@@ -557,7 +689,7 @@ export function Setup({
         {lijn && <span className="lijnplaatje">{lijn}</span>}
         <ol className="stappen">
           {balk.map((naam, index) => {
-            const stand = index < nu ? 'klaar' : index === nu ? 'nu' : 'straks'
+            const stand = index < nu ? "klaar" : index === nu ? "nu" : "straks";
             return (
               <li key={naam} className="stap" data-stand={stand}>
                 {/*
@@ -568,7 +700,7 @@ export function Setup({
                 <button
                   type="button"
                   className="stapknop"
-                  disabled={stand !== 'klaar' || !onStap}
+                  disabled={stand !== "klaar" || !onStap}
                   onClick={() => onStap?.(naam)}
                 >
                   <Icoon stap={naam} klasse="stap-icoon" />
@@ -577,12 +709,12 @@ export function Setup({
                 {index < balk.length - 1 && (
                   <span
                     className="stap-streep"
-                    data-stand={index < nu ? 'klaar' : 'straks'}
+                    data-stand={index < nu ? "klaar" : "straks"}
                     aria-hidden="true"
                   />
                 )}
               </li>
-            )
+            );
           })}
         </ol>
         {rechtsInBalk && <div className="balk-rechts">{rechtsInBalk}</div>}
@@ -604,7 +736,7 @@ export function Setup({
         key={`${stap}-${kruimels?.length ?? 0}`}
         className="vel dienstenvel"
         data-stap={stap}
-        data-keuze={keuzeloos ? 'nee' : 'ja'}
+        data-keuze={keuzeloos ? "nee" : "ja"}
       >
         <div className="velkop">
           {/*
@@ -647,13 +779,17 @@ export function Setup({
            * staan en met hoeveel ze zijn: één chauffeur hoort groot in het
            * midden, en hij krimpt naarmate er meer bij komen.
            */
-          <div className="tegels" data-stap={stap} data-aantal={Math.min(tegels.length, 4)}>
+          <div
+            className="tegels"
+            data-stap={stap}
+            data-aantal={Math.min(tegels.length, 4)}
+          >
             {tegels.map((tegel, index) => (
               <button
                 key={tegel.id}
                 type="button"
                 className="tegel"
-                style={{ '--i': index } as CSSProperties}
+                style={{ "--i": index } as CSSProperties}
                 aria-pressed={tegel.gekozen}
                 disabled={Boolean(tegel.uit)}
                 title={tegel.uit}
@@ -663,15 +799,17 @@ export function Setup({
                   <Tegelbeeld bron={tegel.beeld} naam={tegel.titel} />
                 ) : tegel.foto ? (
                   <Tegelfoto bron={tegel.foto} naam={tegel.titel} />
-                ) : tegel.icoon === 'hof' ? (
+                ) : tegel.icoon === "hof" ? (
                   <Hoficoon />
                 ) : tegel.monogram ? (
                   <Monogram tekst={tegel.monogram} />
                 ) : (
-                  <Busicoon vorm={tegel.vorm ?? 'solo'} />
+                  <Busicoon vorm={tegel.vorm ?? "solo"} />
                 )}
                 <span className="tegel-titel">{tegel.titel}</span>
-                {tegel.onder && <span className="tegel-onder">{tegel.onder}</span>}
+                {tegel.onder && (
+                  <span className="tegel-onder">{tegel.onder}</span>
+                )}
                 {tegel.acties && tegel.acties.length > 0 && (
                   <span className="tegelacties">
                     {tegel.acties.map((actie) => (
@@ -679,21 +817,21 @@ export function Setup({
                         key={actie.label}
                         role="button"
                         tabIndex={0}
-                        className={`tegelactie ${actie.gevaarlijk ? 'gevaarlijk' : ''}`}
+                        className={`tegelactie ${actie.gevaarlijk ? "gevaarlijk" : ""}`}
                         title={actie.label}
                         aria-label={actie.label}
                         onClick={(e) => {
-                          e.stopPropagation()
-                          actie.onDoen()
+                          e.stopPropagation();
+                          actie.onDoen();
                         }}
                         onKeyDown={(e) => {
-                          if (e.key !== 'Enter' && e.key !== ' ') return
-                          e.preventDefault()
-                          e.stopPropagation()
-                          actie.onDoen()
+                          if (e.key !== "Enter" && e.key !== " ") return;
+                          e.preventDefault();
+                          e.stopPropagation();
+                          actie.onDoen();
                         }}
                       >
-                        {actie.teken && actie.teken !== 'kruis' ? (
+                        {actie.teken && actie.teken !== "kruis" ? (
                           <Pictogram naam={actie.teken} />
                         ) : (
                           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -744,8 +882,8 @@ export function Setup({
               autoFocus
               onChange={(e) => invoer.onWaarde(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') invoer.onBevestig()
-                if (e.key === 'Escape') invoer.onAnnuleer()
+                if (e.key === "Enter") invoer.onBevestig();
+                if (e.key === "Escape") invoer.onAnnuleer();
               }}
             />
             <button
@@ -754,18 +892,18 @@ export function Setup({
               disabled={!invoer.waarde.trim()}
               onClick={invoer.onBevestig}
             >
-              {tr('setup.add')}
+              {tr("setup.add")}
             </button>
           </div>
         )}
 
         {inhoud || tegels ? null : rijen.length === 0 && !invoer ? (
-          <p className="vel-leeg">{tr('setup.empty')}</p>
+          <p className="vel-leeg">{tr("setup.empty")}</p>
         ) : (
           <ul className="dienstenlijst">
             {rijen.map((rij, index) => (
               /* `--i` is het volgnummer; setup.css maakt er de vertraging van. */
-              <li key={rij.id} style={{ '--i': index } as CSSProperties}>
+              <li key={rij.id} style={{ "--i": index } as CSSProperties}>
                 <button
                   type="button"
                   className="dienstrij"
@@ -776,7 +914,9 @@ export function Setup({
                   onClick={() => onKies(index)}
                 >
                   {/* Geen bolletje als er niets te kiezen valt; dat belooft een keuze. */}
-                  {!keuzeloos && <span className="dienstbol" aria-hidden="true" />}
+                  {!keuzeloos && (
+                    <span className="dienstbol" aria-hidden="true" />
+                  )}
                   {/*
                     De eerste kolom kapt gewoon aan het eind af: dat die bussen
                     hetzelfde model zijn, is waar. Het verschil zit in de tweede
@@ -790,7 +930,11 @@ export function Setup({
                   <span className="dienstduur">
                     {rij.klok && (
                       <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d={ICONEN.duty.d} fill="currentColor" fillRule="evenodd" />
+                        <path
+                          d={ICONEN.duty.d}
+                          fill="currentColor"
+                          fillRule="evenodd"
+                        />
                       </svg>
                     )}
                     {rij.cellen[2]}
@@ -805,18 +949,18 @@ export function Setup({
                       <span
                         role="button"
                         tabIndex={0}
-                        className={`rijactie ${rij.actie.gevaarlijk ? 'gevaarlijk' : ''}`}
+                        className={`rijactie ${rij.actie.gevaarlijk ? "gevaarlijk" : ""}`}
                         title={rij.actie.label}
                         aria-label={rij.actie.label}
                         onClick={(e) => {
-                          e.stopPropagation()
-                          rij.actie?.onDoen()
+                          e.stopPropagation();
+                          rij.actie?.onDoen();
                         }}
                         onKeyDown={(e) => {
-                          if (e.key !== 'Enter' && e.key !== ' ') return
-                          e.preventDefault()
-                          e.stopPropagation()
-                          rij.actie?.onDoen()
+                          if (e.key !== "Enter" && e.key !== " ") return;
+                          e.preventDefault();
+                          e.stopPropagation();
+                          rij.actie?.onDoen();
                         }}
                       >
                         <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -844,16 +988,16 @@ export function Setup({
           verdwijnen daar vanzelf mee.
         */}
         {voet && (
-        <div className={`velvoet ${voetFout ? 'fout' : ''}`}>
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm-1 4h2v2h-2V7Zm0 4h2v6h-2v-6Z"
-              fill="currentColor"
-              fillRule="evenodd"
-            />
-          </svg>
-          {voet}
-        </div>
+          <div className={`velvoet ${voetFout ? "fout" : ""}`}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm-1 4h2v2h-2V7Zm0 4h2v6h-2v-6Z"
+                fill="currentColor"
+                fillRule="evenodd"
+              />
+            </svg>
+            {voet}
+          </div>
         )}
       </section>
 
@@ -863,7 +1007,7 @@ export function Setup({
             type="button"
             className="kaartknop"
             onClick={() => bedieningRef.current?.refit()}
-            aria-label={tr('setup.centre')}
+            aria-label={tr("setup.centre")}
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M3 11 21 3l-8 18-2-7-8-3Z" fill="currentColor" />
@@ -873,19 +1017,22 @@ export function Setup({
             type="button"
             className="kaartknop"
             onClick={() => bedieningRef.current?.zoomBy(1 / 1.4)}
-            aria-label={tr('setup.zoomIn')}
+            aria-label={tr("setup.zoomIn")}
           >
             {/* Getekend, niet getypt: een plusteken uit de letter heeft een
                 andere lijndikte en een ander midden dan de iconen ernaast. */}
             <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z" fill="currentColor" />
+              <path
+                d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z"
+                fill="currentColor"
+              />
             </svg>
           </button>
           <button
             type="button"
             className="kaartknop"
             onClick={() => bedieningRef.current?.zoomBy(1.4)}
-            aria-label={tr('setup.zoomOut')}
+            aria-label={tr("setup.zoomOut")}
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M5 11h14v2H5v-2Z" fill="currentColor" />
@@ -907,22 +1054,36 @@ export function Setup({
             type="button"
             className="terugknop"
             onClick={onTerug}
-            aria-label={tr('setup.back')}
+            aria-label={tr("setup.back")}
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+              <path
+                d="M15 5 8 12l7 7"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
-            {tr('setup.back')}
+            {tr("setup.back")}
           </button>
         )}
 
         {/* Een knop om iets toe te voegen terwijl het veld al openstaat, zegt niets. */}
         {!invoer &&
-          (Array.isArray(tweede) ? tweede : tweede ? [tweede] : []).map((knop) => (
-            <button key={knop.tekst} type="button" className="tweedeknop" onClick={knop.onDoen}>
-              {knop.tekst}
-            </button>
-          ))}
+          (Array.isArray(tweede) ? tweede : tweede ? [tweede] : []).map(
+            (knop) => (
+              <button
+                key={knop.tekst}
+                type="button"
+                className="tweedeknop"
+                onClick={knop.onDoen}
+              >
+                {knop.tekst}
+              </button>
+            ),
+          )}
 
         <button
           type="button"
@@ -933,12 +1094,12 @@ export function Setup({
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M7 4v16l13-8L7 4Z" fill="currentColor" />
           </svg>
-          {startTekst ?? tr('setup.start')}
+          {startTekst ?? tr("setup.start")}
         </button>
       </div>
 
       {/* Helemaal achteraan, zodat hij over de rest heen ligt zonder z-index. */}
       {dialoog}
     </div>
-  )
+  );
 }

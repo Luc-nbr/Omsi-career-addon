@@ -100,7 +100,11 @@ const duty = ${JSON.stringify(duty)}
 window.career = {
   geometry: async () => ({ stops: [], roads: [], rails: [], water: [], bounds: undefined }),
   routes: async () => [],
-  settings: async () => ({}),
+  settings: async () => ({ navDeel: window.__navDeel }),
+  saveSettings: async (p) => {
+    window.__bewaard = p
+    return p
+  },
   version: async () => '0.3.1'
 }
 
@@ -119,7 +123,8 @@ function Scherm() {
   return (
     <LanguageProvider value="nl">
       <Setup
-        stap="duty"
+        stap="rijden"
+        stappen={['profile', 'mode', 'map', 'duty', 'bus', 'rijden']}
         titel="Je rijdt"
         onderschrift="OMSI draait op Hohenkirchen - Herrenhof. Laat dit venster naast het spel staan, of gebruik de overlay."
         rijen={[]}
@@ -145,6 +150,7 @@ function Scherm() {
               onToggleOverlay={() => {}}
               onCancel={() => {}}
               onFinish={() => {}}
+              chauffeur={{ personeelsnummer: '481902', pincode: '7341' }}
               full={null}
             />
           </>
@@ -169,12 +175,30 @@ const meten = `(() => {
   const inhoud = doos('.velinhoud')
   /* De hoofdknop hoort binnen het vel te blijven en niet over de kaart. */
   const knop = doos('.startknop')
+  const greep = doos('.navgreep')
+  /* De gegevens om mee aan te melden, en het icoontje van de stap die loopt. */
+  const pas = [...document.querySelectorAll('.running-pas b')].map((b) => b.textContent)
+  const stappen = [...document.querySelectorAll('.stap')]
+  const stapNu = stappen.find((n) => n.dataset.stand === 'nu')
+  /*
+   * Niet op de naam vergelijken: die vertaalt mee. Wel op de plek -- rijden is
+   * de laatste stap -- en op het icoontje, want dat leende hij van de bus.
+   */
+  const stapLaatst = stapNu === stappen[stappen.length - 1]
+  const stapVorm = stapNu?.querySelector('svg path')?.getAttribute('d') ?? ''
+  const busVorm =
+    stappen[stappen.length - 2]?.querySelector('svg path')?.getAttribute('d') ?? 'x'
   return {
     venster: window.innerWidth,
     vel,
     kaart,
     inhoud,
     knop,
+    greep,
+    pas,
+    stapNu: stapNu?.textContent.trim(),
+    stapLaatst,
+    eigenVorm: stapVorm !== busVorm && stapVorm.length > 0,
     /* Staat er een schuifbalk in de inhoud, en hoeveel steekt eruit? */
     scrollt: (() => {
       const el = document.querySelector('.velinhoud')
@@ -233,6 +257,10 @@ app.whenReady().then(async () => {
     console.log(`  vel loopt tot ${m.vel.rechts}, kaart begint op ${m.kaart.links}`)
     console.log(`  inhoud scrollt ${m.scrollt}px over`)
     if (m.knop) console.log(`  hoofdknop van ${m.knop.links} tot ${m.knop.rechts}`)
+    console.log(
+      `  stap in de balk: "${m.stapNu}" (laatste: ${m.stapLaatst}, eigen vorm: ${m.eigenVorm})` +
+        `, dienstgegevens ${JSON.stringify(m.pas)}`
+    )
     for (const h of m.haltes) console.log(`  halte "${h.naam}" ${h.hoog}px hoog`)
 
     /* De oude kolom was hoogstens 420 breed; hieronder is er niets gewonnen. */
@@ -240,26 +268,70 @@ app.whenReady().then(async () => {
     const naastElkaar = m.vel.rechts <= m.kaart.links
     const binnen = m.kaart.rechts <= m.venster && m.vel.links >= 0
     const knopVrij = !m.knop || m.knop.rechts <= m.kaart.links
+    /* De greep hoort tussen de twee in te liggen en niet ergens anders. */
+    /* De gegevens horen er te staan, en de balk hoort de rijstap aan te wijzen. */
+    const pasErop = m.pas.join('|') === '481902|7341'
+    const eigenStap = m.stapLaatst && m.eigenVorm
+    const greepErtussen =
+      m.greep && m.greep.links >= m.vel.rechts - 4 && m.greep.rechts <= m.kaart.links + 4
     /* En hij hoort onder de inhoud te staan, niet eroverheen. */
     const knopOnder = !m.knop || m.knop.links >= m.vel.links
     /* Een haltenaam die over twee regels valt, is 40 of meer hoog. */
     const opEenRegel = m.haltes.every((h) => h.hoog < 34)
-    if (!ruim || !naastElkaar || !binnen || !opEenRegel || !knopVrij || !knopOnder) {
+    if (!ruim || !naastElkaar || !binnen || !opEenRegel || !knopVrij || !knopOnder || !greepErtussen || !pasErop || !eigenStap) {
       goed = false
       console.log(
         `  MIS: ${!ruim ? 'vel te smal ' : ''}${!naastElkaar ? 'kaart overlapt ' : ''}` +
           `${!binnen ? 'valt buiten het venster ' : ''}${!opEenRegel ? 'haltenaam breekt af ' : ''}` +
-          `${!knopVrij ? 'knop ligt over de kaart ' : ''}${!knopOnder ? 'knop staat naast het vel' : ''}`
+          `${!knopVrij ? 'knop ligt over de kaart ' : ''}${!knopOnder ? 'knop staat naast het vel ' : ''}` +
+          `${!greepErtussen ? 'de greep ligt niet tussen de twee ' : ''}` +
+          `${!pasErop ? 'geen dienstgegevens ' : ''}${!eigenStap ? 'de balk wijst de verkeerde stap aan' : ''}`
       )
     }
 
     if (uitvoer) {
+      /* Naar de dienstgegevens toe, anders staan ze op het plaatje onder de vouw. */
+      await venster.webContents.executeJavaScript(
+        `document.querySelector('.running-pas')?.scrollIntoView({ block: 'center' })`
+      )
       venster.showInactive()
       await new Promise((r) => setTimeout(r, 400))
       const naam = `rijscherm-${breed}${donker ? '-donker' : ''}.png`
       writeFileSync(join(uitvoer, naam), (await venster.capturePage()).toPNG())
       console.log('  plaatje: ' + naam)
     }
+    /*
+     * De greep verslepen. Niet net doen alsof, maar echte muisgebeurtenissen:
+     * de afhandeling hangt aan pointerdown/move/up en aan het vak van het
+     * scherm, en een nagebootste aanroep bewijst daar niets over.
+     */
+    const gesleept = await venster.webContents.executeJavaScript(`(async () => {
+      const greep = document.querySelector('.navgreep')
+      if (!greep) return { fout: 'geen greep' }
+      const voor = document.querySelector('.setup-kaart').getBoundingClientRect().width
+      const r = greep.getBoundingClientRect()
+      const gebeurtenis = (naam, x, doel) => doel.dispatchEvent(new PointerEvent(naam, {
+        bubbles: true, clientX: x, clientY: r.top + 40, pointerId: 1
+      }))
+      gebeurtenis('pointerdown', r.left + 6, greep)
+      /* Naar links slepen hoort de kaart breder te maken; hij hangt rechts. */
+      gebeurtenis('pointermove', r.left - 160, window)
+      gebeurtenis('pointerup', r.left - 160, window)
+      await new Promise((k) => requestAnimationFrame(k))
+      return {
+        voor: Math.round(voor),
+        na: Math.round(document.querySelector('.setup-kaart').getBoundingClientRect().width),
+        bewaard: window.__bewaard
+      }
+    })()`)
+    console.log(`  slepen: kaart ${gesleept.voor} -> ${gesleept.na}, bewaard ${JSON.stringify(gesleept.bewaard)}`)
+    const sleeptEcht =
+      gesleept.na > gesleept.voor + 100 && typeof gesleept.bewaard?.navDeel === 'number'
+    if (!sleeptEcht) {
+      goed = false
+      console.log('  MIS: de greep verzet de kaart niet of bewaart niets')
+    }
+
     venster.destroy()
   }
 

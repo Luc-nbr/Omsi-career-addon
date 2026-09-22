@@ -83,6 +83,23 @@ export const ICONEN = {
   bus: {
     d: 'M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2v2h-3v-2H8v2H5v-2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 3v5h14V7H5Zm2 9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm10 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z'
   },
+  /*
+   * Rijden: het stuur met de weg erdoorheen.
+   *
+   * Het rijscherm leende de bus van de busstap, en dan zegt de balk "bus"
+   * terwijl je al onderweg bent -- de stap waarin je een bus koos en de stap
+   * waarin je hem bestuurt zijn niet hetzelfde. Een stuur is wat je in handen
+   * hebt zodra het kiezen klaar is, en de twee spaken houden het op zestien
+   * pixels uit elkaar met de bus (een liggende doos) en met het uurtje van de
+   * dienststap (een volle cirkel met wijzers).
+   *
+   * Niet hetzelfde als `stuur`: die staat voor de instellingen van OMSI en is
+   * een vol stuur; deze is open, met de naaf apart, zodat ze naast elkaar in
+   * dezelfde balk niet als één icoon lezen.
+   */
+  rijden: {
+    d: 'M12 2.5a9.5 9.5 0 1 0 0 19 9.5 9.5 0 0 0 0-19Zm0 2a7.5 7.5 0 0 1 7.4 6.2h-4.6a3 3 0 0 0-5.6 0H4.6A7.5 7.5 0 0 1 12 4.5ZM4.6 12.7h4.6a3 3 0 0 0 1.8 1.7v4.7a7.5 7.5 0 0 1-6.4-6.4Zm8.4 6.4v-4.7a3 3 0 0 0 1.8-1.7h4.6a7.5 7.5 0 0 1-6.4 6.4Z'
+  },
 
   /* ---- het weer, voor de chips op de ritstap ---- */
   weerHelder: { d: ZON },

@@ -1961,6 +1961,29 @@ input[type='range'] {
 }
 
 /*
+ * De gegevens waarmee je je op de telefoon aanmeldt. Dezelfde vakjes als de
+ * codes erboven, met een regel eronder die zegt waar ze voor zijn -- anders
+ * staan er zomaar twee getallen op een scherm vol getallen.
+ */
+.running-pas {
+  margin-top: 10px;
+  align-items: flex-start;
+}
+
+.running-pas b {
+  letter-spacing: 0.08em;
+}
+
+.running-pas-uitleg {
+  flex: 1 1 220px;
+  align-self: center;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+/*
  * Het verschil met de dienstregeling: het enige op dit scherm dat kleur krijgt.
  * Rood te laat, groen op tijd, blauw te vroeg -- zie `src/shared/status.ts`.
  */

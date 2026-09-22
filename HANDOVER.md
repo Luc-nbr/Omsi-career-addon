@@ -996,11 +996,56 @@ houdt op waar de kaart begint. Bij `data-vol='nee'` mag een knop over de kaart
 liggen -- daar is ze de ondergrond -- maar hier is ze een element met een rand,
 en dan is dat gewoon een knop op de verkeerde plek.
 
+**De verdeling is te verslepen** (sinds 22-09-2026). Welke van de twee het
+grootst hoort te zijn weet de app niet -- wie op een tweede scherm rijdt kijkt
+vooral naar de kaart, wie de overlay gebruikt juist niet -- dus mag de gebruiker
+het zelf zeggen. De greep ligt in de kier ertussen (`.navgreep`), is breder dan
+die kier want anders vind je hem niet met de muis, en wordt pas zichtbaar als je
+er met de muis bij komt. Dubbelklikken zet hem terug op 0.32.
+
+Bewaard als `Settings.navDeel`, een **deel** van de breedte en geen aantal
+pixels: het venster verandert van maat, en een vaste kolom wordt dan op de ene
+machine een strookje en op de andere de helft. `readSettings` knijpt hem tussen
+0.18 en 0.62; zonder die grenzen zou een aangepast bestand de kaart tot een
+streep maken en de greep onvindbaar. Wegschrijven gebeurt bij het loslaten en
+niet tijdens het slepen -- anders is het een schrijfactie per pixel.
+
+**Het rijscherm heeft een eigen stap in de balk**, `rijden`, met een eigen
+icoontje (een open stuur, `Icoon.tsx`). Het stond op `stap="bus"`, en dan wees de
+balk de busstap aan terwijl je allang onderweg was. De stap staat niet in
+`STAPPEN_DIENST` en de andere twee lijsten -- een stap waar je niet naartoe kunt
+is geen stap -- het rijscherm plakt hem er zelf achter.
+
+**Je personeelsnummer en pincode staan op het rijscherm**, in dezelfde vakjes als
+de codes voor de IBIS. Ze staan ook bij de staat van dienst, en dat is de plek om
+ze op te zoeken; hier hoef je niets op te zoeken, want dit is het scherm dat
+openstaat terwijl je in de bus zit met het cijferblok voor je.
+
 Proef: `scripts/probe-rijscherm.cjs`. Hij meet op twee venstermaten of het vel
 breder is dan de oude kolom, of de kaart ernaast staat zonder overlap, of alles
-binnen het venster valt, of de hoofdknop niet over de kaart ligt, en of de lange
-haltenamen op een regel blijven. Met een uitvoermap erachter schrijft hij de
-plaatjes; `--donker` voor de andere stand, `--breedte` voor een eigen maat.
+binnen het venster valt, of de hoofdknop niet over de kaart ligt, of de lange
+haltenamen op een regel blijven, of de greep ertussen ligt, of de dienstgegevens
+erop staan en of de balk de laatste stap aanwijst met een eigen vorm. Hij versleept
+de greep ook echt, met muisgebeurtenissen en niet met een nagebootste aanroep, en
+kijkt of de kaart meebeweegt en of er iets bewaard wordt. Met een uitvoermap
+erachter schrijft hij de plaatjes; `--donker` voor de andere stand, `--breedte`
+voor een eigen maat.
+
+**Een lopende dienst slokte het hele menu op** (opgelost op 22-09-2026). Het
+rijscherm stond achter `if (started && duty)`, en die voorwaarde stond boven de
+instellingen, de chauffeurslijst en de staat van dienst. Elke knop in het
+hoofdmenu kwam daardoor uit bij de lopende dienst -- de gebruiker: "de knoppen in
+het hoofdmenu werken ook niet als een dienst actief is, ze sturen direct door naar
+de actieve dienst". Nu is het `if (started && duty && screen === 'drive')`, en
+brengt het effect op `activeKey` je naar `drive` op het moment dat de dienst
+verschijnt: bij het aannemen, bij het starten van de app, en bij het wisselen naar
+een chauffeur die rijdt. **Let op bij het toevoegen van een scherm:** de volgorde
+van de `if`-takken in `App.tsx` is de hele schermrouter, en een tak zonder
+`screen`-voorwaarde vangt alles af wat eronder staat.
+
+De weg terug staat op de tegel van de modus waarin je rijdt: die zei "loopt" --
+een mededeling waar je zelf bij moest bedenken dat je erop kon drukken -- en zegt
+nu "verder rijden", in de blauwe van de route met een pijltje.
 
 **Nog in het spel na te kijken.** Dat het startscherm van OMSI de dienst al
 geselecteerd heeft, is op bestandsniveau bewezen (`probe-startup.ts`) maar niet
