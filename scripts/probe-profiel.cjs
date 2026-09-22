@@ -34,7 +34,8 @@ if (bron && existsSync(bron)) {
   gekopieerd = bron
 } else if (existsSync(echteMap)) {
   for (const f of readdirSync(echteMap)) {
-    if (f === 'active.json') continue
+    // Alleen profielbestanden; er staan inmiddels ook mappen tussen.
+    if (f === 'active.json' || !f.endsWith('.json')) continue
     copyFileSync(join(echteMap, f), join(profielen, 'proef.json'))
     gekopieerd = f
     break

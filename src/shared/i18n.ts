@@ -2528,6 +2528,14 @@ const TEXT = {
     fr: 'Rien de conduit pour l’instant. Terminez un service et tout apparaît ici : heures, kilomètres, ponctualité et votre conduite.',
     nl: 'Nog niets gereden. Rond een dienst af, dan staat het hier: uren, kilometers, stiptheid en hoe je reed.'
   },
+  'prof.staffNumber': { en: 'Staff number', de: 'Personalnummer', fr: 'Matricule', nl: 'Personeelsnummer' },
+  'prof.pin': { en: 'PIN', de: 'PIN', fr: 'Code', nl: 'Pincode' },
+  'prof.signonWhy': {
+    en: 'You sign on with these on the phone in the overlay, before your duty starts.',
+    de: 'Damit meldest du dich am Telefon im Overlay an, bevor dein Dienst beginnt.',
+    fr: 'C’est avec cela que vous prenez votre service sur le téléphone de la superposition.',
+    nl: 'Hiermee meld je je aan op de telefoon in de overlay, voordat je dienst begint.'
+  },
   'prof.duties': { en: 'Duties', de: 'Dienste', fr: 'Services', nl: 'Diensten' },
   'prof.behindWheel': { en: 'At the wheel', de: 'Am Steuer', fr: 'Au volant', nl: 'Achter het stuur' },
   'prof.driven': { en: 'Driven', de: 'Gefahren', fr: 'Parcourus', nl: 'Gereden' },
@@ -2946,6 +2954,51 @@ const TEXT = {
    * passagier vraagt of geeft -- OMSI geeft dat niet door, zie core/kaartjes.ts.
    * De app rekent, hij raadt niet.
    */
+  /*
+   * Aanmelden op de telefoon en tekenen voor je dienst. De toon is die van een
+   * remise en niet die van een computer: "onbekend nummer" en niet "ongeldige
+   * invoer", en "dienst aanvaarden" en niet "bevestigen".
+   */
+  'ovl.signonTitle': { en: 'Sign on', de: 'Anmelden', fr: 'Prise de service', nl: 'Aanmelden' },
+  'ovl.signonNumber': {
+    en: 'Your staff number',
+    de: 'Deine Personalnummer',
+    fr: 'Votre matricule',
+    nl: 'Je personeelsnummer'
+  },
+  'ovl.signonPin': { en: 'Your PIN', de: 'Deine PIN', fr: 'Votre code', nl: 'Je pincode' },
+  /* Wie zijn nummer kwijt is, leest het terug in de app; dat hoort er te staan. */
+  'ovl.signonWrong': {
+    en: 'Not known here — look it up in the app',
+    de: 'Hier nicht bekannt — schau in der App nach',
+    fr: 'Inconnu ici — vérifiez dans l’application',
+    nl: 'Hier niet bekend — kijk in de app'
+  },
+  'ovl.signonClear': { en: 'Clear', de: 'Löschen', fr: 'Effacer', nl: 'Wissen' },
+  'ovl.signonNone': {
+    en: 'This driver has no staff number yet.',
+    de: 'Dieser Fahrer hat noch keine Personalnummer.',
+    fr: 'Ce conducteur n’a pas encore de matricule.',
+    nl: 'Deze chauffeur heeft nog geen personeelsnummer.'
+  },
+  'ovl.signonSkip': { en: 'Continue', de: 'Weiter', fr: 'Continuer', nl: 'Doorgaan' },
+  'ovl.dutyOrder': {
+    en: 'Duty assignment',
+    de: 'Dienstauftrag',
+    fr: 'Ordre de service',
+    nl: 'Dienstopdracht'
+  },
+  'ovl.dutyLine': { en: 'Line', de: 'Linie', fr: 'Ligne', nl: 'Lijn' },
+  'ovl.dutyTour': { en: 'Tour', de: 'Umlauf', fr: 'Rotation', nl: 'Omloop' },
+  'ovl.dutyStart': { en: 'Departure', de: 'Abfahrt', fr: 'Départ', nl: 'Vertrek' },
+  'ovl.dutyEnd': { en: 'Back at', de: 'Zurück um', fr: 'Retour à', nl: 'Terug om' },
+  'ovl.dutyTrips': { en: 'Trips', de: 'Fahrten', fr: 'Courses', nl: 'Ritten' },
+  'ovl.dutyAccept': {
+    en: 'Accept duty',
+    de: 'Dienst annehmen',
+    fr: 'Accepter le service',
+    nl: 'Dienst aanvaarden'
+  },
   'ovl.appTickets': { en: 'Tickets', de: 'Fahrscheine', fr: 'Billets', nl: 'Kaartjes' },
   'ovl.ticketsNone': {
     en: 'This map has no tickets: nothing is sold here.',

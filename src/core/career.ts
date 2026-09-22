@@ -161,6 +161,23 @@ export interface CareerState {
    */
   photoAt?: number
   startedAt: string
+  /**
+   * Personeelsnummer en pincode, waarmee je je op de telefoon in de overlay
+   * aanmeldt.
+   *
+   * WAAROM DIT GEEN BEVEILIGING IS
+   * Ze staan gewoon in het profiel en gaan gewoon mee in het overlaybeeld. Dat
+   * is met opzet: er valt hier niets te beschermen -- het is jouw pc, jouw
+   * profiel, en de app heeft geen server om iets tegen af te schermen. Waar het
+   * wel voor is: een dienst begint niet met een venster dat opengaat maar met
+   * jezelf aanmelden, zoals een chauffeur dat bij de remise doet. Behandel ze
+   * dus als een rolnaam en niet als een wachtwoord.
+   *
+   * Ze worden eenmaal aangemaakt en veranderen daarna niet meer; een chauffeur
+   * die elke dienst een ander nummer heeft, is geen chauffeur.
+   */
+  personeelsnummer?: string
+  pincode?: string
   entries: CareerEntry[]
   activeDuty?: ActiveDuty
   /** Waar de chauffeur op mag rijden in de carrièremodus. */
@@ -174,8 +191,32 @@ const HOURLY_PAY = 18.5
 /** Toeslag per aangedane halte; lange, drukke diensten leveren meer op. */
 const PAY_PER_STOP = 0.35
 
+/**
+ * Een personeelsnummer en een pincode voor een nieuwe chauffeur.
+ *
+ * Zes cijfers en vier cijfers, en geen van beide begint met een nul: een nummer
+ * met een voorloopnul leest op een cijferblok als een fout, en wie hem overtypt
+ * laat hem weg. Verder is elk cijfer even waarschijnlijk -- er valt hier niets
+ * te raden waar iemand iets aan heeft.
+ */
+export function nieuweDienstgegevens(): { personeelsnummer: string; pincode: string } {
+  const cijfers = (aantal: number): string => {
+    let uit = String(1 + Math.floor(Math.random() * 9))
+    for (let i = 1; i < aantal; i++) uit += String(Math.floor(Math.random() * 10))
+    return uit
+  }
+  return { personeelsnummer: cijfers(6), pincode: cijfers(4) }
+}
+
 export function emptyCareer(driver = 'Nieuwe chauffeur'): CareerState {
-  return { driver, startedAt: new Date().toISOString(), entries: [], licences: [], exams: [] }
+  return {
+    driver,
+    startedAt: new Date().toISOString(),
+    ...nieuweDienstgegevens(),
+    entries: [],
+    licences: [],
+    exams: []
+  }
 }
 
 /**
@@ -210,6 +251,15 @@ function uitJson(parsed: Partial<CareerState>): CareerState {
     photo: typeof parsed.photo === 'string' ? parsed.photo : undefined,
     photoAt: typeof parsed.photoAt === 'number' ? parsed.photoAt : undefined,
     startedAt: parsed.startedAt ?? new Date().toISOString(),
+    /*
+     * Chauffeurs van voor deze versie hebben nog geen nummer. Die krijgen er
+     * hier een, en omdat `uitJson` bij elke lezing loopt zou dat elke keer een
+     * ander zijn -- vandaar dat het bij het eerste gebruik wordt vastgelegd
+     * (zie `zorgVoorDienstgegevens` in profiles.ts).
+     */
+    personeelsnummer:
+      typeof parsed.personeelsnummer === 'string' ? parsed.personeelsnummer : undefined,
+    pincode: typeof parsed.pincode === 'string' ? parsed.pincode : undefined,
     entries: Array.isArray(parsed.entries) ? parsed.entries : [],
     activeDuty:
       parsed.activeDuty && typeof parsed.activeDuty === 'object' && parsed.activeDuty.assignment

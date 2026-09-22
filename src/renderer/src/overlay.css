@@ -1674,3 +1674,164 @@
   font-size: 13px;
   font-style: normal;
 }
+
+/*
+ * AANMELDEN EN DE DIENSTOPDRACHT
+ *
+ * Dit is het eerste dat je in de overlay ziet, en je zit al in de bus. Het
+ * cijferblok is daarom groot en de vakjes zijn van een afstand te lezen: je
+ * toetst dit met één hand terwijl je met de andere nog iets anders doet.
+ */
+.aanmelden,
+.opdracht {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 2px;
+}
+
+.aanmeld-kop,
+.opdracht-kop {
+  margin: 0;
+  color: var(--vel-zacht);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.aanmeld-uitleg {
+  margin: 0;
+  font-size: 15px;
+}
+
+/* De ingetikte cijfers: één vakje per positie, zodat je ziet hoever je bent. */
+.aanmeld-vakjes {
+  display: flex;
+  gap: 6px;
+}
+
+.aanmeld-vakjes span {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 0;
+  border: 1px solid var(--vel-overlay-rand);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-klein);
+  font-size: 22px;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.aanmeld-vakjes span.vol {
+  border-bottom-color: var(--route);
+}
+
+/* Fout ingetikt: dezelfde rode als overal, en de vakjes zijn meteen leeg. */
+.aanmeld-vakjes.fout span {
+  border-color: var(--laat);
+}
+
+.aanmeld-fout {
+  margin: 0;
+  color: var(--laat);
+  font-size: 13px;
+}
+
+.cijferblok {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.cijferblok button {
+  padding: 14px 0;
+  border: 1px solid var(--vel-overlay-rand);
+  border-radius: var(--radius-klein);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums lining-nums;
+  cursor: pointer;
+}
+
+.cijferblok button:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* Wissen en terug zijn geen cijfers; die horen rustiger te staan. */
+.cijferblok button.leeg {
+  background: transparent;
+  color: var(--vel-zacht);
+  font-size: 13px;
+}
+
+.aanmeld-door {
+  padding: 12px;
+  border: 1px solid var(--vel-overlay-rand);
+  border-radius: var(--radius-klein);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* ---- de dienstopdracht ---- */
+
+.opdracht-naam {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.opdracht-lijst {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+}
+
+.opdracht-lijst > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--vel-overlay-rand);
+}
+
+.opdracht-lijst > div:last-child {
+  border-bottom: 0;
+}
+
+.opdracht-lijst dt {
+  color: var(--vel-zacht);
+  font-size: 13px;
+}
+
+.opdracht-lijst dd {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* Tekenen voor je dienst: de enige knop op dit scherm, dus de opvallendste. */
+.opdracht-teken {
+  margin-top: 4px;
+  padding: 14px;
+  border: 0;
+  border-radius: var(--radius-klein);
+  background: var(--route);
+  color: #ffffff;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.opdracht-teken:hover {
+  background: var(--route-diep);
+}

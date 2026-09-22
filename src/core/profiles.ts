@@ -16,7 +16,8 @@ import {
   probeerCareer,
   saveCareer,
   summarise,
-  type CareerState
+  type CareerState,
+  nieuweDienstgegevens
 } from './career'
 import { schrijfVeilig, tijdstempel } from './veilig'
 
@@ -494,5 +495,25 @@ export function resolveActive(userData: string): CareerState | undefined {
   const active = getActive(userData)
   const chosen = profiles.find((profile) => profile.id === active) ?? profiles[0]
   setActive(userData, chosen.id)
-  return readProfile(userData, chosen.id)
+  const staat = readProfile(userData, chosen.id)
+  return staat ? zorgVoorDienstgegevens(userData, staat) : staat
+}
+
+/**
+ * Een chauffeur van voor deze versie krijgt alsnog een personeelsnummer.
+ *
+ * Eenmaal, en dan vastgelegd. Zonder het wegschrijven zou `uitJson` bij elke
+ * lezing een nieuw nummer verzinnen, en dan meldt de telefoon je elke dienst af
+ * met gegevens die gisteren nog klopten.
+ */
+export function zorgVoorDienstgegevens(userData: string, staat: CareerState): CareerState {
+  if (staat.personeelsnummer && staat.pincode) return staat
+  const bijgewerkt = { ...staat, ...nieuweDienstgegevens() }
+  try {
+    writeProfile(userData, bijgewerkt)
+  } catch {
+    // Lukt het wegschrijven niet, dan werkt de aanmelding deze keer wel en
+    // krijgt hij de volgende keer een ander nummer. Beter dan niets.
+  }
+  return bijgewerkt
 }

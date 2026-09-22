@@ -1249,6 +1249,18 @@ function pushFrame(): void {
      * een handvol regels.
      */
     kaartjes: kaartsetVoorOverlay(duty?.mapFolder),
+    /*
+     * Wie er rijdt, met zijn personeelsnummer en pincode. Die gaan mee zodat de
+     * telefoon de aanmelding zelf kan nakijken zonder het hoofdproces erbij te
+     * halen; er valt hier niets af te schermen, zie core/career.ts.
+     */
+    chauffeur: career
+      ? {
+          naam: career.driver,
+          personeelsnummer: career.personeelsnummer,
+          pincode: career.pincode
+        }
+      : undefined,
     editing: overlayEditing
   }
 

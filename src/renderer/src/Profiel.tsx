@@ -75,6 +75,29 @@ export function Profiel({ state, summary }: Props): JSX.Element {
         </div>
       </header>
 
+      {/*
+        Je dienstgegevens. Die heb je nodig om je op de telefoon in de overlay
+        aan te melden, dus ze horen op de plek te staan waar je over jezelf
+        leest -- en niet weggestopt in een instellingenscherm.
+
+        Ze staan er gewoon leesbaar. Er valt hier niets te beschermen: het is je
+        eigen pc en je eigen profiel, en een pincode die je niet kunt opzoeken is
+        een pincode die je een keer kwijt bent. Zie core/career.ts.
+      */}
+      {state.personeelsnummer && state.pincode && (
+        <section className="profiel-pas">
+          <div>
+            <span>{tr('prof.staffNumber')}</span>
+            <b>{state.personeelsnummer}</b>
+          </div>
+          <div>
+            <span>{tr('prof.pin')}</span>
+            <b>{state.pincode}</b>
+          </div>
+          <p>{tr('prof.signonWhy')}</p>
+        </section>
+      )}
+
       {entries.length === 0 ? (
         <p className="profiel-leeg">{tr('prof.empty')}</p>
       ) : (

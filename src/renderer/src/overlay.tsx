@@ -113,6 +113,8 @@ interface Frame {
   laadt?: boolean
   /** De kaartsoorten van deze kaart, met hun prijzen; zie core/kaartjes.ts. */
   kaartjes?: Kaartset
+  /** Wie er rijdt, met zijn dienstgegevens om mee aan te melden. */
+  chauffeur?: { naam: string; personeelsnummer?: string; pincode?: string }
   /** In de bewerkstand neemt de overlay muisklikken aan. */
   editing: boolean
 }
@@ -172,6 +174,16 @@ function Overlay(): JSX.Element | null {
    * return zou React hem bij het eerste beeld overslaan en daarna verwachten.
    */
   const [ibisReady, setIbisReady] = useState<string>()
+  /*
+   * Aanmelden en de dienst aanvaarden, allebei in het geheugen van dit venster.
+   *
+   * Niet op schijf: een dienst begint met jezelf aanmelden, en dat is het punt
+   * van deze stap. Wel per dienst onthouden welke er aanvaard is -- de overlay
+   * gaat tussendoor dicht en open, en je hoort niet halverwege opnieuw te
+   * moeten tekenen voor dezelfde dienst.
+   */
+  const [aangemeld, setAangemeld] = useState(false)
+  const [aanvaardVoor, setAanvaardVoor] = useState<string>()
   const [geometry, setGeometry] = useState<MapGeometry>()
   /** Wat er aan bocht voor je ligt; de kaart rekent het uit, de balk tekent het. */
   const [manoeuvre, setManoeuvre] = useState<Manoeuvre>()
@@ -380,6 +392,11 @@ function Overlay(): JSX.Element | null {
    * dienst die dezelfde rit later nog eens rijdt opnieuw om de IBIS vraagt.
    */
   const tripKey = upcoming ? `${upcomingIndex}|${upcoming.tripFile}` : ''
+  /*
+   * Welke dienst dit is. Niet de rit maar de hele dienst: je tekent er één keer
+   * voor en niet bij elke rit opnieuw.
+   */
+  const dienstSleutel = duty ? `${duty.mapFolder}|${duty.tourNumber}|${duty.start}` : ''
 
   /*
    * Staat het al op de IBIS?
@@ -456,7 +473,27 @@ function Overlay(): JSX.Element | null {
             lijkt terwijl OMSI nog niets weet, geeft cijfers die nergens op slaan
             -- de bus stond gisteren nog stil en de klok loopt gewoon door.
           */}
-          {duty && !ibisLoaded ? (
+          {/*
+            Eerst aanmelden, dan de dienst aanvaarden, en pas daarna waar het
+            over gaat: welke omloop je in OMSI moet kiezen en welke codes in de
+            IBIS. Dat is de volgorde waarin een chauffeur zijn dienst begint, en
+            het scheelt bovendien dat de codes al in beeld staan voordat je weet
+            of je ze nodig hebt.
+          */}
+          {!aangemeld ? (
+            <AanmeldPaneel
+              chauffeur={frame.chauffeur}
+              language={language}
+              onAangemeld={() => setAangemeld(true)}
+            />
+          ) : duty && aanvaardVoor !== dienstSleutel ? (
+            <DienstOpdracht
+              duty={duty}
+              chauffeur={frame.chauffeur}
+              language={language}
+              onAanvaard={() => setAanvaardVoor(dienstSleutel)}
+            />
+          ) : duty && !ibisLoaded ? (
             ibisCapable && !readable ? (
               <IbisPanel duty={duty} ibis={ibis} status={status} language={language} />
             ) : (
@@ -1834,6 +1871,168 @@ function clamp(value: number, low: number, high: number): number {
 }
 
 createRoot(document.getElementById('root')!).render(<Overlay />)
+
+/**
+ * Aanmelden op de telefoon.
+ *
+ * WAAROM DIT ER IS
+ * Een dienst begon met een venster dat opengaat. Nu begint hij zoals hij bij een
+ * echte remise begint: je meldt je aan met je personeelsnummer, je tekent voor
+ * je dienst, en pas daarna krijg je te horen welke omloop je moet kiezen en
+ * welke codes in de IBIS moeten. De volgorde is het hele punt -- de codes stonden
+ * eerst in beeld voordat je wist of je ze nodig had.
+ *
+ * WAAROM ER NIETS BEVEILIGD WORDT
+ * Het nummer en de pincode staan gewoon in het profiel en gaan gewoon mee in het
+ * beeld. Er valt hier niets te beschermen: het is je eigen pc en je eigen
+ * profiel. Zie `core/career.ts`. Wie zijn code kwijt is, leest hem terug in de
+ * app -- en daarom staat er bij een verkeerde invoer ook gewoon "onbekend
+ * nummer" en geen ontmoedigende stilte.
+ *
+ * Het cijferblok is groot met opzet. Dit gebeurt terwijl je al in de bus zit.
+ */
+function AanmeldPaneel({
+  chauffeur,
+  language,
+  onAangemeld
+}: {
+  chauffeur?: { naam: string; personeelsnummer?: string; pincode?: string }
+  language: Language
+  onAangemeld: () => void
+}): JSX.Element {
+  const [stap, setStap] = useState<'nummer' | 'pin'>('nummer')
+  const [ingevoerd, setIngevoerd] = useState('')
+  const [fout, setFout] = useState(false)
+
+  const verwacht = stap === 'nummer' ? chauffeur?.personeelsnummer : chauffeur?.pincode
+  const lengte = verwacht?.length ?? 0
+
+  /*
+   * Zodra er genoeg cijfers staan wordt er gekeken. Geen bevestigknop: op een
+   * terminal met een vaste codelengte is die overbodig, en je hebt één hand aan
+   * het stuur.
+   */
+  useEffect(() => {
+    if (!verwacht || ingevoerd.length < lengte) return
+    if (ingevoerd === verwacht) {
+      setFout(false)
+      setIngevoerd('')
+      if (stap === 'nummer') setStap('pin')
+      else onAangemeld()
+    } else {
+      setFout(true)
+      setIngevoerd('')
+    }
+  }, [ingevoerd, verwacht, lengte, stap, onAangemeld])
+
+  /* Zonder gegevens valt er niets na te kijken; dan maar door. */
+  if (!chauffeur?.personeelsnummer || !chauffeur?.pincode) {
+    return (
+      <div className="aanmelden">
+        <p className="aanmeld-uitleg">{t(language, 'ovl.signonNone')}</p>
+        <button type="button" className="aanmeld-door" onClick={onAangemeld}>
+          {t(language, 'ovl.signonSkip')}
+        </button>
+      </div>
+    )
+  }
+
+  const toets = (cijfer: string): void => {
+    setFout(false)
+    setIngevoerd((huidig) => (huidig.length >= lengte ? huidig : huidig + cijfer))
+  }
+
+  return (
+    <div className="aanmelden">
+      <p className="aanmeld-kop">{t(language, 'ovl.signonTitle')}</p>
+      <p className="aanmeld-uitleg">
+        {t(language, stap === 'nummer' ? 'ovl.signonNumber' : 'ovl.signonPin')}
+      </p>
+
+      <div className={`aanmeld-vakjes ${fout ? 'fout' : ''}`}>
+        {Array.from({ length: lengte }, (_, i) => (
+          <span key={i} className={i < ingevoerd.length ? 'vol' : ''}>
+            {/* Het nummer lees je terug, de pincode niet -- die typ je blind. */}
+            {i < ingevoerd.length ? (stap === 'nummer' ? ingevoerd[i] : '•') : ''}
+          </span>
+        ))}
+      </div>
+
+      {fout && <p className="aanmeld-fout">{t(language, 'ovl.signonWrong')}</p>}
+
+      <div className="cijferblok">
+        {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((cijfer) => (
+          <button key={cijfer} type="button" onClick={() => toets(cijfer)}>
+            {cijfer}
+          </button>
+        ))}
+        <button type="button" className="leeg" onClick={() => setIngevoerd('')}>
+          {t(language, 'ovl.signonClear')}
+        </button>
+        <button type="button" onClick={() => toets('0')}>
+          0
+        </button>
+        <button type="button" className="leeg" onClick={() => setIngevoerd((h) => h.slice(0, -1))}>
+          ←
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * De dienstopdracht: wat je gaat rijden, en je handtekening eronder.
+ *
+ * Alles wat je nodig hebt om te weten of dit jouw dienst is -- lijn, omloop,
+ * vertrek, duur -- en verder niets. De codes voor de IBIS komen op het volgende
+ * scherm, want die heb je pas nodig als je hebt getekend.
+ */
+function DienstOpdracht({
+  duty,
+  chauffeur,
+  language,
+  onAanvaard
+}: {
+  duty: Duty
+  chauffeur?: { naam: string }
+  language: Language
+  onAanvaard: () => void
+}): JSX.Element {
+  const klok = (minuten: number): string => formatTime(minuten)
+  return (
+    <div className="opdracht">
+      <p className="opdracht-kop">{t(language, 'ovl.dutyOrder')}</p>
+      {chauffeur && <p className="opdracht-naam">{chauffeur.naam}</p>}
+
+      <dl className="opdracht-lijst">
+        <div>
+          <dt>{t(language, 'ovl.dutyLine')}</dt>
+          <dd>{duty.lineNumbers.join(' / ') || duty.legs[0]?.lineNumber || '—'}</dd>
+        </div>
+        <div>
+          <dt>{t(language, 'ovl.dutyTour')}</dt>
+          <dd>{duty.tourNumber || '—'}</dd>
+        </div>
+        <div>
+          <dt>{t(language, 'ovl.dutyStart')}</dt>
+          <dd>{klok(duty.start)}</dd>
+        </div>
+        <div>
+          <dt>{t(language, 'ovl.dutyEnd')}</dt>
+          <dd>{klok(duty.end)}</dd>
+        </div>
+        <div>
+          <dt>{t(language, 'ovl.dutyTrips')}</dt>
+          <dd>{duty.legs.length}</dd>
+        </div>
+      </dl>
+
+      <button type="button" className="opdracht-teken" onClick={onAanvaard}>
+        {t(language, 'ovl.dutyAccept')}
+      </button>
+    </div>
+  )
+}
 
 /**
  * De kaartjes-app: wat kost dit kaartje, en wat krijgt hij terug.

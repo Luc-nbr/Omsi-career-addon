@@ -446,3 +446,45 @@
     display: none;
   }
 }
+
+/*
+ * DE DIENSTGEGEVENS
+ *
+ * Een pasje, want dat is wat het is: het nummer waarmee je je aanmeldt. Groot
+ * genoeg om over te typen op een cijferblok zonder heen en weer te kijken.
+ */
+.profiel-pas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px 32px;
+  padding: 14px 16px;
+  border: 1px solid var(--vel-lijn);
+  border-radius: var(--radius-klein);
+}
+
+.profiel-pas > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.profiel-pas span {
+  color: var(--vel-zacht);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.profiel-pas b {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.profiel-pas p {
+  flex: 1 1 100%;
+  margin: 0;
+  color: var(--vel-zacht);
+  font-size: 12.5px;
+}
