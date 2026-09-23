@@ -1441,8 +1441,17 @@
   container-type: inline-size;
   display: flex;
   flex-direction: column;
-  gap: 0.15em;
-  padding: 0.5em 0.6em;
+  gap: 2px;
+  /*
+   * Niet breder dan een apparaat in het echt. Zonder deze grens rekt een breed
+   * paneel het schermpje op tot over de hele breedte, en dan worden de letters
+   * -- die met de breedte meeschalen -- absurd groot.
+   */
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 8px 10px;
+  font-size: min(var(--ibis-letter, 16px), var(--ibis-letter-max, 22px));
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: var(--radius-klein);
   font-family: ui-monospace, Consolas, monospace;
@@ -1451,6 +1460,7 @@
   line-height: 1.25;
   white-space: pre;
   overflow: hidden;
+  text-overflow: clip;
 }
 
 /* Een oplichtend scherm gloeit een beetje; een lcd niet. */

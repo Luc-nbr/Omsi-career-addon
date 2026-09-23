@@ -1110,6 +1110,8 @@ function IbisApp({
         De letters schalen mee met de breedte: een regel van zestien tekens moet
         het schermpje vullen, net als in de bus. Bij een vaste-breedteletter is
         een teken ongeveer 0,6 keer de letterhoogte, dus past 166/regellengte.
+        Met een bovengrens erop in de css -- een breed paneel zou er anders
+        letters van een halve decimeter van maken.
       */}
       {apparaten.length > 0 ? (
         <div className="ibis-apparaten">
@@ -1125,7 +1127,7 @@ function IbisApp({
                 style={{
                   background: apparaat.achtergrond,
                   color: apparaat.tekstkleur,
-                  fontSize: `${(166 / langste).toFixed(2)}cqw`,
+                  ["--ibis-letter" as string]: `${(166 / langste).toFixed(2)}cqw`,
                   textAlign:
                     apparaat.uitlijning === "links"
                       ? "left"

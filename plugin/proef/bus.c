@@ -135,7 +135,7 @@ int main(int argc, char **argv) {
   *(void **)(voertuig + 0x6ac) = delphi_tekst("Markt", 2);
   *(int *)(voertuig + 0x6bc) = 30;
   *(float *)(voertuig + 0x6cc) = 1.0f;
-  *(int *)(voertuig + 0x7a8) = -1;      /* niemand aan de deur */
+  *(int *)(voertuig + 0x7a8) = 0;       /* de eerste mens staat aan de deur te betalen */
 
   /* Het bestandsobject van het bustype: hier staan de namen. */
   unsigned char *bestand = neem(0x300);
@@ -163,12 +163,28 @@ int main(int argc, char **argv) {
   *(void **)items = voertuig;
   unsigned char *binnenste = neem(0x40);
   *(void **)(binnenste + 0x4) = items;
+  *(int *)(binnenste + 0x8) = 1; /* TList.FCount: hoeveel voertuigen erin staan */
   unsigned char *lijst = neem(0x40);
   *(void **)(lijst + 0x28) = binnenste;
   *(void **)(g_blok + OFF_ROAD_VEHICLES) = lijst;
   *(int *)(g_blok + OFF_PLAYER_INDEX) = 0;
   *(void **)(g_blok + OFF_TIMETABLE) = NULL; /* geen dienstregeling in deze proef */
-  *(void **)(g_blok + OFF_HUMANS) = NULL;
+
+  /*
+   * En de mensen. Let op: dit is GEEN TMyOMSIList zoals de voertuigen, maar een
+   * gewoon Delphi-array van wijzers -- dat is precies het verschil waar de
+   * kaartverkoop al die tijd op stukliep. Eentje staat er aan de deur: hij wil
+   * kaartje 4 van 6,80 en geeft een briefje van tien.
+   */
+  unsigned char *mens = neem(0x640);
+  *(unsigned char *)(mens + 0x61c) = 1;      /* soort kaartje */
+  *(unsigned char *)(mens + 0x61d) = 4;      /* de vierde knop op de automaat */
+  *(float *)(mens + 0x620) = 6.80f;          /* wat het kost */
+  *(float *)(mens + 0x624) = 10.0f;          /* wat hij geeft */
+  *(unsigned char *)(mens + 0x628) = 0;
+  *(unsigned char *)(mens + 0x629) = 0;
+  void *mensen[1] = { mens };
+  *(void **)(g_blok + OFF_HUMANS) = delphi_array(mensen, 1);
 
   /* De vraag van de app: welke schermvariabelen wil ze zien? */
   wchar_t map[MAX_PATH], pad[MAX_PATH];

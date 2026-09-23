@@ -259,6 +259,11 @@ body,
     font-size: 20px;
   }
 
+  .apparaat-telefoon .ibis-apparaat {
+    max-width: 620px;
+    --ibis-letter-max: 34px;
+  }
+
   .apparaat-telefoon .ibis-kop b {
     font-size: 34px;
   }

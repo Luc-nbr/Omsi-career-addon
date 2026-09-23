@@ -128,8 +128,9 @@ enum {
  * 4  het schermpje van de IBIS, per busmodel
  * 5  de AFR 200 erbij, en opdrachten die niet aan een oplopend nummer hangen
  * 6  de eigen stringvariabelen van de bus, met naam, rechtstreeks uit het geheugen
+ * 7  de lijst met mensen goed gelezen, en daarmee eindelijk de kaartverkoop
  */
-#define PLUGIN_VERSIE 6
+#define PLUGIN_VERSIE 7
 
 /*
  * Drempels voor hard remmen en optrekken, in meter per seconde kwadraat.
@@ -301,6 +302,8 @@ typedef struct {
   int schedLine, schedTour, schedTourEntry, schedTrip, schedNextIndex, schedDelay;
   /* De kaartverkoop: -1 in `koper` betekent dat er niemand staat te betalen. */
   int koper, ticketSoort, ticketIndex, ticketSlecht, ticketKlaar;
+  /** Hoeveel mensen OMSI in de wereld heeft; nul betekent: lijst niet gevonden. */
+  int mensen;
   float ticketPrijs, ticketGegeven;
   float schedActive, schedNextDist;
   char lineName[STR_MAX * 3], tourName[STR_MAX * 3], tripName[STR_MAX * 3], nextStop[STR_MAX * 3];
@@ -673,11 +676,24 @@ static void read_memory(void) {
           next.ticketIndex = -1;
           next.ticketSoort = -1;
           if (next.koper >= 0 && next.koper < 100000) {
-            const DWORD humans = *(DWORD *)(ULONG_PTR)mem_addr(MEM_HUMANS);
-            const DWORD hInner = plausible_ptr(humans) ? *(DWORD *)(ULONG_PTR)(humans + 0x28) : 0;
-            const DWORD hItems = plausible_ptr(hInner) ? *(DWORD *)(ULONG_PTR)(hInner + 0x4) : 0;
+            /*
+             * De lijst met mensen zit ANDERS in elkaar dan die met voertuigen.
+             * Bij de voertuigen staat er een TMyOMSIList met binnenin een TList
+             * (+0x28, dan +0x4); de mensen staan in een gewoon Delphi-array van
+             * wijzers: op het adres staat de wijzer naar het eerste element, en
+             * vier bytes daarvoor hoeveel het er zijn. Hier stond de omweg van
+             * de voertuiglijst, en dan wees `koper` naar rommel -- dat is de
+             * reden dat de kaartverkoop nooit doorkwam, hoe vaak we ook keken.
+             * Zie OmsiGlobals.Humans (ReadMemoryObjArray) in Omsi-Extensions.
+             */
+            const DWORD mensen = *(DWORD *)(ULONG_PTR)mem_addr(MEM_HUMANS);
+            const int aantalMensen =
+                plausible_ptr(mensen) ? *(int *)(ULONG_PTR)(mensen - 4) : 0;
+            next.mensen = aantalMensen;
             const DWORD human =
-                plausible_ptr(hItems) ? *(DWORD *)(ULONG_PTR)(hItems + (DWORD)next.koper * 4) : 0;
+                aantalMensen > 0 && aantalMensen < 1000000 && next.koper < aantalMensen
+                    ? *(DWORD *)(ULONG_PTR)(mensen + (DWORD)next.koper * 4)
+                    : 0;
             if (plausible_ptr(human)) {
               const int soort = *(unsigned char *)(ULONG_PTR)(human + OFS_H_TICKET_TYPE);
               const int kaartje = *(unsigned char *)(ULONG_PTR)(human + OFS_H_TICKET_INDEX);
@@ -985,8 +1001,20 @@ static void lees_busvars(DWORD voertuig) {
   g_schermenGeschreven = nu;
   int p = _snprintf_s(g_dump, sizeof(g_dump), _TRUNCATE,
                       "{\"bus\":\"%s\",\"model\":\"%s\",\"pad\":\"%s\",\"bestand\":\"%s\","
-                      "\"aantal\":%d,\"vars\":{",
-                      g_busNaam, g_busModel, g_busPad, g_busBestand, aantalNamen);
+                      "\"aantal\":%d,"
+                      /*
+                       * De kaartverkoop erbij. Niet omdat de app hem hier leest
+                       * -- die krijgt hem in live.json -- maar omdat dit het
+                       * bestand is waaraan je van buitenaf kunt zien of het
+                       * klopt: wie er aan de deur staat, welk kaartje hij wil,
+                       * en of de lijst met mensen uberhaupt gevonden is.
+                       */
+                      "\"verkoop\":{\"mensen\":%d,\"koper\":%d,\"kaartje\":%d,\"soort\":%d,"
+                      "\"prijs\":%.2f,\"gegeven\":%.2f,\"klaar\":%d},"
+                      "\"vars\":{",
+                      g_busNaam, g_busModel, g_busPad, g_busBestand, aantalNamen,
+                      g_mem.mensen, g_mem.koper, g_mem.ticketIndex, g_mem.ticketSoort,
+                      g_mem.ticketPrijs, g_mem.ticketGegeven, g_mem.ticketKlaar);
   if (p <= 0) return;
   int geteld = 0;
   for (int i = 0; i < g_namenAantal && i < aantalWaarden; i++) {
