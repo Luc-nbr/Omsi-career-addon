@@ -61,11 +61,24 @@ engine_on
 IBIS_busstop_index
 electric_battery
 
+	De laatste zes zijn het schermpje van de IBIS zelf, voor de spiegel op een
+	telefoon of tablet. Ze staan ACHTERAAN met opzet: welke er bestaan verschilt
+	per busmodel -- een MAN heeft IBIS_cabindisplay, de Thueringer Wald-bus een
+	LAWO met vier regels -- en een naam die niet bestaat wordt door OMSI nooit
+	aangeroepen. Wat er niet is, blijft leeg, en de app tekent alleen wat er wel
+	is.
+
 [stringvarlist]
-6
+12
 IBIS_busstop_name
 IBIS_Delay_min
 IBIS_Delay_sec
 SetLineTo
 IBIS_cabindisplay
 Matrix_Nr
+IBIS_terminus_name
+IBIS_Complex_Line
+LAWO_display_line1
+LAWO_display_line2
+LAWO_display_line3
+LAWO_display_line4

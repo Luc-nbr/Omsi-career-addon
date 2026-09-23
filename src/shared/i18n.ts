@@ -3400,12 +3400,28 @@ const TEXT = {
     fr: 'Accepter le service',
     nl: 'Dienst aanvaarden'
   },
+  'ovl.appIbis': { en: 'IBIS', de: 'IBIS', fr: 'IBIS', nl: 'IBIS' },
+  'ovl.ibisTo': { en: 'To', de: 'Ziel', fr: 'Direction', nl: 'Naar' },
+  'ovl.ibisNext': { en: 'Next stop', de: 'Nächste Haltestelle', fr: 'Prochain arrêt', nl: 'Volgende halte' },
+  'ovl.ibisDistance': { en: 'Distance', de: 'Distanz', fr: 'Distance', nl: 'Afstand' },
+  'ovl.ibisDelay': { en: 'Delay (min)', de: 'Verspätung (min)', fr: 'Retard (min)', nl: 'Vertraging (min)' },
+  'ovl.ibisLine': { en: 'Line/course', de: 'Linie/Kurs', fr: 'Ligne/service', nl: 'Lijn/omloop' },
+  'ovl.ibisRoute': { en: 'Route', de: 'Route', fr: 'Itinéraire', nl: 'Route' },
+  'ovl.ibisDest': { en: 'Destination', de: 'Ziel', fr: 'Destination', nl: 'Bestemming' },
+  'ovl.ibisClear': { en: 'Clear', de: 'Löschen', fr: 'Effacer', nl: 'Wissen' },
+  'ovl.ibisEnter': { en: 'Enter', de: 'Eingabe', fr: 'Entrée', nl: 'Invoer' },
   'ovl.appTickets': { en: 'Tickets', de: 'Fahrscheine', fr: 'Billets', nl: 'Kaartjes' },
   'ovl.appDevice': {
     en: 'View on device',
     de: 'Auf Gerät ansehen',
     fr: 'Voir sur un appareil',
     nl: 'Bekijk op apparaat'
+  },
+  'dev.connect': {
+    en: 'Connect a device',
+    de: 'Gerät verbinden',
+    fr: 'Connecter un appareil',
+    nl: 'Apparaat verbinden'
   },
   'dev.title': {
     en: 'The navigation on your phone or tablet',

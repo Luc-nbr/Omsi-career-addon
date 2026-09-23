@@ -1404,6 +1404,138 @@
 
 /* ---- de lijst met kaartsoorten ---- */
 
+/* ---------- de IBIS van de bus ---------- */
+
+/*
+ * Het apparaat uit de bus, op je telefoon: een schermpje boven, de toetsen
+ * eronder. Het schermpje is groen op donker zoals het echte, met een letter
+ * met vaste breedte -- dat is wat een IBIS is, en het leest van een afstand.
+ */
+.ibis {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 2px;
+  height: 100%;
+  min-height: 0;
+}
+
+.ibis-scherm {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-klein);
+  background: #0a1410;
+  padding: 10px 12px;
+}
+
+/* Wat de bus zelf doorgeeft, letterlijk; zie `IbisScherm` in core/live.ts. */
+.ibis-scherm.spiegel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: #6dfb8f;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+}
+
+/* En als de bus niets doorgeeft: wat de app zelf weet. */
+.ibis-scherm.eigen {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #d9f7e4;
+}
+
+.ibis-kop {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.ibis-kop b {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.ibis-kop span {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ibis-regel small,
+.ibis-cijfers small {
+  display: block;
+  color: rgba(217, 247, 228, 0.6);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.ibis-regel span {
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.ibis-cijfers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.ibis-cijfers b {
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.ibis-standen {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+/*
+ * De toetsen, zoals op het apparaat: drie op een rij, en onderin wissen, nul
+ * en invoer. Groot genoeg voor een duim.
+ */
+.ibis-toetsen {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.ibis-knop {
+  padding: 14px 0;
+  border: 1px solid var(--vel-overlay-rand);
+  border-radius: var(--radius-klein);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums lining-nums;
+  cursor: pointer;
+}
+
+.ibis-knop:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* De standen en invoer dragen kleur, zoals de gekleurde toetsen op het apparaat. */
+.ibis-knop.stand {
+  background: rgba(126, 58, 143, 0.35);
+  border-color: rgba(190, 120, 210, 0.5);
+  font-size: 12.5px;
+}
+
+.ibis-knop.invoer {
+  background: rgba(42, 117, 247, 0.28);
+  border-color: rgba(42, 117, 247, 0.6);
+  font-size: 13px;
+}
+
 /* ---------- de verkoop aan de deur ---------- */
 
 /*

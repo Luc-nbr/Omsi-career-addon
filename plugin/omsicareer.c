@@ -96,6 +96,16 @@ enum {
   STR_LINE,
   STR_TERMINUS,
   STR_MATRIX,
+  /*
+   * Het schermpje van de IBIS, voor de spiegel op een telefoon of tablet.
+   * Welke hiervan bestaan hangt van het busmodel af; wat ontbreekt blijft leeg.
+   */
+  STR_IBIS_TERMINUS,
+  STR_IBIS_LIJN,
+  STR_LAWO1,
+  STR_LAWO2,
+  STR_LAWO3,
+  STR_LAWO4,
   STR_COUNT
 };
 
@@ -112,8 +122,9 @@ enum {
  * 1  eerste versie met live.json
  * 2  positie en dienstregeling uit het geheugen
  * 3  de kaartverkoop aan de deur, en toetsen die de app laat indrukken
+ * 4  het schermpje van de IBIS, per busmodel
  */
-#define PLUGIN_VERSIE 3
+#define PLUGIN_VERSIE 4
 
 /*
  * Drempels voor hard remmen en optrekken, in meter per seconde kwadraat.
@@ -802,7 +813,9 @@ static void flush_state(int alive) {
       "\"battery\":%.4f,\"temperature\":%.1f,"
       "\"collisions\":%d,\"collisionEnergy\":%.1f,\"worstCollision\":%.1f,"
       "\"busstop\":\"%s\",\"delayMin\":\"%s\",\"delaySec\":\"%s\","
-      "\"line\":\"%s\",\"terminus\":\"%s\",\"matrix\":\"%s\"%s",
+      "\"line\":\"%s\",\"terminus\":\"%s\",\"matrix\":\"%s\","
+      "\"ibis\":{\"bestemming\":\"%s\",\"lijn\":\"%s\","
+      "\"lawo1\":\"%s\",\"lawo2\":\"%s\",\"lawo3\":\"%s\",\"lawo4\":\"%s\"}%s",
       alive ? "true" : "false", PLUGIN_VERSIE, g_seen, g_seenSys, g_seenStr, g_strKind,
       g_sys[SYS_TIME], g_sys[SYS_DAY], g_sys[SYS_MONTH], g_sys[SYS_YEAR],
       g_var[VAR_VELOCITY], g_var[VAR_HUMANS], g_var[VAR_SCHEDULE_ACTIVE],
@@ -817,7 +830,9 @@ static void flush_state(int alive) {
       g_var[VAR_BATTERY], g_sys[SYS_TEMPERATURE],
       g_collisions, g_collisionEnergy, g_worstCollision,
       g_str[STR_BUSSTOP], g_str[STR_DELAY_MIN], g_str[STR_DELAY_SEC],
-      g_str[STR_LINE], g_str[STR_TERMINUS], g_str[STR_MATRIX], mem);
+      g_str[STR_LINE], g_str[STR_TERMINUS], g_str[STR_MATRIX],
+      g_str[STR_IBIS_TERMINUS], g_str[STR_IBIS_LIJN],
+      g_str[STR_LAWO1], g_str[STR_LAWO2], g_str[STR_LAWO3], g_str[STR_LAWO4], mem);
   if (length <= 0) {
     g_mislukt++;
     if (g_laatsteFout != 0xFFFFFFFFu) meld("bericht past niet in de buffer: nu niet geschreven");

@@ -2624,10 +2624,18 @@ export function App(): JSX.Element {
                 }
                 onHoofdmenu={() => setScreen("modes")}
                 onToggleOverlay={toggleOverlay}
+                onApparaat={() => setApparaatOpen(true)}
                 onCancel={cancelDuty}
                 onFinish={finish}
                 full={volledig}
               />
+              {/*
+                De QR-code hoort ook hier te kunnen: wie zijn iPad pakt terwijl
+                hij al rijdt, komt niet meer in het hoofdmenu.
+              */}
+              {apparaatOpen && (
+                <ApparaatDialoog onClose={() => setApparaatOpen(false)} />
+              )}
             </>
           }
         />

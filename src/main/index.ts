@@ -64,6 +64,7 @@ import { difference, readKnown, writeKnown } from '../core/installed'
 import { readSettings, writeSettings, type Settings } from '../core/settings'
 import {
   LEGE_TELEFOON,
+  OMSI_TOETSEN,
   aanmeldSleutelVan,
   type AanmeldUitslag,
   type OmsiToets,
@@ -1376,7 +1377,8 @@ function telefoonGewijzigd(): void {
 let opdrachtNr = 0
 
 function omsiToets(actie: OmsiToets): boolean {
-  const naam = actie === 'kaartje' ? 'ticket_give' : 'change_give'
+  const naam = OMSI_TOETSEN[actie]
+  if (!naam) return false
   let scancode = 0
   let modifiers = 0
   try {
@@ -1998,8 +2000,11 @@ function apparaatBronnen(): ApparaatBronnen {
           telefoon.ibisReady = String(opdracht.tripKey ?? '')
           telefoonGewijzigd()
           return { ok: true }
-        case 'toets':
-          return { ok: omsiToets(opdracht.toets === 'wisselgeld' ? 'wisselgeld' : 'kaartje') }
+        case 'toets': {
+          /* Alleen de toetsen uit de lijst; zie `OMSI_TOETSEN`. */
+          const naam = String(opdracht.toets ?? '') as OmsiToets
+          return { ok: naam in OMSI_TOETSEN ? omsiToets(naam) : false }
+        }
       }
     },
     log
@@ -2409,9 +2414,7 @@ function registerHandlers(): void {
     telefoon.ibisReady = String(tripKey ?? '')
     telefoonGewijzigd()
   })
-  handle('telefoon:toets', (_event, actie: OmsiToets) =>
-    omsiToets(actie === 'wisselgeld' ? 'wisselgeld' : 'kaartje')
-  )
+  handle('telefoon:toets', (_event, actie: OmsiToets) => omsiToets(actie))
 
   handle('apparaat:start', async () => {
     const nu = readSettings(userData())

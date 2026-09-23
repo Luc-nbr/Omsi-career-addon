@@ -146,6 +146,31 @@ body,
 }
 
 /*
+ * De IBIS vult het scherm: het schermpje neemt de ruimte die overblijft, de
+ * toetsen staan onderin waar je duim ze vindt.
+ */
+.apparaat-telefoon .ibis {
+  flex: 1;
+  min-height: 0;
+}
+
+.apparaat-telefoon .ibis-scherm {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.apparaat-telefoon .ibis-knop {
+  padding: 20px 0;
+  font-size: 22px;
+}
+
+.apparaat-telefoon .ibis-knop.stand,
+.apparaat-telefoon .ibis-knop.invoer {
+  font-size: 15px;
+}
+
+/*
  * Op een tablet mag het groter: hij staat verder weg dan een scherm voor je
  * neus, en een telefoonschermpje midden op een iPad is zonde van de ruimte.
  */
@@ -227,5 +252,27 @@ body,
 
   .apparaat-telefoon .dock-knop {
     height: 54px;
+  }
+
+  /* Op een tablet is de IBIS een apparaat op schaal. */
+  .apparaat-telefoon .ibis-scherm.spiegel {
+    font-size: 20px;
+  }
+
+  .apparaat-telefoon .ibis-kop b {
+    font-size: 34px;
+  }
+
+  .apparaat-telefoon .ibis-regel span {
+    font-size: 22px;
+  }
+
+  .apparaat-telefoon .ibis-cijfers b {
+    font-size: 28px;
+  }
+
+  .apparaat-telefoon .ibis-knop {
+    padding: 26px 0;
+    font-size: 26px;
   }
 }

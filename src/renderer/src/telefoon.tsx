@@ -21,7 +21,7 @@ import {
   type TelefoonStand,
 } from "../../shared/telefoon";
 import type { Verkoop } from "../../core/live";
-import { NavKaart, type NavFrame, type RitStand } from "./navigatie";
+import { NavKaart, stopName, type NavFrame, type RitStand } from "./navigatie";
 import type { Manoeuvre } from "./RouteMap";
 
 /*
@@ -44,6 +44,7 @@ import type { Manoeuvre } from "./RouteMap";
 /** De apps op het toestel, in de volgorde van het balkje onderin. */
 export type TelefoonApp =
   | "kaart"
+  | "ibis"
   | "dienst"
   | "pauze"
   | "rit"
@@ -160,7 +161,14 @@ export function Telefoon({
     <>
       {app !== "kaart" ? (
         <div className="app-scherm">
-          {app === "dienst" ? (
+          {app === "ibis" ? (
+            <IbisApp
+              frame={frame}
+              rit={rit}
+              acties={acties}
+              language={language}
+            />
+          ) : app === "dienst" ? (
             <DienstApp duty={duty} status={frame.status} language={language} />
           ) : app === "pauze" ? (
             <PauzeApp
@@ -387,6 +395,12 @@ function Dock({
       id: "kaart",
       label: "ovl.appMap",
       pad: "M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Zm0 2.2 6 2v11.6l-6-2V6.2Z",
+    },
+    {
+      id: "ibis",
+      label: "ovl.appIbis",
+      /* Een apparaat met een schermpje en toetsen eronder. */
+      pad: "M4 3h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm1 2v6h14V5Zm0 8v2h3v-2Zm5 0v2h4v-2Zm6 0v2h3v-2ZM5 17v2h3v-2Zm5 0v2h4v-2Zm6 0v2h3v-2Z",
     },
     {
       id: "dienst",
@@ -988,6 +1002,128 @@ function Verkoopscherm({
             <p className="verkoop-mopper">{t(language, "ovl.saleNotFront")}</p>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+
+/**
+ * De IBIS van de bus, op je telefoon of tablet.
+ *
+ * WAAROM ZO
+ * Elke bus heeft een ander apparaat. Een MAN heeft een IBIS met een paar
+ * regels, de Thueringer Wald-bus een LAWO met vier, en een moderne bus een
+ * boordcomputer. Daarom spiegelt dit scherm wat de bus zelf doorgeeft -- de
+ * regels zoals ze op het apparaat staan -- en verzint het er niets bij. Geeft
+ * de bus niets door, dan staat er het scherm dat de app zelf kan vullen: lijn
+ * en omloop, waar je heen rijdt, de eerstvolgende halte met de afstand, en hoe
+ * je op de dienstregeling ligt.
+ *
+ * De toetsen zijn wel voor elke bus gelijk: OMSI heeft er zijn eigen
+ * toetsindeling voor (`IBIS_0` tot `IBIS_9`, `IBIS_eingabe`, `IBIS_loeschen`
+ * en de drie standen). De plugin drukt ze in -- zie `OMSI_TOETSEN` -- en dus
+ * bedien je hem van de bank, van je iPad, zonder aan het stuur te zitten.
+ */
+function IbisApp({
+  frame,
+  rit,
+  acties,
+  language,
+}: {
+  frame: TelefoonFrame;
+  rit: RitStand;
+  acties: TelefoonActies;
+  language: Language;
+}): JSX.Element {
+  const status = frame.status;
+  const scherm = status?.ibisScherm;
+  const leg = rit.leg ?? rit.upcoming;
+  const halte =
+    rit.passed !== undefined && leg ? stopName(leg, rit.passed) : undefined;
+  const afstand =
+    status?.metresToStop === undefined
+      ? undefined
+      : status.metresToStop >= 1000
+        ? `${(status.metresToStop / 1000).toFixed(1).replace(".", ",")} km`
+        : `${status.metresToStop} m`;
+
+  const toets = (
+    actie: OmsiToets,
+    tekst: string,
+    soort?: "stand" | "invoer",
+  ): JSX.Element => (
+    <button
+      key={actie}
+      type="button"
+      className={soort ? `ibis-knop ${soort}` : "ibis-knop"}
+      onClick={() => acties.toets(actie)}
+    >
+      {tekst}
+    </button>
+  );
+
+  return (
+    <div className="ibis" data-hit>
+      {/*
+        Het schermpje. Geeft de bus zijn eigen regels door, dan staan die er
+        letterlijk; dat is de spiegel. Zo niet, dan het scherm van de app zelf.
+      */}
+      {scherm && scherm.regels.length > 0 ? (
+        <div className="ibis-scherm spiegel">
+          {scherm.regels.map((regel, index) => (
+            <span key={index}>{regel || "\u00a0"}</span>
+          ))}
+        </div>
+      ) : (
+        <div className="ibis-scherm eigen">
+          <div className="ibis-kop">
+            <b>{scherm?.lijn ?? leg?.lineNumber ?? "—"}</b>
+            <span>{status ? formatTime(status.clockMinutes) : "--:--"}</span>
+          </div>
+          <div className="ibis-regel">
+            <small>{t(language, "ovl.ibisTo")}</small>
+            <span>{scherm?.bestemming ?? leg?.terminus ?? "—"}</span>
+          </div>
+          <div className="ibis-regel">
+            <small>{t(language, "ovl.ibisNext")}</small>
+            <span>{halte ?? status?.nextStop ?? "—"}</span>
+          </div>
+          <div className="ibis-cijfers">
+            <div>
+              <small>{t(language, "ovl.ibisDistance")}</small>
+              <b>{afstand ?? "—"}</b>
+            </div>
+            <div>
+              <small>{t(language, "ovl.ibisDelay")}</small>
+              <b>
+                {status?.deltaSeconds === undefined
+                  ? "—"
+                  : `${status.deltaSeconds > 0 ? "+" : ""}${Math.round(status.deltaSeconds / 60)}`}
+              </b>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* De drie standen, zoals de knoppen op het apparaat zelf. */}
+      <div className="ibis-standen">
+        {toets("ibisLijn", t(language, "ovl.ibisLine"), "stand")}
+        {toets("ibisRoute", t(language, "ovl.ibisRoute"), "stand")}
+        {toets("ibisBestemming", t(language, "ovl.ibisDest"), "stand")}
+      </div>
+
+      <div className="ibis-toetsen">
+        {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((cijfer) =>
+          toets(`ibis${cijfer}` as OmsiToets, cijfer),
+        )}
+        {toets("ibisWissen", t(language, "ovl.ibisClear"), "invoer")}
+        {toets("ibis0", "0")}
+        {toets("ibisInvoer", t(language, "ovl.ibisEnter"), "invoer")}
+      </div>
+
+      {frame.status?.opdracht?.fout && (
+        <p className="verkoop-mopper">{t(language, "ovl.saleNotFront")}</p>
       )}
     </div>
   );

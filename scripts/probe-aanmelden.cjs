@@ -263,7 +263,7 @@ app.whenReady().then(async () => {
     goedPin === 'aangemeld' &&
     naAanmelden.cijferblok === 0 &&
     naAanmelden.opdracht &&
-    naTekenen.balk === 6 &&
+    naTekenen.balk === 7 &&
     !naTekenen.opdracht &&
     onzin.status === 400 &&
     zonderSleutel.status === 404

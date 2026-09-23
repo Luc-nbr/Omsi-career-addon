@@ -13,6 +13,19 @@ export interface LiveData {
   alive: boolean
   /** Welke plugin dit schreef; ontbreekt bij een plugin van voor 22-09-2026. */
   plugin?: number
+  /**
+   * Wat er op het schermpje van de bus staat. Welke velden gevuld zijn hangt
+   * van het busmodel af: een MAN vult `bestemming` en `lijn`, de Thueringer
+   * Wald-bus zijn LAWO met vier regels. Ontbreekt bij een oudere plugin.
+   */
+  ibis?: {
+    bestemming: string
+    lijn: string
+    lawo1: string
+    lawo2: string
+    lawo3: string
+    lawo4: string
+  }
   /** Bitmasker van de variabelen die OMSI werkelijk heeft doorgegeven. */
   seen: number
   /**
@@ -317,6 +330,25 @@ export function readLive(): LiveData | undefined {
   }
 }
 
+/**
+ * Het schermpje van de bus, zoals het in de bus zelf staat.
+ *
+ * WAAROM DIT ZO LOS IS
+ * Elke bus heeft een ander apparaat: een MAN heeft een IBIS met een regel of
+ * twee, de Thueringer Wald-bus een LAWO met vier regels, en een moderne bus een
+ * boordcomputer met veel meer erop. De app spiegelt daarom wat de bus werkelijk
+ * doorgeeft -- de regels die er zijn, in de volgorde waarin ze op het apparaat
+ * staan -- en verzint er niets bij. Staat er niets, dan tekent de app zijn
+ * eigen scherm met wat de dienst en de plugin wel weten.
+ */
+export interface IbisScherm {
+  /** De regels van het apparaat zelf, al zonder lege regels aan het eind. */
+  regels: string[]
+  /** De bestemming en de lijn/omloop zoals de IBIS ze kent. */
+  bestemming?: string
+  lijn?: string
+}
+
 /** Een waarschuwing voor de chauffeur, met een reden erbij. */
 export interface Advice {
   /** Sleutel van de melding; de tekst komt uit de vertaling ("advice.<id>"). */
@@ -341,6 +373,8 @@ export interface LiveStatus {
   ticketKeuze?: number
   /** Wie er aan de deur een kaartje koopt, en waarvoor; zie `Verkoop`. */
   verkoop?: Verkoop
+  /** Wat er op het schermpje van deze bus staat; zie `IbisScherm`. */
+  ibisScherm?: IbisScherm
   /**
    * De plugin die OMSI nu geladen heeft. Lager dan `PLUGIN_VERSIE` betekent dat
    * OMSI nog met een oude draait: sluiten, de app laten bijwerken, opnieuw starten.
@@ -607,6 +641,21 @@ function ibisDelay(data: LiveData): number | undefined {
  * iemand staat te betalen. Een prijs van nul is geen verkoop: dan is het vak
  * nog niet gevuld, en een kaartje van gratis bestaat in geen kaartpakket.
  */
+/*
+ * Wat het apparaat in deze bus toont. Lege regels aan het eind vallen weg: een
+ * LAWO met twee gevulde regels hoort er niet als vier te staan.
+ */
+function ibisSchermVan(data: LiveData): IbisScherm | undefined {
+  const ibis = data.ibis
+  if (!ibis) return undefined
+  const regels = [ibis.lawo1, ibis.lawo2, ibis.lawo3, ibis.lawo4].map((regel) => regel.trim())
+  while (regels.length > 0 && regels[regels.length - 1] === '') regels.pop()
+  const bestemming = ibis.bestemming.trim()
+  const lijn = ibis.lijn.trim()
+  if (regels.length === 0 && !bestemming && !lijn) return undefined
+  return { regels, bestemming: bestemming || undefined, lijn: lijn || undefined }
+}
+
 function verkoopVan(data: LiveData): Verkoop | undefined {
   const mem = data.mem
   if (!mem || mem.ok !== 1) return undefined
@@ -792,6 +841,7 @@ export function describeLive(
     ticketKeuze:
       has(data, BIT.ticket) && data.ticket >= 0 ? Math.round(data.ticket) : undefined,
     verkoop: verkoopVan(data),
+    ibisScherm: ibisSchermVan(data),
     pluginVersie: data.plugin ?? 1,
     opdracht:
       data.mem && (data.mem.opdracht ?? 0) > 0

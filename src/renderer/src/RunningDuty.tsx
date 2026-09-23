@@ -39,6 +39,14 @@ interface Props {
    */
   onHoofdmenu(): void;
   onToggleOverlay(): void;
+  /**
+   * De QR-code voor je telefoon of tablet.
+   *
+   * Hij stond alleen in het hoofdmenu, en daar kom je niet meer zodra je rijdt:
+   * dit scherm staat open zolang de dienst loopt. Wie zijn iPad erbij pakt als
+   * hij al onderweg is, hoort hem hier te kunnen koppelen.
+   */
+  onApparaat(): void;
   onCancel(): void;
   onFinish(): void;
   /** De hele dienstkaart, die achter "Bekijk volledige dienst" schuilgaat. */
@@ -63,6 +71,7 @@ export function RunningDuty({
   busy,
   exam,
   overlayOpen,
+  onApparaat,
   chauffeur,
   onHoofdmenu,
   onToggleOverlay,
@@ -218,6 +227,9 @@ export function RunningDuty({
           onClick={onToggleOverlay}
         >
           {tr(overlayOpen ? "act.overlayHide" : "act.overlayShow")}
+        </button>
+        <button type="button" className="btn secondary" onClick={onApparaat}>
+          {tr("dev.connect")}
         </button>
         <button
           type="button"

@@ -56,11 +56,35 @@ export interface TelefoonStand {
 /**
  * Wat de telefoon in OMSI zelf kan laten doen.
  *
- * Allebei toetsen van het spel (`Inputs\keyboard.cfg`): `ticket_give` en
- * `change_give`. De plugin drukt ze in, want die draait ín OMSI; zie
- * `lees_opdracht` in plugin/omsicareer.c.
+ * Elk van deze hangt aan een toets van het spel, met de naam die in
+ * `Inputs\keyboard.cfg` staat. De app zoekt de toets daar op -- heeft de speler
+ * hem zelf veranderd, dan gaat dat vanzelf mee -- en de plugin drukt hem in,
+ * want die draait ín OMSI; zie `lees_opdracht` in plugin/omsicareer.c.
+ *
+ * Een vaste lijst, en niet "welke naam de telefoon ook stuurt": anders kan een
+ * toestel op het netwerk elke toets van het spel laten indrukken.
  */
-export type OmsiToets = 'kaartje' | 'wisselgeld'
+export const OMSI_TOETSEN = {
+  kaartje: 'ticket_give',
+  wisselgeld: 'change_give',
+  ibis0: 'IBIS_0',
+  ibis1: 'IBIS_1',
+  ibis2: 'IBIS_2',
+  ibis3: 'IBIS_3',
+  ibis4: 'IBIS_4',
+  ibis5: 'IBIS_5',
+  ibis6: 'IBIS_6',
+  ibis7: 'IBIS_7',
+  ibis8: 'IBIS_8',
+  ibis9: 'IBIS_9',
+  ibisInvoer: 'IBIS_eingabe',
+  ibisWissen: 'IBIS_loeschen',
+  ibisLijn: 'IBIS_setmode_linie_kurs',
+  ibisRoute: 'IBIS_setmode_route',
+  ibisBestemming: 'IBIS_setmode_ziel'
+} as const
+
+export type OmsiToets = keyof typeof OMSI_TOETSEN
 
 /**
  * Welke plugin de app verwacht in OMSI.
@@ -70,7 +94,7 @@ export type OmsiToets = 'kaartje' | 'wisselgeld'
  * gebeurt nooit. De telefoon zegt het dan. Hier en niet in core/live.ts, omdat
  * de vensters dit nummer ook nodig hebben en core/live bestanden leest.
  */
-export const PLUGIN_VERSIE = 3
+export const PLUGIN_VERSIE = 4
 
 /** Wat er van een poging tot aanmelden terugkomt. */
 export type AanmeldUitslag = 'nummer' | 'aangemeld' | 'fout'
