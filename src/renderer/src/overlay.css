@@ -1427,6 +1427,20 @@
   padding: 10px 12px;
 }
 
+/*
+ * De AFR 200 uit de Thueringer Wald-bus: een smal venster met groene letters op
+ * bijna zwart, twee regels, letters op vaste afstand. Zo staat hij naast de
+ * chauffeur, en zo hoort hij op de telefoon te staan.
+ */
+.ibis-scherm.spiegel.afr {
+  background: #06120a;
+  border-color: rgba(109, 251, 143, 0.25);
+  font-size: 17px;
+  letter-spacing: 0.12em;
+  text-shadow: 0 0 6px rgba(109, 251, 143, 0.5);
+  padding: 14px 14px;
+}
+
 /* Wat de bus zelf doorgeeft, letterlijk; zie `IbisScherm` in core/live.ts. */
 .ibis-scherm.spiegel {
   display: flex;
@@ -1756,8 +1770,11 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 11px 12px 12px;
+  justify-content: center;
+  gap: 4px;
+  /* Vierkanter en groter: je tikt erop met een duim, terwijl er iemand wacht. */
+  min-height: 92px;
+  padding: 14px 14px 15px;
   border: 1px solid var(--vel-overlay-rand);
   border-radius: var(--radius-klein);
   background: rgba(255, 255, 255, 0.05);
@@ -1772,14 +1789,14 @@
 }
 
 .kaarttegels .kaartprijs {
-  font-size: 20px;
+  font-size: 26px;
   font-weight: 800;
   line-height: 1.1;
   font-variant-numeric: tabular-nums lining-nums;
 }
 
 .kaarttegels .kaartnaam {
-  font-size: 12.5px;
+  font-size: 13.5px;
   font-weight: 600;
   line-height: 1.25;
 }

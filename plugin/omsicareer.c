@@ -106,6 +106,9 @@ enum {
   STR_LAWO2,
   STR_LAWO3,
   STR_LAWO4,
+  /* De twee regels van de AFR 200, de kaartautomaat in de Thueringer Wald-bus. */
+  STR_AFR1,
+  STR_AFR2,
   STR_COUNT
 };
 
@@ -123,8 +126,9 @@ enum {
  * 2  positie en dienstregeling uit het geheugen
  * 3  de kaartverkoop aan de deur, en toetsen die de app laat indrukken
  * 4  het schermpje van de IBIS, per busmodel
+ * 5  de AFR 200 erbij, en opdrachten die niet aan een oplopend nummer hangen
  */
-#define PLUGIN_VERSIE 4
+#define PLUGIN_VERSIE 5
 
 /*
  * Drempels voor hard remmen en optrekken, in meter per seconde kwadraat.
@@ -504,7 +508,12 @@ static void lees_opdracht(void) {
 
   int nr = 0, scancode = 0, modifiers = 0;
   if (sscanf_s(regel, "%d %d %d", &nr, &scancode, &modifiers) != 3) return;
-  if (nr <= g_opdrachtNr || scancode <= 0 || scancode > 255) return;
+  /*
+   * Elk ander nummer telt, ook een lager. De app begint bij elke start weer bij
+   * een; met "alleen hoger" bleef alles liggen zodra de app opnieuw startte
+   * terwijl OMSI door bleef draaien -- en dan deed geen enkele knop nog iets.
+   */
+  if (nr == g_opdrachtNr || scancode <= 0 || scancode > 255) return;
   g_opdrachtNr = nr;
   if (!omsi_vooraan()) {
     g_opdrachtFout = 1;
@@ -624,6 +633,26 @@ static void copy_string(int slot, const void *source) {
 }
 
 /* Zoals copy_string, naar een willekeurige buffer; ook voor tekst uit het geheugen. */
+/*
+ * Lijkt dit op tekst?
+ *
+ * Niet elke naam in de lijst bestaat in elke bus, en wat OMSI dan doorgeeft is
+ * geen string maar wat er toevallig op dat adres staat. Op het scherm van de
+ * speler werd dat een regel als "eefxye2Gxy3O...": onleesbaar, en erger dan
+ * niets. Tekst uit een bus is grotendeels gewone leestekens; is minder dan
+ * driekwart dat, dan is het geen tekst en houdt de plugin het leeg.
+ */
+static int lijkt_op_tekst(const char *tekst) {
+  int goed = 0, totaal = 0;
+  for (const unsigned char *p = (const unsigned char *)tekst; *p; p++) {
+    totaal++;
+    if (*p == ' ' || (*p >= 0x20 && *p < 0x7f)) goed++;
+    if (totaal > 400) break;
+  }
+  if (totaal == 0) return 1;
+  return goed * 4 >= totaal * 3;
+}
+
 static void copy_text(char *target, size_t size, const void *source) {
   target[0] = 0;
   if (!source || !plausible_ptr((DWORD)(ULONG_PTR)source)) return;
@@ -650,6 +679,8 @@ static void copy_text(char *target, size_t size, const void *source) {
     } else {
       if (g_strKind != 1) g_strKind = 1;
       const char *a = (const char *)source;
+      /* Geen tekst? Dan hoort er niets te staan; zie `lijkt_op_tekst`. */
+      if (!lijkt_op_tekst(a)) return;
       char clean[STR_MAX];
       size_t i = 0;
       while (i < STR_MAX - 1 && a[i]) {
@@ -815,7 +846,8 @@ static void flush_state(int alive) {
       "\"busstop\":\"%s\",\"delayMin\":\"%s\",\"delaySec\":\"%s\","
       "\"line\":\"%s\",\"terminus\":\"%s\",\"matrix\":\"%s\","
       "\"ibis\":{\"bestemming\":\"%s\",\"lijn\":\"%s\","
-      "\"lawo1\":\"%s\",\"lawo2\":\"%s\",\"lawo3\":\"%s\",\"lawo4\":\"%s\"}%s",
+      "\"lawo1\":\"%s\",\"lawo2\":\"%s\",\"lawo3\":\"%s\",\"lawo4\":\"%s\","
+      "\"afr1\":\"%s\",\"afr2\":\"%s\"}%s",
       alive ? "true" : "false", PLUGIN_VERSIE, g_seen, g_seenSys, g_seenStr, g_strKind,
       g_sys[SYS_TIME], g_sys[SYS_DAY], g_sys[SYS_MONTH], g_sys[SYS_YEAR],
       g_var[VAR_VELOCITY], g_var[VAR_HUMANS], g_var[VAR_SCHEDULE_ACTIVE],
@@ -832,7 +864,8 @@ static void flush_state(int alive) {
       g_str[STR_BUSSTOP], g_str[STR_DELAY_MIN], g_str[STR_DELAY_SEC],
       g_str[STR_LINE], g_str[STR_TERMINUS], g_str[STR_MATRIX],
       g_str[STR_IBIS_TERMINUS], g_str[STR_IBIS_LIJN],
-      g_str[STR_LAWO1], g_str[STR_LAWO2], g_str[STR_LAWO3], g_str[STR_LAWO4], mem);
+      g_str[STR_LAWO1], g_str[STR_LAWO2], g_str[STR_LAWO3], g_str[STR_LAWO4],
+      g_str[STR_AFR1], g_str[STR_AFR2], mem);
   if (length <= 0) {
     g_mislukt++;
     if (g_laatsteFout != 0xFFFFFFFFu) meld("bericht past niet in de buffer: nu niet geschreven");

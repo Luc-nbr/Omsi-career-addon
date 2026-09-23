@@ -1426,6 +1426,36 @@ function telefoonAanmelden(nummer: string, pin?: string): AanmeldUitslag {
   return 'aangemeld'
 }
 
+/*
+ * EEN SPOOR VAN DE KAARTVERKOOP
+ *
+ * De verkoop en het schermpje van de bus komen uit het geheugen van OMSI, en of
+ * dat op een andere pc net zo ligt, blijkt pas in het spel. Daarom schrijft de
+ * app op wat de plugin doorgeeft zodra het verandert: welke plugin, wie er aan
+ * de balie staat, welk kaartje, wat het kost en wat er gegeven is. Eén regel per
+ * verandering, zodat het logboek niet volloopt.
+ */
+let vorigSpoor = ''
+
+function spoorVanDeVerkoop(live: ReturnType<typeof readLive>): void {
+  const mem = live?.mem
+  if (!mem) return
+  const spoor = [
+    `plugin=${live?.plugin ?? '?'}`,
+    `koper=${mem.koper ?? '?'}`,
+    `kaartje=${mem.ticketIndex ?? '?'}`,
+    `prijs=${mem.ticketPrijs ?? '?'}`,
+    `gegeven=${mem.ticketGegeven ?? '?'}`,
+    `klaar=${mem.ticketKlaar ?? '?'}`,
+    `opdracht=${mem.opdracht ?? '?'}/${mem.opdrachtFout ?? '?'}`,
+    `afr="${(live?.ibis?.afr1 ?? '').slice(0, 40)}"`,
+    `lawo="${(live?.ibis?.lawo1 ?? '').slice(0, 40)}"`
+  ].join(' ')
+  if (spoor === vorigSpoor) return
+  vorigSpoor = spoor
+  log(`verkoop: ${spoor}`)
+}
+
 function pushFrame(): void {
   /*
    * Beelden maken heeft zin zolang er iemand kijkt. Dat is de overlay, maar ook
@@ -1442,6 +1472,7 @@ function pushFrame(): void {
    * plaats van het bestand nog eens van schijf te halen.
    */
   const live = freshLive()
+  spoorVanDeVerkoop(live)
   captureBaseline(live)
   const duty = currentDuty()
   const frame = {

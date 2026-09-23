@@ -25,6 +25,9 @@ export interface LiveData {
     lawo2: string
     lawo3: string
     lawo4: string
+    /** De twee regels van de AFR 200, de kaartautomaat in de Thueringer Wald-bus. */
+    afr1: string
+    afr2: string
   }
   /** Bitmasker van de variabelen die OMSI werkelijk heeft doorgegeven. */
   seen: number
@@ -342,6 +345,12 @@ export function readLive(): LiveData | undefined {
  * eigen scherm met wat de dienst en de plugin wel weten.
  */
 export interface IbisScherm {
+  /**
+   * Welk apparaat er in deze bus zit. Daar hangt aan hoe het scherm eruitziet:
+   * een AFR 200 heeft twee regels in groene puntjes, een LAWO er vier, en een
+   * IBIS een enkele regel.
+   */
+  soort: 'afr' | 'lawo' | 'ibis'
   /** De regels van het apparaat zelf, al zonder lege regels aan het eind. */
   regels: string[]
   /** De bestemming en de lijn/omloop zoals de IBIS ze kent. */
@@ -648,12 +657,32 @@ function ibisDelay(data: LiveData): number | undefined {
 function ibisSchermVan(data: LiveData): IbisScherm | undefined {
   const ibis = data.ibis
   if (!ibis) return undefined
-  const regels = [ibis.lawo1, ibis.lawo2, ibis.lawo3, ibis.lawo4].map((regel) => regel.trim())
-  while (regels.length > 0 && regels[regels.length - 1] === '') regels.pop()
-  const bestemming = ibis.bestemming.trim()
-  const lijn = ibis.lijn.trim()
-  if (regels.length === 0 && !bestemming && !lijn) return undefined
-  return { regels, bestemming: bestemming || undefined, lijn: lijn || undefined }
+  const tekst = (waarde: string | undefined): string => (waarde ?? '').trim()
+  const bestemming = tekst(ibis.bestemming)
+  const lijn = tekst(ibis.lijn)
+  /*
+   * Welk apparaat er in de bus zit, blijkt uit wat er gevuld is. De AFR 200 van
+   * de Thueringer Wald-bus gaat voor: die staat naast de chauffeur en is het
+   * ding waarmee hij werkt. Daarna de LAWO met vier regels, en anders de ene
+   * regel van een gewone IBIS.
+   */
+  const afr = [ibis.afr1, ibis.afr2].map(tekst)
+  const lawo = [ibis.lawo1, ibis.lawo2, ibis.lawo3, ibis.lawo4].map(tekst)
+  const snijd = (regels: string[]): string[] => {
+    const uit = [...regels]
+    while (uit.length > 0 && uit[uit.length - 1] === '') uit.pop()
+    return uit
+  }
+  const afrRegels = snijd(afr)
+  const lawoRegels = snijd(lawo)
+  if (afrRegels.length > 0) {
+    return { soort: 'afr', regels: afrRegels, bestemming: bestemming || undefined, lijn: lijn || undefined }
+  }
+  if (lawoRegels.length > 0) {
+    return { soort: 'lawo', regels: lawoRegels, bestemming: bestemming || undefined, lijn: lijn || undefined }
+  }
+  if (!bestemming && !lijn) return undefined
+  return { soort: 'ibis', regels: [], bestemming: bestemming || undefined, lijn: lijn || undefined }
 }
 
 function verkoopVan(data: LiveData): Verkoop | undefined {

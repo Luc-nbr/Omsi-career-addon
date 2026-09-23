@@ -171,6 +171,7 @@ app.whenReady().then(async () => {
   await wacht(1800)
   const verkoop = await js(overlay, `({
     scherm: Boolean(document.querySelector('.verkoop')),
+    tegelsErbij: document.querySelectorAll('.kaarttegels button').length,
     geld: [...document.querySelectorAll('.geld button')].map((b) => b.textContent),
     kaartje: document.querySelector('.verkoop-kaartje b')?.textContent ?? null,
     automaat: document.querySelector('.verkoop-automaat')?.textContent ?? null,
@@ -235,6 +236,7 @@ app.whenReady().then(async () => {
     tegels.tegels > 0 &&
     tegels.lijst === 0 &&
     verkoop.scherm &&
+    verkoop.tegelsErbij > 0 &&
     verkoop.kaartje !== null &&
     /2/.test(verkoop.automaat ?? '') &&
     verkoop.bedragen[0] === '10.00' &&

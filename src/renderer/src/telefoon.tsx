@@ -128,6 +128,17 @@ export function Telefoon({
    * zoeken. Alleen bij het opengaan: doe je de app daarna zelf dicht, dan
    * blijft dat zo tot de volgende halte.
    */
+  /*
+   * Iemand aan de balie: dan hoort de kaartverkoop in beeld te komen, ook als
+   * de deur al openstond. Dat is het moment waarop je iets moet doen.
+   */
+  const verkoopt = Boolean(frame.status?.verkoop);
+  const verkochtStond = useRef(verkoopt);
+  useEffect(() => {
+    if (verkoopt && !verkochtStond.current) setApp("kaartjes");
+    verkochtStond.current = verkoopt;
+  }, [verkoopt]);
+
   const deurOpen = Boolean(frame.status?.doorsOpen);
   const deurStond = useRef(deurOpen);
   useEffect(() => {
@@ -1070,7 +1081,12 @@ function IbisApp({
         letterlijk; dat is de spiegel. Zo niet, dan het scherm van de app zelf.
       */}
       {scherm && scherm.regels.length > 0 ? (
-        <div className="ibis-scherm spiegel">
+        /*
+         * Het apparaat zoals het in deze bus zit. Een AFR 200 heeft twee regels
+         * in groene puntjes en een vaste breedte, een LAWO er vier; verder is
+         * het hetzelfde scherm. `soort` komt uit core/live.ts.
+         */
+        <div className={`ibis-scherm spiegel ${scherm.soort}`}>
           {scherm.regels.map((regel, index) => (
             <span key={index}>{regel || "\u00a0"}</span>
           ))}
@@ -1188,24 +1204,6 @@ function KaartjesApp({
     return <p className="app-leeg">{t(language, "ovl.ticketsNone")}</p>;
   }
 
-  /*
-   * Staat er iemand te betalen, dan is dit geen rekenmachine meer maar het
-   * scherm van de verkoop: het spel weet welk kaartje hij wil, wat het kost en
-   * wat hij gegeven heeft. Wat jij nog moet doen, is teruggeven.
-   */
-  if (verkoop) {
-    return (
-      <Verkoopscherm
-        key={verkoopSleutel}
-        verkoop={verkoop}
-        set={set}
-        opdracht={opdracht}
-        acties={acties}
-        language={language}
-      />
-    );
-  }
-
   const prijs = gekozen ? Math.round(gekozen.prijs * 100) : 0;
   const terug = gegeven - prijs;
   const munten = terug > 0 ? wisselgeld(terug) : [];
@@ -1225,6 +1223,22 @@ function KaartjesApp({
     <div className="kaartjes" data-hit>
       {pluginOud && (
         <p className="verkoop-mopper">{t(language, "ovl.salePluginOld")}</p>
+      )}
+      {/*
+        Staat er iemand te betalen, dan komt zijn verkoop onder de kaartkeuze:
+        het spel weet welk kaartje hij wil, wat het kost en wat hij gegeven
+        heeft. De keuze blijft staan -- je kiest het kaartje zelf op de automaat
+        in de bus, en dan wil je zien welk nummer daarbij hoort.
+      */}
+      {verkoop && (
+        <Verkoopscherm
+          key={verkoopSleutel}
+          verkoop={verkoop}
+          set={set}
+          opdracht={opdracht}
+          acties={acties}
+          language={language}
+        />
       )}
       {!gekozen ? (
         /*

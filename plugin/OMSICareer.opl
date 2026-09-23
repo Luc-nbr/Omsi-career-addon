@@ -69,7 +69,7 @@ electric_battery
 	is.
 
 [stringvarlist]
-12
+14
 IBIS_busstop_name
 IBIS_Delay_min
 IBIS_Delay_sec
@@ -82,3 +82,5 @@ LAWO_display_line1
 LAWO_display_line2
 LAWO_display_line3
 LAWO_display_line4
+afr_display_1
+afr_display_2
