@@ -1,6 +1,6 @@
 {
   "name": "omsi-enhancer",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "OMSI Enhancer: carriere en diensten voor OMSI 2, het spel startklaar zetten, en de instellingen en toetsen van het spel beheren.",
   "main": "./out/main/index.js",
   "private": true,

@@ -1,5 +1,6 @@
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import type { Apparaatsoort, Busapparaat, Uitlijning } from './busscherm'
 import { log } from './logboek'
 import type { Duty, DutyLeg } from './types'
 
@@ -29,6 +30,28 @@ export interface LiveData {
     afr1: string
     afr2: string
   }
+  /**
+   * Welke bus er rijdt, zoals hij in het geheugen van OMSI staat: de naam uit
+   * het keuzescherm, het modelbestand en de map. Daarmee vindt de app de
+   * `model.cfg` en dus de schermpjes van deze bus; zie core/busscherm.ts.
+   * Ontbreekt bij een plugin ouder dan 6.
+   */
+  bus?: {
+    naam: string
+    model: string
+    pad: string
+    /** Het `.bus`-bestand zelf, als OMSI het op die plek bijhoudt; vaak leeg. */
+    bestand: string
+  }
+  /**
+   * De stringvariabelen van de bus die de app gevraagd heeft, met wat erin
+   * staat. De app zegt in `vragen.txt` welke namen ze wil; dat zijn de
+   * variabelen die in de model.cfg aan een schermpje hangen, plus de namen van
+   * de kaartautomaat. Namen die deze bus niet kent, staan er niet in.
+   */
+  vars?: Record<string, string>
+  /** Pasten niet alle gevraagde variabelen in het bericht? Dan mist er iets. */
+  varsAfgekapt?: boolean
   /** Bitmasker van de variabelen die OMSI werkelijk heeft doorgegeven. */
   seen: number
   /**
@@ -344,15 +367,32 @@ export function readLive(): LiveData | undefined {
  * staan -- en verzint er niets bij. Staat er niets, dan tekent de app zijn
  * eigen scherm met wat de dienst en de plugin wel weten.
  */
+/** Een apparaat in de bus, met wat er nu op staat. */
+export interface Apparaatweergave {
+  /** De naam waaronder de bus het kent, bijvoorbeeld "afr_display". */
+  naam: string
+  soort: Apparaatsoort
+  /** De regels, in de volgorde waarin ze op het apparaat staan. */
+  regels: string[]
+  /** De vorm, uit de model.cfg van de bus; zie core/busscherm.ts. */
+  achtergrond: string
+  tekstkleur: string
+  uitlijning: Uitlijning
+  breedte: number
+  hoogte: number
+}
+
 export interface IbisScherm {
   /**
-   * Welk apparaat er in deze bus zit. Daar hangt aan hoe het scherm eruitziet:
-   * een AFR 200 heeft twee regels in groene puntjes, een LAWO er vier, en een
-   * IBIS een enkele regel.
+   * Welk apparaat er in deze bus zit. `bus` betekent: uit de model.cfg van de
+   * bus zelf, en dan staat in `apparaten` precies wat erin zit. De andere drie
+   * zijn de terugval voor een oudere plugin, die alleen de vaste namen kende.
    */
-  soort: 'afr' | 'lawo' | 'ibis'
-  /** De regels van het apparaat zelf, al zonder lege regels aan het eind. */
+  soort: 'bus' | 'afr' | 'lawo' | 'ibis'
+  /** De regels van het eerste apparaat; zonder lege regels aan het eind. */
   regels: string[]
+  /** Alle apparaten van deze bus, als de model.cfg gelezen kon worden. */
+  apparaten?: Apparaatweergave[]
   /** De bestemming en de lijn/omloop zoals de IBIS ze kent. */
   bestemming?: string
   lijn?: string
@@ -384,6 +424,8 @@ export interface LiveStatus {
   verkoop?: Verkoop
   /** Wat er op het schermpje van deze bus staat; zie `IbisScherm`. */
   ibisScherm?: IbisScherm
+  /** De namen die de kaartautomaat van de bus zelf toont; zie `kaartnamenVan`. */
+  busKaartjes?: string[]
   /**
    * De plugin die OMSI nu geladen heeft. Lager dan `PLUGIN_VERSIE` betekent dat
    * OMSI nog met een oude draait: sluiten, de app laten bijwerken, opnieuw starten.
@@ -654,27 +696,57 @@ function ibisDelay(data: LiveData): number | undefined {
  * Wat het apparaat in deze bus toont. Lege regels aan het eind vallen weg: een
  * LAWO met twee gevulde regels hoort er niet als vier te staan.
  */
-function ibisSchermVan(data: LiveData): IbisScherm | undefined {
-  const ibis = data.ibis
-  if (!ibis) return undefined
+function ibisSchermVan(data: LiveData, apparaten?: Busapparaat[]): IbisScherm | undefined {
   const tekst = (waarde: string | undefined): string => (waarde ?? '').trim()
-  const bestemming = tekst(ibis.bestemming)
-  const lijn = tekst(ibis.lijn)
+  const snijdLeeg = (regels: string[]): string[] => {
+    const uit = [...regels]
+    while (uit.length > 0 && uit[uit.length - 1] === '') uit.pop()
+    return uit
+  }
+
+  /*
+   * Eerst de bus zelf. Weet de app welke schermpjes erin zitten -- dat staat in
+   * de model.cfg -- en geeft de plugin de variabelen door, dan is dit geen
+   * nabootsing meer maar hetzelfde als wat er in de bus staat.
+   */
+  const uitDeBus: Apparaatweergave[] = []
+  for (const apparaat of apparaten ?? []) {
+    if (!data.vars) break
+    const regels = snijdLeeg(apparaat.variabelen.map((naam) => tekst(data.vars?.[naam])))
+    if (regels.length === 0) continue
+    uitDeBus.push({
+      naam: apparaat.naam,
+      soort: apparaat.soort,
+      regels,
+      achtergrond: apparaat.achtergrond,
+      tekstkleur: apparaat.tekstkleur,
+      uitlijning: apparaat.uitlijning,
+      breedte: apparaat.breedte,
+      hoogte: apparaat.hoogte
+    })
+  }
+
+  const ibis = data.ibis
+  const bestemming = tekst(ibis?.bestemming)
+  const lijn = tekst(ibis?.lijn)
+  if (uitDeBus.length > 0) {
+    return {
+      soort: 'bus',
+      regels: uitDeBus[0].regels,
+      apparaten: uitDeBus,
+      bestemming: bestemming || undefined,
+      lijn: lijn || undefined
+    }
+  }
+  if (!ibis) return undefined
   /*
    * Welk apparaat er in de bus zit, blijkt uit wat er gevuld is. De AFR 200 van
    * de Thueringer Wald-bus gaat voor: die staat naast de chauffeur en is het
    * ding waarmee hij werkt. Daarna de LAWO met vier regels, en anders de ene
    * regel van een gewone IBIS.
    */
-  const afr = [ibis.afr1, ibis.afr2].map(tekst)
-  const lawo = [ibis.lawo1, ibis.lawo2, ibis.lawo3, ibis.lawo4].map(tekst)
-  const snijd = (regels: string[]): string[] => {
-    const uit = [...regels]
-    while (uit.length > 0 && uit[uit.length - 1] === '') uit.pop()
-    return uit
-  }
-  const afrRegels = snijd(afr)
-  const lawoRegels = snijd(lawo)
+  const afrRegels = snijdLeeg([ibis.afr1, ibis.afr2].map(tekst))
+  const lawoRegels = snijdLeeg([ibis.lawo1, ibis.lawo2, ibis.lawo3, ibis.lawo4].map(tekst))
   if (afrRegels.length > 0) {
     return { soort: 'afr', regels: afrRegels, bestemming: bestemming || undefined, lijn: lijn || undefined }
   }
@@ -683,6 +755,65 @@ function ibisSchermVan(data: LiveData): IbisScherm | undefined {
   }
   if (!bestemming && !lijn) return undefined
   return { soort: 'ibis', regels: [], bestemming: bestemming || undefined, lijn: lijn || undefined }
+}
+
+/**
+ * De namen die de kaartautomaat van deze bus op zijn eigen knoppen heeft.
+ *
+ * De AFR 200 haalt ze bij het opstarten uit het kaartpakket van de kaart
+ * (`(M.V.GetTicketName)` in afr200.osc) en zet ze in `afr_ticketname_0` tot en
+ * met `_9`, op dezelfde plek als het nummer dat OMSI bij de verkoop doorgeeft.
+ * Daarmee kan de app op de tegel zetten wat de chauffeur op de automaat ziet,
+ * in plaats van de naam uit het kaartbestand van de kaart.
+ *
+ * Staat de automaat uit, dan zijn de namen leeg; dan geeft dit niets terug en
+ * blijft het bij de namen uit het kaartpakket.
+ */
+export function kaartnamenVan(data: LiveData): string[] | undefined {
+  const vars = data.vars
+  if (!vars) return undefined
+  const namen: string[] = []
+  for (let i = 0; i < 12; i++) {
+    const waarde = vars[`afr_ticketname_${i}`] ?? vars[`atron_ticket${i + 1}`]
+    if (waarde === undefined) break
+    namen.push(waarde.trim())
+  }
+  while (namen.length > 0 && namen[namen.length - 1] === '') namen.pop()
+  return namen.length > 0 ? namen : undefined
+}
+
+/**
+ * Welke stringvariabelen de plugin moet doorgeven.
+ *
+ * De app schrijft ze in `vragen.txt` naast live.json; de plugin zoekt ze op in
+ * de bus en zet ze in `vars`. Alleen schrijven als er iets verandert -- het
+ * bestand wordt anders tien keer per seconde overschreven terwijl er niets
+ * anders in staat.
+ */
+export function schrijfVragen(namen: string[]): void {
+  const lijst = namen.slice(0, 64)
+  const inhoud = lijst.join('\r\n') + (lijst.length > 0 ? '\r\n' : '')
+  const pad = join(liveMap(), 'vragen.txt')
+  try {
+    if (existsSync(pad) && readFileSync(pad, 'utf8') === inhoud) return
+    const tijdelijk = pad + '.tmp'
+    writeFileSync(tijdelijk, inhoud)
+    renameSync(tijdelijk, pad)
+    log(`vragen aan de plugin: ${lijst.length} variabelen`)
+  } catch (fout) {
+    log(`vragen.txt schrijven mislukt: ${String(fout)}`)
+  }
+}
+
+/** Alles wat de bus aan tekst bijhoudt; de plugin ververst het eens per twee tellen. */
+export function leesSchermen():
+  | { bus: string; model: string; pad: string; bestand: string; aantal: number; vars: Record<string, string> }
+  | undefined {
+  try {
+    return JSON.parse(readFileSync(join(liveMap(), 'schermen.json'), 'utf8'))
+  } catch {
+    return undefined
+  }
 }
 
 function verkoopVan(data: LiveData): Verkoop | undefined {
@@ -786,7 +917,9 @@ export function describeLive(
     clockMinutes?: number
     tickets?: number
     collisions?: number
-  }
+  },
+  /** De schermpjes van de bus die rijdt; zie core/busscherm.ts. */
+  apparaten?: Busapparaat[]
 ): LiveStatus {
   const clockMinutes = data.time / 60
 
@@ -870,7 +1003,8 @@ export function describeLive(
     ticketKeuze:
       has(data, BIT.ticket) && data.ticket >= 0 ? Math.round(data.ticket) : undefined,
     verkoop: verkoopVan(data),
-    ibisScherm: ibisSchermVan(data),
+    ibisScherm: ibisSchermVan(data, apparaten),
+    busKaartjes: kaartnamenVan(data),
     pluginVersie: data.plugin ?? 1,
     opdracht:
       data.mem && (data.mem.opdracht ?? 0) > 0

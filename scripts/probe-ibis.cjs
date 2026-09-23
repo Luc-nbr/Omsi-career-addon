@@ -68,7 +68,7 @@ app.whenReady().then(async () => {
   const hoofd = BrowserWindow.getAllWindows()[0]
   const dienst = await js(hoofd, `window.career.career().then((p) => p.state?.activeDuty?.assignment?.duty)`)
   const rit = dienst.legs[0]
-  const beeld = (deur, ticket, verkoop, ibis) => ({
+  const beeld = (deur, ticket, verkoop, ibis, extra) => ({
     alive: true, seen: 8388607, seenSys: 63, seenStr: 63, strKind: 1,
     time: 43200, day: 1, month: 7, year: 2026, velocity: deur ? 0 : 11.1, passengers: 4,
     scheduleActive: 1, targetIndex: 0, tankPercent: 0.7, km: 0, metres: 0,
@@ -95,10 +95,11 @@ app.whenReady().then(async () => {
         }
       : { ok: 0 },
     ibis: ibis ?? { bestemming: '', lijn: '', lawo1: '', lawo2: '', lawo3: '', lawo4: '' },
-    plugin: 4
+    plugin: 6,
+    ...(extra ?? {})
   })
-  const schrijf = (deur, ticket, verkoop, ibis) =>
-    writeFileSync(join(live, 'live.json'), JSON.stringify(beeld(deur, ticket, verkoop, ibis)))
+  const schrijf = (deur, ticket, verkoop, ibis, extra) =>
+    writeFileSync(join(live, 'live.json'), JSON.stringify(beeld(deur, ticket, verkoop, ibis, extra)))
   schrijf(false, -1)
   setInterval(() => { const nu = new Date(); utimesSync(join(live, 'live.json'), nu, nu) }, 2000).unref()
 
@@ -140,6 +141,50 @@ app.whenReady().then(async () => {
   })`)
   console.log('met schermgegevens uit de bus:', JSON.stringify(spiegel))
 
+  /*
+   * En dan de bus zelf. De plugin zegt welke bus er rijdt; de app zoekt de
+   * model.cfg op, leest daar de `[texttexture]`-blokken uit en vraagt precies
+   * die variabelen op. Hier staat een echte bus uit de installatie, met de
+   * waarden die de plugin uit het geheugen zou halen.
+   */
+  schrijf(false, -1, undefined, undefined, {
+    bus: {
+      naam: 'Setra S315 UL Euro 3',
+      model: 'Model/S315UL_Euro3.cfg',
+      pad: 'Vehicles/TH_Ueberlandbus/',
+      bestand: ''
+    },
+    vars: {
+      afr_display_1: 'Linie 320    Kurs 1',
+      afr_display_2: '13:45      EUR 2,40',
+      LAWO_display_line1: '320 OBERHOF',
+      LAWO_display_line2: 'ueber Zella-Mehlis',
+      afr_ticketname_0: 'Einzelfahrt',
+      afr_ticketname_1: 'Kind'
+    }
+  })
+  await wacht(1800)
+  const uitDeBus = await js(overlay, `(() => {
+    const vakken = [...document.querySelectorAll('.ibis-apparaat')]
+    const stijl = (e) => e ? getComputedStyle(e) : undefined
+    return {
+      apparaten: vakken.length,
+      eerste: vakken[0] ? [...vakken[0].querySelectorAll('span')].map((s) => s.textContent) : [],
+      kleuren: vakken.slice(0, 2).map((v) => stijl(v).color + ' op ' + stijl(v).backgroundColor)
+    }
+  })()`)
+  console.log('uit de bus zelf:', JSON.stringify(uitDeBus))
+
+  const gevraagd = (() => {
+    try {
+      return readFileSync(join(live, 'vragen.txt'), 'utf8').split(/\r?\n/).filter(Boolean)
+    } catch {
+      return []
+    }
+  })()
+  console.log('gevraagd aan de plugin:', gevraagd.length, 'variabelen, waaronder',
+    JSON.stringify(gevraagd.slice(0, 4)))
+
   /* Een toets: die hoort als opdracht voor de plugin weggeschreven te worden. */
   await js(overlay, `[...document.querySelectorAll('.ibis-toetsen .ibis-knop')][0]?.click()`)
   await wacht(600)
@@ -154,6 +199,12 @@ app.whenReady().then(async () => {
     eigen.standen === 3 &&
     spiegel.spiegel &&
     spiegel.regels[0] === '732 LICHTENTANNE' &&
+    /* De bus levert minstens de LAWO en de AFR, met hun eigen kleuren. */
+    uitDeBus.apparaten >= 2 &&
+    uitDeBus.eerste[0] === '320 OBERHOF' &&
+    uitDeBus.kleuren.some((k) => k.includes('rgb(95, 211, 188)')) &&
+    gevraagd.includes('afr_display_1') &&
+    gevraagd.includes('afr_ticketname_0') &&
     /^\d+ 79 4$/.test(opdracht)
   console.log(goed ? 'de IBIS klopt' : 'DE IBIS KLOPT NIET')
   app.exit(goed ? 0 : 1)

@@ -194,6 +194,7 @@ export function Telefoon({
               set={frame.kaartjes}
               keuze={frame.status?.ticketKeuze}
               verkoop={frame.status?.verkoop}
+              busKaartjes={frame.status?.busKaartjes}
               opdracht={frame.status?.opdracht}
               /*
                * Draait OMSI nog met een oudere plugin, dan komt de verkoop
@@ -847,12 +848,14 @@ const MUNTEN = [200, 100, 50, 20, 10, 5];
 function Verkoopscherm({
   verkoop,
   set,
+  busKaartjes,
   opdracht,
   acties,
   language,
 }: {
   verkoop: Verkoop;
   set: Kaartset;
+  busKaartjes?: string[];
   opdracht?: { nr: number; fout: boolean };
   acties: TelefoonActies;
   language: Language;
@@ -872,6 +875,12 @@ function Verkoopscherm({
    * uiteenlopen.
    */
   const kaartje = set.kaartjes[verkoop.kaartje];
+  /*
+   * Staat de automaat aan, dan draagt hij de namen die op zijn eigen knoppen
+   * staan (zie `kaartnamenVan` in core/live.ts). Die gaan voor: dat is wat de
+   * chauffeur in de bus ziet als hij het kaartje aanslaat.
+   */
+  const naam = (busKaartjes?.[verkoop.kaartje] ?? "").trim() || kaartje?.naam;
   const prijsWijktAf =
     kaartje !== undefined && Math.abs(Math.round(kaartje.prijs * 100) - prijs) > 1;
   const gegeven = Math.round(verkoop.gegeven * 100);
@@ -897,7 +906,7 @@ function Verkoopscherm({
       <p className="verkoop-kop">{t(language, "ovl.saleTitle")}</p>
 
       <div className="verkoop-kaartje">
-        <b>{kaartje?.naam ?? t(language, "ovl.saleUnknown")}</b>
+        <b>{naam ?? t(language, "ovl.saleUnknown")}</b>
         <span>{euro(prijs)}</span>
       </div>
 
@@ -1049,6 +1058,14 @@ function IbisApp({
 }): JSX.Element {
   const status = frame.status;
   const scherm = status?.ibisScherm;
+  const apparaten = scherm?.apparaten ?? [];
+  /*
+   * Met een oudere plugin in het spel komen de schermpjes van de bus niet door
+   * en tekent de app zijn eigen scherm, zonder dat iemand weet waarom.
+   */
+  const pluginOud =
+    frame.connected &&
+    (status?.pluginVersie ?? PLUGIN_VERSIE) < PLUGIN_VERSIE;
   const leg = rit.leg ?? rit.upcoming;
   const halte =
     rit.passed !== undefined && leg ? stopName(leg, rit.passed) : undefined;
@@ -1076,15 +1093,58 @@ function IbisApp({
 
   return (
     <div className="ibis" data-hit>
+      {pluginOud && (
+        <p className="verkoop-mopper">{t(language, "ovl.salePluginOld")}</p>
+      )}
       {/*
         Het schermpje. Geeft de bus zijn eigen regels door, dan staan die er
         letterlijk; dat is de spiegel. Zo niet, dan het scherm van de app zelf.
       */}
-      {scherm && scherm.regels.length > 0 ? (
+      {/*
+        De apparaten zoals ze in deze bus zitten. Welke dat zijn staat in de
+        model.cfg van de bus (core/busscherm.ts): welke variabele bij welk
+        schermpje hoort, in welke kleur en hoe groot. De regels komen uit het
+        geheugen van OMSI. Daarmee is dit geen nabootsing meer maar hetzelfde
+        beeld als in de cabine.
+
+        De letters schalen mee met de breedte: een regel van zestien tekens moet
+        het schermpje vullen, net als in de bus. Bij een vaste-breedteletter is
+        een teken ongeveer 0,6 keer de letterhoogte, dus past 166/regellengte.
+      */}
+      {apparaten.length > 0 ? (
+        <div className="ibis-apparaten">
+          {apparaten.map((apparaat) => {
+            const langste = Math.max(
+              10,
+              ...apparaat.regels.map((regel) => regel.length),
+            );
+            return (
+              <div
+                key={apparaat.naam}
+                className="ibis-apparaat"
+                style={{
+                  background: apparaat.achtergrond,
+                  color: apparaat.tekstkleur,
+                  fontSize: `${(166 / langste).toFixed(2)}cqw`,
+                  textAlign:
+                    apparaat.uitlijning === "links"
+                      ? "left"
+                      : apparaat.uitlijning === "rechts"
+                        ? "right"
+                        : "center",
+                }}
+              >
+                {apparaat.regels.map((regel, index) => (
+                  <span key={index}>{regel || "\u00a0"}</span>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      ) : scherm && scherm.regels.length > 0 ? (
         /*
-         * Het apparaat zoals het in deze bus zit. Een AFR 200 heeft twee regels
-         * in groene puntjes en een vaste breedte, een LAWO er vier; verder is
-         * het hetzelfde scherm. `soort` komt uit core/live.ts.
+         * De terugval, voor een oudere plugin: de vaste namen die in de .opl
+         * staan, met de vorm die bij dat apparaat hoort.
          */
         <div className={`ibis-scherm spiegel ${scherm.soort}`}>
           {scherm.regels.map((regel, index) => (
@@ -1149,6 +1209,7 @@ function KaartjesApp({
   set,
   keuze,
   verkoop,
+  busKaartjes,
   opdracht,
   pluginOud,
   acties,
@@ -1159,6 +1220,8 @@ function KaartjesApp({
   keuze?: number;
   /** Wat er aan de deur verkocht wordt, uit het spel zelf; zie core/live.ts. */
   verkoop?: Verkoop;
+  /** De namen die de kaartautomaat van de bus zelf toont; zie `kaartnamenVan`. */
+  busKaartjes?: string[];
   /** Hoe het de laatste toets in OMSI verging. */
   opdracht?: { nr: number; fout: boolean };
   /** OMSI draait met een plugin van voor de kaartverkoop. */
@@ -1204,6 +1267,13 @@ function KaartjesApp({
     return <p className="app-leeg">{t(language, "ovl.ticketsNone")}</p>;
   }
 
+  /*
+   * De naam zoals de automaat in de bus hem toont, als hij aanstaat; anders die
+   * uit het kaartpakket van de kaart. Zie `kaartnamenVan` in core/live.ts.
+   */
+  const naamVan = (index: number, terugval: string): string =>
+    (busKaartjes?.[index] ?? '').trim() || terugval;
+
   const prijs = gekozen ? Math.round(gekozen.prijs * 100) : 0;
   const terug = gegeven - prijs;
   const munten = terug > 0 ? wisselgeld(terug) : [];
@@ -1235,6 +1305,7 @@ function KaartjesApp({
           key={verkoopSleutel}
           verkoop={verkoop}
           set={set}
+          busKaartjes={busKaartjes}
           opdracht={opdracht}
           acties={acties}
           language={language}
@@ -1247,11 +1318,11 @@ function KaartjesApp({
          * gaat het om.
          */
         <ul className="kaarttegels">
-          {set.kaartjes.map((kaartje) => (
+          {set.kaartjes.map((kaartje, index) => (
             <li key={kaartje.naam}>
               <button type="button" onClick={() => setGekozen(kaartje)}>
                 <span className="kaartprijs">{kaartje.prijs.toFixed(2)}</span>
-                <span className="kaartnaam">{kaartje.naam}</span>
+                <span className="kaartnaam">{naamVan(index, kaartje.naam)}</span>
                 {kaartje.maxHaltes > 0 && (
                   <small>
                     {t(language, "ovl.ticketStops", { count: kaartje.maxHaltes })}
@@ -1274,7 +1345,9 @@ function KaartjesApp({
             >
               ‹
             </button>
-            <span className="kaartnaam">{gekozen.naam}</span>
+            <span className="kaartnaam">
+              {naamVan(set.kaartjes.indexOf(gekozen), gekozen.naam)}
+            </span>
             <span className="kaartprijs">{euro(prijs)}</span>
           </div>
 

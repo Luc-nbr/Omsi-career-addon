@@ -101,6 +101,7 @@ blijft eenmalig een kopie staan als `laststn.osn.voor-omsi-career`. Verder niets
 | `track.ts` | Route van een rit uit OMSI's eigen `.ttr` |
 | `routing.ts` | Rijstrokennet en routeplanner van halte naar halte; kiest per rit `.ttr` of planner |
 | `live.ts` | Leest `live.json` van de plugin, maakt er een `LiveStatus` van |
+| `busscherm.ts` | De schermpjes van de bus uit zijn `model.cfg`: welke variabele, welk lettertype, welke kleur |
 | `career.ts` | Loopbaan: diensten, uren, rangen, modi, vergunningen, examens |
 | `exam.ts` | De eisen van het rijexamen en het oordeel erover |
 | `startup.ts` | Het startscherm van OMSI: `laststn.osn` en `[last_map]` |
@@ -210,6 +211,20 @@ Regels van de set:
 
 Een 32-bits DLL in C die OMSI laadt. Schrijft `%LOCALAPPDATA%\OMSI Career\live.json`.
 Zie `README.md` voor de details; die zijn duur betaald en staan er goed in.
+
+Naast live.json lopen er drie bestandjes in dezelfde map:
+
+| bestand | richting | waarvoor |
+| --- | --- | --- |
+| `opdracht.txt` | app -> plugin | een toets die in OMSI ingedrukt moet worden |
+| `vragen.txt` | app -> plugin | welke stringvariabelen van de bus de app wil zien |
+| `schermen.json` | plugin -> app | alles wat de bus aan tekst bijhoudt, eens per twee tellen |
+
+De stringvariabelen komen sinds plugin 6 niet meer uit de `.opl` maar recht uit
+het geheugen: de bus draagt zijn eigen namenlijst bij zich (`lees_busvars`).
+Daardoor hoeft OMSI niet opnieuw op voor een bus die de app nog niet kende.
+`plugin/proef/bus.c` zet een nagebootste bus op dezelfde adressen neer, zodat
+dat na te rekenen is zonder het spel te starten.
 
 ---
 

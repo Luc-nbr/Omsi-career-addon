@@ -54,7 +54,17 @@ import { readTileGrid, type MapGeometry } from '../core/geo'
 import { LaneNetwork, type TripRoute } from '../core/routing'
 import { VehicleTracker, type VehiclePosition } from '../core/vehicle'
 import { buildIbisPlan, type IbisPlan } from '../core/ibis'
-import { describeLive, liveMap, pluginLogboek, readLive, stelLiveMappenIn } from '../core/live'
+import { apparatenVanBus, type Busapparaat } from '../core/busscherm'
+import {
+  describeLive,
+  leesSchermen,
+  liveMap,
+  pluginLogboek,
+  readLive,
+  schrijfVragen,
+  stelLiveMappenIn,
+  type LiveData
+} from '../core/live'
 import { findOmsiInstall, hasMaps, isOmsiInstall, resolveOmsiFolder } from '../core/install'
 import { isOmsiRunning, launchOmsi } from '../core/launch'
 import { ensurePlugin, pluginSourceDir, type PluginStatus } from '../core/pluginInstall'
@@ -947,7 +957,7 @@ function sessieGegevens(): SessionResult {
 
   const elapsed = live.time / 60 - start.clockMinutes
   const duty = currentDuty()
-  const status = describeLive(live, duty, start)
+  const status = describeLive(live, duty, start, busApparaten(live))
   /*
    * Hoe ver de dienst is: de haltes van de ritten die al achter je liggen, plus
    * hoever je in deze rit bent. Is de dienst uitgereden, dan zijn het er per
@@ -1456,6 +1466,81 @@ function spoorVanDeVerkoop(live: ReturnType<typeof readLive>): void {
   log(`verkoop: ${spoor}`)
 }
 
+/*
+ * DE SCHERMPJES VAN DE BUS DIE RIJDT
+ *
+ * De plugin zegt welke bus er onder je zit; in zijn `model.cfg` staat welke
+ * schermpjes erin zitten en welke stringvariabele elk van ze vult (zie
+ * core/busscherm.ts). Die indeling wordt een keer per bus van schijf gelezen --
+ * hij verandert niet zolang je in dezelfde bus zit -- en de namen eruit gaan
+ * naar de plugin, die ze in het geheugen opzoekt en terugstuurt in `vars`.
+ *
+ * Zo hoeft er voor een nieuwe bus niets in de app bij, en hoeft OMSI ook niet
+ * opnieuw op: de oude weg langs de .opl kon alleen namen lezen die al bij het
+ * starten van het spel bekend waren.
+ */
+const schermenPerBus = new Map<string, Busapparaat[]>()
+let vorigeVragen = ''
+
+function busApparaten(live: LiveData | undefined): Busapparaat[] | undefined {
+  const bus = live?.bus
+  if (!bus || (!bus.pad && !bus.model && !bus.bestand)) return undefined
+  let omsiMap: string
+  try {
+    omsiMap = omsi()
+  } catch {
+    /* Geen installatie gevonden: dan valt er ook geen model.cfg te lezen. */
+    return undefined
+  }
+  const sleutel = `${bus.pad}|${bus.model}|${bus.bestand}`
+  let apparaten = schermenPerBus.get(sleutel)
+  if (!apparaten) {
+    apparaten = apparatenVanBus(omsiMap, bus)
+    schermenPerBus.set(sleutel, apparaten)
+    log(
+      `bus: ${bus.naam || '?'} (${bus.model || bus.bestand || bus.pad}) -- ${apparaten.length} schermpjes: ` +
+        apparaten.map((a) => `${a.naam}x${a.variabelen.length}`).join(', ')
+    )
+  }
+
+  /*
+   * En zeggen wat we willen zien. De schermpjes eerst, daarna de namen die de
+   * kaartautomaat op zijn knoppen heeft -- die hangen niet aan een textuur en
+   * staan dus niet in de model.cfg, maar wel in de lijst die de plugin van de
+   * bus doorgeeft (schermen.json).
+   */
+  const namen: string[] = []
+  for (const apparaat of apparaten) {
+    for (const naam of apparaat.variabelen) if (!namen.includes(naam)) namen.push(naam)
+  }
+  /*
+   * De namen op de knoppen van de kaartautomaat hangen aan geen enkele textuur
+   * -- ze staan niet in de model.cfg -- maar ze zijn er wel, en de kaartverkoop
+   * wil ze tonen. Welke er te verwachten zijn, hangt af van welke automaat er
+   * in deze bus zit; zie `kaartnamenVan` in core/live.ts.
+   */
+  const soorten = apparaten.map((apparaat) => apparaat.naam.toLowerCase())
+  if (soorten.some((naam) => naam.startsWith('afr'))) {
+    for (let i = 0; i < 10; i++) namen.push(`afr_ticketname_${i}`)
+  }
+  if (soorten.some((naam) => naam.startsWith('atron'))) {
+    for (let i = 1; i <= 8; i++) namen.push(`atron_ticket${i}`)
+  }
+
+  const alles = leesSchermen()
+  for (const naam of Object.keys(alles?.vars ?? {})) {
+    if (/ticketname|_ticket\d|zifferneingabe|eingabe/i.test(naam) && !namen.includes(naam)) {
+      namen.push(naam)
+    }
+  }
+  const vraag = namen.slice(0, 64).join('\n')
+  if (vraag !== vorigeVragen) {
+    vorigeVragen = vraag
+    schrijfVragen(namen)
+  }
+  return apparaten
+}
+
 function pushFrame(): void {
   /*
    * Beelden maken heeft zin zolang er iemand kijkt. Dat is de overlay, maar ook
@@ -1478,7 +1563,7 @@ function pushFrame(): void {
   const frame = {
     connected: Boolean(live?.alive),
     laadt: laadtOmsi(Boolean(live?.alive)),
-    status: live ? describeLive(live, duty, baseline()) : undefined,
+    status: live ? describeLive(live, duty, baseline(), busApparaten(live)) : undefined,
     vehicle: vehicleOnMap(live, duty),
     duty,
     ibis: overlayIbis,
@@ -2603,7 +2688,7 @@ function registerHandlers(): void {
     if (!live) return { status: undefined, vehicle: undefined }
     const duty = currentDuty()
     return {
-      status: describeLive(live, duty, baseline()),
+      status: describeLive(live, duty, baseline(), busApparaten(live)),
       /*
        * En waar de bus op de kaart staat. De overlay krijgt dit al in zijn
        * beeld; het hoofdvenster heeft het nodig om dezelfde navigatie te kunnen

@@ -94,7 +94,7 @@ export type OmsiToets = keyof typeof OMSI_TOETSEN
  * gebeurt nooit. De telefoon zegt het dan. Hier en niet in core/live.ts, omdat
  * de vensters dit nummer ook nodig hebben en core/live bestanden leest.
  */
-export const PLUGIN_VERSIE = 5
+export const PLUGIN_VERSIE = 6
 
 /** Wat er van een poging tot aanmelden terugkomt. */
 export type AanmeldUitslag = 'nummer' | 'aangemeld' | 'fout'

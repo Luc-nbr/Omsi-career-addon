@@ -1420,6 +1420,44 @@
   min-height: 0;
 }
 
+/*
+ * De apparaten zoals ze in de bus zitten.
+ *
+ * Elk schermpje krijgt de kleur en de uitlijning die in de model.cfg van de bus
+ * staan (core/busscherm.ts), en de letters schalen mee met de breedte van het
+ * blokje -- vandaar `container-type`, zodat `cqw` op dit blokje slaat en niet
+ * op het venster. Zo blijft een regel van zestien tekens het schermpje vullen,
+ * op een telefoon net zo goed als op een iPad.
+ */
+.ibis-apparaten {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: auto;
+  min-height: 0;
+}
+
+.ibis-apparaat {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15em;
+  padding: 0.5em 0.6em;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-klein);
+  font-family: ui-monospace, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+  line-height: 1.25;
+  white-space: pre;
+  overflow: hidden;
+}
+
+/* Een oplichtend scherm gloeit een beetje; een lcd niet. */
+.ibis-apparaat span {
+  text-shadow: 0 0 0.35em currentColor;
+}
+
 .ibis-scherm {
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-klein);
