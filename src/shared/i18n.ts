@@ -3599,6 +3599,20 @@ const TEXT = {
     fr: 'OMSI n’était pas au premier plan, la touche n’est pas arrivée. Cliquez une fois dans le jeu et réessayez.',
     nl: 'OMSI stond niet vooraan, dus de toets kwam niet aan. Klik één keer in het spel en probeer het opnieuw.'
   },
+  'ovl.afrKeysOff': {
+    en: 'The buttons on this ticket machine are mouse-only in OMSI. The app can put them on a key; OMSI has to be restarted afterwards.',
+    de: 'Die Tasten dieses Druckers gibt es in OMSI nur per Maus. Die App kann sie auf eine Taste legen; danach muss OMSI neu gestartet werden.',
+    fr: 'Les touches de cette imprimante ne sont qu’à la souris dans OMSI. L’app peut les mettre sur une touche ; il faut ensuite relancer OMSI.',
+    nl: 'De knoppen van deze automaat zitten in OMSI alleen op de muis. De app kan ze aan een toets hangen; daarna moet OMSI opnieuw starten.'
+  },
+  'ovl.afrKeysOn': {
+    en: 'Put the buttons on keys',
+    de: 'Tasten einrichten',
+    fr: 'Attribuer des touches',
+    nl: 'Knoppen aan een toets hangen'
+  },
+  'ovl.afrPrint': { en: 'PRINT', de: 'DRUCKEN', fr: 'IMPRIMER', nl: 'DRUKKEN' },
+  'ovl.afrGive': { en: 'HAND OVER', de: 'AUSGEBEN', fr: 'REMETTRE', nl: 'AANGEVEN' },
   'ovl.saleDone': { en: 'Settled', de: 'Erledigt', fr: 'Réglé', nl: 'Afgerekend' },
   'ovl.saleExact': {
     en: 'Exact money: nothing to hand back.',

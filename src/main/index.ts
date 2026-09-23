@@ -55,6 +55,7 @@ import { LaneNetwork, type TripRoute } from '../core/routing'
 import { VehicleTracker, type VehiclePosition } from '../core/vehicle'
 import { buildIbisPlan, type IbisPlan } from '../core/ibis'
 import { apparatenVanBus, type Busapparaat } from '../core/busscherm'
+import { toetsenStand, zetBustoetsen } from '../core/bustoetsen'
 import {
   describeLive,
   leesSchermen,
@@ -1541,6 +1542,38 @@ function busApparaten(live: LiveData | undefined): Busapparaat[] | undefined {
   return apparaten
 }
 
+/*
+ * Welke knoppen van de apparaten in de bus aan een toets hangen.
+ *
+ * Eens per vijf tellen nagekeken: het verandert alleen als iemand keyboard.cfg
+ * aanpast, en dat is meestal de app zelf.
+ */
+let knoppenStand: { beschikbaar: string[] } | undefined
+let knoppenGekeken = 0
+
+function busknoppen(): { beschikbaar: string[] } {
+  const nu = Date.now()
+  if (knoppenStand && nu - knoppenGekeken < 5000) return knoppenStand
+  knoppenGekeken = nu
+  try {
+    knoppenStand = { beschikbaar: toetsenStand(omsi()).aanwezig.map((toets) => toets.actie) }
+  } catch {
+    knoppenStand = { beschikbaar: [] }
+  }
+  return knoppenStand
+}
+
+function zetBusknoppenAan(): { toegevoegd: number; geenPlek: number } | undefined {
+  try {
+    const uitslag = zetBustoetsen(omsi())
+    knoppenStand = undefined
+    return uitslag
+  } catch (fout) {
+    logFout('busknoppen bijschrijven', fout)
+    return undefined
+  }
+}
+
 function pushFrame(): void {
   /*
    * Beelden maken heeft zin zolang er iemand kijkt. Dat is de overlay, maar ook
@@ -1575,6 +1608,7 @@ function pushFrame(): void {
      * een handvol regels.
      */
     kaartjes: kaartsetVoorOverlay(duty?.mapFolder),
+    knoppen: busknoppen(),
     /*
      * Wie er rijdt, met zijn personeelsnummer en pincode. Die gaan mee zodat de
      * telefoon de aanmelding zelf kan nakijken zonder het hoofdproces erbij te
@@ -2116,6 +2150,10 @@ function apparaatBronnen(): ApparaatBronnen {
           telefoon.ibisReady = String(opdracht.tripKey ?? '')
           telefoonGewijzigd()
           return { ok: true }
+        case 'busknoppen': {
+          zetBusknoppenAan()
+          break
+        }
         case 'toets': {
           /* Alleen de toetsen uit de lijst; zie `OMSI_TOETSEN`. */
           const naam = String(opdracht.toets ?? '') as OmsiToets
@@ -2531,6 +2569,7 @@ function registerHandlers(): void {
     telefoonGewijzigd()
   })
   handle('telefoon:toets', (_event, actie: OmsiToets) => omsiToets(actie))
+  handle('telefoon:knoppen', () => zetBusknoppenAan())
 
   handle('apparaat:start', async () => {
     const nu = readSettings(userData())

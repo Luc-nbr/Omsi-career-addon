@@ -77,6 +77,7 @@ const api: CareerApi = {
   telefoonPauze: (vanaf) => ipcRenderer.invoke('telefoon:pauze', vanaf),
   telefoonIbis: (tripKey) => ipcRenderer.invoke('telefoon:ibis', tripKey),
   telefoonToets: (actie) => ipcRenderer.invoke('telefoon:toets', actie),
+  telefoonKnoppen: () => ipcRenderer.invoke('telefoon:knoppen'),
   apparaatStart: () => ipcRenderer.invoke('apparaat:start'),
   apparaatStop: () => ipcRenderer.invoke('apparaat:stop'),
   apparaatStand: () => ipcRenderer.invoke('apparaat:stand'),

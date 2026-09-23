@@ -15,6 +15,7 @@ import { punctuality } from "../../shared/status";
 import { t, type Language, type TextKey } from "../../shared/i18n";
 import {
   LEGE_TELEFOON,
+  OMSI_TOETSEN,
   PLUGIN_VERSIE,
   type AanmeldUitslag,
   type OmsiToets,
@@ -73,6 +74,8 @@ export interface TelefoonActies {
   ibisKlaar(tripKey: string): void;
   /** Een toets van OMSI laten indrukken; zie `OmsiToets`. */
   toets(actie: OmsiToets): void;
+  /** De knoppen van de apparaten in de bus bereikbaar maken; zie core/bustoetsen.ts. */
+  knoppenAan(): void;
 }
 
 /** Wat de telefoon van het beeld nodig heeft. */
@@ -1045,6 +1048,40 @@ function Verkoopscherm({
  * en de drie standen). De plugin drukt ze in -- zie `OMSI_TOETSEN` -- en dus
  * bedien je hem van de bank, van je iPad, zonder aan het stuur te zitten.
  */
+/**
+ * De naam van een apparaat, kort genoeg voor een knopje.
+ *
+ * De bus noemt ze naar zijn variabelen: `LAWO_display_line`, `afr_display`,
+ * `ticketprinter_display`. Het staartje zegt niets meer dan "dit is een
+ * schermpje", dus dat gaat eraf.
+ */
+function apparaatNaam(naam: string): string {
+  const kort = naam
+    .replace(/[_-]?(display|anzeige|scherm|line|zeile|text)s?[_-]?/gi, " ")
+    .replace(/[_-]+/g, " ")
+    .trim();
+  return (kort || naam).slice(0, 14).toUpperCase();
+}
+
+/**
+ * De kaartknoppen van de AFR 200, met wat erop staat.
+ *
+ * Welke kaartsoort elke knop kiest staat in afr200.osc: `ticket_1` pakt
+ * `afr_ticket_kurz`, `ticket_2` de 24-uurskaart, `ticket_3` het kinderkaartje
+ * en `ticket_4` het korte kinderkaartje; de rest spreekt voor zich.
+ */
+const AFR_KAARTEN: [OmsiToets, string][] = [
+  ["afrKurz", "KURZ"],
+  ["afr24h", "24H"],
+  ["afrKind", "KIND"],
+  ["afrKindKurz", "KIND KURZ"],
+  ["afrGrp", "GRP"],
+  ["afrMo", "MO"],
+  ["afrWo", "WO"],
+  ["afrSmo", "SMO"],
+  ["afrSwo", "SWO"],
+];
+
 function IbisApp({
   frame,
   rit,
@@ -1059,6 +1096,52 @@ function IbisApp({
   const status = frame.status;
   const scherm = status?.ibisScherm;
   const apparaten = scherm?.apparaten ?? [];
+  /*
+   * Welke schermpjes de moeite waard zijn om te tonen: de IBIS en de
+   * kaartautomaat. De thermometer, de klok en de kilometerteller staan er ook
+   * in -- ze kloppen, en ze zijn te kiezen als er verder niets is -- maar wie
+   * rijdt wil het apparaat zien waarmee hij werkt.
+   *
+   * Schermpjes met "punkte" in hun naam zijn een tweede kleurlaag over hetzelfde
+   * veld (de AFR tekent zijn puntjesraster zo); die hoeven er niet apart bij.
+   */
+  const bruikbaar = apparaten.filter(
+    (apparaat) => !/punkt|dots/i.test(apparaat.naam),
+  );
+  const toonbaar = bruikbaar.some((apparaat) => apparaat.soort !== "anders")
+    ? bruikbaar.filter((apparaat) => apparaat.soort !== "anders")
+    : bruikbaar;
+  const [welke, setWelke] = useState(0);
+  const getoond = toonbaar[Math.min(welke, toonbaar.length - 1)];
+  const langsteRegel = Math.max(
+    10,
+    ...(getoond?.regels.map((regel) => regel.length) ?? [10]),
+  );
+
+  /*
+   * Zit er een kaartautomaat in deze bus, en hangen zijn knoppen al aan een
+   * toets? `knoppen.beschikbaar` komt uit keyboard.cfg; zie core/bustoetsen.ts.
+   */
+  const heeftAfr = apparaten.some((apparaat) => /^afr/i.test(apparaat.naam));
+  const beschikbaar = frame.knoppen?.beschikbaar ?? [];
+  const kan = (actie: OmsiToets): boolean =>
+    beschikbaar.includes(OMSI_TOETSEN[actie]);
+  const ontbreekt = heeftAfr && !kan("afrDrucken");
+  const afrKnop = (
+    actie: OmsiToets,
+    opschrift: string,
+    soort?: string,
+  ): JSX.Element => (
+    <button
+      key={actie}
+      type="button"
+      className={soort ? `afr-knop ${soort}` : "afr-knop"}
+      disabled={!kan(actie)}
+      onClick={() => acties.toets(actie)}
+    >
+      {opschrift}
+    </button>
+  );
   /*
    * Met een oudere plugin in het spel komen de schermpjes van de bus niet door
    * en tekent de app zijn eigen scherm, zonder dat iemand weet waarom.
@@ -1101,47 +1184,53 @@ function IbisApp({
         letterlijk; dat is de spiegel. Zo niet, dan het scherm van de app zelf.
       */}
       {/*
-        De apparaten zoals ze in deze bus zitten. Welke dat zijn staat in de
-        model.cfg van de bus (core/busscherm.ts): welke variabele bij welk
-        schermpje hoort, in welke kleur en hoe groot. De regels komen uit het
-        geheugen van OMSI. Daarmee is dit geen nabootsing meer maar hetzelfde
-        beeld als in de cabine.
+        Eén schermpje, groot genoeg om te lezen terwijl je rijdt.
 
-        De letters schalen mee met de breedte: een regel van zestien tekens moet
-        het schermpje vullen, net als in de bus. Bij een vaste-breedteletter is
-        een teken ongeveer 0,6 keer de letterhoogte, dus past 166/regellengte.
-        Met een bovengrens erop in de css -- een breed paneel zou er anders
-        letters van een halve decimeter van maken.
+        Welke schermpjes de bus heeft staat in zijn model.cfg (core/busscherm.ts):
+        welke variabele bij welk schermpje hoort, in welke kleur en hoe groot.
+        De regels komen uit het geheugen van OMSI, dus dit is hetzelfde beeld als
+        in de cabine. Ze alle negen tegelijk tonen -- ook de thermometer en de
+        klok -- maakte er zes streepjes van waarin niets meer te lezen viel;
+        daarom staat er nu één, met een rijtje knopjes om te wisselen.
+
+        De letters vullen de breedte: bij een vaste-breedteletter is een teken
+        ongeveer 0,6 keer de letterhoogte, dus past 166/regellengte. De css zet
+        er een bovengrens op, anders wordt een breed paneel een affiche.
       */}
-      {apparaten.length > 0 ? (
-        <div className="ibis-apparaten">
-          {apparaten.map((apparaat) => {
-            const langste = Math.max(
-              10,
-              ...apparaat.regels.map((regel) => regel.length),
-            );
-            return (
-              <div
-                key={apparaat.naam}
-                className="ibis-apparaat"
-                style={{
-                  background: apparaat.achtergrond,
-                  color: apparaat.tekstkleur,
-                  ["--ibis-letter" as string]: `${(166 / langste).toFixed(2)}cqw`,
-                  textAlign:
-                    apparaat.uitlijning === "links"
-                      ? "left"
-                      : apparaat.uitlijning === "rechts"
-                        ? "right"
-                        : "center",
-                }}
-              >
-                {apparaat.regels.map((regel, index) => (
-                  <span key={index}>{regel || "\u00a0"}</span>
-                ))}
-              </div>
-            );
-          })}
+      {getoond ? (
+        <div className="ibis-groot">
+          {toonbaar.length > 1 && (
+            <div className="ibis-keuze">
+              {toonbaar.map((apparaat, index) => (
+                <button
+                  key={apparaat.naam}
+                  type="button"
+                  className={index === welke ? "aan" : undefined}
+                  onClick={() => setWelke(index)}
+                >
+                  {apparaatNaam(apparaat.naam)}
+                </button>
+              ))}
+            </div>
+          )}
+          <div
+            className="ibis-apparaat"
+            style={{
+              background: getoond.achtergrond,
+              color: getoond.tekstkleur,
+              ["--ibis-letter" as string]: `${(166 / langsteRegel).toFixed(2)}cqw`,
+              textAlign:
+                getoond.uitlijning === "links"
+                  ? "left"
+                  : getoond.uitlijning === "rechts"
+                    ? "right"
+                    : "center",
+            }}
+          >
+            {getoond.regels.map((regel, index) => (
+              <span key={index}>{regel || "\u00a0"}</span>
+            ))}
+          </div>
         </div>
       ) : scherm && scherm.regels.length > 0 ? (
         /*
@@ -1180,6 +1269,39 @@ function IbisApp({
                   : `${status.deltaSeconds > 0 ? "+" : ""}${Math.round(status.deltaSeconds / 60)}`}
               </b>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/*
+        De kaartautomaat zoals hij in de bus zit.
+
+        De AFR 200 kiest zijn kaartsoort met een eigen knop -- KURZ, 24H, KIND,
+        GRP, MO, WO -- en drukt hem dan af met DRUCKEN. Dat zijn in OMSI geen
+        toetsen maar muisknoppen op het model, en daarom staat er een knop bij om
+        ze eenmalig aan een toets te hangen (core/bustoetsen.ts). Tot dat gebeurd
+        is staan ze er grijs bij: ze zouden toch niets doen.
+      */}
+      {heeftAfr && (
+        <div className="afr">
+          {ontbreekt && (
+            <div className="afr-aanzetten">
+              <p>{t(language, "ovl.afrKeysOff")}</p>
+              <button type="button" onClick={() => acties.knoppenAan()}>
+                {t(language, "ovl.afrKeysOn")}
+              </button>
+            </div>
+          )}
+          <div className="afr-kaarten">
+            {AFR_KAARTEN.map(([actie, opschrift]) => afrKnop(actie, opschrift))}
+          </div>
+          <div className="afr-doen">
+            {afrKnop("afrDrucken", t(language, "ovl.afrPrint"), "druk")}
+            {afrKnop("afrGeven", t(language, "ovl.afrGive"), "geef")}
+            {afrKnop("afrModul", "U")}
+            {afrKnop("afrUhr", "Z1")}
+            {afrKnop("afrRueck", "HST \u25c0")}
+            {afrKnop("afrVor", "HST \u25b6")}
           </div>
         </div>
       )}

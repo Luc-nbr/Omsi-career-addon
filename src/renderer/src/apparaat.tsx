@@ -90,6 +90,7 @@ function Apparaat(): JSX.Element {
       pauze: (vanaf) => void stuur({ wat: "pauze", vanaf }).catch(() => undefined),
       ibisKlaar: (tripKey) => void stuur({ wat: "ibis", tripKey }).catch(() => undefined),
       toets: (actie) => void stuur({ wat: "toets", toets: actie }).catch(() => undefined),
+      knoppenAan: () => void stuur({ wat: "busknoppen" }).catch(() => undefined),
     }),
     [],
   );

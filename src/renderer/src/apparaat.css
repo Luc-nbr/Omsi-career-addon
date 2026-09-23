@@ -260,8 +260,13 @@ body,
   }
 
   .apparaat-telefoon .ibis-apparaat {
-    max-width: 620px;
-    --ibis-letter-max: 34px;
+    max-width: 760px;
+    --ibis-letter-max: 46px;
+  }
+
+  .apparaat-telefoon .ibis-keuze button {
+    padding: 10px 16px;
+    font-size: 14px;
   }
 
   .apparaat-telefoon .ibis-kop b {

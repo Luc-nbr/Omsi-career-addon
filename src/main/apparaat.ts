@@ -60,7 +60,7 @@ export interface ApparaatBronnen {
 
 /** Wat een toestel mag vragen. Alles wat er niet in staat, wordt geweigerd. */
 export interface TelefoonOpdracht {
-  wat: 'aanmelden' | 'overslaan' | 'aanvaard' | 'pauze' | 'ibis' | 'toets'
+  wat: 'aanmelden' | 'overslaan' | 'aanvaard' | 'pauze' | 'ibis' | 'toets' | 'busknoppen'
   nummer?: string
   pin?: string
   vanaf?: number

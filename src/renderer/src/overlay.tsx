@@ -186,6 +186,7 @@ function Overlay(): JSX.Element | null {
       pauze: (vanaf) => void window.career.telefoonPauze(vanaf),
       ibisKlaar: (tripKey) => void window.career.telefoonIbis(tripKey),
       toets: (actie) => void window.career.telefoonToets(actie),
+      knoppenAan: () => void window.career.telefoonKnoppen(),
     }),
     [],
   );

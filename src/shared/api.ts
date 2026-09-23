@@ -501,6 +501,8 @@ export interface CareerApi {
    * aankwam, zegt het volgende beeld (`status.opdracht`).
    */
   telefoonToets(actie: OmsiToets): Promise<boolean>
+  /** De knoppen van de apparaten in de bus bijschrijven; zie core/bustoetsen.ts. */
+  telefoonKnoppen(): Promise<{ toegevoegd: number; geenPlek: number } | undefined>
   /** De navigatie op een telefoon of tablet: de server aan, en het adres voor de QR-code. */
   apparaatStart(): Promise<ApparaatStand>
   apparaatStop(): Promise<ApparaatStand>

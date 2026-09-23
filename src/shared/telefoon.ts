@@ -81,7 +81,46 @@ export const OMSI_TOETSEN = {
   ibisWissen: 'IBIS_loeschen',
   ibisLijn: 'IBIS_setmode_linie_kurs',
   ibisRoute: 'IBIS_setmode_route',
-  ibisBestemming: 'IBIS_setmode_ziel'
+  ibisBestemming: 'IBIS_setmode_ziel',
+  /*
+   * De knoppen van de kaartautomaat en het LAWO-paneel. Die staan niet in
+   * OMSI's eigen keyboard.cfg -- in de bus zijn het muisknoppen -- maar het
+   * spel geeft elke naam uit dat bestand door aan het busscript, dus de app kan
+   * ze er met toestemming bij schrijven. Zie core/bustoetsen.ts, waar ook staat
+   * wat elke knop doet.
+   */
+  afrModul: 'IBIS_Modul',
+  afrUhr: 'IBIS_Uhr',
+  afrVor: 'IBIS_vor',
+  afrRueck: 'IBIS_rueck',
+  afrKurz: 'ticketprinter_button_ticket_1',
+  afr24h: 'ticketprinter_button_ticket_2',
+  afrKind: 'ticketprinter_button_ticket_3',
+  afrKindKurz: 'ticketprinter_button_ticket_4',
+  afrGrp: 'ticketprinter_button_ticket_grp',
+  afrMo: 'ticketprinter_button_ticket_mo',
+  afrWo: 'ticketprinter_button_ticket_wo',
+  afrSmo: 'ticketprinter_button_ticket_smo',
+  afrSwo: 'ticketprinter_button_ticket_swo',
+  afrDrucken: 'ticketprinter_button_enter',
+  afrGeven: 'ticketprinter_getticket',
+  lawoMode: 'LAWO_Taste_MODE',
+  lawoEnter: 'LAWO_Taste_ENTER',
+  lawoWissen: 'LAWO_Taste_CE',
+  lawoL: 'LAWO_Taste_L',
+  lawoM: 'LAWO_Taste_M',
+  lawoA: 'LAWO_Taste_A',
+  lawoB: 'LAWO_Taste_B',
+  lawo0: 'LAWO_Taste_0',
+  lawo1: 'LAWO_Taste_1',
+  lawo2: 'LAWO_Taste_2',
+  lawo3: 'LAWO_Taste_3',
+  lawo4: 'LAWO_Taste_4',
+  lawo5: 'LAWO_Taste_5',
+  lawo6: 'LAWO_Taste_6',
+  lawo7: 'LAWO_Taste_7',
+  lawo8: 'LAWO_Taste_8',
+  lawo9: 'LAWO_Taste_9'
 } as const
 
 export type OmsiToets = keyof typeof OMSI_TOETSEN

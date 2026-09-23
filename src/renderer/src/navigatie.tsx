@@ -40,6 +40,15 @@ export interface NavFrame {
   laadt?: boolean;
   /** De kaartsoorten van deze kaart, met hun prijzen; zie core/kaartjes.ts. */
   kaartjes?: Kaartset;
+  /**
+   * Welke knoppen van de apparaten in de bus aan een toets hangen.
+   *
+   * OMSI kent maar veertien IBIS-commando's; de kaartautomaat en het LAWO-paneel
+   * zijn in het spel muisknoppen. De app kan ze bijschrijven in keyboard.cfg
+   * (core/bustoetsen.ts), en tot dat gebeurd is hoort de telefoon ze niet als
+   * werkende knoppen te tonen.
+   */
+  knoppen?: { beschikbaar: string[] };
 }
 
 /**

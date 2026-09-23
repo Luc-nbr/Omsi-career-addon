@@ -165,14 +165,24 @@ app.whenReady().then(async () => {
   })
   await wacht(1800)
   const uitDeBus = await js(overlay, `(() => {
-    const vakken = [...document.querySelectorAll('.ibis-apparaat')]
+    /* Eén groot scherm, met knopjes om van apparaat te wisselen. */
+    const vak = document.querySelector('.ibis-apparaat')
+    const keuze = [...document.querySelectorAll('.ibis-keuze button')]
     const stijl = (e) => e ? getComputedStyle(e) : undefined
-    return {
-      apparaten: vakken.length,
-      eerste: vakken[0] ? [...vakken[0].querySelectorAll('span')].map((s) => s.textContent) : [],
-      kleuren: vakken.slice(0, 2).map((v) => stijl(v).color + ' op ' + stijl(v).backgroundColor)
+    const lees = () => {
+      const v = document.querySelector('.ibis-apparaat')
+      return { regels: [...v.querySelectorAll('span')].map((s) => s.textContent), kleur: stijl(v).color + ' op ' + stijl(v).backgroundColor }
     }
+    const eerst = lees()
+    keuze[1]?.click()
+    return { schermen: vak ? 1 : 0, keuzes: keuze.length, namen: keuze.map((b) => b.textContent), eerste: eerst.regels, kleurEerste: eerst.kleur }
   })()`)
+  await wacht(400)
+  const tweede = await js(overlay, `(() => {
+    const v = document.querySelector('.ibis-apparaat')
+    return { regels: [...v.querySelectorAll('span')].map((s) => s.textContent), kleur: getComputedStyle(v).color }
+  })()`)
+  console.log('na wisselen van apparaat:', JSON.stringify(tweede))
   console.log('uit de bus zelf:', JSON.stringify(uitDeBus))
 
   const gevraagd = (() => {
@@ -199,10 +209,12 @@ app.whenReady().then(async () => {
     eigen.standen === 3 &&
     spiegel.spiegel &&
     spiegel.regels[0] === '732 LICHTENTANNE' &&
-    /* De bus levert minstens de LAWO en de AFR, met hun eigen kleuren. */
-    uitDeBus.apparaten >= 2 &&
+    /* Eén groot scherm, en knopjes voor de andere apparaten van deze bus. */
+    uitDeBus.schermen === 1 &&
+    uitDeBus.keuzes >= 2 &&
     uitDeBus.eerste[0] === '320 OBERHOF' &&
-    uitDeBus.kleuren.some((k) => k.includes('rgb(95, 211, 188)')) &&
+    /* Het tweede apparaat is de AFR, met zijn eigen mintgroene letters. */
+    tweede.kleur.includes('rgb(95, 211, 188)') &&
     gevraagd.includes('afr_display_1') &&
     gevraagd.includes('afr_ticketname_0') &&
     /^\d+ 79 4$/.test(opdracht)
