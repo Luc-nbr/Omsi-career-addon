@@ -1587,6 +1587,21 @@
   text-overflow: clip;
 }
 
+/*
+ * Bij een nagebouwd apparaat vult het schermpje de hele breedte, net als het
+ * toetsenbord eronder, en groeien de letters mee met het venster: dat is een
+ * apparaat waar je vanaf een meter afstand op kijkt.
+ *
+ * Drie grenzen tegelijk. De breedte van het blok bepaalt hoe groot een letter
+ * mag zijn om er twintig naast elkaar te krijgen (`--ibis-letter`); daarboven
+ * een vaste bovengrens, en daarboven een deel van de schermhoogte -- anders
+ * neemt een schermpje van vier regels op een liggende tablet het halve beeld.
+ */
+.ibis-apparaat.paneel-scherm {
+  max-width: none;
+  font-size: min(var(--ibis-letter, 16px), var(--paneel-letter-max, 64px), 8vh);
+}
+
 /* Een oplichtend scherm gloeit een beetje; een lcd niet. */
 .ibis-apparaat span {
   text-shadow: 0 0 0.35em currentColor;

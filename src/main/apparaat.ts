@@ -393,8 +393,15 @@ async function stuurBestand(antwoord: ServerResponse, pad: string, blijvend: boo
   antwoord.writeHead(200, {
     ...VEILIG,
     'Content-Type': SOORTEN[extname(pad).toLowerCase()] ?? 'application/octet-stream',
-    // De bestanden in assets/ dragen hun inhoud in de naam; die kunnen blijven liggen.
-    'Cache-Control': blijvend ? 'public, max-age=31536000, immutable' : 'no-cache'
+    /*
+     * De bestanden in assets/ dragen hun inhoud in de naam; die kunnen blijven
+     * liggen. De pagina zelf niet: `no-cache` bleek te zwak. Een iPad die de
+     * app op zijn beginscherm heeft staan, hield de oude pagina vast en laadde
+     * daarmee de oude scripts -- op de pc stond het nieuwe scherm, op de tablet
+     * het oude, en daar was van buiten niets aan te zien. `no-store` zegt: niet
+     * bewaren, ook niet even.
+     */
+    'Cache-Control': blijvend ? 'public, max-age=31536000, immutable' : 'no-store'
   })
   antwoord.end(inhoud)
 }

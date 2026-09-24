@@ -129,8 +129,9 @@ enum {
  * 5  de AFR 200 erbij, en opdrachten die niet aan een oplopend nummer hangen
  * 6  de eigen stringvariabelen van de bus, met naam, rechtstreeks uit het geheugen
  * 7  de lijst met mensen goed gelezen, en daarmee eindelijk de kaartverkoop
+ * 8  in schermen.json ook wat er met de laatste opdracht gebeurd is
  */
-#define PLUGIN_VERSIE 7
+#define PLUGIN_VERSIE 8
 
 /*
  * Drempels voor hard remmen en optrekken, in meter per seconde kwadraat.
@@ -368,6 +369,8 @@ static wchar_t g_vragenPad[MAX_PATH];
 static wchar_t g_schermenPad[MAX_PATH];
 static wchar_t g_schermenTemp[MAX_PATH];
 static int g_opdrachtNr;    /* het laatst uitgevoerde nummer */
+static int g_opdrachtScancode; /* en welke toets dat was */
+static int g_opdrachtMod;
 static int g_opdrachtFout;  /* 0 gelukt, 1 OMSI stond niet vooraan */
 static ULONGLONG g_opdrachtGekeken;
 static ULONGLONG g_lastWrite;
@@ -611,6 +614,8 @@ static void lees_opdracht(void) {
     return;
   }
   g_opdrachtFout = 0;
+  g_opdrachtScancode = scancode;
+  g_opdrachtMod = modifiers;
   druk_toets((WORD)scancode, modifiers);
   meld("opdracht %d: toets %d (modifiers %d)", nr, scancode, modifiers);
 }
@@ -1011,10 +1016,18 @@ static void lees_busvars(DWORD voertuig) {
                        */
                       "\"verkoop\":{\"mensen\":%d,\"koper\":%d,\"kaartje\":%d,\"soort\":%d,"
                       "\"prijs\":%.2f,\"gegeven\":%.2f,\"klaar\":%d},"
+                      /*
+                       * En wat er met de laatste toets gebeurd is: welk nummer,
+                       * welke scancode, en of hij werkelijk ingedrukt is. Zonder
+                       * dit valt van buitenaf niet te zien of een knop die niets
+                       * lijkt te doen wel bij OMSI aankwam.
+                       */
+                      "\"opdracht\":{\"nr\":%d,\"scancode\":%d,\"modifiers\":%d,\"fout\":%d},"
                       "\"vars\":{",
                       g_busNaam, g_busModel, g_busPad, g_busBestand, aantalNamen,
                       g_mem.mensen, g_mem.koper, g_mem.ticketIndex, g_mem.ticketSoort,
-                      g_mem.ticketPrijs, g_mem.ticketGegeven, g_mem.ticketKlaar);
+                      g_mem.ticketPrijs, g_mem.ticketGegeven, g_mem.ticketKlaar,
+                      g_opdrachtNr, g_opdrachtScancode, g_opdrachtMod, g_opdrachtFout);
   if (p <= 0) return;
   int geteld = 0;
   for (int i = 0; i < g_namenAantal && i < aantalWaarden; i++) {

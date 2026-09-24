@@ -264,9 +264,29 @@ body,
     --ibis-letter-max: 46px;
   }
 
+  /* Op een tablet pakt het apparaat de volle breedte, met letters naar rato. */
+  .apparaat-telefoon .ibis-apparaat.paneel-scherm {
+    --paneel-letter-max: 96px;
+  }
+
   .apparaat-telefoon .ibis-keuze button {
     padding: 10px 16px;
     font-size: 14px;
+  }
+
+  /*
+   * Het nagebouwde apparaat. De gewone IBIS-knoppen mogen fors zijn -- dat zijn
+   * er twaalf -- maar een AFR 200 heeft er zesentwintig, en dan past er met die
+   * maat nog geen derde van op het scherm.
+   */
+  .apparaat-telefoon .paneel-knop {
+    min-height: 56px;
+    font-size: 15px;
+  }
+
+  .apparaat-telefoon .paneel-toetsen,
+  .apparaat-telefoon .paneel-rij {
+    gap: 7px;
   }
 
   .apparaat-telefoon .ibis-kop b {

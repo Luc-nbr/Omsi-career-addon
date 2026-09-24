@@ -95,7 +95,7 @@ app.whenReady().then(async () => {
         }
       : { ok: 0 },
     ibis: ibis ?? { bestemming: '', lijn: '', lawo1: '', lawo2: '', lawo3: '', lawo4: '' },
-    plugin: 6,
+    plugin: 8,
     ...(extra ?? {})
   })
   const schrijf = (deur, ticket, verkoop, ibis, extra) =>

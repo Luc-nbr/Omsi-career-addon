@@ -1,5 +1,6 @@
 import { copyFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { OMSI_TOETSEN } from '../shared/telefoon'
 import { log } from './logboek'
 import { MOD_CTRL, MOD_SHIFT, readKeyboard, writeKeyboard, type KeyBinding } from './omsiKeys'
 
@@ -85,17 +86,57 @@ export const BUSTOETSEN: Bustoets[] = [
 ]
 
 /**
- * Toetsen waar we ze aan mogen hangen.
+ * Toetsen waar we de knoppen aan mogen hangen.
  *
- * Ctrl+Shift erbij, want die combinatie gebruikt OMSI nergens: van de 128
- * bindingen staat er geen enkele op 6. Het numerieke blok eerst -- dat ligt bij
- * elkaar en OMSI gebruikt het al voor de IBIS -- daarna de letters.
+ * WAAROM CTRL EN NIET CTRL+SHIFT
+ * Eerst stond hier Ctrl+Shift, want dat gebruikt OMSI nergens. Precies daarom
+ * was het ook nergens bewezen: geen van de 128 bindingen van het spel staat op
+ * 6, dus of OMSI die combinatie überhaupt herkent viel nergens aan af te lezen
+ * -- en in de praktijk deden de knoppen niets. Ctrl alleen is wel bewezen: de
+ * IBIS-cijfers staan erop, en "Quit OMSI" ook.
+ *
+ * De letters en de functietoetsen dus, met Ctrl. Wat al bezet is valt vanzelf
+ * af; komen we tekort, dan Shift en als laatste toch Ctrl+Shift.
  */
-const KANDIDATEN: number[] = [
-  79, 80, 81, 75, 76, 77, 71, 72, 73, 82, 83, 74, 78, 55, 181,
-  30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38, 50, 49, 24, 25, 16, 19, 31, 20, 22, 47, 17, 45, 21, 44
+const LETTERS = [
+  30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38, 50, 49, 24, 25, 19, 31, 20, 22, 47, 17, 45, 21, 44
 ]
-const KANDIDAAT_MOD = MOD_CTRL | MOD_SHIFT
+const FUNCTIETOETSEN = [59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 87, 88]
+const KANDIDATEN: { scancode: number; modifiers: number }[] = [
+  ...LETTERS.map((scancode) => ({ scancode, modifiers: MOD_CTRL })),
+  ...FUNCTIETOETSEN.map((scancode) => ({ scancode, modifiers: MOD_CTRL })),
+  ...LETTERS.map((scancode) => ({ scancode, modifiers: MOD_SHIFT })),
+  ...LETTERS.map((scancode) => ({ scancode, modifiers: MOD_CTRL | MOD_SHIFT }))
+]
+
+/**
+ * Modificaties waarvan we weten dat OMSI ze doorgeeft, omdat het spel ze zelf
+ * gebruikt. Staat een van onze knoppen op iets anders, dan is hij van een
+ * eerdere versie van de app en hoort hij opnieuw gelegd te worden.
+ */
+const GOEDE_MOD = [MOD_CTRL, MOD_SHIFT, 0]
+
+/**
+ * Welke toetsen die de telefoon kan indrukken er werkelijk liggen.
+ *
+ * Alles uit `OMSI_TOETSEN` dat in keyboard.cfg staat op een modificatie die
+ * OMSI zelf ook gebruikt. Een knop die op een onbewezen combinatie staat telt
+ * niet mee: hij zou er in de app uitzien alsof hij werkt.
+ */
+export function bruikbareToetsen(omsiPath: string): string[] {
+  let bindings: KeyBinding[] = []
+  try {
+    bindings = readKeyboard(omsiPath)
+  } catch {
+    return []
+  }
+  const goed = new Set(
+    bindings
+      .filter((binding) => GOEDE_MOD.includes(binding.modifiers & ~1))
+      .map((binding) => binding.action.toLowerCase())
+  )
+  return Object.values(OMSI_TOETSEN).filter((naam) => goed.has(naam.toLowerCase()))
+}
 
 function backupPad(omsiPath: string): string {
   return join(omsiPath, 'Inputs', 'keyboard.omsi-enhancer.bak')
@@ -113,10 +154,14 @@ export function toetsenStand(omsiPath: string): {
   } catch {
     return { ontbreekt: BUSTOETSEN, aanwezig: [], backup: false }
   }
-  const bekend = new Set(bindings.map((binding) => binding.action.toLowerCase()))
+  const goed = new Set(
+    bindings
+      .filter((binding) => GOEDE_MOD.includes(binding.modifiers & ~1))
+      .map((binding) => binding.action.toLowerCase())
+  )
   return {
-    ontbreekt: BUSTOETSEN.filter((toets) => !bekend.has(toets.actie.toLowerCase())),
-    aanwezig: BUSTOETSEN.filter((toets) => bekend.has(toets.actie.toLowerCase())),
+    ontbreekt: BUSTOETSEN.filter((toets) => !goed.has(toets.actie.toLowerCase())),
+    aanwezig: BUSTOETSEN.filter((toets) => goed.has(toets.actie.toLowerCase())),
     backup: existsSync(backupPad(omsiPath))
   }
 }
@@ -129,7 +174,15 @@ export function toetsenStand(omsiPath: string): {
  * bij kwamen.
  */
 export function zetBustoetsen(omsiPath: string): { toegevoegd: number; geenPlek: number } {
-  const bindings = readKeyboard(omsiPath)
+  const onze = new Set(BUSTOETSEN.map((toets) => toets.actie.toLowerCase()))
+  /*
+   * Onze eigen regels gaan er eerst uit. Anders blijft een knop van een vorige
+   * versie op zijn oude toets staan -- en dan zegt de app dat alles er is
+   * terwijl die knop niets doet.
+   */
+  const bindings = readKeyboard(omsiPath).filter(
+    (binding) => !(onze.has(binding.action.toLowerCase()) && !GOEDE_MOD.includes(binding.modifiers & ~1))
+  )
   const bezet = new Set(bindings.map((binding) => `${binding.scancode}|${binding.modifiers}`))
   const bekend = new Set(bindings.map((binding) => binding.action.toLowerCase()))
   /* De sectie waar de knoppen van voertuigen in horen; zonder die sectie achteraan. */
@@ -147,13 +200,20 @@ export function zetBustoetsen(omsiPath: string): { toegevoegd: number; geenPlek:
   let geenPlek = 0
   for (const toets of BUSTOETSEN) {
     if (bekend.has(toets.actie.toLowerCase())) continue
-    const scancode = KANDIDATEN.find((code) => !bezet.has(`${code}|${KANDIDAAT_MOD}`))
-    if (scancode === undefined) {
+    const plek = KANDIDATEN.find(
+      (kandidaat) => !bezet.has(`${kandidaat.scancode}|${kandidaat.modifiers}`)
+    )
+    if (!plek) {
       geenPlek += 1
       continue
     }
-    bezet.add(`${scancode}|${KANDIDAAT_MOD}`)
-    bindings.push({ action: toets.actie, section: sectie, scancode, modifiers: KANDIDAAT_MOD })
+    bezet.add(`${plek.scancode}|${plek.modifiers}`)
+    bindings.push({
+      action: toets.actie,
+      section: sectie,
+      scancode: plek.scancode,
+      modifiers: plek.modifiers
+    })
     toegevoegd += 1
   }
   if (toegevoegd > 0) writeKeyboard(omsiPath, bindings)
@@ -165,9 +225,7 @@ export function zetBustoetsen(omsiPath: string): { toegevoegd: number; geenPlek:
 export function haalBustoetsenWeg(omsiPath: string): number {
   const bindings = readKeyboard(omsiPath)
   const onze = new Set(BUSTOETSEN.map((toets) => toets.actie.toLowerCase()))
-  const over = bindings.filter(
-    (binding) => !(onze.has(binding.action.toLowerCase()) && binding.modifiers === KANDIDAAT_MOD)
-  )
+  const over = bindings.filter((binding) => !onze.has(binding.action.toLowerCase()))
   const weg = bindings.length - over.length
   if (weg > 0) writeKeyboard(omsiPath, over)
   log(`busknoppen uit keyboard.cfg: ${weg} weggehaald`)

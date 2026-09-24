@@ -1215,7 +1215,7 @@ function IbisApp({
       {getoond ? (
         <div className="ibis-groot">
           <div
-            className="ibis-apparaat"
+            className={paneel ? "ibis-apparaat paneel-scherm" : "ibis-apparaat"}
             style={{
               background: getoond.achtergrond,
               color: getoond.tekstkleur,

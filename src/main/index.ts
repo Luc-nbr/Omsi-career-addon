@@ -56,7 +56,7 @@ import { VehicleTracker, type VehiclePosition } from '../core/vehicle'
 import { buildIbisPlan, type IbisPlan } from '../core/ibis'
 import { apparatenVanBus, type Busapparaat } from '../core/busscherm'
 import { panelenVan, profielVanBus, type Busprofiel, type Paneel } from '../core/busprofiel'
-import { zetBustoetsen } from '../core/bustoetsen'
+import { bruikbareToetsen, zetBustoetsen } from '../core/bustoetsen'
 import {
   describeLive,
   leesSchermen,
@@ -1558,14 +1558,12 @@ function busknoppen(): { beschikbaar: string[] } {
   knoppenGekeken = nu
   try {
     /*
-     * Alles wat de telefoon kan indrukken en werkelijk in keyboard.cfg staat.
-     * Niet alleen de knoppen die de app zelf bijschrijft: de cijfers van de IBIS
-     * staan er van huis uit in, en die horen dus niet grijs.
+     * Alles wat de telefoon kan indrukken en werkelijk in keyboard.cfg staat --
+     * de cijfers van de IBIS staan er van huis uit in, dus die horen niet grijs.
+     * Zie `bruikbareToetsen`: een knop op een onbewezen toetscombinatie telt
+     * niet mee.
      */
-    const namen = new Set(readKeyboard(omsi()).map((binding) => binding.action.toLowerCase()))
-    knoppenStand = {
-      beschikbaar: Object.values(OMSI_TOETSEN).filter((naam) => namen.has(naam.toLowerCase()))
-    }
+    knoppenStand = { beschikbaar: bruikbareToetsen(omsi()) }
   } catch {
     knoppenStand = { beschikbaar: [] }
   }
