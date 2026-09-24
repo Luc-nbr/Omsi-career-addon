@@ -1,7 +1,14 @@
 /*
- * De navigatie op een telefoon of tablet: dezelfde kaart als in de overlay
- * (overlay.css), maar over het hele scherm en op een eigen, donkere grond.
- * In de overlay ligt hij als glas over het spel; hier ligt er niets onder.
+ * De telefoon op een tablet of telefoon.
+ *
+ * EEN SPIEGEL, GEEN EIGEN INDELING
+ * Hier stonden eerst eigen maten: grotere knoppen, een ander cijferblok, andere
+ * marges. Daardoor stond op de pc iets anders dan op de tablet, terwijl het
+ * dezelfde app is -- en wie ze naast elkaar legde, zag twee verschillende
+ * schermen. Nu tekent dit toestel hetzelfde paneel als de overlay, op dezelfde
+ * maat (330 bij 620, zie `shared/overlay.ts`), en wordt dat als geheel vergroot
+ * tot het past. De vormgeving komt dus uit overlay.css en staat hier niet nog
+ * eens; wat hier staat is alleen de lijst eromheen.
  */
 
 html,
@@ -39,20 +46,19 @@ body,
 }
 
 /*
- * Het hele scherm, maar niet achter de inkeping of de balk onderin: daar zou de
- * manoeuvrebalk onder verdwijnen.
+ * Het hele scherm, maar niet achter de inkeping of de balk onderin. Het paneel
+ * staat in het midden: het houdt de verhouding van de overlay, dus op een breed
+ * scherm blijft er links en rechts ruimte over.
  */
 .apparaat {
   position: fixed;
   inset: 0;
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
     env(safe-area-inset-left);
-}
-
-.apparaat .nav-wrap {
-  border-radius: 0;
 }
 
 .apparaat .empty {
@@ -81,12 +87,12 @@ body,
   line-height: 1.5;
 }
 
-/* Verbinding kwijt: een pil boven de kaart, zodat je ziet dat hij stilstaat. */
+/* Verbinding kwijt: een pil bovenaan, zodat je ziet dat het beeld stilstaat. */
 .apparaat-melding {
   position: absolute;
   z-index: 5;
   left: 50%;
-  top: calc(env(safe-area-inset-top) + 86px);
+  top: calc(env(safe-area-inset-top) + 12px);
   translate: -50% 0;
   max-width: calc(100% - 32px);
   padding: 7px 14px;
@@ -99,210 +105,26 @@ body,
 }
 
 /*
- * De hele telefoon op het scherm: de kaart of een app bovenin, het balkje
- * onderin. In de overlay zit dit in een paneel met een rand eromheen; hier is
- * het scherm zelf het toestel.
+ * Het paneel zelf: dezelfde maat als in de overlay, met `zoom` vergroot tot het
+ * past (dat zet apparaat.tsx). De rand, de ronding en het glas komen uit
+ * `.panel` in overlay.css -- letterlijk dezelfde regels als op de pc.
  */
 .apparaat-telefoon {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  padding: 8px 12px 10px;
+  position: relative;
+  flex: 0 0 auto;
 }
 
-/* De kaart loopt tot de rand; de apps houden hun marge. */
-.apparaat-telefoon > .nav-wrap {
-  margin: -8px -12px 0;
+.apparaat-telefoon > .panel {
+  position: absolute;
+  inset: 0;
 }
 
 /*
- * Aanmelden en de dienstopdracht staan midden op het scherm en worden niet
- * breder dan een hand: op een tablet is een cijferblok over de volle breedte
- * niet te bedienen.
+ * Op een aanraakscherm is er geen muis die ergens overheen kan gaan, en het
+ * waas kost op een tablet meer dan het oplevert.
  */
-.apparaat-telefoon .aanmelden,
-.apparaat-telefoon .opdracht {
-  margin: auto;
-  width: 100%;
-  max-width: 400px;
-}
-
-/* Vingers, geen muis. */
-.apparaat-telefoon .cijferblok button {
-  padding: 18px 0;
-  font-size: 24px;
-}
-
-.apparaat-telefoon .dock-knop {
-  height: 46px;
-}
-
-.apparaat-telefoon .app-knop,
-.apparaat-telefoon .aanmeld-door,
-.apparaat-telefoon .opdracht-teken {
-  padding: 14px 18px;
-  font-size: 15px;
-}
-
-/*
- * De IBIS vult het scherm: het schermpje neemt de ruimte die overblijft, de
- * toetsen staan onderin waar je duim ze vindt.
- */
-.apparaat-telefoon .ibis {
-  flex: 1;
-  min-height: 0;
-}
-
-.apparaat-telefoon .ibis-scherm {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-}
-
-.apparaat-telefoon .ibis-knop {
-  padding: 20px 0;
-  font-size: 22px;
-}
-
-.apparaat-telefoon .ibis-knop.stand,
-.apparaat-telefoon .ibis-knop.invoer {
-  font-size: 15px;
-}
-
-/*
- * Op een tablet mag het groter: hij staat verder weg dan een scherm voor je
- * neus, en een telefoonschermpje midden op een iPad is zonde van de ruimte.
- */
-@media (min-width: 700px) {
-  .apparaat-telefoon {
-    padding: 12px 18px 14px;
-  }
-
-  .apparaat-telefoon > .nav-wrap {
-    margin: -12px -18px 0;
-  }
-
-  /* Het cijferblok mag meegroeien, maar niet breder dan een hand of twee. */
-  .apparaat-telefoon .aanmelden,
-  .apparaat-telefoon .opdracht {
-    max-width: 520px;
-    font-size: 16px;
-  }
-
-  .apparaat-telefoon .cijferblok button {
-    padding: 24px 0;
-    font-size: 30px;
-  }
-
-  .apparaat-telefoon .aanmeld-vakjes span {
-    padding: 16px 0;
-    font-size: 28px;
-  }
-
-  .apparaat-telefoon .opdracht-lijst {
-    font-size: 17px;
-  }
-
-  .apparaat .navbar {
-    top: 12px;
-    left: 12px;
-    right: 12px;
-    padding: 14px 18px 13px;
-  }
-
-  .apparaat .navbar-arrow {
-    width: 40px;
-    height: 40px;
-  }
-
-  .apparaat .navbar-what b {
-    font-size: 36px;
-  }
-
-  .apparaat .navbar-what span {
-    font-size: 17px;
-  }
-
-  .apparaat .navbar-when b {
-    font-size: 20px;
-  }
-
-  .apparaat .navbar-when span {
-    font-size: 13px;
-  }
-
-  .apparaat .navfoot {
-    padding: 12px 18px;
-    font-size: 16px;
-  }
-
-  .apparaat .nav-speed b {
-    font-size: 26px;
-  }
-
-  /* De balk is hier hoger; de regel eronder schuift mee. */
-  .apparaat .nav-wrap .map-note-quiet {
-    top: 112px;
-  }
-
-  .apparaat-telefoon .app-scherm {
-    font-size: 15px;
-  }
-
-  .apparaat-telefoon .dock-knop {
-    height: 54px;
-  }
-
-  /* Op een tablet is de IBIS een apparaat op schaal. */
-  .apparaat-telefoon .ibis-scherm.spiegel {
-    font-size: 20px;
-  }
-
-  .apparaat-telefoon .ibis-apparaat {
-    max-width: 760px;
-    --ibis-letter-max: 46px;
-  }
-
-  /* Op een tablet pakt het apparaat de volle breedte, met letters naar rato. */
-  .apparaat-telefoon .ibis-apparaat.paneel-scherm {
-    --paneel-letter-max: 96px;
-  }
-
-  .apparaat-telefoon .ibis-keuze button {
-    padding: 10px 16px;
-    font-size: 14px;
-  }
-
-  /*
-   * Het nagebouwde apparaat. De gewone IBIS-knoppen mogen fors zijn -- dat zijn
-   * er twaalf -- maar een AFR 200 heeft er zesentwintig, en dan past er met die
-   * maat nog geen derde van op het scherm.
-   */
-  .apparaat-telefoon .paneel-knop {
-    min-height: 56px;
-    font-size: 15px;
-  }
-
-  .apparaat-telefoon .paneel-toetsen,
-  .apparaat-telefoon .paneel-rij {
-    gap: 7px;
-  }
-
-  .apparaat-telefoon .ibis-kop b {
-    font-size: 34px;
-  }
-
-  .apparaat-telefoon .ibis-regel span {
-    font-size: 22px;
-  }
-
-  .apparaat-telefoon .ibis-cijfers b {
-    font-size: 28px;
-  }
-
-  .apparaat-telefoon .ibis-knop {
-    padding: 26px 0;
-    font-size: 26px;
-  }
+.apparaat-telefoon .panel {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: var(--vel-overlay, #141a26);
 }

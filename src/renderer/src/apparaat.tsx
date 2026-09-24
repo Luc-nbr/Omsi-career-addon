@@ -75,6 +75,10 @@ document.head.appendChild(manifest);
 
 type Lijn = "bezig" | "ja" | "kwijt" | "verlopen";
 
+/* De maat van het navigatiepaneel in de overlay; zie `shared/overlay.ts`. */
+const PANEEL_BREED = 330;
+const PANEEL_HOOG = 620;
+
 function Apparaat(): JSX.Element {
   const [frame, setFrame] = useState<TelefoonFrame>({ connected: false });
   const [lijn, setLijn] = useState<Lijn>("bezig");
@@ -157,6 +161,38 @@ function Apparaat(): JSX.Element {
   const rit = useRitStand(frame, duty, true);
   const stand = frame.telefoon ?? LEGE_TELEFOON;
 
+  /*
+   * HETZELFDE PANEEL ALS OP DE PC, ALLEEN GROTER
+   *
+   * De overlay tekent zijn telefoon op 330 bij 620 beeldpunten (zie
+   * `shared/overlay.ts`). Dit toestel tekende hetzelfde onderdeel, maar met
+   * eigen maten eromheen: grotere knoppen, andere marges, een ander cijferblok.
+   * Daardoor stond op de pc iets anders dan op de tablet, terwijl het dezelfde
+   * app is.
+   *
+   * Nu krijgt het paneel hier precies dezelfde maat, en wordt het als geheel
+   * vergroot tot het past. Wat je op de tablet ziet is dan letterlijk hetzelfde
+   * beeld, alleen op armlengte in plaats van op een meter. `zoom` en niet
+   * `transform`, want dan blijven de letters scherp; de kaart krijgt de factor
+   * apart mee zodat ook die op de grote maat getekend wordt.
+   */
+  const [venster, setVenster] = useState({ breed: 0, hoog: 0 });
+  useEffect(() => {
+    const meet = (): void =>
+      setVenster({ breed: window.innerWidth, hoog: window.innerHeight });
+    meet();
+    window.addEventListener("resize", meet);
+    window.addEventListener("orientationchange", meet);
+    return () => {
+      window.removeEventListener("resize", meet);
+      window.removeEventListener("orientationchange", meet);
+    };
+  }, []);
+  const schaal =
+    venster.breed > 0
+      ? Math.max(1, Math.min(venster.breed / PANEEL_BREED, venster.hoog / PANEEL_HOOG))
+      : 1;
+
   return (
     <LanguageProvider language={taal}>
       <main className="apparaat">
@@ -178,17 +214,35 @@ function Apparaat(): JSX.Element {
            * dienstopdracht, en daarna de apps met het balkje onderin. Precies
            * wat er in de overlay staat, want het is hetzelfde onderdeel.
            */
-          <div className="apparaat-telefoon">
-            <Telefoon
-              frame={frame}
-              duty={duty}
-              geometry={geometry}
-              rit={rit}
-              stand={stand}
-              acties={acties}
-              pixelScale={1}
-              language={taal}
-            />
+          <div
+            className="apparaat-telefoon"
+            style={{
+              width: PANEEL_BREED,
+              height: PANEEL_HOOG,
+              zoom: schaal,
+            }}
+          >
+            {/*
+              Dezelfde omhulsels als in de overlay -- `panel`, `panel-navigatie`
+              en `panel-body` -- zodat de vormgeving uit overlay.css komt en niet
+              hier nog eens beschreven staat. Alleen de titelbalk blijft weg: die
+              is er om het venster te verslepen en te schalen, en daar is op een
+              tablet niets te verslepen.
+            */}
+            <div className="panel panel-navigatie">
+              <div className="panel-body">
+                <Telefoon
+                  frame={frame}
+                  duty={duty}
+                  geometry={geometry}
+                  rit={rit}
+                  stand={stand}
+                  acties={acties}
+                  pixelScale={schaal}
+                  language={taal}
+                />
+              </div>
+            </div>
           </div>
         ) : (
           <div className="apparaat-leeg">

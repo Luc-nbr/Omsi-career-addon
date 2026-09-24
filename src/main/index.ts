@@ -1699,6 +1699,8 @@ function frameVoorApparaat(frame: {
   duty?: unknown
   ibis?: unknown
   kaartjes?: unknown
+  knoppen?: unknown
+  panelen?: unknown
   telefoon: TelefoonStand
 }): unknown {
   return {
@@ -1709,6 +1711,15 @@ function frameVoorApparaat(frame: {
     duty: frame.duty,
     ibis: frame.ibis,
     kaartjes: frame.kaartjes,
+    /*
+     * De apparaten van deze bus en welke knoppen er aan een toets hangen. Die
+     * moeten hier met name genoemd worden -- dit beeld wordt veld voor veld
+     * opgebouwd zodat er niets van de chauffeur meelekt -- en dat was vergeten:
+     * op de pc stond het nagebouwde paneel en op de tablet de algemene
+     * weergave, terwijl het dezelfde app is.
+     */
+    knoppen: frame.knoppen,
+    panelen: frame.panelen,
     telefoon: frame.telefoon
   }
 }

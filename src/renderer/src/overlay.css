@@ -1418,6 +1418,10 @@
   padding: 4px 2px;
   height: 100%;
   min-height: 0;
+  /* Een apparaat met veel knoppen past niet altijd; dan schuif je hem op. */
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
 }
 
 /*
@@ -1444,6 +1448,7 @@
   display: flex;
   flex-direction: column;
   gap: 5px;
+  flex: 0 0 auto;
 }
 
 .paneel-rij {
@@ -1527,10 +1532,24 @@
 }
 
 .ibis-groot {
+  /*
+   * De maat waar het schermpje zijn letters op betrekt. Die hoort HIER te
+   * staan en niet op het schermpje zelf: een element kan zijn eigen breedte
+   * niet als eenheid gebruiken -- `cqw` kijkt altijd naar de dichtstbijzijnde
+   * ouder die zich als maat aanbiedt. Stond hij op het schermpje, dan viel de
+   * rekensom terug op de breedte van het vénster, en werden de letters op een
+   * tablet twee keer zo groot als bedoeld.
+   */
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  min-height: 0;
+  /*
+   * Niet meekrimpen. Past het toetsenbord eronder niet meer in het paneel, dan
+   * hoort er gescrold te worden -- niet het schermpje half weggedrukt te worden
+   * achter de eerste rij knoppen.
+   */
+  flex: 0 0 auto;
 }
 
 /* De knopjes om van apparaat te wisselen; alleen als de bus er meer heeft. */
@@ -1538,6 +1557,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  flex: 0 0 auto;
 }
 
 .ibis-keuze button {
@@ -1560,7 +1580,6 @@
 }
 
 .ibis-apparaat {
-  container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -1592,14 +1611,18 @@
  * toetsenbord eronder, en groeien de letters mee met het venster: dat is een
  * apparaat waar je vanaf een meter afstand op kijkt.
  *
- * Drie grenzen tegelijk. De breedte van het blok bepaalt hoe groot een letter
- * mag zijn om er twintig naast elkaar te krijgen (`--ibis-letter`); daarboven
- * een vaste bovengrens, en daarboven een deel van de schermhoogte -- anders
- * neemt een schermpje van vier regels op een liggende tablet het halve beeld.
+ * De breedte van het blok bepaalt hoe groot een letter mag zijn om er twintig
+ * naast elkaar te krijgen (`--ibis-letter`), met een vaste bovengrens erboven.
+ *
+ * Hier stond ook een grens in `vh`, maar die deugt niet: op een tablet wordt het
+ * hele paneel met `zoom` vergroot, en schermhoogte-eenheden gaan daar niet in
+ * mee. Acht procent van de schermhoogte werd dan nog eens maal twee, en het
+ * schermpje liep van het paneel af. De breedte van het blok groeit wel gewoon
+ * mee, dus daar is de grens aan genoeg.
  */
 .ibis-apparaat.paneel-scherm {
   max-width: none;
-  font-size: min(var(--ibis-letter, 16px), var(--paneel-letter-max, 64px), 8vh);
+  font-size: min(var(--ibis-letter, 16px), var(--paneel-letter-max, 64px));
 }
 
 /* Een oplichtend scherm gloeit een beetje; een lcd niet. */

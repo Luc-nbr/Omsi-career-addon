@@ -1123,7 +1123,9 @@ function IbisApp({
   const getoond = paneel ?? toonbaar[plek];
   /*
    * De letters vullen de breedte. Bij een vaste-breedteletter is een teken
-   * ongeveer 0,6 keer de letterhoogte, dus past 166/regellengte; een apparaat
+   * ongeveer 0,6 keer de letterhoogte, en er staat 0,06 aan ruimte tussen, dus
+   * past 150/regellengte -- met 166 liep de laatste letter net van het schermpje
+   * af. Een apparaat
    * dat zegt hoeveel tekens erop passen houdt zijn maat ook als er even niets
    * staat. De css zet er een bovengrens op, anders wordt een breed paneel een
    * affiche.
@@ -1219,7 +1221,7 @@ function IbisApp({
             style={{
               background: getoond.achtergrond,
               color: getoond.tekstkleur,
-              ["--ibis-letter" as string]: `${(166 / langsteRegel).toFixed(2)}cqw`,
+              ["--ibis-letter" as string]: `${(150 / langsteRegel).toFixed(2)}cqw`,
               textAlign: uitlijning,
             }}
           >
