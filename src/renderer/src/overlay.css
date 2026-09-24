@@ -1444,25 +1444,31 @@
   background: rgba(190, 220, 190, 0.16);
 }
 
+/*
+ * Het toetsenbord vult wat er onder het schermpje overblijft, en de rijen delen
+ * die hoogte. Een AFR 200 heeft tien rijen: met een vaste knophoogte viel de
+ * onderste rij -- DRUCKEN en TICKET, nota bene -- van het scherm. Zo staan ze er
+ * altijd allemaal op, en worden de knoppen alleen wat platter als het krap is.
+ */
 .paneel-toetsen {
   display: flex;
   flex-direction: column;
-  /*
-   * Krap aan: een AFR 200 heeft tien rijen, en met een ruimere maat past het
-   * apparaat op een liggende tablet niet meer in één beeld. Zo net wel.
-   */
   gap: 4px;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .paneel-rij {
   display: grid;
   gap: 4px;
+  flex: 1 1 0;
+  /* Kleiner dan dit wordt het tikken; dan schuift het paneel maar. */
+  min-height: 30px;
 }
 
 .paneel-knop {
-  min-height: 38px;
-  padding: 6px 4px;
+  height: 100%;
+  padding: 4px;
   border: 1px solid rgba(0, 0, 0, 0.45);
   border-bottom-width: 2px;
   border-radius: 6px;
