@@ -131,8 +131,9 @@ enum {
  * 7  de lijst met mensen goed gelezen, en daarmee eindelijk de kaartverkoop
  * 8  in schermen.json ook wat er met de laatste opdracht gebeurd is
  * 9  de toets lang genoeg ingedrukt houden, en de uitgebreide toetsen goed
+ * 10 sneller kijken of de app iets vraagt: dertig keer per seconde in plaats van vijf
  */
-#define PLUGIN_VERSIE 9
+#define PLUGIN_VERSIE 10
 
 /*
  * Drempels voor hard remmen en optrekken, in meter per seconde kwadraat.
@@ -549,7 +550,7 @@ static DWORD dyn_item(DWORD array, int index, DWORD recordSize) {
  *    stuurt een toets die niet bestaat -- en zo verdween AUSLÖSUNG, de
  *    belangrijkste knop van de kaartautomaat, in het niets.
  */
-#define TOETS_MS 70 /* zo lang blijft hij staan: een paar beelden van OMSI */
+#define TOETS_MS 50 /* zo lang blijft hij staan: een paar beelden van OMSI */
 
 static WORD g_toetsScan;
 static int g_toetsMod;
@@ -608,13 +609,19 @@ static int omsi_vooraan(void) {
 }
 
 /*
- * Kijken of de app iets gevraagd heeft. Hooguit vijf keer per seconde: het is
- * een bestandje van een regel, maar het hoeft niet bij elk beeld.
+ * Kijken of de app iets gevraagd heeft.
+ *
+ * Dertig keer per seconde, ongeveer om het andere beeld. Het stond op vijf, en
+ * dat was te merken: tussen een tik op de iPad en de toets in OMSI zat tot een
+ * vijfde seconde niets dan wachten. Het is een bestandje van tien tekens --
+ * openen, lezen, sluiten kost minder dan een honderdste van een beeld.
  */
+#define OPDRACHT_INTERVAL_MS 33
+
 static void lees_opdracht(void) {
   if (!g_opdrachtPad[0]) return;
   const ULONGLONG nu = GetTickCount64();
-  if (nu - g_opdrachtGekeken < 200) return;
+  if (nu - g_opdrachtGekeken < OPDRACHT_INTERVAL_MS) return;
   g_opdrachtGekeken = nu;
 
   HANDLE bestand = CreateFileW(g_opdrachtPad, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,

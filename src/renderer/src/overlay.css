@@ -1447,18 +1447,22 @@
 .paneel-toetsen {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  /*
+   * Krap aan: een AFR 200 heeft tien rijen, en met een ruimere maat past het
+   * apparaat op een liggende tablet niet meer in één beeld. Zo net wel.
+   */
+  gap: 4px;
   flex: 0 0 auto;
 }
 
 .paneel-rij {
   display: grid;
-  gap: 5px;
+  gap: 4px;
 }
 
 .paneel-knop {
-  min-height: 42px;
-  padding: 8px 4px;
+  min-height: 38px;
+  padding: 6px 4px;
   border: 1px solid rgba(0, 0, 0, 0.45);
   border-bottom-width: 2px;
   border-radius: 6px;
@@ -1491,15 +1495,22 @@
   cursor: default;
 }
 
-/* Wie het apparaat gemaakt heeft, klein onder het schermpje -- net als erop. */
+/*
+ * Wie het apparaat gemaakt heeft: rechtsboven in het schermpje, zoals het op de
+ * AFR 200 zelf staat. Niet op een eigen regel eronder -- dat kostte een rij
+ * knoppen op een liggende tablet.
+ */
 .paneel-merk {
-  margin: -2px 0 0;
-  color: rgba(255, 255, 255, 0.4);
+  position: absolute;
+  right: 10px;
+  top: 5px;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.35);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.12em;
-  text-align: right;
   text-transform: uppercase;
+  pointer-events: none;
 }
 
 /* De uitnodiging om ze eenmalig aan een toets te hangen. */
@@ -1541,6 +1552,7 @@
    * tablet twee keer zo groot als bedoeld.
    */
   container-type: inline-size;
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 8px;

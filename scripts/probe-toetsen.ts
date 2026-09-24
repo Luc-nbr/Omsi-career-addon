@@ -23,8 +23,12 @@ import { join } from 'node:path'
 const echt = 'C:/program files (x86)/steam/steamapps/common/OMSI 2'
 const nep = mkdtempSync(join(tmpdir(), 'omsi-toetsen-'))
 mkdirSync(join(nep, 'Inputs'), { recursive: true })
-cpSync(join(echt, 'Inputs', 'keyboard.cfg'), join(nep, 'Inputs', 'keyboard.cfg'))
-console.log('uitgangspunt: de echte keyboard.cfg van nu, met de regels van de vorige versie erin')
+/*
+ * Uitgangspunt is `keyboard_reset.cfg`: de indeling zoals OMSI hem uitlevert.
+ * Niet de keyboard.cfg van de speler -- daar staan onze knoppen misschien al in,
+ * en dan meet de proef niets meer.
+ */
+cpSync(join(echt, 'Inputs', 'keyboard_reset.cfg'), join(nep, 'Inputs', 'keyboard.cfg'))
 const voor = readKeyboard(nep)
 console.log('voor      :', voor.length, 'bindingen |', toetsenStand(nep).ontbreekt.length, 'knoppen ontbreken')
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type JSX } from "react";
+import { useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { createRoot } from "react-dom/client";
 import type { MapGeometry } from "../../core/geo";
 import type { TripRoute } from "../../core/routing";
@@ -176,26 +176,41 @@ function Apparaat(): JSX.Element {
    * `transform`, want dan blijven de letters scherp; de kaart krijgt de factor
    * apart mee zodat ook die op de grote maat getekend wordt.
    */
-  const [venster, setVenster] = useState({ breed: 0, hoog: 0 });
+  const vak = useRef<HTMLElement | null>(null);
+  const [ruimte, setRuimte] = useState({ breed: 0, hoog: 0 });
   useEffect(() => {
+    const element = vak.current;
+    if (!element) return;
     const meet = (): void =>
-      setVenster({ breed: window.innerWidth, hoog: window.innerHeight });
+      setRuimte({ breed: element.clientWidth, hoog: element.clientHeight });
     meet();
-    window.addEventListener("resize", meet);
+    const kijker = new ResizeObserver(meet);
+    kijker.observe(element);
     window.addEventListener("orientationchange", meet);
     return () => {
-      window.removeEventListener("resize", meet);
+      kijker.disconnect();
       window.removeEventListener("orientationchange", meet);
     };
   }, []);
+  /*
+   * De vergroting: zo groot dat de knoppen dezelfde verhouding houden als in de
+   * overlay, en niet groter dan het scherm aankan. Het paneel zelf wordt daarna
+   * opgerekt tot het hele scherm -- dus breder dan de 330 van de pc als er
+   * ruimte is, maar met alles erin op dezelfde maat. Zo vult hij het beeld
+   * zonder dat het een ander scherm wordt.
+   */
   const schaal =
-    venster.breed > 0
-      ? Math.max(1, Math.min(venster.breed / PANEEL_BREED, venster.hoog / PANEEL_HOOG))
+    ruimte.breed > 0
+      ? Math.min(ruimte.breed / PANEEL_BREED, ruimte.hoog / PANEEL_HOOG)
       : 1;
+  const paneel =
+    ruimte.breed > 0
+      ? { breed: Math.floor(ruimte.breed / schaal), hoog: Math.floor(ruimte.hoog / schaal) }
+      : { breed: PANEEL_BREED, hoog: PANEEL_HOOG };
 
   return (
     <LanguageProvider language={taal}>
-      <main className="apparaat">
+      <main className="apparaat" ref={vak}>
         {lijn !== "ja" && (
           <div className="apparaat-melding" role="status">
             {t(
@@ -217,9 +232,16 @@ function Apparaat(): JSX.Element {
           <div
             className="apparaat-telefoon"
             style={{
-              width: PANEEL_BREED,
-              height: PANEEL_HOOG,
+              width: paneel.breed,
+              height: paneel.hoog,
               zoom: schaal,
+              /*
+               * Hoe groot de letters van een apparaatschermpje hoogstens worden.
+               * Op een breed scherm zou de breedte alleen ze zo groot maken dat
+               * het toetsenbord eronder wegvalt; een zestiende van de hoogte van
+               * het paneel houdt dezelfde verhouding aan als op de pc.
+               */
+              ["--paneel-letter-max" as string]: `${Math.round(paneel.hoog / 18)}px`,
             }}
           >
             {/*
