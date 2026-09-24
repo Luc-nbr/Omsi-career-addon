@@ -130,8 +130,9 @@ enum {
  * 6  de eigen stringvariabelen van de bus, met naam, rechtstreeks uit het geheugen
  * 7  de lijst met mensen goed gelezen, en daarmee eindelijk de kaartverkoop
  * 8  in schermen.json ook wat er met de laatste opdracht gebeurd is
+ * 9  de toets lang genoeg ingedrukt houden, en de uitgebreide toetsen goed
  */
-#define PLUGIN_VERSIE 8
+#define PLUGIN_VERSIE 9
 
 /*
  * Drempels voor hard remmen en optrekken, in meter per seconde kwadraat.
@@ -530,44 +531,71 @@ static DWORD dyn_item(DWORD array, int index, DWORD recordSize) {
 }
 
 /* Eén toets, met zijn modifiers, als scancodes -- zo leest OMSI ze ook. */
-static void druk_toets(WORD scancode, int modifiers) {
-  INPUT invoer[6];
+/*
+ * Een toets indrukken in OMSI.
+ *
+ * TWEE DINGEN DIE HIER MISGINGEN
+ *
+ * 1. Te kort. Eerst gingen indrukken en loslaten in een adem de deur uit: de
+ *    toets stond microseconden aan. OMSI kijkt naar het toetsenbord bij elk
+ *    beeld -- zestig keer per seconde, dus om de zestien milliseconden -- en
+ *    tussen twee van die momenten door was de toets alweer los. Het spel heeft
+ *    hem dus nooit gezien. Nu blijft hij staan tot een volgend beeld hem
+ *    loslaat; zie `laat_toets_los`.
+ *
+ * 2. De toetsen van het numerieke blok. In `keyboard.cfg` staat Num Enter als
+ *    156 en Num / als 181: dat zijn de "uitgebreide" toetsen, in Windows 0x1C
+ *    en 0x35 met een vlag erbij. Wie 156 letterlijk als scancode afgeeft,
+ *    stuurt een toets die niet bestaat -- en zo verdween AUSLÖSUNG, de
+ *    belangrijkste knop van de kaartautomaat, in het niets.
+ */
+#define TOETS_MS 70 /* zo lang blijft hij staan: een paar beelden van OMSI */
+
+static WORD g_toetsScan;
+static int g_toetsMod;
+static ULONGLONG g_toetsSinds;
+
+/** Zet een toetsaanslag klaar; `omhoog` maakt er het loslaten van. */
+static void vul_toets(INPUT *invoer, WORD scancode, int omhoog) {
+  const int uitgebreid = scancode > 0x7f;
+  invoer->type = INPUT_KEYBOARD;
+  invoer->ki.wScan = (WORD)(uitgebreid ? (scancode & 0x7f) : scancode);
+  invoer->ki.dwFlags = KEYEVENTF_SCANCODE | (uitgebreid ? KEYEVENTF_EXTENDEDKEY : 0) |
+                       (omhoog ? KEYEVENTF_KEYUP : 0);
+}
+
+static void laat_toets_los(void) {
+  if (!g_toetsScan) return;
+  INPUT invoer[3];
   int n = 0;
-  const WORD SHIFT = 0x2A, CTRL = 0x1D;
+  const WORD SHIFT = 0x2a, CTRL = 0x1d;
   memset(invoer, 0, sizeof(invoer));
-  if (modifiers & 4) {
-    invoer[n].type = INPUT_KEYBOARD;
-    invoer[n].ki.wScan = CTRL;
-    invoer[n].ki.dwFlags = KEYEVENTF_SCANCODE;
-    n++;
-  }
-  if (modifiers & 2) {
-    invoer[n].type = INPUT_KEYBOARD;
-    invoer[n].ki.wScan = SHIFT;
-    invoer[n].ki.dwFlags = KEYEVENTF_SCANCODE;
-    n++;
-  }
-  invoer[n].type = INPUT_KEYBOARD;
-  invoer[n].ki.wScan = scancode;
-  invoer[n].ki.dwFlags = KEYEVENTF_SCANCODE;
-  n++;
-  invoer[n].type = INPUT_KEYBOARD;
-  invoer[n].ki.wScan = scancode;
-  invoer[n].ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
-  n++;
-  if (modifiers & 2) {
-    invoer[n].type = INPUT_KEYBOARD;
-    invoer[n].ki.wScan = SHIFT;
-    invoer[n].ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
-    n++;
-  }
-  if (modifiers & 4) {
-    invoer[n].type = INPUT_KEYBOARD;
-    invoer[n].ki.wScan = CTRL;
-    invoer[n].ki.dwFlags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
-    n++;
-  }
+  vul_toets(&invoer[n++], g_toetsScan, 1);
+  if (g_toetsMod & 2) vul_toets(&invoer[n++], SHIFT, 1);
+  if (g_toetsMod & 4) vul_toets(&invoer[n++], CTRL, 1);
   SendInput((UINT)n, invoer, sizeof(INPUT));
+  g_toetsScan = 0;
+}
+
+static void druk_toets(WORD scancode, int modifiers) {
+  /* Stond er nog een toets ingedrukt, dan eerst die los: niet twee tegelijk. */
+  laat_toets_los();
+  INPUT invoer[3];
+  int n = 0;
+  const WORD SHIFT = 0x2a, CTRL = 0x1d;
+  memset(invoer, 0, sizeof(invoer));
+  if (modifiers & 4) vul_toets(&invoer[n++], CTRL, 0);
+  if (modifiers & 2) vul_toets(&invoer[n++], SHIFT, 0);
+  vul_toets(&invoer[n++], scancode, 0);
+  SendInput((UINT)n, invoer, sizeof(INPUT));
+  g_toetsScan = scancode;
+  g_toetsMod = modifiers;
+  g_toetsSinds = GetTickCount64();
+}
+
+/** Bij elk beeld: staat er een toets lang genoeg ingedrukt, dan mag hij los. */
+static void toets_bijhouden(void) {
+  if (g_toetsScan && GetTickCount64() - g_toetsSinds >= TOETS_MS) laat_toets_los();
 }
 
 /** Staat OMSI zelf vooraan? Anders gaat de toets naar een ander programma. */
@@ -608,14 +636,15 @@ static void lees_opdracht(void) {
    */
   if (nr == g_opdrachtNr || scancode <= 0 || scancode > 255) return;
   g_opdrachtNr = nr;
+  /* Ook als het niet lukt: dan is van buiten te zien welke toets gevraagd werd. */
+  g_opdrachtScancode = scancode;
+  g_opdrachtMod = modifiers;
   if (!omsi_vooraan()) {
     g_opdrachtFout = 1;
     meld("opdracht %d overgeslagen: OMSI staat niet vooraan", nr);
     return;
   }
   g_opdrachtFout = 0;
-  g_opdrachtScancode = scancode;
-  g_opdrachtMod = modifiers;
   druk_toets((WORD)scancode, modifiers);
   meld("opdracht %d: toets %d (modifiers %d)", nr, scancode, modifiers);
 }
@@ -1294,6 +1323,7 @@ static void flush_state(int alive) {
 static void maybe_flush(void) {
   ULONGLONG now = GetTickCount64();
   /* Wat de app vraagt, mag niet op het schrijfritme wachten; zie `lees_opdracht`. */
+  toets_bijhouden();
   lees_opdracht();
   lees_vragen();
   if (!g_ready || now - g_lastWrite < WRITE_INTERVAL_MS) return;
@@ -1362,6 +1392,7 @@ __declspec(dllexport) void __stdcall PluginStart(void *owner) {
 }
 
 __declspec(dllexport) void __stdcall PluginFinalize(void) {
+  laat_toets_los();
   if (!g_ready) return;
   /*
    * Laatste stand bewaren met alive=false in plaats van het bestand weggooien.

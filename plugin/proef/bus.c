@@ -205,6 +205,21 @@ int main(int argc, char **argv) {
     CloseHandle(vragen);
   }
 
+  /*
+   * En een opdracht: de app vraagt om Ctrl+O, de toets waar in dit huis
+   * DRUCKEN op staat. OMSI draait hier niet echt, dus de plugin hoort hem te
+   * lezen en te melden dat het spel niet vooraan stond (fout 1) -- daarmee is
+   * de hele weg van bestand tot uitvoering nagerekend, op de toetsaanslag na.
+   */
+  _snwprintf_s(pad, MAX_PATH, _TRUNCATE, L"%s\\OMSI Career\\opdracht.txt", map);
+  HANDLE opdracht = CreateFileW(pad, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+  if (opdracht != INVALID_HANDLE_VALUE) {
+    static const char regel[] = "42 24 4";
+    DWORD geschreven = 0;
+    WriteFile(opdracht, regel, (DWORD)(sizeof(regel) - 1), &geschreven, NULL);
+    CloseHandle(opdracht);
+  }
+
   HMODULE dll = LoadLibraryA(argv[1]);
   if (!dll) {
     fprintf(stderr, "laden mislukt: %lu\n", GetLastError());
