@@ -102,6 +102,8 @@ blijft eenmalig een kopie staan als `laststn.osn.voor-omsi-career`. Verder niets
 | `routing.ts` | Rijstrokennet en routeplanner van halte naar halte; kiest per rit `.ttr` of planner |
 | `live.ts` | Leest `live.json` van de plugin, maakt er een `LiveStatus` van |
 | `busscherm.ts` | De schermpjes van de bus uit zijn `model.cfg`: welke variabele, welk lettertype, welke kleur |
+| `busprofiel.ts` | Per bus nagebouwde apparaten (AFR 200, LAWO 8401); anders de generieke weergave |
+| `bustoetsen.ts` | De knoppen die OMSI alleen op de muis heeft, bijgeschreven in `keyboard.cfg` |
 | `career.ts` | Loopbaan: diensten, uren, rangen, modi, vergunningen, examens |
 | `exam.ts` | De eisen van het rijexamen en het oordeel erover |
 | `startup.ts` | Het startscherm van OMSI: `laststn.osn` en `[last_map]` |

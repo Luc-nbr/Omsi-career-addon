@@ -1430,52 +1430,71 @@
  * op een telefoon net zo goed als op een iPad.
  */
 /*
- * De kaartautomaat: zijn eigen knoppen, in de kleuren van het apparaat. De
- * kaartsoorten zijn geel zoals op de AFR 200, DRUCKEN is rood.
+ * Het toetsenbord van een nagebouwd apparaat: rij voor rij zoals het erop ligt,
+ * in de kleuren van het apparaat zelf. Bij de AFR 200 zijn de kaartsoorten geel,
+ * DRUCKEN en de rode functietoetsen rood, en de rest grijs plastic.
  */
-.afr {
+/* Een briefje is geen munt: lichter, en met een rechte rand. */
+.wisselaar button.briefje {
+  border-radius: 4px;
+  background: rgba(190, 220, 190, 0.16);
+}
+
+.paneel-toetsen {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 
-.afr-kaarten,
-.afr-doen {
+.paneel-rij {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
+  gap: 5px;
 }
 
-.afr-knop {
-  padding: 12px 4px;
-  border: 1px solid rgba(0, 0, 0, 0.35);
-  border-radius: 8px;
-  background: #e8c351;
-  color: #1a1407;
+.paneel-knop {
+  min-height: 42px;
+  padding: 8px 4px;
+  border: 1px solid rgba(0, 0, 0, 0.45);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: #d8d6d0;
+  color: #17181a;
   font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
   cursor: pointer;
 }
 
-.afr-doen .afr-knop {
-  background: #d8d6d0;
-  color: #17181a;
+.paneel-knop.geel {
+  background: #e8c351;
+  color: #1a1407;
 }
 
-.afr-knop.druk {
+.paneel-knop.rood {
   background: #c0392b;
   color: #ffffff;
 }
 
-.afr-knop.geef {
+.paneel-knop.blauw {
   background: #2f6fb5;
   color: #ffffff;
 }
 
-.afr-knop:disabled {
-  opacity: 0.35;
+.paneel-knop:disabled {
+  opacity: 0.32;
   cursor: default;
+}
+
+/* Wie het apparaat gemaakt heeft, klein onder het schermpje -- net als erop. */
+.paneel-merk {
+  margin: -2px 0 0;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-align: right;
+  text-transform: uppercase;
 }
 
 /* De uitnodiging om ze eenmalig aan een toets te hangen. */

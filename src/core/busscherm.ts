@@ -207,6 +207,48 @@ function stam(naam: string): string {
   return naam.replace(/(_?(line|zeile|row|regel)?_?\d+|_[AB])$/i, '').toLowerCase()
 }
 
+/**
+ * Een knop in de cabine, zoals het model hem beschrijft.
+ *
+ * Elke knop die je in OMSI met de muis kunt indrukken is in de `model.cfg` een
+ * `[mouseevent]` met de naam waar het busscript op luistert, vlak onder het
+ * onderdeel waar hij bij hoort. Dat onderdeel heet meestal naar de knop --
+ * `O550_AFR200_Ticket_Kind_Kurz.o3d`, `Matrix_Bedienteil_CE.o3d` -- en daarmee
+ * is te zien welke toets welke knop op het paneel is, zonder te raden.
+ */
+export interface Modelknop {
+  /** De naam waar het busscript op luistert; ook de naam in `keyboard.cfg`. */
+  actie: string
+  /** Het onderdeel waar hij aan hangt, zoals het in de cfg staat. */
+  onderdeel: string
+}
+
+/** De knoppen uit een model.cfg, in de volgorde van het bestand. */
+export function knoppenVanModel(modelcfg: string): Modelknop[] {
+  let regels: string[]
+  try {
+    regels = readOmsiLines(modelcfg)
+  } catch {
+    return []
+  }
+  const knoppen: Modelknop[] = []
+  const gezien = new Set<string>()
+  let onderdeel = ''
+  for (let i = 0; i < regels.length; i++) {
+    const kop = regels[i].trim().toLowerCase()
+    if (kop === '[mesh]') {
+      onderdeel = (regels[i + 1] ?? '').trim()
+      continue
+    }
+    if (kop !== '[mouseevent]') continue
+    const actie = (regels[i + 1] ?? '').trim()
+    if (!actie || gezien.has(actie.toLowerCase())) continue
+    gezien.add(actie.toLowerCase())
+    knoppen.push({ actie, onderdeel })
+  }
+  return knoppen
+}
+
 /** Waar twee namen het over eens zijn. */
 function gemeenschappelijk(a: string, b: string): string {
   let n = 0

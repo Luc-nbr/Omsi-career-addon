@@ -245,7 +245,8 @@ app.whenReady().then(async () => {
     naTeruggeven.klaar !== null &&
     verkoop.geld.length > 0 &&
     naAannemen.geldWeg === 0 &&
-    naAannemen.wisselaar === 6 &&
+    /* Zes munten en drie briefjes; zie MUNTEN en BRIEFJES in telefoon.tsx. */
+    naAannemen.wisselaar === 9 &&
     naAannemen.doen.length === 2 &&
     /^\d+ 20 0$/.test(opdracht)
   console.log(goed ? 'de kaartverkoop klopt' : 'DE KAARTVERKOOP KLOPT NIET')

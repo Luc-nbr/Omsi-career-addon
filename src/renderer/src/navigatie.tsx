@@ -1,6 +1,7 @@
 import { useRef, type JSX } from "react";
 import type { MapGeometry } from "../../core/geo";
 import type { IbisPlan } from "../../core/ibis";
+import type { Paneel } from '../../core/busprofiel';
 import type { LiveStatus } from "../../core/live";
 import type { Duty, DutyLeg } from "../../core/types";
 import type { Kaartset } from "../../shared/kaartjes";
@@ -49,6 +50,11 @@ export interface NavFrame {
    * werkende knoppen te tonen.
    */
   knoppen?: { beschikbaar: string[] };
+  /**
+   * De apparaten van deze bus, nagebouwd zoals ze in de cabine zitten. Alleen
+   * gevuld voor bussen die de app van binnen kent; zie core/busprofiel.ts.
+   */
+  panelen?: Paneel[];
 }
 
 /**

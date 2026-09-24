@@ -147,6 +147,23 @@ app.whenReady().then(async () => {
    * die variabelen op. Hier staat een echte bus uit de installatie, met de
    * waarden die de plugin uit het geheugen zou halen.
    */
+  /*
+   * De volle lijst die de plugin van de bus doorgeeft. Daaruit leidt de app af
+   * welke apparaten deze bus heeft, en dus of hij een profiel kent.
+   */
+  writeFileSync(
+    join(live, 'schermen.json'),
+    JSON.stringify({
+      bus: 'Setra S315 UL Euro 3',
+      model: 'Model/S315UL_Euro3.cfg',
+      pad: 'Vehicles/TH_Ueberlandbus/',
+      aantal: 6,
+      vars: {
+        afr_display_1: '', afr_display_2: '', afr_zifferneingabe: '0',
+        LAWO_display_line1: '', LAWO_display_line2: '', afr_ticketname_0: 'Einzelfahrt'
+      }
+    })
+  )
   schrijf(false, -1, undefined, undefined, {
     bus: {
       naam: 'Setra S315 UL Euro 3',
@@ -185,6 +202,24 @@ app.whenReady().then(async () => {
   console.log('na wisselen van apparaat:', JSON.stringify(tweede))
   console.log('uit de bus zelf:', JSON.stringify(uitDeBus))
 
+  /* Terug naar het eerste apparaat: de kaartautomaat. */
+  await js(overlay, `[...document.querySelectorAll('.ibis-keuze button')][0]?.click()`)
+  await wacht(400)
+
+  /* En het paneel: de app kent deze bus, dus staat de AFR 200 er nagebouwd. */
+  const paneel = await js(overlay, `(() => {
+    const knoppen = [...document.querySelectorAll('.paneel-knop')]
+    return {
+      knoppen: knoppen.length,
+      opschriften: knoppen.map((b) => b.textContent),
+      uit: knoppen.filter((b) => b.disabled).length,
+      keuzes: [...document.querySelectorAll('.ibis-keuze button')].map((b) => b.textContent),
+      merk: document.querySelector('.paneel-merk')?.textContent ?? null,
+      oudeToetsen: document.querySelectorAll('.ibis-toetsen .ibis-knop').length
+    }
+  })()`)
+  console.log('het paneel van deze bus:', JSON.stringify(paneel))
+
   const gevraagd = (() => {
     try {
       return readFileSync(join(live, 'vragen.txt'), 'utf8').split(/\r?\n/).filter(Boolean)
@@ -196,7 +231,7 @@ app.whenReady().then(async () => {
     JSON.stringify(gevraagd.slice(0, 4)))
 
   /* Een toets: die hoort als opdracht voor de plugin weggeschreven te worden. */
-  await js(overlay, `[...document.querySelectorAll('.ibis-toetsen .ibis-knop')][0]?.click()`)
+  await js(overlay, `[...document.querySelectorAll('.paneel-knop')].find((b) => b.textContent.trim() === '7')?.click()`)
   await wacht(600)
   const opdracht = readFileSync(join(live, 'opdracht.txt'), 'utf8').trim()
   console.log('opdracht voor de plugin:', JSON.stringify(opdracht))
@@ -212,12 +247,17 @@ app.whenReady().then(async () => {
     /* Eén groot scherm, en knopjes voor de andere apparaten van deze bus. */
     uitDeBus.schermen === 1 &&
     uitDeBus.keuzes >= 2 &&
-    uitDeBus.eerste[0] === '320 OBERHOF' &&
-    /* Het tweede apparaat is de AFR, met zijn eigen mintgroene letters. */
-    tweede.kleur.includes('rgb(95, 211, 188)') &&
+    /* De app kent deze bus: de AFR 200 staat er nagebouwd, met zijn eigen knoppen. */
+    paneel.keuzes.includes('AFR 200') &&
+    paneel.knoppen >= 12 &&
+    paneel.opschriften.includes('DRUCKEN') &&
+    paneel.opschriften.includes('KURZ') &&
+    /* Het gewone IBIS-blok hoort dan juist weg te zijn. */
+    paneel.oudeToetsen === 0 &&
     gevraagd.includes('afr_display_1') &&
     gevraagd.includes('afr_ticketname_0') &&
-    /^\d+ 79 4$/.test(opdracht)
+    /* IBIS_7 staat in keyboard.cfg op Ctrl+numeriek 7, dus scancode 71. */
+    /^\d+ 71 4$/.test(opdracht)
   console.log(goed ? 'de IBIS klopt' : 'DE IBIS KLOPT NIET')
   app.exit(goed ? 0 : 1)
 })

@@ -55,7 +55,8 @@ import { LaneNetwork, type TripRoute } from '../core/routing'
 import { VehicleTracker, type VehiclePosition } from '../core/vehicle'
 import { buildIbisPlan, type IbisPlan } from '../core/ibis'
 import { apparatenVanBus, type Busapparaat } from '../core/busscherm'
-import { toetsenStand, zetBustoetsen } from '../core/bustoetsen'
+import { panelenVan, profielVanBus, type Busprofiel, type Paneel } from '../core/busprofiel'
+import { zetBustoetsen } from '../core/bustoetsen'
 import {
   describeLive,
   leesSchermen,
@@ -1556,7 +1557,15 @@ function busknoppen(): { beschikbaar: string[] } {
   if (knoppenStand && nu - knoppenGekeken < 5000) return knoppenStand
   knoppenGekeken = nu
   try {
-    knoppenStand = { beschikbaar: toetsenStand(omsi()).aanwezig.map((toets) => toets.actie) }
+    /*
+     * Alles wat de telefoon kan indrukken en werkelijk in keyboard.cfg staat.
+     * Niet alleen de knoppen die de app zelf bijschrijft: de cijfers van de IBIS
+     * staan er van huis uit in, en die horen dus niet grijs.
+     */
+    const namen = new Set(readKeyboard(omsi()).map((binding) => binding.action.toLowerCase()))
+    knoppenStand = {
+      beschikbaar: Object.values(OMSI_TOETSEN).filter((naam) => namen.has(naam.toLowerCase()))
+    }
   } catch {
     knoppenStand = { beschikbaar: [] }
   }
@@ -1572,6 +1581,48 @@ function zetBusknoppenAan(): { toegevoegd: number; geenPlek: number } | undefine
     logFout('busknoppen bijschrijven', fout)
     return undefined
   }
+}
+
+/*
+ * De apparaten van deze bus, nagebouwd zoals ze in de cabine zitten.
+ *
+ * Alleen voor bussen die de app van binnen kent (core/busprofiel.ts); de rest
+ * krijgt de generieke weergave uit de model.cfg. Welk profiel het is verandert
+ * alleen als je in een andere bus stapt, dus dat wordt onthouden -- de tekst
+ * erop komt bij elk beeld vers uit `vars`.
+ */
+const profielPerBus = new Map<string, Busprofiel | null>()
+
+function busPanelen(live: LiveData | undefined): Paneel[] | undefined {
+  const bus = live?.bus
+  if (!bus || !live.vars) return undefined
+  let omsiMap: string
+  try {
+    omsiMap = omsi()
+  } catch {
+    return undefined
+  }
+  const sleutel = `${bus.pad}|${bus.model}|${bus.bestand}`
+  let profiel = profielPerBus.get(sleutel)
+  if (profiel === undefined) {
+    /*
+     * Welke variabelen deze bus heeft staat in schermen.json, de volle lijst van
+     * de plugin. Is die er nog niet, dan wachten we -- een profiel afwijzen op
+     * een lijst die nog leeg is zou het de hele rit weghouden.
+     */
+    const namen = new Set(
+      Object.keys(leesSchermen()?.vars ?? {}).map((naam) => naam.toLowerCase())
+    )
+    if (namen.size === 0) return undefined
+    profiel = profielVanBus(omsiMap, bus, namen)?.profiel ?? null
+    profielPerBus.set(sleutel, profiel)
+    log(
+      profiel
+        ? `busprofiel: ${profiel.naam} -- ${profiel.apparaten.map((apparaat) => `${apparaat.naam} (${apparaat.rijen.flat().length} knoppen)`).join(', ')}`
+        : `busprofiel: geen voor ${bus.naam || bus.pad}; de generieke weergave blijft`
+    )
+  }
+  return profiel ? panelenVan(profiel, live.vars) : undefined
 }
 
 function pushFrame(): void {
@@ -1609,6 +1660,7 @@ function pushFrame(): void {
      */
     kaartjes: kaartsetVoorOverlay(duty?.mapFolder),
     knoppen: busknoppen(),
+    panelen: busPanelen(live),
     /*
      * Wie er rijdt, met zijn personeelsnummer en pincode. Die gaan mee zodat de
      * telefoon de aanmelding zelf kan nakijken zonder het hoofdproces erbij te
