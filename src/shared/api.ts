@@ -9,7 +9,7 @@ import type { MapGeometry } from '../core/geo'
 import type { IbisPlan } from '../core/ibis'
 import type { TripRoute } from '../core/routing'
 import type { PluginStatus } from '../core/pluginInstall'
-import type { AanmeldUitslag, OmsiToets } from './telefoon'
+import type { AanmeldUitslag } from './telefoon'
 import type { Duty } from '../core/types'
 import type { Vehicle } from '../core/vehicles'
 import type { LiveStatus } from '../core/live'
@@ -500,9 +500,11 @@ export interface CareerApi {
    * teruggeven. Geeft terug of de opdracht weggeschreven is; of hij ook
    * aankwam, zegt het volgende beeld (`status.opdracht`).
    */
-  telefoonToets(actie: OmsiToets): Promise<boolean>
+  telefoonToets(actie: string): Promise<boolean>
   /** De knoppen van de apparaten in de bus bijschrijven; zie core/bustoetsen.ts. */
   telefoonKnoppen(): Promise<{ toegevoegd: number; geenPlek: number } | undefined>
+  /** Een apparaat uit deze bus in de telefoon zetten of eruit halen. */
+  telefoonModule(id: string, aan: boolean): Promise<void>
   /** De navigatie op een telefoon of tablet: de server aan, en het adres voor de QR-code. */
   apparaatStart(): Promise<ApparaatStand>
   apparaatStop(): Promise<ApparaatStand>

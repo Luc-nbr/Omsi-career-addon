@@ -127,6 +127,27 @@ export interface Settings {
    */
   apparaatSleutel?: string
   apparaatPoort?: number
+  /**
+   * Welke apparaten de speler per bus in de telefoon heeft gezet.
+   *
+   * De app stelt ze zelf samen uit het model van de bus (core/busmodule.ts) --
+   * de AFR 200, het LAWO-bedieningsdeel, de kaartdrukker -- maar welke daarvan
+   * je erbij wilt hebben is een keuze. De sleutel is de map van de bus, zodat
+   * het per bustype onthouden wordt en niet per uitvoering.
+   */
+  busmodules?: Record<string, string[]>
+}
+
+/** Alleen een lijst namen per bus; wat er verder in het bestand staat telt niet. */
+function geldigeModules(ruw: unknown): Record<string, string[]> | undefined {
+  if (!ruw || typeof ruw !== 'object') return undefined
+  const uit: Record<string, string[]> = {}
+  for (const [bus, lijst] of Object.entries(ruw as Record<string, unknown>)) {
+    if (!Array.isArray(lijst)) continue
+    const namen = lijst.filter((naam): naam is string => typeof naam === 'string').slice(0, 20)
+    if (namen.length > 0) uit[bus.slice(0, 200)] = namen
+  }
+  return Object.keys(uit).length > 0 ? uit : undefined
 }
 
 function settingsPath(userDataPath: string): string {
@@ -180,7 +201,8 @@ export function readSettings(userDataPath: string): Settings {
           : undefined,
       navDeel: geldigNavDeel(raw.navDeel),
       apparaatSleutel: geldigeSleutel(raw.apparaatSleutel),
-      apparaatPoort: geldigePoort(raw.apparaatPoort)
+      apparaatPoort: geldigePoort(raw.apparaatPoort),
+      busmodules: geldigeModules(raw.busmodules)
     }
   } catch {
     return {

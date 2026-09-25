@@ -103,6 +103,7 @@ blijft eenmalig een kopie staan als `laststn.osn.voor-omsi-career`. Verder niets
 | `live.ts` | Leest `live.json` van de plugin, maakt er een `LiveStatus` van |
 | `busscherm.ts` | De schermpjes van de bus uit zijn `model.cfg`: welke variabele, welk lettertype, welke kleur |
 | `busprofiel.ts` | Per bus nagebouwde apparaten (AFR 200, LAWO 8401); anders de generieke weergave |
+| `busmodule.ts` | Stelt uit het model van ELKE bus zelf een apparaat samen: schermpjes, knoppen en hun opschrift |
 | `bustoetsen.ts` | De knoppen die OMSI alleen op de muis heeft, bijgeschreven in `keyboard.cfg` |
 | `career.ts` | Loopbaan: diensten, uren, rangen, modi, vergunningen, examens |
 | `exam.ts` | De eisen van het rijexamen en het oordeel erover |

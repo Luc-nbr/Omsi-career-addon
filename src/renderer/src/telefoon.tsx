@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useRef,
   useState,
   type CSSProperties,
   type JSX,
@@ -15,10 +14,8 @@ import { punctuality } from "../../shared/status";
 import { t, type Language, type TextKey } from "../../shared/i18n";
 import {
   LEGE_TELEFOON,
-  OMSI_TOETSEN,
   PLUGIN_VERSIE,
   type AanmeldUitslag,
-  type OmsiToets,
   type TelefoonStand,
 } from "../../shared/telefoon";
 import type { Verkoop } from "../../core/live";
@@ -72,10 +69,16 @@ export interface TelefoonActies {
   aanvaarden(): void;
   pauze(vanaf?: number): void;
   ibisKlaar(tripKey: string): void;
-  /** Een toets van OMSI laten indrukken; zie `OmsiToets`. */
-  toets(actie: OmsiToets): void;
+  /**
+    * Een knop van de bus indrukken: de naam waar het busscript op luistert,
+    * zoals `IBIS_7` of `ticketprinter_button_enter`. Het hoofdproces kijkt na of
+    * die naam bij deze bus hoort voordat er iets gebeurt.
+    */
+  toets(actie: string): void;
   /** De knoppen van de apparaten in de bus bereikbaar maken; zie core/bustoetsen.ts. */
   knoppenAan(): void;
+  /** Een apparaat uit deze bus in de telefoon zetten, of er weer uit halen. */
+  module(id: string, aan: boolean): void;
 }
 
 /** Wat de telefoon van het beeld nodig heeft. */
@@ -132,30 +135,14 @@ export function Telefoon({
    * blijft dat zo tot de volgende halte.
    */
   /*
-   * Iemand aan de balie: dan hoort de kaartverkoop in beeld te komen, ook als
-   * de deur al openstond. Dat is het moment waarop je iets moet doen.
+   * De telefoon springt niet meer vanzelf van app.
+   *
+   * Hij ging naar de kaartverkoop zodra een deur openging of er iemand aan de
+   * balie kwam, en daarna weer terug naar de kaart. Dat klinkt behulpzaam, maar
+   * het haalt het scherm weg waar je net naar keek -- je IBIS terwijl je hem aan
+   * het intoetsen bent -- en op een tablet die naast je ligt is dat helemaal
+   * onhandig. Op verzoek eruit: je kiest zelf met het balkje onderin.
    */
-  const verkoopt = Boolean(frame.status?.verkoop);
-  const verkochtStond = useRef(verkoopt);
-  useEffect(() => {
-    if (verkoopt && !verkochtStond.current) setApp("kaartjes");
-    verkochtStond.current = verkoopt;
-  }, [verkoopt]);
-
-  const deurOpen = Boolean(frame.status?.doorsOpen);
-  const deurStond = useRef(deurOpen);
-  useEffect(() => {
-    if (deurOpen && !deurStond.current) setApp("kaartjes");
-    /*
-     * En dicht is rijden. Dan hoort de kaart er weer te staan -- alleen als je
-     * nog bij de kaartjes bent; was je zelf al naar een andere app gegaan, dan
-     * blijf je daar.
-     */
-    if (!deurOpen && deurStond.current) {
-      setApp((huidig) => (huidig === "kaartjes" ? "kaart" : huidig));
-    }
-    deurStond.current = deurOpen;
-  }, [deurOpen]);
 
   if (!stand.aangemeld) {
     return <AanmeldPaneel stand={stand} acties={acties} language={language} />;
@@ -1003,7 +990,7 @@ function Verkoopscherm({
             <button
               type="button"
               className="app-knop primair"
-              onClick={() => acties.toets("kaartje")}
+              onClick={() => acties.toets("ticket_give")}
             >
               {t(language, "ovl.saleGiveTicket")}
             </button>
@@ -1011,7 +998,7 @@ function Verkoopscherm({
               <button
                 type="button"
                 className="app-knop"
-                onClick={() => acties.toets("wisselgeld")}
+                onClick={() => acties.toets("change_give")}
               >
                 {t(language, "ovl.saleGiveChangeKey")}
               </button>
@@ -1114,6 +1101,7 @@ function IbisApp({
     : bruikbaar;
 
   const [welke, setWelke] = useState(0);
+  const [lijstOpen, setLijstOpen] = useState(false);
   const keuzes =
     panelen.length > 0
       ? panelen.map((paneel) => paneel.naam)
@@ -1155,8 +1143,7 @@ function IbisApp({
    * keyboard.cfg (core/bustoetsen.ts) en tot dat gebeurd is doen ze niets.
    */
   const beschikbaar = frame.knoppen?.beschikbaar ?? [];
-  const kan = (actie: OmsiToets): boolean =>
-    beschikbaar.includes(OMSI_TOETSEN[actie]);
+  const kan = (actie: string): boolean => beschikbaar.includes(actie);
   const ontbreekt = Boolean(
     paneel?.rijen.some((rij) => rij.some((knop) => !kan(knop.actie))),
   );
@@ -1178,7 +1165,7 @@ function IbisApp({
         : `${status.metresToStop} m`;
 
   const toets = (
-    actie: OmsiToets,
+    actie: string,
     tekst: string,
     soort?: "stand" | "invoer",
   ): JSX.Element => (
@@ -1196,6 +1183,44 @@ function IbisApp({
     <div className="ibis" data-hit>
       {pluginOud && (
         <p className="verkoop-mopper">{t(language, "ovl.salePluginOld")}</p>
+      )}
+
+      {/*
+        De apparaten die in deze bus zitten. De app zoekt ze zelf op in het model
+        (core/busmodule.ts): welke schermpjes bij elkaar horen, welke knoppen
+        erbij zitten en hoe die heten. Wat je erbij wilt hebben kies je hier.
+      */}
+      {(frame.busmodules?.length ?? 0) > 0 && (
+        <div className="module-kiezer">
+          <button
+            type="button"
+            className="module-knop"
+            onClick={() => setLijstOpen((open) => !open)}
+          >
+            {lijstOpen ? t(language, "ovl.moduleHide") : t(language, "ovl.moduleAdd")}
+          </button>
+          {lijstOpen && (
+            <ul className="module-lijst">
+              {frame.busmodules?.map((module) => (
+                <li key={module.id}>
+                  <button
+                    type="button"
+                    className={module.erbij ? "aan" : undefined}
+                    onClick={() => acties.module(module.id, !module.erbij)}
+                  >
+                    <b>{module.naam}</b>
+                    <small>
+                      {t(language, "ovl.moduleSize", {
+                        schermen: module.schermen,
+                        knoppen: module.knoppen,
+                      })}
+                    </small>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
 
       {/* Welk apparaat je voor je hebt; alleen als de bus er meer heeft. */}
@@ -1312,18 +1337,18 @@ function IbisApp({
         <>
           {/* De drie standen, zoals de knoppen op het apparaat zelf. */}
           <div className="ibis-standen">
-            {toets("ibisLijn", t(language, "ovl.ibisLine"), "stand")}
-            {toets("ibisRoute", t(language, "ovl.ibisRoute"), "stand")}
-            {toets("ibisBestemming", t(language, "ovl.ibisDest"), "stand")}
+            {toets("IBIS_setmode_linie_kurs", t(language, "ovl.ibisLine"), "stand")}
+            {toets("IBIS_setmode_route", t(language, "ovl.ibisRoute"), "stand")}
+            {toets("IBIS_setmode_ziel", t(language, "ovl.ibisDest"), "stand")}
           </div>
 
           <div className="ibis-toetsen">
             {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((cijfer) =>
-              toets(`ibis${cijfer}` as OmsiToets, cijfer),
+              toets(`IBIS_${cijfer}`, cijfer),
             )}
-            {toets("ibisWissen", t(language, "ovl.ibisClear"), "invoer")}
-            {toets("ibis0", "0")}
-            {toets("ibisInvoer", t(language, "ovl.ibisEnter"), "invoer")}
+            {toets("IBIS_loeschen", t(language, "ovl.ibisClear"), "invoer")}
+            {toets("IBIS_0", "0")}
+            {toets("IBIS_eingabe", t(language, "ovl.ibisEnter"), "invoer")}
           </div>
         </>
       )}

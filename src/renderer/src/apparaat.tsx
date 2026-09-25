@@ -95,6 +95,8 @@ function Apparaat(): JSX.Element {
       ibisKlaar: (tripKey) => void stuur({ wat: "ibis", tripKey }).catch(() => undefined),
       toets: (actie) => void stuur({ wat: "toets", toets: actie }).catch(() => undefined),
       knoppenAan: () => void stuur({ wat: "busknoppen" }).catch(() => undefined),
+      module: (id, aan) =>
+        void stuur({ wat: "module", module: id, aan }).catch(() => undefined),
     }),
     [],
   );

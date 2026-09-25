@@ -66,7 +66,23 @@ app.whenReady().then(async () => {
   ipcMain.handle('plugin:status', () => ({ installed: true, upToDate: true, changed: false, target: '' }))
   await wacht(2500)
   const hoofd = BrowserWindow.getAllWindows()[0]
-  const dienst = await js(hoofd, `window.career.career().then((p) => p.state?.activeDuty?.assignment?.duty)`)
+  /*
+   * Zonder aangenomen dienst in het profiel valt er niets te tonen, en dan lag
+   * de proef stil tot de gebruiker toevallig weer een dienst had lopen. Deze
+   * verzonnen dienst houdt hem onafhankelijk van wat er in het profiel staat.
+   */
+  const dienst = (await js(hoofd, `window.career.career().then((p) => p.state?.activeDuty?.assignment?.duty)`)) ?? {
+    mapFolder: 'Thueringer Wald 2005', mapName: 'Thueringenwald', lineFile: '320.ttp',
+    tourNumber: '9', depot: '',
+    legs: [{
+      tripFile: 'a', lineFile: '320.ttp', lineNumber: '320', terminus: 'Oberhof',
+      departure: 480, arrival: 520, minutes: 40, tourNumber: '9', switchInOmsi: false,
+      layoverBefore: 0, stops: ['Markt', 'Bahnhof', 'Oberhof'], stopIds: ['1', '2', '3'],
+      stopTimes: [480, 500, 520]
+    }],
+    signOn: 470, start: 480, end: 640, durationMinutes: 160, totalStops: 3,
+    lineNumbers: ['320'], days: 0, period: 0
+  }
   const rit = dienst.legs[0]
   const beeld = (deur, ticket, verkoop, ibis, extra) => ({
     alive: true, seen: 8388607, seenSys: 63, seenStr: 63, strKind: 1,
@@ -95,7 +111,7 @@ app.whenReady().then(async () => {
         }
       : { ok: 0 },
     ibis: ibis ?? { bestemming: '', lijn: '', lawo1: '', lawo2: '', lawo3: '', lawo4: '' },
-    plugin: 10,
+    plugin: 11,
     ...(extra ?? {})
   })
   const schrijf = (deur, ticket, verkoop, ibis, extra) =>

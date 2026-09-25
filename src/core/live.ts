@@ -672,12 +672,23 @@ function scheduleDelta(
  */
 const MAX_SENSIBLE_DELAY_S = 3 * 3600
 
-/** Vertaalt de vertragingstekst van de IBIS naar minuten. */
+/**
+ * Vertaalt de vertragingstekst van de IBIS naar minuten.
+ *
+ * De IBIS geeft de minuten en de seconden apart, en het minteken staat alleen
+ * bij de minuten: twee en een halve minuut te vroeg komt binnen als "-2" en
+ * "30". Wie die twee optelt houdt anderhalve minuut te vroeg over -- en bij
+ * "-0" en "30" zelfs een halve minuut TE LAAT, terwijl je voorligt. De seconden
+ * krijgen daarom het teken van de minuten, en dat teken komt uit de tekst, niet
+ * uit het getal: `-0` is als getal gewoon nul.
+ */
 function ibisDelay(data: LiveData): number | undefined {
-  const minutes = Number.parseFloat(data.delayMin.trim())
+  const minutenTekst = data.delayMin.trim()
+  const minutes = Number.parseFloat(minutenTekst)
   if (!Number.isFinite(minutes)) return undefined
   const seconds = Number.parseFloat(data.delaySec.trim())
-  return minutes + (Number.isFinite(seconds) ? seconds / 60 : 0)
+  const teken = minutenTekst.startsWith('-') ? -1 : 1
+  return minutes + (Number.isFinite(seconds) ? (teken * Math.abs(seconds)) / 60 : 0)
 }
 
 /**

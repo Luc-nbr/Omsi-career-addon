@@ -56,6 +56,7 @@ import { VehicleTracker, type VehiclePosition } from '../core/vehicle'
 import { buildIbisPlan, type IbisPlan } from '../core/ibis'
 import { apparatenVanBus, type Busapparaat } from '../core/busscherm'
 import { panelenVan, profielVanBus, type Busprofiel, type Paneel } from '../core/busprofiel'
+import { modulesVanBus, paneelVanModule, type Busmodule } from '../core/busmodule'
 import { bruikbareToetsen, zetBustoetsen } from '../core/bustoetsen'
 import {
   describeLive,
@@ -1388,9 +1389,18 @@ function telefoonGewijzigd(): void {
  */
 let opdrachtNr = 0
 
-function omsiToets(actie: OmsiToets): boolean {
-  const naam = OMSI_TOETSEN[actie]
-  if (!naam) return false
+function omsiToets(actie: string): boolean {
+  /*
+   * De naam waar het busscript op luistert. De telefoon stuurt hem zoals hij in
+   * het model van de bus staat (`IBIS_7`, `ticketprinter_button_enter`); de
+   * oude namen uit `OMSI_TOETSEN` blijven werken voor de vaste knoppen van de
+   * app zelf. Wat deze bus niet heeft, gebeurt niet -- zie `toegestaneActies`.
+   */
+  const naam = (OMSI_TOETSEN as Record<string, string>)[actie] ?? actie
+  if (!naam || !toegestaneActies.has(naam.toLowerCase())) {
+    log(`toets ${naam || actie} hoort niet bij deze bus; niet ingedrukt`)
+    return false
+  }
   let scancode = 0
   let modifiers = 0
   try {
@@ -1572,7 +1582,16 @@ function busknoppen(): { beschikbaar: string[] } {
 
 function zetBusknoppenAan(): { toegevoegd: number; geenPlek: number } | undefined {
   try {
-    const uitslag = zetBustoetsen(omsi())
+    /*
+     * De knoppen van de apparaten die nu in de telefoon staan. Dat is per bus
+     * anders -- bij de ene een AFR 200, bij de andere een Atron met een
+     * aanraakscherm -- en het zijn er hooguit een paar tientallen.
+     */
+    const live = freshLive()
+    const acties = (busPanelen(live) ?? []).flatMap((paneel) =>
+      paneel.rijen.flat().map((knop) => knop.actie)
+    )
+    const uitslag = zetBustoetsen(omsi(), acties.length > 0 ? acties : undefined)
     knoppenStand = undefined
     return uitslag
   } catch (fout) {
@@ -1590,6 +1609,69 @@ function zetBusknoppenAan(): { toegevoegd: number; geenPlek: number } | undefine
  * erop komt bij elk beeld vers uit `vars`.
  */
 const profielPerBus = new Map<string, Busprofiel | null>()
+/*
+ * En de apparaten die de app zelf uit het model samenstelt (core/busmodule.ts).
+ * Dat leest een cfg van schijf, dus het gebeurt een keer per bus.
+ */
+const modulesPerBus = new Map<string, Busmodule[]>()
+/*
+ * Welke knoppen de telefoon van deze bus mag indrukken. Een toestel op het
+ * netwerk mag niet zomaar elke toets van het spel afgeven; wat de bus zelf aan
+ * knoppen heeft is de grens, plus de vaste lijst uit shared/telefoon.ts.
+ */
+let toegestaneActies = new Set<string>(Object.values(OMSI_TOETSEN).map((naam) => naam.toLowerCase()))
+
+/** Waaronder we onthouden welke apparaten de speler bij deze bus wil zien. */
+function busSleutel(bus: LiveData['bus']): string {
+  return (bus?.pad || bus?.model || '').toLowerCase().replace(/[\\/]+$/, '')
+}
+
+function busModules(live: LiveData | undefined): Busmodule[] {
+  const bus = live?.bus
+  if (!bus) return []
+  let omsiMap: string
+  try {
+    omsiMap = omsi()
+  } catch {
+    return []
+  }
+  const sleutel = `${bus.pad}|${bus.model}|${bus.bestand}`
+  let modules = modulesPerBus.get(sleutel)
+  if (!modules) {
+    modules = modulesVanBus(omsiMap, bus)
+    modulesPerBus.set(sleutel, modules)
+    log(
+      `apparaten in ${bus.naam || bus.pad}: ` +
+        (modules.map((m) => `${m.naam} (${m.schermen.length} schermpjes, ${m.knoppen.length} knoppen)`).join(', ') ||
+          'geen')
+    )
+    const namen = new Set(Object.values(OMSI_TOETSEN).map((naam) => naam.toLowerCase()))
+    for (const module of modules) for (const knop of module.knoppen) namen.add(knop.actie.toLowerCase())
+    toegestaneActies = namen
+  }
+  return modules
+}
+
+/**
+ * Welke apparaten de speler erbij gezet heeft; onthouden in de instellingen.
+ *
+ * Even bewaard, want dit wordt bij elk beeld gevraagd -- tien keer per seconde
+ * het instellingenbestand van schijf lezen is zonde, en het verandert alleen
+ * als iemand op een knop drukt.
+ */
+let gekozenOnthouden: Record<string, string[]> | undefined
+let gekozenGelezen = 0
+
+function gekozenModules(bus: LiveData['bus']): string[] {
+  const sleutel = busSleutel(bus)
+  if (!sleutel) return []
+  const nu = Date.now()
+  if (!gekozenOnthouden || nu - gekozenGelezen > 2000) {
+    gekozenGelezen = nu
+    gekozenOnthouden = readSettings(userData()).busmodules ?? {}
+  }
+  return gekozenOnthouden[sleutel] ?? []
+}
 
 function busPanelen(live: LiveData | undefined): Paneel[] | undefined {
   const bus = live?.bus
@@ -1620,7 +1702,56 @@ function busPanelen(live: LiveData | undefined): Paneel[] | undefined {
         : `busprofiel: geen voor ${bus.naam || bus.pad}; de generieke weergave blijft`
     )
   }
-  return profiel ? panelenVan(profiel, live.vars) : undefined
+  const uitProfiel = profiel ? panelenVan(profiel, live.vars) : []
+  /*
+   * En de apparaten die de speler er zelf bij gezet heeft met "Voeg IBIS-scherm
+   * toe". Een apparaat dat het profiel al toont komt er niet nog een keer bij.
+   */
+  const alGetoond = new Set(uitProfiel.map((paneel) => paneel.id))
+  const gekozen = gekozenModules(bus)
+  const erbij = busModules(live)
+    .filter((module) => gekozen.includes(module.id) && !alGetoond.has(module.id))
+    .map((module) => paneelVanModule(module, live.vars ?? {}))
+  const alles = [...uitProfiel, ...erbij]
+  return alles.length > 0 ? alles : undefined
+}
+
+/** Wat de telefoon in het lijstje "Voeg IBIS-scherm toe" te zien krijgt. */
+function busmoduleLijst(live: LiveData | undefined): {
+  id: string
+  naam: string
+  schermen: number
+  knoppen: number
+  erbij: boolean
+}[] {
+  const modules = busModules(live)
+  if (modules.length === 0) return []
+  const gekozen = gekozenModules(live?.bus)
+  const paneelIds = new Set((busPanelen(live) ?? []).map((paneel) => paneel.id))
+  return modules.map((module) => ({
+    id: module.id,
+    naam: module.naam,
+    schermen: module.schermen.length,
+    knoppen: module.knoppen.length,
+    erbij: gekozen.includes(module.id) || paneelIds.has(module.id)
+  }))
+}
+
+/** Een apparaat erbij zetten of weghalen; blijft bewaard per bus. */
+function zetBusmodule(live: LiveData | undefined, id: string, aan: boolean): void {
+  const sleutel = busSleutel(live?.bus)
+  if (!sleutel || !id) return
+  const instellingen = readSettings(userData())
+  const alles = { ...(instellingen.busmodules ?? {}) }
+  const nu = new Set(alles[sleutel] ?? [])
+  if (aan) nu.add(id)
+  else nu.delete(id)
+  if (nu.size > 0) alles[sleutel] = [...nu]
+  else delete alles[sleutel]
+  writeSettings(userData(), { busmodules: alles })
+  gekozenOnthouden = alles
+  gekozenGelezen = Date.now()
+  log(`apparaat ${aan ? 'erbij' : 'weg'}: ${id} bij ${sleutel}`)
 }
 
 function pushFrame(): void {
@@ -1659,6 +1790,7 @@ function pushFrame(): void {
     kaartjes: kaartsetVoorOverlay(duty?.mapFolder),
     knoppen: busknoppen(),
     panelen: busPanelen(live),
+    busmodules: busmoduleLijst(live),
     /*
      * Wie er rijdt, met zijn personeelsnummer en pincode. Die gaan mee zodat de
      * telefoon de aanmelding zelf kan nakijken zonder het hoofdproces erbij te
@@ -1701,6 +1833,7 @@ function frameVoorApparaat(frame: {
   kaartjes?: unknown
   knoppen?: unknown
   panelen?: unknown
+  busmodules?: unknown
   telefoon: TelefoonStand
 }): unknown {
   return {
@@ -1720,6 +1853,7 @@ function frameVoorApparaat(frame: {
      */
     knoppen: frame.knoppen,
     panelen: frame.panelen,
+    busmodules: frame.busmodules,
     telefoon: frame.telefoon
   }
 }
@@ -2215,6 +2349,10 @@ function apparaatBronnen(): ApparaatBronnen {
           zetBusknoppenAan()
           break
         }
+        case 'module': {
+          zetBusmodule(freshLive(), String(opdracht.module ?? ''), opdracht.aan !== false)
+          break
+        }
         case 'toets': {
           /* Alleen de toetsen uit de lijst; zie `OMSI_TOETSEN`. */
           const naam = String(opdracht.toets ?? '') as OmsiToets
@@ -2631,6 +2769,9 @@ function registerHandlers(): void {
   })
   handle('telefoon:toets', (_event, actie: OmsiToets) => omsiToets(actie))
   handle('telefoon:knoppen', () => zetBusknoppenAan())
+  handle('telefoon:module', (_event, id: string, aan: boolean) => {
+    zetBusmodule(freshLive(), String(id), Boolean(aan))
+  })
 
   handle('apparaat:start', async () => {
     const nu = readSettings(userData())

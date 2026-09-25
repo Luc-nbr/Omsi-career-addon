@@ -144,8 +144,13 @@ function achtergrondBij(font: string, r: number, g: number, b: number, mono: boo
   return 'rgb(12, 14, 16)'
 }
 
-/** Het lezen van één blok; `enh` heeft er twee velden bij. */
-function vakVan(regels: string[], i: number, enh: boolean): Schermvak | undefined {
+/**
+ * Het lezen van één blok; `enh` heeft er twee velden bij.
+ *
+ * Ook gebruikt door core/busmodule.ts, dat dezelfde blokken op volgorde nodig
+ * heeft om `[useTextTexture]` te kunnen volgen.
+ */
+export function schermvakVan(regels: string[], i: number, enh: boolean): Schermvak | undefined {
   const variabele = (regels[i + 1] ?? '').trim()
   const font = (regels[i + 2] ?? '').trim()
   const breedte = Number((regels[i + 3] ?? '').trim())
@@ -194,7 +199,7 @@ export function schermenVanModel(modelcfg: string): Schermvak[] {
   for (let i = 0; i < regels.length; i++) {
     const kop = regels[i].trim().toLowerCase()
     if (kop !== '[texttexture]' && kop !== '[texttexture_enh]') continue
-    const vak = vakVan(regels, i, kop === '[texttexture_enh]')
+    const vak = schermvakVan(regels, i, kop === '[texttexture_enh]')
     if (!vak || gezien.has(vak.variabele.toLowerCase())) continue
     gezien.add(vak.variabele.toLowerCase())
     vakken.push(vak)

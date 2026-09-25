@@ -1434,6 +1434,73 @@
  * op een telefoon net zo goed als op een iPad.
  */
 /*
+ * "Voeg IBIS-scherm toe": de apparaten die in deze bus zitten.
+ *
+ * De app zoekt ze zelf op in het model van de bus, dus dit lijstje ziet er bij
+ * elke bus anders uit -- bij de een een AFR 200 en een LAWO, bij de ander een
+ * Atron met een aanraakscherm. Wat je aanzet blijft voor die bus bewaard.
+ */
+.module-kiezer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.module-knop {
+  padding: 7px 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.module-lijst {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.module-lijst button {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-klein);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  text-align: left;
+}
+
+.module-lijst button.aan {
+  border-color: rgba(120, 170, 255, 0.55);
+  background: rgba(120, 170, 255, 0.16);
+  color: #ffffff;
+}
+
+.module-lijst b {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.module-lijst small {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/*
  * Het toetsenbord van een nagebouwd apparaat: rij voor rij zoals het erop ligt,
  * in de kleuren van het apparaat zelf. Bij de AFR 200 zijn de kaartsoorten geel,
  * DRUCKEN en de rode functietoetsen rood, en de rest grijs plastic.

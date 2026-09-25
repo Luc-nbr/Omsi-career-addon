@@ -142,6 +142,38 @@ function backupPad(omsiPath: string): string {
   return join(omsiPath, 'Inputs', 'keyboard.omsi-enhancer.bak')
 }
 
+/**
+ * Hoe het ervoor staat voor een lijst knoppen.
+ *
+ * De lijst komt uit de apparaten die op dat moment in de telefoon staan -- het
+ * handgemaakte profiel van deze bus, of wat de app zelf uit het model heeft
+ * samengesteld (core/busmodule.ts). Zo krijgt elke bus zijn eigen knoppen aan
+ * een toets, ook een bus die we nooit gezien hebben.
+ */
+export function toetsenStandVan(omsiPath: string, acties: string[]): {
+  ontbreekt: string[]
+  aanwezig: string[]
+  backup: boolean
+} {
+  let bindings: KeyBinding[] = []
+  try {
+    bindings = readKeyboard(omsiPath)
+  } catch {
+    return { ontbreekt: acties, aanwezig: [], backup: false }
+  }
+  const goed = new Set(
+    bindings
+      .filter((binding) => GOEDE_MOD.includes(binding.modifiers & ~1))
+      .map((binding) => binding.action.toLowerCase())
+  )
+  const uniek = [...new Set(acties)]
+  return {
+    ontbreekt: uniek.filter((actie) => !goed.has(actie.toLowerCase())),
+    aanwezig: uniek.filter((actie) => goed.has(actie.toLowerCase())),
+    backup: existsSync(backupPad(omsiPath))
+  }
+}
+
 /** Hoe het ervoor staat: wat ontbreekt er, en hebben wij al iets bijgeschreven? */
 export function toetsenStand(omsiPath: string): {
   ontbreekt: Bustoets[]
@@ -173,8 +205,12 @@ export function toetsenStand(omsiPath: string): {
  * `[vehicles]` bijgeschreven, net zoals OMSI zelf doet. Geeft terug hoeveel er
  * bij kwamen.
  */
-export function zetBustoetsen(omsiPath: string): { toegevoegd: number; geenPlek: number } {
-  const onze = new Set(BUSTOETSEN.map((toets) => toets.actie.toLowerCase()))
+export function zetBustoetsen(
+  omsiPath: string,
+  acties: string[] = BUSTOETSEN.map((toets) => toets.actie)
+): { toegevoegd: number; geenPlek: number } {
+  const gevraagd = [...new Set(acties.filter((actie) => actie && actie.length < 80))]
+  const onze = new Set(gevraagd.map((actie) => actie.toLowerCase()))
   /*
    * Onze eigen regels gaan er eerst uit. Anders blijft een knop van een vorige
    * versie op zijn oude toets staan -- en dan zegt de app dat alles er is
@@ -198,8 +234,8 @@ export function zetBustoetsen(omsiPath: string): { toegevoegd: number; geenPlek:
 
   let toegevoegd = 0
   let geenPlek = 0
-  for (const toets of BUSTOETSEN) {
-    if (bekend.has(toets.actie.toLowerCase())) continue
+  for (const actie of gevraagd) {
+    if (bekend.has(actie.toLowerCase())) continue
     const plek = KANDIDATEN.find(
       (kandidaat) => !bezet.has(`${kandidaat.scancode}|${kandidaat.modifiers}`)
     )
@@ -209,7 +245,7 @@ export function zetBustoetsen(omsiPath: string): { toegevoegd: number; geenPlek:
     }
     bezet.add(`${plek.scancode}|${plek.modifiers}`)
     bindings.push({
-      action: toets.actie,
+      action: actie,
       section: sectie,
       scancode: plek.scancode,
       modifiers: plek.modifiers
@@ -222,9 +258,12 @@ export function zetBustoetsen(omsiPath: string): { toegevoegd: number; geenPlek:
 }
 
 /** Haalt onze eigen regels er weer uit; wat de speler zelf had blijft staan. */
-export function haalBustoetsenWeg(omsiPath: string): number {
+export function haalBustoetsenWeg(
+  omsiPath: string,
+  acties: string[] = BUSTOETSEN.map((toets) => toets.actie)
+): number {
   const bindings = readKeyboard(omsiPath)
-  const onze = new Set(BUSTOETSEN.map((toets) => toets.actie.toLowerCase()))
+  const onze = new Set(acties.map((actie) => actie.toLowerCase()))
   const over = bindings.filter((binding) => !onze.has(binding.action.toLowerCase()))
   const weg = bindings.length - over.length
   if (weg > 0) writeKeyboard(omsiPath, over)

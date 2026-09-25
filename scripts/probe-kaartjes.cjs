@@ -66,7 +66,29 @@ app.whenReady().then(async () => {
   ipcMain.handle('plugin:status', () => ({ installed: true, upToDate: true, changed: false, target: '' }))
   await wacht(2500)
   const hoofd = BrowserWindow.getAllWindows()[0]
-  const dienst = await js(hoofd, `window.career.career().then((p) => p.state?.activeDuty?.assignment?.duty)`)
+  /*
+   * Deze proef heeft een echte aangenomen dienst nodig: de kaartverkoop hangt aan
+   * het kaartpakket van de kaart die je rijdt, en dat komt uit het profiel. Is er
+   * geen dienst, dan wordt de proef overgeslagen in plaats van te zakken.
+   */
+  const echteDienst = await js(hoofd, `window.career.career().then((p) => p.state?.activeDuty?.assignment?.duty)`)
+  if (!echteDienst) {
+    console.log('geen aangenomen dienst in het profiel; proef overgeslagen')
+    app.exit(0)
+    return
+  }
+  const dienst = echteDienst ?? {
+    mapFolder: 'Thueringer Wald 2005', mapName: 'Thueringenwald', lineFile: '320.ttp',
+    tourNumber: '9', depot: '',
+    legs: [{
+      tripFile: 'a', lineFile: '320.ttp', lineNumber: '320', terminus: 'Oberhof',
+      departure: 480, arrival: 520, minutes: 40, tourNumber: '9', switchInOmsi: false,
+      layoverBefore: 0, stops: ['Markt', 'Bahnhof', 'Oberhof'], stopIds: ['1', '2', '3'],
+      stopTimes: [480, 500, 520]
+    }],
+    signOn: 470, start: 480, end: 640, durationMinutes: 160, totalStops: 3,
+    lineNumbers: ['320'], days: 0, period: 0
+  }
   const rit = dienst.legs[0]
   const beeld = (deur, ticket, verkoop) => ({
     alive: true, seen: 8388607, seenSys: 63, seenStr: 63, strKind: 1,
@@ -111,14 +133,21 @@ app.whenReady().then(async () => {
 
   const overlay = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('overlay'))
   const soorten = await js(overlay, `document.querySelectorAll('.kaartlijst button').length`)
-  const voor = await js(overlay, `({ app: document.querySelector('.dock-knop[aria-pressed="true"]')?.getAttribute('aria-label'), kaartjes: Boolean(document.querySelector('.kaartjes')) })`)
-  console.log('deur dicht:', JSON.stringify(voor))
+  /*
+   * Zelf naar de kaartverkoop. De telefoon springt er niet meer vanzelf heen als
+   * de deur opengaat -- dat haalde het scherm weg waar je naar keek -- dus doet
+   * de proef wat de gebruiker doet: op het balkje onderin tikken.
+   */
+  const voor = await js(overlay, `({ kaartjes: Boolean(document.querySelector('.kaartjes')) })`)
+  await js(overlay, `[...document.querySelectorAll('.dock-knop')].find((b) => b.getAttribute('aria-label') === 'Kaartjes' || b.getAttribute('aria-label') === 'Tickets')?.click()`)
+  await wacht(600)
+  const open = await js(overlay, `Boolean(document.querySelector('.kaartjes'))`)
+  console.log('voor het openen:', JSON.stringify(voor), '| na het tikken op het balkje:', open)
 
   // De deur gaat open, met kaartje 1 gekozen in de bus.
   schrijf(true, 1)
   await wacht(1800)
   const na = await js(overlay, `({
-    app: document.querySelector('.dock-knop[aria-pressed="true"]')?.getAttribute('aria-label'),
     kaartjes: Boolean(document.querySelector('.kaartjes')),
     gekozen: document.querySelector('.kaartgekozen .kaartnaam, .kaartjes .kaartnaam')?.textContent ?? null,
     prijs: document.querySelector('.kaartjes .kaartprijs')?.textContent ?? null,
@@ -140,13 +169,10 @@ app.whenReady().then(async () => {
   })()`)
   console.log('na een briefje van tien:', JSON.stringify(terug))
 
-  /* En dicht is rijden: dan hoort de kaart er weer te staan. */
+  /* De deur weer dicht: de kaartverkoop blijft staan, want jij koos hem. */
   schrijf(false, -1)
   await wacht(1800)
-  const dicht = await js(overlay, `({
-    app: document.querySelector('.dock-knop[aria-pressed="true"]')?.getAttribute('aria-label'),
-    kaartjes: Boolean(document.querySelector('.kaartjes'))
-  })`)
+  const dicht = await js(overlay, `({ kaartjes: Boolean(document.querySelector('.kaartjes')) })`)
   console.log('deur weer dicht:', JSON.stringify(dicht))
 
   /* De kaartsoorten staan als tegels, niet als lijst. */
@@ -222,17 +248,16 @@ app.whenReady().then(async () => {
   console.log('opdracht voor de plugin:', JSON.stringify(opdracht))
 
   const goed =
-    voor.app === 'Kaart' &&
     !voor.kaartjes &&
-    na.app === 'Kaartjes' &&
+    open &&
     na.kaartjes &&
     Boolean(na.gekozen) &&
     na.bron !== null &&
     terug.geklikt &&
     terug.terug !== null &&
     terug.munten.length > 0 &&
-    dicht.app === 'Kaart' &&
-    !dicht.kaartjes &&
+    /* Blijft staan waar je hem gezet hebt; hij springt nergens meer heen. */
+    dicht.kaartjes &&
     tegels.tegels > 0 &&
     tegels.lijst === 0 &&
     verkoop.scherm &&

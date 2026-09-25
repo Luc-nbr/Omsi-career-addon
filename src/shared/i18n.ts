@@ -3599,6 +3599,19 @@ const TEXT = {
     fr: 'OMSI n’était pas au premier plan, la touche n’est pas arrivée. Cliquez une fois dans le jeu et réessayez.',
     nl: 'OMSI stond niet vooraan, dus de toets kwam niet aan. Klik één keer in het spel en probeer het opnieuw.'
   },
+  'ovl.moduleAdd': {
+    en: '+ Add IBIS screen',
+    de: '+ IBIS-Anzeige hinzufügen',
+    fr: '+ Ajouter un écran IBIS',
+    nl: '+ Voeg IBIS-scherm toe'
+  },
+  'ovl.moduleHide': { en: 'Done', de: 'Fertig', fr: 'Terminé', nl: 'Klaar' },
+  'ovl.moduleSize': {
+    en: '{schermen} displays, {knoppen} buttons',
+    de: '{schermen} Anzeigen, {knoppen} Tasten',
+    fr: '{schermen} écrans, {knoppen} touches',
+    nl: '{schermen} schermpjes, {knoppen} knoppen'
+  },
   'ovl.afrKeysOff': {
     en: 'The buttons on this ticket machine are mouse-only in OMSI. The app can put them on a key; OMSI has to be restarted afterwards.',
     de: 'Die Tasten dieses Druckers gibt es in OMSI nur per Maus. Die App kann sie auf eine Taste legen; danach muss OMSI neu gestartet werden.',

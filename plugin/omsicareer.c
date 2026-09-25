@@ -132,8 +132,9 @@ enum {
  * 8  in schermen.json ook wat er met de laatste opdracht gebeurd is
  * 9  de toets lang genoeg ingedrukt houden, en de uitgebreide toetsen goed
  * 10 sneller kijken of de app iets vraagt: dertig keer per seconde in plaats van vijf
+ * 11 geen opdracht van de vorige sessie meer uitvoeren bij het opstarten
  */
-#define PLUGIN_VERSIE 10
+#define PLUGIN_VERSIE 11
 
 /*
  * Drempels voor hard remmen en optrekken, in meter per seconde kwadraat.
@@ -1357,6 +1358,14 @@ __declspec(dllexport) void __stdcall PluginStart(void *owner) {
   CreateDirectoryW(g_path, NULL);
   _snwprintf_s(g_temp, MAX_PATH, _TRUNCATE, L"%s\\OMSI Career\\live.tmp", base);
   _snwprintf_s(g_opdrachtPad, MAX_PATH, _TRUNCATE, L"%s\\OMSI Career\\opdracht.txt", base);
+  /*
+   * Een opdracht van de vorige keer hoort niet alsnog uitgevoerd te worden.
+   * `opdracht.txt` blijft staan als OMSI afsluit, en het nummer erin telt bij
+   * een nieuw spel weer vanaf nul -- dan drukte de plugin bij het opstarten de
+   * laatste toets van de vorige rit in, zonder dat iemand iets gevraagd had.
+   * Weg ermee, voordat we gaan kijken.
+   */
+  DeleteFileW(g_opdrachtPad);
   _snwprintf_s(g_vragenPad, MAX_PATH, _TRUNCATE, L"%s\\OMSI Career\\vragen.txt", base);
   _snwprintf_s(g_schermenPad, MAX_PATH, _TRUNCATE, L"%s\\OMSI Career\\schermen.json", base);
   _snwprintf_s(g_schermenTemp, MAX_PATH, _TRUNCATE, L"%s\\OMSI Career\\schermen.tmp", base);

@@ -55,6 +55,12 @@ export interface NavFrame {
    * gevuld voor bussen die de app van binnen kent; zie core/busprofiel.ts.
    */
   panelen?: Paneel[];
+  /**
+   * De apparaten die de app in deze bus gevonden heeft, met of ze al in de
+   * telefoon staan. Daarmee vult de knop "Voeg IBIS-scherm toe" zijn lijstje;
+   * zie core/busmodule.ts.
+   */
+  busmodules?: { id: string; naam: string; schermen: number; knoppen: number; erbij: boolean }[];
 }
 
 /**

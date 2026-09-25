@@ -1,4 +1,3 @@
-import { OMSI_TOETSEN, type OmsiToets } from '../shared/telefoon'
 import { knoppenVanModel, modelcfgVanBus, type Modelknop } from './busscherm'
 
 /**
@@ -24,8 +23,15 @@ import { knoppenVanModel, modelcfgVanBus, type Modelknop } from './busscherm'
 
 /** Een knop op het paneel. */
 export interface Profielknop {
-  /** Welke toets van OMSI eronder zit; zie `OMSI_TOETSEN`. */
-  actie: OmsiToets
+  /**
+   * De naam waar het busscript op luistert -- `IBIS_7`, `ticketprinter_button_enter`.
+   *
+   * Dezelfde naam als in `Inputs\keyboard.cfg` en als bij het `[mouseevent]` in
+   * de model.cfg van de bus. Alles spreekt deze naam: een profiel dat met de
+   * hand gemaakt is, een apparaat dat de app zelf samenstelt, en de plugin die
+   * de toets indrukt.
+   */
+  actie: string
   /** Wat erop staat. */
   opschrift: string
   /** De kleur van de knop, zoals op het apparaat zelf. */
@@ -76,17 +82,17 @@ export interface Busprofiel {
   apparaten: Apparaatprofiel[]
 }
 
-const CIJFERS: OmsiToets[] = [
-  'ibis0',
-  'ibis1',
-  'ibis2',
-  'ibis3',
-  'ibis4',
-  'ibis5',
-  'ibis6',
-  'ibis7',
-  'ibis8',
-  'ibis9'
+const CIJFERS = [
+  'IBIS_0',
+  'IBIS_1',
+  'IBIS_2',
+  'IBIS_3',
+  'IBIS_4',
+  'IBIS_5',
+  'IBIS_6',
+  'IBIS_7',
+  'IBIS_8',
+  'IBIS_9'
 ]
 
 /** Het cijferblok van een IBIS: drie rijen van drie, met de nul eronder. */
@@ -122,34 +128,34 @@ const AFR200: Apparaatprofiel = {
   achtergrond: 'rgb(10, 26, 22)',
   rijen: [
     [
-      { actie: 'ibisInvoer', opschrift: 'AUSLÖSUNG', kleur: 'rood', breed: true },
-      { actie: 'wisselgeld', opschrift: 'GELD-RÜCKGABE', breed: true }
+      { actie: 'IBIS_eingabe', opschrift: 'AUSLÖSUNG', kleur: 'rood', breed: true },
+      { actie: 'change_give', opschrift: 'GELD-RÜCKGABE', breed: true }
     ],
     [
-      { actie: 'ibisLijn', opschrift: 'LINIE' },
-      { actie: 'ibisRoute', opschrift: 'KURS' },
-      { actie: 'ibisBestemming', opschrift: 'F' },
-      { actie: 'afrUhr', opschrift: 'U', kleur: 'rood' }
+      { actie: 'IBIS_setmode_linie_kurs', opschrift: 'LINIE' },
+      { actie: 'IBIS_setmode_route', opschrift: 'KURS' },
+      { actie: 'IBIS_setmode_ziel', opschrift: 'F' },
+      { actie: 'IBIS_Uhr', opschrift: 'U', kleur: 'rood' }
     ],
     [
-      { actie: 'afrRueck', opschrift: 'HST RÜCK' },
-      { actie: 'afrVor', opschrift: 'HST VOR' },
-      { actie: 'afrModul', opschrift: 'MODUL' }
+      { actie: 'IBIS_rueck', opschrift: 'HST RÜCK' },
+      { actie: 'IBIS_vor', opschrift: 'HST VOR' },
+      { actie: 'IBIS_Modul', opschrift: 'MODUL' }
     ],
-    ...cijferblok([{ actie: 'ibisWissen', opschrift: 'C' }]),
+    ...cijferblok([{ actie: 'IBIS_loeschen', opschrift: 'C' }]),
     [
-      { actie: 'afrKurz', opschrift: 'KURZ', kleur: 'geel' },
-      { actie: 'afr24h', opschrift: '24H', kleur: 'geel' },
-      { actie: 'afrKind', opschrift: 'KIND', kleur: 'geel' }
-    ],
-    [
-      { actie: 'afrKindKurz', opschrift: 'KIND KURZ', kleur: 'geel' },
-      { actie: 'afrWo', opschrift: 'WO', kleur: 'geel' },
-      { actie: 'afrSwo', opschrift: 'SWO', kleur: 'geel' }
+      { actie: 'ticketprinter_button_ticket_1', opschrift: 'KURZ', kleur: 'geel' },
+      { actie: 'ticketprinter_button_ticket_2', opschrift: '24H', kleur: 'geel' },
+      { actie: 'ticketprinter_button_ticket_3', opschrift: 'KIND', kleur: 'geel' }
     ],
     [
-      { actie: 'afrDrucken', opschrift: 'DRUCKEN', kleur: 'rood', breed: true },
-      { actie: 'afrGeven', opschrift: 'TICKET', kleur: 'blauw', breed: true }
+      { actie: 'ticketprinter_button_ticket_4', opschrift: 'KIND KURZ', kleur: 'geel' },
+      { actie: 'ticketprinter_button_ticket_wo', opschrift: 'WO', kleur: 'geel' },
+      { actie: 'ticketprinter_button_ticket_swo', opschrift: 'SWO', kleur: 'geel' }
+    ],
+    [
+      { actie: 'ticketprinter_button_enter', opschrift: 'DRUCKEN', kleur: 'rood', breed: true },
+      { actie: 'ticketprinter_getticket', opschrift: 'TICKET', kleur: 'blauw', breed: true }
     ]
   ]
 }
@@ -176,30 +182,30 @@ const LAWO8401: Apparaatprofiel = {
   achtergrond: 'rgb(214, 132, 24)',
   rijen: [
     [
-      { actie: 'lawo7', opschrift: '7' },
-      { actie: 'lawo8', opschrift: '8' },
-      { actie: 'lawo9', opschrift: '9' },
-      { actie: 'lawoL', opschrift: 'L' }
+      { actie: 'LAWO_Taste_7', opschrift: '7' },
+      { actie: 'LAWO_Taste_8', opschrift: '8' },
+      { actie: 'LAWO_Taste_9', opschrift: '9' },
+      { actie: 'LAWO_Taste_L', opschrift: 'L' }
     ],
     [
-      { actie: 'lawo4', opschrift: '4' },
-      { actie: 'lawo5', opschrift: '5' },
-      { actie: 'lawo6', opschrift: '6' },
-      { actie: 'lawoM', opschrift: 'M' }
+      { actie: 'LAWO_Taste_4', opschrift: '4' },
+      { actie: 'LAWO_Taste_5', opschrift: '5' },
+      { actie: 'LAWO_Taste_6', opschrift: '6' },
+      { actie: 'LAWO_Taste_M', opschrift: 'M' }
     ],
     [
-      { actie: 'lawo1', opschrift: '1' },
-      { actie: 'lawo2', opschrift: '2' },
-      { actie: 'lawo3', opschrift: '3' },
-      { actie: 'lawoA', opschrift: 'A' }
+      { actie: 'LAWO_Taste_1', opschrift: '1' },
+      { actie: 'LAWO_Taste_2', opschrift: '2' },
+      { actie: 'LAWO_Taste_3', opschrift: '3' },
+      { actie: 'LAWO_Taste_A', opschrift: 'A' }
     ],
     [
-      { actie: 'lawo0', opschrift: '0' },
-      { actie: 'lawoWissen', opschrift: 'CE' },
-      { actie: 'lawoMode', opschrift: 'MODE' },
-      { actie: 'lawoB', opschrift: 'B' }
+      { actie: 'LAWO_Taste_0', opschrift: '0' },
+      { actie: 'LAWO_Taste_CE', opschrift: 'CE' },
+      { actie: 'LAWO_Taste_MODE', opschrift: 'MODE' },
+      { actie: 'LAWO_Taste_B', opschrift: 'B' }
     ],
-    [{ actie: 'lawoEnter', opschrift: '▶', kleur: 'blauw', breed: true }]
+    [{ actie: 'LAWO_Taste_ENTER', opschrift: '▶', kleur: 'blauw', breed: true }]
   ]
 }
 
@@ -264,13 +270,12 @@ export function profielVanBus(
 /**
  * Zit deze knop in het model?
  *
- * `wisselgeld` en `kaartje` zijn commando's van OMSI zelf en hangen niet aan een
- * onderdeel van de bus; die horen er altijd bij.
+ * `change_give` en `ticket_give` zijn commando's van OMSI zelf en hangen niet
+ * aan een onderdeel van de bus; die horen er altijd bij.
  */
 function hoortErbij(knop: Profielknop, inHetModel: Set<string>): boolean {
-  if (knop.actie === 'wisselgeld' || knop.actie === 'kaartje') return true
-  const naam: string | undefined = OMSI_TOETSEN[knop.actie]
-  return naam ? inHetModel.has(naam.toLowerCase()) : true
+  if (knop.actie === 'change_give' || knop.actie === 'ticket_give') return true
+  return inHetModel.has(knop.actie.toLowerCase())
 }
 
 /**

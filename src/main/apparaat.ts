@@ -59,14 +59,37 @@ export interface ApparaatBronnen {
 }
 
 /** Wat een toestel mag vragen. Alles wat er niet in staat, wordt geweigerd. */
+/**
+ * Wat een toestel mag vragen.
+ *
+ * Een lijst en geen typebewering: het type bestaat alleen tijdens het bouwen,
+ * en deze regel moet tijdens het draaien staan. Als `Record` opgeschreven, zodat
+ * een nieuwe soort die hierboven bij komt de bouw breekt tot hij hier ook staat
+ * -- "Knoppen aan een toets hangen" deed het vanaf een tablet een tijd niet,
+ * juist omdat die lijst hier achterbleef.
+ */
+const OPDRACHTSOORTEN: Record<TelefoonOpdracht['wat'], true> = {
+  aanmelden: true,
+  overslaan: true,
+  aanvaard: true,
+  pauze: true,
+  ibis: true,
+  toets: true,
+  busknoppen: true,
+  module: true
+}
+
 export interface TelefoonOpdracht {
-  wat: 'aanmelden' | 'overslaan' | 'aanvaard' | 'pauze' | 'ibis' | 'toets' | 'busknoppen'
+  wat: 'aanmelden' | 'overslaan' | 'aanvaard' | 'pauze' | 'ibis' | 'toets' | 'busknoppen' | 'module'
   nummer?: string
   pin?: string
   vanaf?: number
   tripKey?: string
-  /** Welke toets van OMSI; zie `OmsiToets` in shared/telefoon.ts. */
+  /** Welke knop van de bus; de naam waar het busscript op luistert. */
   toets?: string
+  /** Welk apparaat erbij of weg moet, en of het erbij is; zie core/busmodule.ts. */
+  module?: string
+  aan?: boolean
 }
 
 /** Een eigen poort, zodat een bladwijzer op de telefoon blijft werken. */
@@ -323,8 +346,7 @@ async function behandel(vraag: IncomingMessage, antwoord: ServerResponse): Promi
       antwoord.writeHead(400, VEILIG)
       return void antwoord.end()
     }
-    const soorten = ['aanmelden', 'overslaan', 'aanvaard', 'pauze', 'ibis', 'toets']
-    if (!opdracht || !soorten.includes(opdracht.wat)) {
+    if (!opdracht || !Object.prototype.hasOwnProperty.call(OPDRACHTSOORTEN, opdracht.wat)) {
       antwoord.writeHead(400, VEILIG)
       return void antwoord.end()
     }
