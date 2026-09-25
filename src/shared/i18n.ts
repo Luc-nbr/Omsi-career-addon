@@ -3618,6 +3618,12 @@ const TEXT = {
     fr: 'Les touches de cette imprimante ne sont qu’à la souris dans OMSI. L’app peut les mettre sur une touche ; il faut ensuite relancer OMSI.',
     nl: 'De knoppen van deze automaat zitten in OMSI alleen op de muis. De app kan ze aan een toets hangen; daarna moet OMSI opnieuw starten.'
   },
+  'ovl.afrKeysClosed': {
+    en: 'Do this with OMSI closed: the game rewrites the key file when it quits.',
+    de: 'Bei geschlossenem OMSI: das Spiel schreibt die Tastendatei beim Beenden neu.',
+    fr: 'À faire OMSI fermé : le jeu réécrit le fichier des touches en quittant.',
+    nl: 'Doe dit met OMSI dicht: het spel schrijft het toetsenbestand bij het afsluiten zelf terug.'
+  },
   'ovl.afrKeysOn': {
     en: 'Put the buttons on keys',
     de: 'Tasten einrichten',

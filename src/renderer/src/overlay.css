@@ -1604,6 +1604,11 @@
   color: rgba(255, 255, 255, 0.82);
 }
 
+.afr-aanzetten .afr-let-op {
+  color: rgba(255, 196, 96, 0.9);
+  font-weight: 600;
+}
+
 .afr-aanzetten button {
   padding: 8px 12px;
   border: 1px solid rgba(255, 196, 96, 0.5);

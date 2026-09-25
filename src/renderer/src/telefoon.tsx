@@ -1300,6 +1300,7 @@ function IbisApp({
       {ontbreekt && (
         <div className="afr-aanzetten">
           <p>{t(language, "ovl.afrKeysOff")}</p>
+          <p className="afr-let-op">{t(language, "ovl.afrKeysClosed")}</p>
           <button type="button" onClick={() => acties.knoppenAan()}>
             {t(language, "ovl.afrKeysOn")}
           </button>

@@ -1580,7 +1580,20 @@ function busknoppen(): { beschikbaar: string[] } {
   return knoppenStand
 }
 
-function zetBusknoppenAan(): { toegevoegd: number; geenPlek: number } | undefined {
+async function zetBusknoppenAan(): Promise<{ toegevoegd: number; geenPlek: number; omsiDraait?: boolean } | undefined> {
+  /*
+   * Niet terwijl OMSI draait.
+   *
+   * Het spel leest `keyboard.cfg` bij het starten en schrijft hem bij het
+   * afsluiten terug uit wat het zelf in geheugen heeft. Wat wij er tussendoor
+   * bij zetten is dan bij het afsluiten weer weg -- en erger: het lijkt te
+   * werken tot je OMSI de volgende keer opstart.
+   */
+  const draait = await leesOmsiProces(OMSI_PROCES)
+  if (draait) {
+    log('busknoppen niet bijgeschreven: OMSI draait, het spel zou keyboard.cfg overschrijven')
+    return { toegevoegd: 0, geenPlek: 0, omsiDraait: true }
+  }
   try {
     /*
      * De knoppen van de apparaten die nu in de telefoon staan. Dat is per bus
