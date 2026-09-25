@@ -140,19 +140,35 @@ function Apparaat(): JSX.Element {
    * een leeg scherm. Pas bij een andere kaart gaat hij weg.
    */
   const [geo, setGeo] = useState<{ kaart: string; geometrie: MapGeometry }>();
+  const [poging, setPoging] = useState(0);
   const kaart = duty?.mapFolder;
+  /*
+   * De kaart van de dienst ophalen. Dat is een paar megabyte over de wifi van
+   * een telefoon, en dat gaat weleens mis -- of het hoofdproces is de kaart op
+   * dat moment nog aan het inlezen. Mislukte het, dan bleef het daarbij: niets
+   * veranderde meer aan de voorwaarden van dit effect, dus er kwam geen tweede
+   * poging en de kaart bleef leeg tot je de pagina ververste. Nu wordt het over
+   * vijf tellen nog eens geprobeerd.
+   */
   useEffect(() => {
     if (!kaart || !verbonden || geo?.kaart === kaart) return;
     let actief = true;
+    let opnieuw: ReturnType<typeof setTimeout> | undefined;
+    const nogEens = (): void => {
+      if (actief) opnieuw = setTimeout(() => setPoging((n) => n + 1), 5000);
+    };
     void haal<MapGeometry | null>("api/geometrie")
       .then((gevonden) => {
-        if (actief && gevonden) setGeo({ kaart, geometrie: gevonden });
+        if (!actief) return;
+        if (gevonden) setGeo({ kaart, geometrie: gevonden });
+        else nogEens();
       })
-      .catch(() => undefined);
+      .catch(() => nogEens());
     return () => {
       actief = false;
+      if (opnieuw) clearTimeout(opnieuw);
     };
-  }, [kaart, verbonden, geo?.kaart]);
+  }, [kaart, verbonden, geo?.kaart, poging]);
   const geometry = geo && geo.kaart === kaart ? geo.geometrie : undefined;
 
   /*

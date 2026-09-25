@@ -473,7 +473,7 @@ function DienstApp({
   if (!duty) return <div className="empty">{t(language, "ovl.appNoDuty")}</div>;
   const nuIndex = status?.legIndex;
   return (
-    <div className="app-lijst met-rail">
+    <div className="app-lijst met-rail" data-hit>
       {duty.legs.map((leg, index) => (
         <div
           key={`${leg.tripFile}-${index}`}
@@ -650,7 +650,7 @@ function RitApp({
   const leg = status.leg;
   const at = status.stopIndex;
   return (
-    <div className="app-ritscherm">
+    <div className="app-ritscherm" data-hit>
       <div className="app-tegels">
         <div className="breed">
           <b className={klasse}>
@@ -1413,11 +1413,22 @@ function KaartjesApp({
    * aan met de knoppen hieronder.
    */
   const uitDeBus = keuze !== undefined ? set?.kaartjes[keuze] : undefined;
+  /*
+   * Kiest de chauffeur op de automaat in de bus een kaartje, dan neemt de app
+   * dat over en begint het geld opnieuw.
+   *
+   * Op het KAARTJE afgaan kan niet: het beeld komt tien keer per seconde
+   * binnen en draagt elke keer een nieuw voorwerp, ook als er niets veranderd
+   * is. Dit effect liep daardoor bij elk beeld, en het aangetikte geld was
+   * telkens weer nul -- je kon niets meer aannemen zolang er een kaartje
+   * gekozen stond. Het NUMMER van de keuze is wel steeds hetzelfde.
+   */
   useEffect(() => {
-    if (!uitDeBus) return;
-    setGekozen(uitDeBus);
+    if (keuze === undefined) return;
+    setGekozen(set?.kaartjes[keuze]);
     setGegeven(0);
-  }, [uitDeBus]);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps -- zie hierboven: op het nummer, niet op het voorwerp. */
+  }, [keuze, set?.naam]);
 
   if (!set || set.kaartjes.length === 0) {
     return <p className="app-leeg">{t(language, "ovl.ticketsNone")}</p>;

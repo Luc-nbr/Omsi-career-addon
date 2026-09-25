@@ -79,6 +79,7 @@ import {
   LEGE_TELEFOON,
   OMSI_TOETSEN,
   aanmeldSleutelVan,
+  dutyKeyOf,
   type AanmeldUitslag,
   type OmsiToets,
   type TelefoonStand
@@ -927,6 +928,26 @@ function baseline(): NonNullable<CareerState['activeDuty']>['baseline'] {
   return career?.activeDuty?.baseline
 }
 
+/**
+ * De nulmeting met het aantal verkochte kaartjes erbij.
+ *
+ * De teller loopt per dienst: stap je in een andere dienst, dan begint hij
+ * opnieuw. Zie `telVerkoop` voor waarom het aantal hier vandaan komt en niet
+ * uit OMSI zelf.
+ */
+let verkochtBij = ''
+
+function nulmeting(): Parameters<typeof describeLive>[2] {
+  const sleutel = dutyKeyOf(currentDuty())
+  if (sleutel !== verkochtBij) {
+    verkochtBij = sleutel
+    verkochtGeteld = 0
+    vorigeKoper = -1
+  }
+  const basis = baseline()
+  return basis ? { ...basis, verkocht: verkochtGeteld } : basis
+}
+
 /** De lopende dienst: die van de overlay, of anders die uit het profiel (na een herstart). */
 function currentDuty(): Duty | undefined {
   return overlayDuty ?? (career?.activeDuty?.assignment as Assignment | undefined)?.duty
@@ -960,7 +981,7 @@ function sessieGegevens(): SessionResult {
 
   const elapsed = live.time / 60 - start.clockMinutes
   const duty = currentDuty()
-  const status = describeLive(live, duty, start, busApparaten(live))
+  const status = describeLive(live, duty, { ...start, verkocht: verkochtGeteld }, busApparaten(live))
   /*
    * Hoe ver de dienst is: de haltes van de ritten die al achter je liggen, plus
    * hoever je in deze rit bent. Is de dienst uitgereden, dan zijn het er per
@@ -988,8 +1009,14 @@ function sessieGegevens(): SessionResult {
    * `ActiveDuty.eerder`. Zonder herstart is dat alles nul.
    */
   const eerder = career?.activeDuty?.eerder
-  const ditDeel = gereden(live.km + live.metres / 1000 - start.odometerKm, elapsed)
+  /*
+   * De speeltijd van deze dienst. `elapsed` wordt negatief zodra de klok van
+   * OMSI over middernacht springt -- om half een bij een start om half twaalf
+   * is het -1380 -- en `gereden()` maakte van zo'n dienst een plafond van tien
+   * kilometer. Eerst omrekenen, dan pas gebruiken.
+   */
   const minuten = elapsed >= 0 ? elapsed : elapsed + 1440
+  const ditDeel = gereden(live.km + live.metres / 1000 - start.odometerKm, minuten)
   return {
     stopsDone,
     drivenKm: eerder
@@ -1459,6 +1486,37 @@ function telefoonAanmelden(nummer: string, pin?: string): AanmeldUitslag {
  */
 let vorigSpoor = ''
 
+/*
+ * HOEVEEL KAARTJES ER VERKOCHT ZIJN
+ *
+ * OMSI telt dat nergens. Wat het spel doorgeeft is `GivenTicket`: de plek van
+ * het kaartsoort dat op dat moment gekozen staat, of -1 als er niets staat. De
+ * app las dat als een teller, en schreef dus aan het eind van een dienst het
+ * NUMMER van het laatst gekozen kaartje op als "kaartjes verkocht".
+ *
+ * Hier wordt het echt geteld: elke keer dat er iemand aan de deur afrekent en
+ * het spel die verkoop afrondt, telt er een kaartje bij. De teller loopt per
+ * dienst; `nulmeting` zet hem terug als er een nieuwe dienst begint.
+ */
+let verkochtGeteld = 0
+let vorigeKoper = -1
+
+function telVerkoop(live: ReturnType<typeof readLive>): void {
+  const mem = live?.mem
+  if (!mem || mem.ok !== 1) return
+  const koper = mem.koper ?? -1
+  /*
+   * Een verkoop is afgelopen als de persoon bij de deur weggaat terwijl er een
+   * prijs stond. Op `klaar` wachten kan niet: dat vlaggetje staat er maar een
+   * paar beelden, en bij een kaartje dat niet betaald hoeft te worden helemaal
+   * niet.
+   */
+  if (vorigeKoper >= 0 && koper !== vorigeKoper && (mem.ticketPrijs ?? 0) >= 0) {
+    verkochtGeteld += 1
+  }
+  vorigeKoper = koper
+}
+
 function spoorVanDeVerkoop(live: ReturnType<typeof readLive>): void {
   const mem = live?.mem
   if (!mem) return
@@ -1537,6 +1595,18 @@ function busApparaten(live: LiveData | undefined): Busapparaat[] | undefined {
   }
   if (soorten.some((naam) => naam.startsWith('atron'))) {
     for (let i = 1; i <= 8; i++) namen.push(`atron_ticket${i}`)
+  }
+
+  /*
+   * En de schermpjes van de apparaten die de app uit het model samenstelt
+   * (core/busmodule.ts). Zonder deze vroeg de app die namen nooit op, en bleef
+   * een toegevoegd apparaat -- de ALMEX van een Hamburgse bus -- zwart: hij
+   * stond er wel, maar er kwam geen tekst in.
+   */
+  for (const module of busModules(live)) {
+    for (const vak of module.schermen) {
+      if (!namen.includes(vak.variabele)) namen.push(vak.variabele)
+    }
   }
 
   const alles = leesSchermen()
@@ -1784,12 +1854,13 @@ function pushFrame(): void {
    */
   const live = freshLive()
   spoorVanDeVerkoop(live)
+  telVerkoop(live)
   captureBaseline(live)
   const duty = currentDuty()
   const frame = {
     connected: Boolean(live?.alive),
     laadt: laadtOmsi(Boolean(live?.alive)),
-    status: live ? describeLive(live, duty, baseline(), busApparaten(live)) : undefined,
+    status: live ? describeLive(live, duty, nulmeting(), busApparaten(live)) : undefined,
     vehicle: vehicleOnMap(live, duty),
     duty,
     ibis: overlayIbis,
@@ -2942,7 +3013,7 @@ function registerHandlers(): void {
     if (!live) return { status: undefined, vehicle: undefined }
     const duty = currentDuty()
     return {
-      status: describeLive(live, duty, baseline(), busApparaten(live)),
+      status: describeLive(live, duty, nulmeting(), busApparaten(live)),
       /*
        * En waar de bus op de kaart staat. De overlay krijgt dit al in zijn
        * beeld; het hoofdvenster heeft het nodig om dezelfde navigatie te kunnen

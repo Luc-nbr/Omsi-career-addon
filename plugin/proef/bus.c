@@ -205,6 +205,21 @@ int main(int argc, char **argv) {
     CloseHandle(vragen);
   }
 
+  HMODULE dll = LoadLibraryA(argv[1]);
+  if (!dll) {
+    fprintf(stderr, "laden mislukt: %lu\n", GetLastError());
+    return 1;
+  }
+  Start start = (Start)GetProcAddress(dll, "PluginStart");
+  Einde finalize = (Einde)GetProcAddress(dll, "PluginFinalize");
+  Waarde sys = (Waarde)GetProcAddress(dll, "AccessSystemVariable");
+  Waarde var = (Waarde)GetProcAddress(dll, "AccessVariable");
+  if (!start || !sys || !var) {
+    fprintf(stderr, "de plugin mist een functie\n");
+    return 1;
+  }
+  start(NULL);
+
   /*
    * En een opdracht: de app vraagt om Ctrl+O, de toets waar in dit huis
    * DRUCKEN op staat. OMSI draait hier niet echt, dus de plugin hoort hem te
@@ -220,20 +235,6 @@ int main(int argc, char **argv) {
     CloseHandle(opdracht);
   }
 
-  HMODULE dll = LoadLibraryA(argv[1]);
-  if (!dll) {
-    fprintf(stderr, "laden mislukt: %lu\n", GetLastError());
-    return 1;
-  }
-  Start start = (Start)GetProcAddress(dll, "PluginStart");
-  Einde finalize = (Einde)GetProcAddress(dll, "PluginFinalize");
-  Waarde sys = (Waarde)GetProcAddress(dll, "AccessSystemVariable");
-  Waarde var = (Waarde)GetProcAddress(dll, "AccessVariable");
-  if (!start || !sys || !var) {
-    fprintf(stderr, "de plugin mist een functie\n");
-    return 1;
-  }
-  start(NULL);
 
   /* Drie seconden aan beelden: genoeg voor de vragenlijst en voor schermen.json. */
   BOOL schrijven = FALSE;

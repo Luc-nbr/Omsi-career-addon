@@ -133,8 +133,9 @@ enum {
  * 9  de toets lang genoeg ingedrukt houden, en de uitgebreide toetsen goed
  * 10 sneller kijken of de app iets vraagt: dertig keer per seconde in plaats van vijf
  * 11 geen opdracht van de vorige sessie meer uitvoeren bij het opstarten
+ * 12 honderdzestig namen in plaats van vierenzestig, en geen NaN in het bericht
  */
-#define PLUGIN_VERSIE 11
+#define PLUGIN_VERSIE 12
 
 /*
  * Drempels voor hard remmen en optrekken, in meter per seconde kwadraat.
@@ -292,7 +293,13 @@ static int g_strKind;
 #define OFS_CMOI_SCRIPTOUDER 0x240
 
 /* Hooguit zoveel namen vraagt de app op; zo veel tekens mogen naam en waarde zijn. */
-#define VRAGEN_MAX 64
+/*
+ * Zoveel namen mag de app vragen. Het stond op 64, en dat was te weinig: een
+ * ALMEX in een Hamburgse bus heeft in zijn eentje al tweeentwintig schermpjes,
+ * en met de kaartnamen en een tweede apparaat erbij viel de rest eraf -- die
+ * schermpjes bleven dan zwart zonder dat ergens te zien was waarom.
+ */
+#define VRAGEN_MAX 160
 #define NAMEN_MAX 512
 #define SCHERM_NAAM_MAX 64
 #define SCHERM_TEKENS 128
@@ -664,6 +671,14 @@ static void lees_opdracht(void) {
 static void read_memory(void) {
   MemState next;
   memset(&next, 0, sizeof(next));
+  /*
+   * En de bus vergeten tot hij opnieuw gevonden is. Bleef dit staan, dan meldde
+   * live.json tussen twee diensten door nog de vorige bus met zijn oude
+   * schermteksten -- en dan stond er een apparaat in beeld van een bus waar je
+   * niet meer in zat. `lees_busvars` vult het meteen weer als het klopt.
+   */
+  g_busNaam[0] = g_busModel[0] = g_busPad[0] = g_busBestand[0] = 0;
+  for (int i = 0; i < VRAGEN_MAX; i++) g_varWaarde[i][0] = 0;
   next.koper = -1;
   next.ticketIndex = -1;
   next.ticketSoort = -1;
@@ -1210,13 +1225,18 @@ static void track_collision(double energy) {
 
 /* Schrijft de verzamelde waarden weg, via een tijdelijk bestand zodat de lezer
  * nooit een half bestand ziet. */
+/** Een getal dat in JSON mag: NaN en oneindig bestaan daar niet. */
+static double veilig(double waarde) {
+  return isfinite(waarde) ? waarde : 0.0;
+}
+
 static void flush_state(int alive) {
   /*
    * Statisch en niet op de stapel: met de variabelen van de bus erbij kan dit
    * bericht tientallen kilobytes worden, en OMSI roept ons aan op zijn eigen
    * stapel.
    */
-  static char body[65536];
+  static char body[262144];
   char mem[2048];
   /* Wat de app gevraagd heeft, als JSON: "naam":"waarde", door komma's. */
   static char vars[VRAGEN_MAX * (SCHERM_NAAM_MAX + SCHERM_WAARDE_MAX + 8)];
@@ -1236,7 +1256,11 @@ static void flush_state(int alive) {
     }
     vp += n;
   }
-  _snprintf_s(
+  /*
+   * Het geheugenblok. Past dit niet, dan zou er een halve regel in live.json
+   * belanden en is het hele bericht geen JSON meer; dan liever een leeg blok.
+   */
+  const int memLengte = _snprintf_s(
       mem, sizeof(mem), _TRUNCATE,
       ",\"exeVersion\":\"%s\",\"mem\":{\"ok\":%d,\"tile\":%d,\"x\":%.3f,\"y\":%.3f,\"z\":%.3f,"
       "\"qx\":%.5f,\"qy\":%.5f,\"qz\":%.5f,\"qw\":%.5f,"
@@ -1247,14 +1271,19 @@ static void flush_state(int alive) {
       "\"ticketPrijs\":%.2f,\"ticketGegeven\":%.2f,"
       "\"ticketSlecht\":%d,\"ticketKlaar\":%d,"
       "\"lineName\":\"%s\",\"tourName\":\"%s\",\"tripName\":\"%s\",\"nextStop\":\"%s\"}}",
-      g_exeVersion, g_mem.ok, g_mem.kachel, g_mem.pos[0], g_mem.pos[1], g_mem.pos[2],
-      g_mem.rot[0], g_mem.rot[1], g_mem.rot[2], g_mem.rot[3],
-      g_mem.schedActive, g_mem.schedLine, g_mem.schedTour, g_mem.schedTourEntry, g_mem.schedTrip,
-      g_mem.schedNextIndex, g_mem.schedNextDist, g_mem.schedDelay,
+      g_exeVersion, g_mem.ok, g_mem.kachel, veilig(g_mem.pos[0]), veilig(g_mem.pos[1]),
+      veilig(g_mem.pos[2]),
+      veilig(g_mem.rot[0]), veilig(g_mem.rot[1]), veilig(g_mem.rot[2]), veilig(g_mem.rot[3]),
+      veilig(g_mem.schedActive), g_mem.schedLine, g_mem.schedTour, g_mem.schedTourEntry,
+      g_mem.schedTrip, g_mem.schedNextIndex, veilig(g_mem.schedNextDist), g_mem.schedDelay,
       g_opdrachtNr, g_opdrachtFout,
       g_mem.koper, g_mem.ticketSoort, g_mem.ticketIndex,
       g_mem.ticketPrijs, g_mem.ticketGegeven, g_mem.ticketSlecht, g_mem.ticketKlaar,
       g_mem.lineName, g_mem.tourName, g_mem.tripName, g_mem.nextStop);
+  if (memLengte <= 0) {
+    /* Past het niet, dan een leeg blok: een half blok maakt van live.json rommel. */
+    _snprintf_s(mem, sizeof(mem), _TRUNCATE, ",\"exeVersion\":\"%s\",\"mem\":{\"ok\":0}}", g_exeVersion);
+  }
 
   int length = _snprintf_s(
       body, sizeof(body), _TRUNCATE,

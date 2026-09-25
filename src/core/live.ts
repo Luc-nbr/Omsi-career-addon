@@ -802,7 +802,7 @@ export function kaartnamenVan(data: LiveData): string[] | undefined {
  * anders in staat.
  */
 export function schrijfVragen(namen: string[]): void {
-  const lijst = namen.slice(0, 64)
+  const lijst = namen.slice(0, 160)
   const inhoud = lijst.join('\r\n') + (lijst.length > 0 ? '\r\n' : '')
   const pad = join(liveMap(), 'vragen.txt')
   try {
@@ -927,6 +927,8 @@ export function describeLive(
     odometerKm?: number
     clockMinutes?: number
     tickets?: number
+    /** Hoeveel kaartjes er deze dienst aan de deur verkocht zijn; zie hieronder. */
+    verkocht?: number
     collisions?: number
   },
   /** De schermpjes van de bus die rijdt; zie core/busscherm.ts. */
@@ -947,7 +949,18 @@ export function describeLive(
   let legIndex = -1
   let leg: DutyLeg | undefined
   if (duty && duty.legs.length > 0) {
-    const ahead = duty.legs.findIndex((item) => item.arrival > clockMinutes)
+    /*
+     * De klok van OMSI springt om middernacht terug naar nul, maar een
+     * nachtdienst telt gewoon door: een rit die om 01:10 aankomt staat in de
+     * dienstregeling als 1510. Om half een is de klok dan 30 en lijkt elke rit
+     * nog te moeten komen -- dan sprong de overlay terug naar de eerste rit van
+     * de avond. Loopt deze dienst over middernacht, dan telt de klok hier een
+     * etmaal mee zodra hij daarmee binnen de dienst valt.
+     */
+    const laatste = duty.legs[duty.legs.length - 1].arrival
+    const klok =
+      laatste > 1440 && clockMinutes + 1440 <= laatste + 60 ? clockMinutes + 1440 : clockMinutes
+    const ahead = duty.legs.findIndex((item) => item.arrival > klok)
     legIndex = ahead >= 0 ? ahead : duty.legs.length - 1
     leg = duty.legs[legIndex]
   }
@@ -1073,7 +1086,15 @@ export function describeLive(
     fuel: data.tankPercent,
     battery: has(data, BIT.battery) ? data.battery : undefined,
     temperature: hasSys(data, SYSBIT.temperature) ? data.temperature : undefined,
-    tickets: Math.max(0, data.ticket - (baseline?.tickets ?? 0)),
+    /*
+     * OMSI heeft geen teller voor verkochte kaartjes. `GivenTicket` -- wat hier
+     * eerst stond -- is geen aantal maar de PLEK van het gekozen kaartsoort in
+     * het kaartpakket: staat de automaat aan het eind van je dienst op soort 4,
+     * dan schreef de app vijf verkochte kaartjes op, en had je niets gekozen dan
+     * nul. Het hoofdproces telt de verkopen nu zelf, aan de deur, en geeft dat
+     * aantal hier mee; zie `verkochtGeteld` in src/main/index.ts.
+     */
+    tickets: baseline?.verkocht ?? 0,
     collisions: Math.max(0, (data.collisions ?? 0) - (baseline?.collisions ?? 0)),
     worstCollision: data.worstCollision ?? 0,
     advice: buildAdvice(data, baseline),
