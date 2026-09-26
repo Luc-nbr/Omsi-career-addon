@@ -20,6 +20,8 @@ import {
 } from "../../shared/telefoon";
 import type { Verkoop } from "../../core/live";
 import { NavKaart, stopName, type NavFrame, type RitStand } from "./navigatie";
+import { Apparaatscherm } from "./apparaatscherm";
+import type { Schermvorm } from "../../shared/scherm";
 import type { Manoeuvre } from "./RouteMap";
 
 /*
@@ -79,6 +81,16 @@ export interface TelefoonActies {
   knoppenAan(): void;
   /** Een apparaat uit deze bus in de telefoon zetten, of er weer uit halen. */
   module(id: string, aan: boolean): void;
+  /**
+   * De vorm van een nagebouwd scherm ophalen (shared/scherm.ts). In de overlay
+   * via de brug, op de tablet bij de eigen server; `null` als hij er niet is.
+   */
+  schermvorm(id: string): Promise<Schermvorm | null>;
+  /**
+   * Waar het plaatje met deze id te halen is. Nooit een pad: de app levert
+   * alleen plaatjes die bij een apparaat van de huidige bus horen.
+   */
+  textuurAdres(id: string): string;
 }
 
 /** Wat de telefoon van het beeld nodig heeft. */
@@ -1062,6 +1074,54 @@ function apparaatNaam(naam: string): string {
   return (kort || naam).slice(0, 14).toUpperCase();
 }
 
+/*
+ * De vormen die al opgehaald zijn. Een vorm verandert niet zolang je in
+ * dezelfde bus zit, dus hij wordt maar één keer opgehaald, ook als je van app
+ * wisselt en terugkomt.
+ */
+const schermvormen = new Map<string, Schermvorm>();
+
+/** De vorm bij deze id; opnieuw proberen als het de eerste keer niet lukte. */
+function useSchermvorm(
+  id: string | undefined,
+  acties: TelefoonActies,
+): Schermvorm | undefined {
+  const [vorm, setVorm] = useState<Schermvorm | undefined>(
+    id ? schermvormen.get(id) : undefined,
+  );
+  useEffect(() => {
+    if (!id) {
+      setVorm(undefined);
+      return;
+    }
+    const bekend = schermvormen.get(id);
+    if (bekend) {
+      setVorm(bekend);
+      return;
+    }
+    let weg = false;
+    let wachter: number | undefined;
+    const haal = (): void => {
+      void acties.schermvorm(id).then((gevonden) => {
+        if (weg) return;
+        if (gevonden) {
+          schermvormen.set(id, gevonden);
+          setVorm(gevonden);
+        } else {
+          /* Nog niet gebouwd, of de app herstartte: over drie tellen opnieuw. */
+          wachter = window.setTimeout(haal, 3000);
+        }
+      });
+    };
+    haal();
+    return () => {
+      weg = true;
+      if (wachter !== undefined) window.clearTimeout(wachter);
+    };
+  }, [id, acties]);
+  return vorm && vorm.id === id ? vorm : undefined;
+}
+
 function IbisApp({
   frame,
   rit,
@@ -1144,8 +1204,14 @@ function IbisApp({
    */
   const beschikbaar = frame.knoppen?.beschikbaar ?? [];
   const kan = (actie: string): boolean => beschikbaar.includes(actie);
+  /*
+   * De vorm van het nagebouwde scherm; die gaat niet met elk beeld mee maar
+   * wordt één keer op id opgehaald.
+   */
+  const schermvorm = useSchermvorm(paneel?.scherm?.vorm, acties);
   const ontbreekt = Boolean(
-    paneel?.rijen.some((rij) => rij.some((knop) => !kan(knop.actie))),
+    paneel?.rijen.some((rij) => rij.some((knop) => !kan(knop.actie))) ||
+      schermvorm?.klikken.some((klik) => !kan(klik.actie)),
   );
 
   /*
@@ -1197,67 +1263,7 @@ function IbisApp({
     </button>
   );
 
-  return (
-    <div className="ibis" data-hit>
-      {pluginOud && (
-        <p className="verkoop-mopper">{t(language, "ovl.salePluginOld")}</p>
-      )}
-
-      {/*
-        De apparaten die in deze bus zitten. De app zoekt ze zelf op in het model
-        (core/busmodule.ts): welke schermpjes bij elkaar horen, welke knoppen
-        erbij zitten en hoe die heten. Wat je erbij wilt hebben kies je hier.
-      */}
-      {(frame.busmodules?.length ?? 0) > 0 && (
-        <div className="module-kiezer">
-          <button
-            type="button"
-            className="module-knop"
-            onClick={() => setLijstOpen((open) => !open)}
-          >
-            {lijstOpen ? t(language, "ovl.moduleHide") : t(language, "ovl.moduleAdd")}
-          </button>
-          {lijstOpen && (
-            <ul className="module-lijst">
-              {frame.busmodules?.map((module) => (
-                <li key={module.id}>
-                  <button
-                    type="button"
-                    className={module.erbij ? "aan" : undefined}
-                    onClick={() => acties.module(module.id, !module.erbij)}
-                  >
-                    <b>{module.naam}</b>
-                    <small>
-                      {t(language, "ovl.moduleSize", {
-                        schermen: module.schermen,
-                        knoppen: module.knoppen,
-                      })}
-                    </small>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
-      {/* Welk apparaat je voor je hebt; alleen als de bus er meer heeft. */}
-      {keuzes.length > 1 && (
-        <div className="ibis-keuze">
-          {keuzes.map((naam, index) => (
-            <button
-              key={naam}
-              type="button"
-              className={index === plek ? "aan" : undefined}
-              onClick={() => setWelke(index)}
-            >
-              {naam}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {paneel?.vlak ? (
+  const vlakBeeld = paneel?.vlak ? (
         /*
          * HET APPARAAT ZOALS HET IN DE BUS ZIT
          *
@@ -1362,6 +1368,89 @@ function IbisApp({
             <p className="paneel-uit">{t(language, "ovl.deviceOff")}</p>
           )}
         </div>
+  ) : null;
+
+  return (
+    <div className="ibis" data-hit>
+      {pluginOud && (
+        <p className="verkoop-mopper">{t(language, "ovl.salePluginOld")}</p>
+      )}
+
+      {/*
+        De apparaten die in deze bus zitten. De app zoekt ze zelf op in het model
+        (core/busmodule.ts): welke schermpjes bij elkaar horen, welke knoppen
+        erbij zitten en hoe die heten. Wat je erbij wilt hebben kies je hier.
+      */}
+      {(frame.busmodules?.length ?? 0) > 0 && (
+        <div className="module-kiezer">
+          <button
+            type="button"
+            className="module-knop"
+            onClick={() => setLijstOpen((open) => !open)}
+          >
+            {lijstOpen ? t(language, "ovl.moduleHide") : t(language, "ovl.moduleAdd")}
+          </button>
+          {lijstOpen && (
+            <ul className="module-lijst">
+              {frame.busmodules?.map((module) => (
+                <li key={module.id}>
+                  <button
+                    type="button"
+                    className={module.erbij ? "aan" : undefined}
+                    onClick={() => acties.module(module.id, !module.erbij)}
+                  >
+                    <b>{module.naam}</b>
+                    <small>
+                      {t(language, "ovl.moduleSize", {
+                        schermen: module.schermen,
+                        knoppen: module.knoppen,
+                      })}
+                    </small>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* Welk apparaat je voor je hebt; alleen als de bus er meer heeft. */}
+      {keuzes.length > 1 && (
+        <div className="ibis-keuze">
+          {keuzes.map((naam, index) => (
+            <button
+              key={naam}
+              type="button"
+              className={index === plek ? "aan" : undefined}
+              onClick={() => setWelke(index)}
+            >
+              {naam}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {paneel?.scherm && schermvorm ? (
+        /*
+         * HET SCHERM ZOALS OMSI HET TEKENT
+         *
+         * Het echte plaatje van het menu dat nu aanstaat, de tekst in het
+         * lettertype van het spel, en de aanraakvlakken op de plek van de
+         * knoppen; zie shared/scherm.ts en apparaatscherm.tsx. Zolang de
+         * plaatjes er nog niet zijn, staat het nagemeten vlak eronder.
+         */
+        <div className="ibis-groot">
+          <Apparaatscherm
+            vorm={schermvorm}
+            stand={paneel.scherm}
+            textuurAdres={acties.textuurAdres}
+            kan={kan}
+            toets={(actie) => acties.toets(actie)}
+            fallback={vlakBeeld ?? undefined}
+          />
+        </div>
+      ) : vlakBeeld ? (
+        vlakBeeld
       ) : paneel && paneel.regels.length === 0 ? (
         /* Een apparaat zonder schermpje -- een geldlade -- heeft alleen knoppen. */
         <></>

@@ -1,3 +1,4 @@
+import type { Schermvorm } from './scherm'
 import type { ActiveDuty, CareerState, CareerSummary, GameMode } from '../core/career'
 import type { LineSummary } from '../core/duty'
 import type { ExamMeasurement } from '../core/exam'
@@ -505,6 +506,11 @@ export interface CareerApi {
   telefoonKnoppen(): Promise<{ toegevoegd: number; geenPlek: number } | undefined>
   /** Een apparaat uit deze bus in de telefoon zetten of eruit halen. */
   telefoonModule(id: string, aan: boolean): Promise<void>
+  /**
+   * De vorm van een nagebouwd apparaatscherm, op id; zie shared/scherm.ts. Het
+   * beeld zegt welke id er nu hoort; de vorm zelf gaat er niet elke keer mee.
+   */
+  schermvorm(id: string): Promise<Schermvorm | null>
   /** De navigatie op een telefoon of tablet: de server aan, en het adres voor de QR-code. */
   apparaatStart(): Promise<ApparaatStand>
   apparaatStop(): Promise<ApparaatStand>

@@ -778,3 +778,276 @@ function keurMaat(breedte: number, hoogte: number): [TextuurKlacht, string] | un
   }
   return undefined
 }
+
+// ---------------------------------------------------------------------- BMP
+
+/*
+ * Een BMP pakken we hierboven met opzet níet uit: Chromium leest hem zelf, en de
+ * busfoto rekent op die klacht 'chromium-kan-dit'. Voor het scherm van een
+ * apparaat moet het soms toch, en dat staat daarom hieronder los:
+ *
+ * - de BMP is een 32-bits beeld, en dan moet vaststaan wat er met de vierde
+ *   byte gebeurt (zie `pakBmpUit`);
+ * - het materiaal wil een transmap, een uitsnede of een verkleining, en daar
+ *   zijn de pixels voor nodig.
+ *
+ * Wat er onder `Vehicles` staat (14.480 plaatjes, op de eerste bytes geteld,
+ * ook de BMP's die `.dds` of `.tga` heten): kop van 40 bytes met 24 bits 2017
+ * keer, 32 bits 745, 8 bits met palet 225, 4 bits 9; kop van 108 of 124 bytes
+ * met 24 bits 10, met 32 bits en bitmaskers 5; en één 4-bits RLE. Alles staat
+ * van onder naar boven. In `Fonts`: 556 x 24 bits, 4 x 32, 3 x 24 met een kop
+ * van 108 en 1 x 8 bits.
+ */
+
+/** Compressievelden die we kennen: gewoon, met bitmaskers, en met alfamasker. */
+const BI_RGB = 0
+const BI_BITFIELDS = 3
+const BI_ALPHABITFIELDS = 6
+
+/**
+ * Een BMP uitpakken tot RGBA; `undefined` voor wat we niet kennen (RLE, een
+ * ingebedde JPEG of PNG, de oude OS/2-kop van twaalf bytes, een verminkte
+ * kop). Dan gaan de bytes ongewijzigd naar de browser, die dat wel kan.
+ *
+ * DE VIERDE BYTE VAN EEN 32-BITS BMP
+ * De norm zegt dat die bij `BI_RGB` niets betekent. In deze installatie is dat
+ * anders: van de 745 32-bits BMP's onder `Vehicles` hebben er 721 een vierde
+ * byte die per pixel verschilt, 24 hebben overal 255 en géén enkele overal 0.
+ * De makers schrijven er dus een alfakanaal in. Bij `Opel_Manta_B` is dat
+ * zichtbaar waarvoor: `manta_b.dds` (een BMP) heeft bij 86 % van de pixels een
+ * alfa onder 32, en het materiaal zet er `[matl_envmap]` op en haalt de
+ * doorzichtigheid uit een `[matl_transmap]` -- de alfa is daar het masker van
+ * de weerspiegeling, en dat werkt alleen als OMSI hem inleest. Dus: de vierde
+ * byte is alfa (ONZEKER: niet in het spel nagemeten wat D3DX ermee doet).
+ * Staat hij overal op 0, dan heeft de schrijver de byte leeg gelaten en wordt
+ * het beeld dekkend -- zo doet Chromium het ook. Of de alfa bij het tekenen
+ * meetelt (`[matl_alpha]`), beslist niet dit bestand maar wie de textuur levert
+ * (`core/schermtextuur.ts`); bij `[matl_alpha]` 0 wordt hij daar 255.
+ */
+export function pakBmpUit(bytes: Uint8Array): Textuur | undefined {
+  const buf = Buffer.isBuffer(bytes)
+    ? bytes
+    : Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  if (buf.length < 54 || buf[0] !== 0x42 || buf[1] !== 0x4d) return undefined
+
+  const begin = buf.readUInt32LE(10)
+  const kop = buf.readUInt32LE(14)
+  if (kop < 40 || 14 + kop > buf.length) return undefined
+  const breedte = buf.readInt32LE(18)
+  const hoogteRauw = buf.readInt32LE(22)
+  const bits = buf.readUInt16LE(28)
+  const compressie = buf.readUInt32LE(30)
+  const kleurenGebruikt = buf.readUInt32LE(46)
+
+  // Een negatieve hoogte betekent: van boven naar beneden opgeslagen.
+  const vanOnder = hoogteRauw > 0
+  const hoogte = Math.abs(hoogteRauw)
+  if (keurMaat(breedte, hoogte)) return undefined
+  if (compressie !== BI_RGB && compressie !== BI_BITFIELDS && compressie !== BI_ALPHABITFIELDS) {
+    return undefined
+  }
+  if (![1, 4, 8, 16, 24, 32].includes(bits)) return undefined
+  if (compressie !== BI_RGB && bits !== 16 && bits !== 32) return undefined
+
+  // Rijen zijn aangevuld tot een veelvoud van vier bytes.
+  const rij = Math.ceil((breedte * bits) / 32) * 4
+  /*
+   * Van de laatste rij wordt alleen gevraagd wat er werkelijk aan pixels in
+   * staat: er zijn schrijvers die de opvulling achter de laatste rij weglaten.
+   */
+  if (begin + rij * (hoogte - 1) + Math.ceil((breedte * bits) / 8) > buf.length) return undefined
+
+  const pixels = new Uint8Array(breedte * hoogte * 4)
+
+  if (bits <= 8) {
+    // Het palet staat direct achter de kop: blauw, groen, rood en een lege byte.
+    const aantal = kleurenGebruikt > 0 && kleurenGebruikt <= 1 << bits ? kleurenGebruikt : 1 << bits
+    const palet = 14 + kop
+    if (palet + aantal * 4 > begin) return undefined
+    const masker = (1 << bits) - 1
+    for (let y = 0; y < hoogte; y++) {
+      const bron = begin + (vanOnder ? hoogte - 1 - y : y) * rij
+      for (let x = 0; x < breedte; x++) {
+        const bit = x * bits
+        const index = (buf[bron + (bit >> 3)] >> (8 - bits - (bit & 7))) & masker
+        const uit = (y * breedte + x) * 4
+        if (index < aantal) {
+          const p = palet + index * 4
+          pixels[uit] = buf[p + 2]
+          pixels[uit + 1] = buf[p + 1]
+          pixels[uit + 2] = buf[p]
+        }
+        pixels[uit + 3] = 255
+      }
+    }
+    return { breedte, hoogte, pixels }
+  }
+
+  if (bits === 24) {
+    for (let y = 0; y < hoogte; y++) {
+      const bron = begin + (vanOnder ? hoogte - 1 - y : y) * rij
+      for (let x = 0; x < breedte; x++) {
+        const p = bron + x * 3
+        const uit = (y * breedte + x) * 4
+        pixels[uit] = buf[p + 2]
+        pixels[uit + 1] = buf[p + 1]
+        pixels[uit + 2] = buf[p]
+        pixels[uit + 3] = 255
+      }
+    }
+    return { breedte, hoogte, pixels }
+  }
+
+  /*
+   * 16 en 32 bits, via maskers. Zonder `BI_BITFIELDS` zijn dat de vaste: 5-5-5
+   * bij 16 bits, en blauw, groen, rood, alfa bij 32. Met bitmaskers staan ze
+   * direct achter de eerste veertig bytes van de kop -- bij een kop van 40
+   * bytes erachter, bij een langere erin, maar op dezelfde plek (54). Het
+   * alfamasker (66) telt alleen bij een kop van 56 bytes of meer, of bij
+   * `BI_ALPHABITFIELDS`.
+   */
+  let maskR: number
+  let maskG: number
+  let maskB: number
+  let maskA: number
+  if (compressie === BI_RGB) {
+    maskR = bits === 16 ? 0x7c00 : 0x00ff0000
+    maskG = bits === 16 ? 0x03e0 : 0x0000ff00
+    maskB = bits === 16 ? 0x001f : 0x000000ff
+    maskA = bits === 16 ? 0 : 0xff000000
+  } else {
+    if (buf.length < 66) return undefined
+    maskR = buf.readUInt32LE(54)
+    maskG = buf.readUInt32LE(58)
+    maskB = buf.readUInt32LE(62)
+    const metAlfa = kop >= 56 || compressie === BI_ALPHABITFIELDS
+    maskA = metAlfa && buf.length >= 70 ? buf.readUInt32LE(66) : 0
+  }
+  const kanaalR = kanaal(maskR)
+  const kanaalG = kanaal(maskG)
+  const kanaalB = kanaal(maskB)
+  const kanaalA = kanaal(maskA)
+  const bytesPerPixel = bits / 8
+  let alfaOoitAan = false
+  for (let y = 0; y < hoogte; y++) {
+    const bron = begin + (vanOnder ? hoogte - 1 - y : y) * rij
+    for (let x = 0; x < breedte; x++) {
+      const p = bron + x * bytesPerPixel
+      const rauw = bytesPerPixel === 2 ? buf[p] | (buf[p + 1] << 8) : buf.readUInt32LE(p)
+      const uit = (y * breedte + x) * 4
+      pixels[uit] = kanaalR ? kanaalR(rauw) : 0
+      pixels[uit + 1] = kanaalG ? kanaalG(rauw) : 0
+      pixels[uit + 2] = kanaalB ? kanaalB(rauw) : 0
+      const a = kanaalA ? kanaalA(rauw) : 255
+      pixels[uit + 3] = a
+      if (a !== 0) alfaOoitAan = true
+    }
+  }
+  // Overal alfa 0: een lege byte, geen onzichtbaar beeld. Zie hierboven.
+  if (kanaalA && !alfaOoitAan) for (let i = 3; i < pixels.length; i += 4) pixels[i] = 255
+  return { breedte, hoogte, pixels }
+}
+
+// ---------------------------------------------------------------- verkleinen
+
+/**
+ * Een textuur terugbrengen tot hooguit `grens` in de langste richting, met het
+ * gemiddelde over het hele gebied dat een nieuwe pixel beslaat.
+ *
+ * WAAROM NIET `verkleinTextuur` UIT `busbeeld.ts`
+ * Die neemt per nieuwe pixel één oude, en voor een foto van een bus van 512
+ * breed ziet niemand dat. Een schermtextuur draagt tekst en lijntjes van één
+ * pixel breed: bij halvering valt dan de helft van de lijntjes weg, of juist
+ * niet, afhankelijk van waar ze toevallig liggen. Middelen over het gebied
+ * (een "box"-filter, ook bij een factor die geen geheel getal is) houdt elke
+ * lijn als een lichtere lijn.
+ *
+ * De kleur wordt gewogen naar de alfa: een doorzichtige pixel draagt geen
+ * kleur bij. Anders krijgt een wit teken op een doorzichtige, zwarte grond een
+ * donkere rand zodra het verkleind wordt. Is een gebied helemaal doorzichtig,
+ * dan telt het gewone gemiddelde, zodat de kleur daar niet willekeurig wordt.
+ *
+ * Geeft dezelfde textuur terug als hij al klein genoeg is.
+ */
+export function verkleinGemiddeld(textuur: Textuur, grens: number): Textuur {
+  const { breedte, hoogte, pixels } = textuur
+  const langste = Math.max(breedte, hoogte)
+  if (langste <= grens || grens < 1) return textuur
+  const schaal = grens / langste
+  const nb = Math.max(1, Math.min(grens, Math.round(breedte * schaal)))
+  const nh = Math.max(1, Math.min(grens, Math.round(hoogte * schaal)))
+
+  /*
+   * Per nieuwe kolom: welke oude kolommen, met welk deel van hun breedte. Eén
+   * keer uitgerekend in plaats van per rij opnieuw; bij 8192 breed naar 2048
+   * zijn dat vier oude kolommen per nieuwe.
+   */
+  const bronX: number[][] = []
+  const gewichtX: number[][] = []
+  const fx = breedte / nb
+  for (let x = 0; x < nb; x++) {
+    const van = x * fx
+    const tot = (x + 1) * fx
+    const kolommen: number[] = []
+    const gewichten: number[] = []
+    for (let i = Math.floor(van); i < Math.min(breedte, Math.ceil(tot)); i++) {
+      const deel = Math.min(i + 1, tot) - Math.max(i, van)
+      if (deel > 1e-9) {
+        kolommen.push(i)
+        gewichten.push(deel)
+      }
+    }
+    bronX.push(kolommen)
+    gewichtX.push(gewichten)
+  }
+
+  const uit = new Uint8Array(nb * nh * 4)
+  // Per nieuwe pixel: r·a, g·a, b·a, a, dan r, g, b zonder weging, en het gewicht.
+  const som = new Float64Array(nb * 8)
+  const fy = hoogte / nh
+  for (let y = 0; y < nh; y++) {
+    som.fill(0)
+    const van = y * fy
+    const tot = (y + 1) * fy
+    for (let j = Math.floor(van); j < Math.min(hoogte, Math.ceil(tot)); j++) {
+      const wy = Math.min(j + 1, tot) - Math.max(j, van)
+      if (wy <= 1e-9) continue
+      const rijBegin = j * breedte * 4
+      for (let x = 0; x < nb; x++) {
+        const kolommen = bronX[x]
+        const gewichten = gewichtX[x]
+        const s = x * 8
+        for (let k = 0; k < kolommen.length; k++) {
+          const w = wy * gewichten[k]
+          const p = rijBegin + kolommen[k] * 4
+          const wa = w * pixels[p + 3]
+          som[s] += pixels[p] * wa
+          som[s + 1] += pixels[p + 1] * wa
+          som[s + 2] += pixels[p + 2] * wa
+          som[s + 3] += wa
+          som[s + 4] += pixels[p] * w
+          som[s + 5] += pixels[p + 1] * w
+          som[s + 6] += pixels[p + 2] * w
+          som[s + 7] += w
+        }
+      }
+    }
+    for (let x = 0; x < nb; x++) {
+      const s = x * 8
+      const o = (y * nb + x) * 4
+      const totaal = som[s + 7]
+      if (totaal <= 0) continue
+      if (som[s + 3] > 0) {
+        uit[o] = Math.round(som[s] / som[s + 3])
+        uit[o + 1] = Math.round(som[s + 1] / som[s + 3])
+        uit[o + 2] = Math.round(som[s + 2] / som[s + 3])
+      } else {
+        uit[o] = Math.round(som[s + 4] / totaal)
+        uit[o + 1] = Math.round(som[s + 5] / totaal)
+        uit[o + 2] = Math.round(som[s + 6] / totaal)
+      }
+      uit[o + 3] = Math.round(som[s + 3] / totaal)
+    }
+  }
+  return { breedte: nb, hoogte: nh, pixels: uit }
+}

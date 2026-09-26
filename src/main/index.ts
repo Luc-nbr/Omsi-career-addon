@@ -54,7 +54,7 @@ import { readTileGrid, type MapGeometry } from '../core/geo'
 import { LaneNetwork, type TripRoute } from '../core/routing'
 import { VehicleTracker, type VehiclePosition } from '../core/vehicle'
 import { buildIbisPlan, type IbisPlan } from '../core/ibis'
-import { apparatenVanBus, type Busapparaat } from '../core/busscherm'
+import { apparatenVanBus, modelcfgVanBus, type Busapparaat } from '../core/busscherm'
 import { panelenVan, profielVanBus, type Busprofiel, type Paneel } from '../core/busprofiel'
 import { modulesVanBus, paneelVanModule, type Busmodule } from '../core/busmodule'
 import { bruikbareToetsen, zetBustoetsen } from '../core/bustoetsen'
@@ -65,6 +65,7 @@ import {
   liveMap,
   pluginLogboek,
   readLive,
+  schrijfGetallen,
   schrijfVragen,
   stelLiveMappenIn,
   type LiveData
@@ -96,6 +97,15 @@ import {
   type TelefoonOpdracht
 } from './apparaat'
 import { formatTime } from '../shared/format'
+import {
+  schermActies,
+  schermGetallenVoor,
+  schermStringsVoor,
+  schermtextuurOp,
+  schermVoor,
+  schermvormOp,
+  standVoor
+} from './scherm'
 import {
   busfotoAdres,
   busfotoAfgehandeld,
@@ -1425,7 +1435,7 @@ function omsiToets(actie: string): boolean {
    * app zelf. Wat deze bus niet heeft, gebeurt niet -- zie `toegestaneActies`.
    */
   const naam = (OMSI_TOETSEN as Record<string, string>)[actie] ?? actie
-  if (!naam || !toegestaneActies.has(naam.toLowerCase())) {
+  if (!naam || (!toegestaneActies.has(naam.toLowerCase()) && !schermActies().has(naam))) {
     log(`toets ${naam || actie} hoort niet bij deze bus; niet ingedrukt`)
     return false
   }
@@ -1625,8 +1635,19 @@ function busApparaten(live: LiveData | undefined): Busapparaat[] | undefined {
   }
   const gekozen = new Set(gekozenModules(bus))
   const modules = busModules(live)
-  for (const module of modules) {
-    if (!gekozen.has(module.id)) continue
+  const modelcfg = modelcfgVanBus(omsiMap, bus)
+  const gekozenModulesNu = modules.filter((module) => gekozen.has(module.id))
+  /*
+   * De nagebouwde schermen eerst: hun teksten en de namen van de plaatjes die
+   * het script kiest (shared/scherm.ts), en daarnaast de getalvariabelen die
+   * zeggen welk menu er aanstaat en waar een onderdeel ligt. Die laatste gaan
+   * in een eigen bestand naar de plugin (plugin 13 en hoger).
+   */
+  if (modelcfg) {
+    for (const naam of schermStringsVoor(modelcfg, gekozenModulesNu)) erbij(naam)
+    schrijfGetallen(schermGetallenVoor(modelcfg, gekozenModulesNu))
+  }
+  for (const module of gekozenModulesNu) {
     for (const naam of module.variabelen) erbij(naam)
   }
   for (const apparaat of apparaten) for (const naam of apparaat.variabelen) erbij(naam)
@@ -1718,9 +1739,14 @@ async function zetBusknoppenAan(): Promise<{ toegevoegd: number; geenPlek: numbe
      * aanraakscherm -- en het zijn er hooguit een paar tientallen.
      */
     const live = freshLive()
-    const acties = (busPanelen(live) ?? []).flatMap((paneel) =>
-      paneel.rijen.flat().map((knop) => knop.actie)
-    )
+    /*
+     * En de aanraakvlakken van de nagebouwde schermen: die zitten niet meer in
+     * de rijen, maar moeten in het spel net zo goed aan een toets hangen.
+     */
+    const acties = [
+      ...(busPanelen(live) ?? []).flatMap((paneel) => paneel.rijen.flat().map((knop) => knop.actie)),
+      ...schermActies()
+    ]
     const uitslag = zetBustoetsen(omsi(), acties.length > 0 ? acties : undefined)
     knoppenStand = undefined
     return uitslag
@@ -1823,9 +1849,33 @@ function busPanelen(live: LiveData | undefined): Paneel[] | undefined {
    * apparaat uit beeld in plaats van dat het zijn laatste tekst vasthield.
    */
   const gekozen = gekozenModules(bus)
+  const modelcfg = modelcfgVanBus(omsiMap, bus)
   const zelf = busModules(live)
     .filter((module) => gekozen.includes(module.id))
-    .map((module) => paneelVanModule(module, live.vars ?? {}))
+    .map((module) => {
+      const paneel = paneelVanModule(module, live.vars ?? {})
+      /*
+       * Het scherm zoals OMSI het tekent, als dat voor dit apparaat te maken is.
+       * De knoppen die als aanraakvlak OP dat scherm liggen gaan uit de rijen
+       * eronder; wat overblijft zijn de echte toetsen naast het scherm.
+       */
+      const scherm = modelcfg ? schermVoor(omsiMap, modelcfg, module, live, log) : undefined
+      if (!scherm) return paneel
+      paneel.scherm = standVoor(scherm.vorm, live, omsiMap, modelcfg!)
+      paneel.rijen = paneel.rijen
+        .map((rij) => rij.filter((knop) => !scherm.knoppenOpScherm.has(knop.actie)))
+        .filter((rij) => rij.length > 0)
+      /*
+       * Het nagemeten vlak gaat alleen mee zolang de telefoon niet kan weten welk
+       * menu er aanstaat (een plugin van voor versie 13); anders is het elke
+       * tiende seconde een paar kilobyte voor niets.
+       */
+      if (paneel.scherm.z || paneel.scherm.g) {
+        delete paneel.vlak
+        paneel.regels = []
+      }
+      return paneel
+    })
 
   const sleutel = `${bus.pad}|${bus.model}|${bus.bestand}`
   let profiel = profielPerBus.get(sleutel)
@@ -2441,6 +2491,8 @@ function apparaatBronnen(): ApparaatBronnen {
       const kaart = currentDuty()?.mapFolder
       return kaart ? geometrieVoor(kaart) : undefined
     },
+    schermvorm: (id) => schermvormOp(id),
+    textuur: (id) => schermtextuurOp(id),
     routes: async () => {
       const dienst = currentDuty()
       if (!dienst) return undefined
@@ -2911,6 +2963,7 @@ function registerHandlers(): void {
   handle('telefoon:module', (_event, id: string, aan: boolean) => {
     zetBusmodule(freshLive(), String(id), Boolean(aan))
   })
+  handle('scherm:vorm', (_event, id: string) => schermvormOp(String(id)) ?? null)
 
   handle('apparaat:start', async () => {
     const nu = readSettings(userData())
@@ -3964,8 +4017,28 @@ function adoptOldProfiles(): void {
  */
 protocol.registerSchemesAsPrivileged([
   { scheme: 'omsikaart', privileges: { standard: true, secure: true, supportFetchAPI: true } },
-  { scheme: 'omsifoto', privileges: { standard: true, secure: true, supportFetchAPI: true } }
+  { scheme: 'omsifoto', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  /*
+   * De plaatjes van een nagebouwd apparaatscherm, voor de overlay: alleen op id
+   * uit het register van de huidige bus (main/schermtexturen.ts), nooit op pad.
+   */
+  { scheme: 'omsischerm', privileges: { standard: true, secure: true, supportFetchAPI: true } }
 ])
+
+/**
+ * Een plaatje van een nagebouwd apparaatscherm: `omsischerm://t/<id>`. Alleen
+ * twintig hextekens, en alleen wat in het register van de huidige bus staat.
+ */
+function schermplaatje(request: Request): Promise<Response> {
+  const id = /^\/([0-9a-f]{20})$/.exec(new URL(request.url).pathname)?.[1]
+  const plaatje = id ? schermtextuurOp(id) : undefined
+  if (!plaatje) return Promise.resolve(new Response(null, { status: 404 }))
+  return Promise.resolve(
+    new Response(new Uint8Array(plaatje.bytes), {
+      headers: { 'Content-Type': plaatje.type, 'Cache-Control': 'private, max-age=31536000, immutable' }
+    })
+  )
+}
 
 /**
  * Een getekende bus. Zelfde afspraak als bij de kaartplaatjes: één map, en de
@@ -4082,6 +4155,7 @@ if (!app.requestSingleInstanceLock()) {
 
     protocol.handle('omsikaart', kaartplaatje)
     protocol.handle('omsibus', busplaatje)
+    protocol.handle('omsischerm', schermplaatje)
     // Foto's van een oudere tekenaar horen niet meer getoond te worden.
     ruimOudeFotosOp(userData())
     protocol.handle('omsifoto', profielfoto)

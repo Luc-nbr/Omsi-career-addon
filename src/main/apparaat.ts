@@ -55,6 +55,14 @@ export interface ApparaatBronnen {
   routes(): Promise<unknown | undefined>
   /** Wat de telefoon op het toestel doet; zie `TelefoonOpdracht`. */
   telefoon(opdracht: TelefoonOpdracht): unknown
+  /**
+   * De vorm van een nagebouwd apparaatscherm, op id (shared/scherm.ts), en de
+   * plaatjes die erin staan. Alleen wat bij een apparaat van de huidige bus
+   * hoort; een onbekende id is een 404. Nooit een pad: wie het adres van de
+   * tablet heeft kan hiermee geen willekeurig bestand van de pc lezen.
+   */
+  schermvorm(id: string): unknown | undefined
+  textuur(id: string): { bytes: Buffer; type: string } | undefined
   log(regel: string): void
 }
 
@@ -369,6 +377,30 @@ async function behandel(vraag: IncomingMessage, antwoord: ServerResponse): Promi
     return
   }
   if (rest === 'api/start') return stuurJson(vraag, antwoord, bronnen.start())
+  /*
+   * De vorm van een nagebouwd scherm en de plaatjes erin, alleen op id: twintig
+   * hextekens uit het register van de huidige bus. Een id verandert als het
+   * bestand verandert, dus een plaatje mag de browser voor altijd bewaren.
+   */
+  const schermId = /^api\/scherm\/([0-9a-f]{20})$/.exec(rest)
+  if (schermId) {
+    const vorm = bronnen.schermvorm(schermId[1])
+    return vorm === undefined ? nietGevonden(antwoord) : stuurJson(vraag, antwoord, vorm)
+  }
+  const textuurId = /^textuur\/([0-9a-f]{20})$/.exec(rest)
+  if (textuurId) {
+    const plaatje = bronnen.textuur(textuurId[1])
+    if (!plaatje) return nietGevonden(antwoord)
+    antwoord.writeHead(200, {
+      ...VEILIG,
+      'Content-Type': plaatje.type,
+      'Content-Length': plaatje.bytes.length,
+      'Cache-Control': 'private, max-age=31536000, immutable',
+      ETag: `"${textuurId[1]}"`,
+      'Cross-Origin-Resource-Policy': 'same-origin'
+    })
+    return void antwoord.end(methode === 'HEAD' ? undefined : plaatje.bytes)
+  }
   if (rest === 'api/geometrie') return stuurJson(vraag, antwoord, await bronnen.geometrie())
   if (rest === 'api/routes') return stuurJson(vraag, antwoord, await bronnen.routes())
   if (rest === 'manifest.webmanifest') {

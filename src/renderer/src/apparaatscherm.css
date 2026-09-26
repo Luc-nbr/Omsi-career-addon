@@ -1,0 +1,90 @@
+/*
+ * HET NAGETEKENDE SCHERM VAN EEN APPARAAT (apparaatscherm.tsx)
+ *
+ * Een canvas in de verhouding van het echte scherm (de ALMEX: 185 x 134 mm,
+ * 1,381), zo breed als de ouder, met daarboven onzichtbare knoppen op de plek
+ * van de aanraakvlakken. Van een telefoon van 330 breed tot een iPad.
+ */
+.apparaatscherm {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  /* Niets mag er zijwaarts uitsteken: dat gaf een schuifbalk in het paneel. */
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+
+.scherm-vlak {
+  position: relative;
+  /*
+   * Zo breed als de ouder, maar op een tablet niet hoger dan ongeveer drie
+   * kwart van het paneel: een ALMEX van 1194 breed zou 864 hoog worden, hoger
+   * dan een liggende iPad, en de fysieke toetsen eronder vielen weg. Buiten de
+   * tablet is --paneel-hoog er niet en telt 620; de telefoon in de overlay is
+   * dan toch al smaller dan die grens.
+   */
+  width: min(100%, calc(var(--scherm-verhouding, 1.4) * var(--paneel-hoog, 620px) * 0.72));
+  aspect-ratio: var(--scherm-verhouding, 1.4);
+  margin: 0 auto;
+  overflow: hidden;
+  border-radius: 2px;
+  /* Tikken is drukken: geen dubbeltik-zoom, geen selectie, geen menu bij lang drukken. */
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/*
+ * Nog geen heel beeld: dan staat de terugval (het nagemeten vlak) er, en ligt
+ * het scherm onzichtbaar op dezelfde plek. Niet `display: none`: dan heeft het
+ * canvas geen maat en weet het niet hoeveel beeldpunten het moet worden.
+ */
+.scherm-vlak.wacht {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.scherm-doek {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Een aanraakvlak: je ziet de knop op het plaatje, niet dit. */
+.scherm-klik {
+  position: absolute;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: background-color 180ms ease-out;
+}
+
+.scherm-klik:disabled {
+  cursor: default;
+}
+
+/* Kort oplichten bij indrukken, zodat je weet dat de tik aankwam. */
+.scherm-klik:not(:disabled):active,
+.scherm-klik[data-gedrukt] {
+  background: rgba(255, 255, 255, 0.24);
+  transition: none;
+}
+
+.scherm-klik:focus-visible {
+  outline: 2px solid var(--lijn, #ffd23f);
+  outline-offset: -2px;
+}

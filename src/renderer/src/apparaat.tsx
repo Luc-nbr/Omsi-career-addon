@@ -14,6 +14,7 @@ import {
   type TelefoonFrame,
 } from "./telefoon";
 import { dutyKeyOf } from "../../shared/telefoon";
+import type { Schermvorm } from "../../shared/scherm";
 import type { AanmeldUitslag } from "../../shared/telefoon";
 import "@fontsource/hanken-grotesk/400.css";
 import "@fontsource/hanken-grotesk/500.css";
@@ -97,6 +98,10 @@ function Apparaat(): JSX.Element {
       knoppenAan: () => void stuur({ wat: "busknoppen" }).catch(() => undefined),
       module: (id, aan) =>
         void stuur({ wat: "module", module: id, aan }).catch(() => undefined),
+      schermvorm: (id) =>
+        haal<Schermvorm>(`api/scherm/${id}`).catch(() => null),
+      /* Relatief, zodat de sleutel in het adres meegaat. */
+      textuurAdres: (id) => `textuur/${id}`,
     }),
     [],
   );

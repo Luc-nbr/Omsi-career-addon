@@ -134,8 +134,9 @@ enum {
  * 10 sneller kijken of de app iets vraagt: dertig keer per seconde in plaats van vijf
  * 11 geen opdracht van de vorige sessie meer uitvoeren bij het opstarten
  * 12 honderdzestig namen in plaats van vierenzestig, en geen NaN in het bericht
+ * 13 de getalvariabelen en per mesh wat OMSI toont, rechtstreeks uit het geheugen
  */
-#define PLUGIN_VERSIE 12
+#define PLUGIN_VERSIE 13
 
 /*
  * Drempels voor hard remmen en optrekken, in meter per seconde kwadraat.
@@ -292,6 +293,93 @@ static int g_strKind;
  */
 #define OFS_CMOI_SCRIPTOUDER 0x240
 
+/*
+ * DE GETALVARIABELEN VAN DE BUS
+ *
+ * Naast tekst houdt een busscript vooral getallen bij: welk menu de ALMEX
+ * toont (almex_menu), of hij aanstaat (almex_ein), welke regel oplicht. Daaraan
+ * hangt in de model.cfg wat er te zien is, en bij een `[matl_change]` welk
+ * plaatje. Wie het apparaat na wil tekenen, moet ze dus kennen.
+ *
+ * Ze staan naast de stringvariabelen, met een wijzer meer:
+ *
+ *   voertuig + 0x210 -> TComplMapObj
+ *                       + 0x1ec -> de NAMEN (Delphi-array van strings)
+ *   voertuig + 0x214 -> TComplObjInst
+ *                       + 0x28  -> wijzer naar de Delphi-array met de WAARDEN;
+ *                                  elk element is een wijzer naar een float (Single)
+ *
+ * Dezelfde wijzer staat op voertuig + 0x23c; gemeten wijzen ze allebei naar
+ * voertuig + 0x238. De plugin neemt eerst die van het exemplaar, want daar
+ * leest OMSI's eigen zichtbaarheidscode hem (omsi.exe VA 0x5fcf4f), en valt
+ * pas daarna terug op die van het voertuig.
+ *
+ * Wijzers, omdat niet alles in een lijst staat: de namen die OMSI zelf in elk
+ * voertuig bijhoudt (Velocity, ...) wijzen in het voertuig, de rest naar de
+ * eigen getallen van het script. Het script leest en schrijft via deze
+ * wijzers, dus wat hier staat is precies wat het spel gebruikt.
+ *
+ * Gemeten in OMSI 2.3.004 op 26-09-2026: de lijst begint met 138 namen van OMSI
+ * zelf (Refresh_Strings tot en met wearlifespan) en daarna, regel voor regel,
+ * de varlist-bestanden uit [varnamelist] van de .bus. Een lege regel is een
+ * lege naam (nil). Zo in de Hamburgse elektrobus: 1699 namen, almex_menu op
+ * plek 1449 met 6.0 als de ALMEX menu 6 toont. Hoe breed een naam is (1 of 2
+ * bytes per teken) staat in zijn eigen kop; zie lees_omsi_tekst. Zie ook
+ * OmsiComplMapObj.VarStrings en OmsiComplObjInst in
+ * github.com/space928/Omsi-Extensions.
+ */
+#define OFS_CMO_GETALNAMEN 0x1ec
+#define OFS_COI_GETALWAARDEN 0x28
+#define OFS_CMOI_GETALWAARDEN 0x23c /* de terugval, als het exemplaar niets heeft */
+/*
+ * Zoveel getalvariabelen mag de app vragen. De Citybus O530 van Kajosoft
+ * (model_o530_e2_3.cfg) gebruikt er in zijn eentje 293 in een [visible], en
+ * dan komen [matl_change] en [matl_lightmap] er nog bij; 256 was te krap.
+ */
+#define GETALLEN_MAX 512
+/* Een bus heeft er een paar duizend (de grootste 2580); daarboven is het geen namenlijst. */
+#define GETAL_NAMEN_GRENS 20000
+/* Plekken in de tabel waarin de gevraagde namen opgezocht worden: minstens twee keer GETALLEN_MAX. */
+#define GETAL_HASH 1024
+
+/*
+ * WAT OMSI ZELF TOONT
+ *
+ * Een [mesh] in de model.cfg kan een voorwaarde hebben, `[visible] almex_menu
+ * 6`. OMSI rekent die bij elk beeld zelf uit en zet de uitkomst per mesh in een
+ * byte. Die byte lezen is precies wat het spel tekent, voor elke bus: de app
+ * hoeft de regels van OMSI dan niet na te bouwen -- een naam die de bus niet
+ * kent is altijd zichtbaar, afronden gaat bij .5 naar even, sommige namen
+ * staan twee keer in de varlists.
+ *
+ *   voertuig + 0x214 -> TComplObjInst
+ *                       + 0x20 -> TComplObj, het model
+ *                                 + 0x38 -> TList van TAnimSubMesh, een per mesh:
+ *                                           + 0x17c het o3d-bestand (string)
+ *                                           + 0x1a4 plek van de variabele, -1 = geen
+ *                                           + 0x1a8 de waarde uit [visible] (int)
+ *                       + 0xe0 -> TList van TAnimSubMeshInst, in dezelfde volgorde:
+ *                                 + 0xd0 byte: 1 = OMSI toont hem
+ *
+ * Een TList heeft zijn elementen op +4 en het aantal op +8. OMSI's regel
+ * (omsi.exe VA 0x5fcf01-0x5fcfbb): zichtbaar als er geen variabele is, als de
+ * plek buiten de lijst valt, of als Round(waarde) gelijk is aan het doel.
+ * Gemeten in de Hamburgse elektrobus: 608 meshes en 608 exemplaren, en bij
+ * almex_menu 6 staat alleen 17_almex_screen_6 op 1, alle andere schermen van
+ * de ALMEX op 0. model_21_main.cfg heeft 621 [mesh]-regels, waarvan 13 met een
+ * o3d die niet bestaat: OMSI slaat die over, en dan blijven er 608. Welke plek
+ * welke mesh is, zet de plugin in meshes.json, zodat de app het na kan kijken.
+ */
+#define OFS_COI_COMPLOBJ 0x20
+#define OFS_CO_MESHES 0x38
+#define OFS_COI_MESHINSTS 0xe0
+#define OFS_MESH_O3D 0x17c
+#define OFS_MESH_VAR 0x1a4
+#define OFS_MESH_DOEL 0x1a8
+#define OFS_INST_ZICHTBAAR 0xd0
+/* Het grootste model in Vehicles heeft 1195 [mesh]-regels. */
+#define MESHES_MAX 4096
+
 /* Hooguit zoveel namen vraagt de app op; zo veel tekens mogen naam en waarde zijn. */
 /*
  * Zoveel namen mag de app vragen. Het stond op 64, en dat was te weinig: een
@@ -302,8 +390,16 @@ static int g_strKind;
 #define VRAGEN_MAX 160
 #define NAMEN_MAX 512
 #define SCHERM_NAAM_MAX 64
-#define SCHERM_TEKENS 128
-#define SCHERM_WAARDE_MAX (SCHERM_TEKENS * 3)
+/*
+ * Zoveel bytes mag een waarde zijn, als JSON-tekst in UTF-8 (zie json_tekst).
+ * Het waren 127 tekens, en dat sneed de meerregelige bon van de MAN NLC af: de
+ * telefoon kreeg er maar een deel van. Nu past er 511 bytes in -- 511 gewone
+ * tekens, of 255 met een accent -- en live.json blijft ruim binnen zijn buffer
+ * (zie flush_state).
+ */
+#define SCHERM_WAARDE_MAX 512
+/* Langer dan dit is geen tekst uit een bus maar een verkeerd adres. */
+#define OMSI_TEKST_GRENS 65536
 
 typedef struct {
   int ok;             /* 1 als het voertuig van de speler gevonden is */
@@ -339,6 +435,13 @@ static int g_namenVers;     /* welke vragenlijst er in g_vraagIndex verwerkt zit
 static char g_namen[NAMEN_MAX][SCHERM_NAAM_MAX];
 static int g_namenAantal;
 static int g_vraagIndex[VRAGEN_MAX]; /* -1 = deze bus kent die naam niet */
+/*
+ * 1 als lees_busvars in dit beeld de waarden las. Zonder dit bleef g_vraagIndex
+ * staan zoals hij was -- nullen bij de start, of de plekken van de vorige bus
+ * -- en dan stond in een bus zonder stringvariabelen elke gevraagde naam in
+ * "vars", met een lege tekst, alsof de bus hem kende.
+ */
+static int g_varsGelezen;
 static char g_varWaarde[VRAGEN_MAX][SCHERM_WAARDE_MAX];
 static char g_busNaam[SCHERM_WAARDE_MAX];
 static char g_busBestand[512];
@@ -346,9 +449,61 @@ static char g_busModel[SCHERM_WAARDE_MAX];
 static char g_busPad[512];
 static ULONGLONG g_schermenGeschreven;
 /* De hele lijst, klaar om als schermen.json weggeschreven te worden. */
-#define DUMP_MAX 65536
+/*
+ * Ruim bemeten: een waarde mag sinds plugin 13 512 bytes zijn, en een bus kan
+ * honderden stringvariabelen hebben. Wat toch niet past valt eraf, en dan
+ * staat er "afgekapt":true bij.
+ */
+#define DUMP_MAX 262144
 static char g_dump[DUMP_MAX];
 static int g_dumpLengte;
+
+/* De getalvariabelen; zie OFS_CMO_GETALNAMEN. Zelfde opzet als de strings. */
+static char g_getalVragen[GETALLEN_MAX][SCHERM_NAAM_MAX];
+static int g_getalVragenAantal;
+static int g_getalVragenVers;   /* telt op bij elke nieuwe lijst in getallen.txt */
+static ULONGLONG g_getalVragenGekeken;
+static DWORD g_getalNamenBron;  /* het adres van de namenlijst die opgezocht is */
+static int g_getalNamenAantal;
+static int g_getalNamenVers;    /* welke vragenlijst er in g_getalIndex verwerkt zit */
+static DWORD g_getalGemeld;     /* welke namenlijst al in het logboek staat */
+static int g_getalIndex[GETALLEN_MAX]; /* plek in de bus; -1 = deze bus kent die naam niet */
+/* -1, of een eerdere vraag met dezelfde naam in andere letters: die heeft dezelfde plek. */
+static int g_getalZelfde[GETALLEN_MAX];
+static short g_getalHash[GETAL_HASH]; /* -1 = leeg, anders een plek in g_getalVragen */
+static float g_getalWaarde[GETALLEN_MAX];
+/*
+ * Wat er van een gevraagde naam bekend is. NIET: niet gelezen (geen bus, of het
+ * lezen liep mis). GEEN: de bus kent de naam, maar er staat geen getal (NaN,
+ * oneindig, een lege wijzer). ONBEKEND: de bus kent de naam niet -- en dan is
+ * een [visible] erop in OMSI altijd waar.
+ */
+enum { GETAL_NIET = 0, GETAL_GETAL, GETAL_GEEN, GETAL_ONBEKEND };
+static unsigned char g_getalStaat[GETALLEN_MAX];
+static int g_getalAantalBus;    /* hoeveel getalvariabelen de bus van de speler heeft */
+/* De hele lijst, klaar om als getallen.json weggeschreven te worden. */
+#define GETALLIJST_MAX 262144
+static char g_getalDump[GETALLIJST_MAX];
+static int g_getalDumpLengte;
+static ULONGLONG g_getalDumpGemaakt;
+
+/* Wat OMSI toont; zie OFS_COI_MESHINSTS. Per mesh '1' of '0', als tekst. */
+static char g_zichtbaar[MESHES_MAX + 1];
+static int g_meshAantal;        /* 0 = niet te lezen */
+static DWORD g_meshBron;        /* het model waarvan meshes.json gemaakt is */
+static int g_meshBronAantal;
+/* En zoals live.json het model noemt: "model" in meshes.json moet daarmee kloppen. */
+static char g_meshModel[SCHERM_WAARDE_MAX];
+/* De meshlijst, klaar om als meshes.json weggeschreven te worden; > 0 = nog te doen. */
+#define MESHLIJST_MAX 262144
+static char g_meshDump[MESHLIJST_MAX];
+static int g_meshDumpLengte;
+static int g_meshSchrijfFout;   /* al gemeld dat meshes.json niet weg kon */
+/*
+ * 1 als meshes.json van dit model op schijf staat. Pas dan gaat "zichtbaar"
+ * live.json in; zie flush_state.
+ */
+static int g_meshOpSchijf;
 
 /* 0 onbekend, 1 OMSI 2.3.004 (lezen mag), 2 een andere versie (niet lezen). */
 static int g_memVersion;
@@ -378,6 +533,12 @@ static wchar_t g_opdrachtPad[MAX_PATH];
 static wchar_t g_vragenPad[MAX_PATH];
 static wchar_t g_schermenPad[MAX_PATH];
 static wchar_t g_schermenTemp[MAX_PATH];
+/* Welke getalvariabelen de app wil, de hele lijst ervan, en welke mesh welke is. */
+static wchar_t g_getallenPad[MAX_PATH];
+static wchar_t g_getalLijstPad[MAX_PATH];
+static wchar_t g_getalLijstTemp[MAX_PATH];
+static wchar_t g_meshLijstPad[MAX_PATH];
+static wchar_t g_meshLijstTemp[MAX_PATH];
 static int g_opdrachtNr;    /* het laatst uitgevoerde nummer */
 static int g_opdrachtScancode; /* en welke toets dat was */
 static int g_opdrachtMod;
@@ -481,8 +642,10 @@ static int g_accelCounted;
 
 static void copy_string(int slot, const void *source);
 static void copy_text(char *target, size_t size, const void *source);
-static void copy_omsi_string(char *doel, size_t ruimte, DWORD tekst);
+static int copy_omsi_string(char *doel, size_t ruimte, DWORD tekst);
 static void lees_busvars(DWORD voertuig);
+static void lees_busgetallen(DWORD voertuig);
+static void lees_zichtbaarheid(DWORD voertuig);
 
 /* Een adres uit OmsiHook, verschoven als Windows het programma elders laadde. */
 static DWORD mem_addr(DWORD address) {
@@ -679,6 +842,12 @@ static void read_memory(void) {
    */
   g_busNaam[0] = g_busModel[0] = g_busPad[0] = g_busBestand[0] = 0;
   for (int i = 0; i < VRAGEN_MAX; i++) g_varWaarde[i][0] = 0;
+  g_varsGelezen = 0;
+  /* De getallen en wat OMSI toont net zo: zonder bus "getallen":{} en "zichtbaar":"". */
+  memset(g_getalStaat, 0, sizeof(g_getalStaat));
+  g_getalAantalBus = 0;
+  g_meshAantal = 0;
+  g_zichtbaar[0] = 0;
   next.koper = -1;
   next.ticketIndex = -1;
   next.ticketSoort = -1;
@@ -773,6 +942,14 @@ static void read_memory(void) {
            * de kaartautomaat, wat er ingetoetst staat. Zie `lees_busvars`.
            */
           lees_busvars(vehicle);
+          /*
+           * En de getallen, en wat OMSI van de bus toont. Los van de tekst, want
+           * een bus zonder stringvariabelen heeft ze evengoed; en elk met een
+           * eigen __try, zodat een fout daar niet de positie, de dienstregeling
+           * en de kaartverkoop hierboven meeneemt (mem.ok blijft 1).
+           */
+          lees_busgetallen(vehicle);
+          lees_zichtbaarheid(vehicle);
 
           /* Namen van lijn, omloop en rit uit de dienstregeling van de kaart. */
           const DWORD tt = *(DWORD *)(ULONG_PTR)mem_addr(MEM_TIMETABLE_MAN);
@@ -879,99 +1056,234 @@ static void copy_text(char *target, size_t size, const void *source) {
 
 
 /*
- * Kopieert een string zoals Delphi hem in het geheugen neerzet.
+ * Tekst als JSON-string, in UTF-8.
  *
- * Anders dan copy_text, dat tekst aangereikt krijgt van de plugin-API, staat
- * hier een wijzer naar een string uit OMSI's eigen geheugen. Delphi zet voor
- * elke string een kopje neer: vier bytes ervoor staat hoeveel tekens hij telt,
+ * Wat de plugin uit het geheugen leest, gaat letterlijk live.json in. Tot
+ * plugin 12 werd een " daarom een spatie, een \ een schuine streep en een
+ * teken onder de 32 een spatie. Maar een font van OMSI kan een " of een \ als
+ * teken hebben, en een teken onder de 32 tekent OMSI als teken 0 van het font:
+ * wie het scherm exact natekent, moet weten wat er werkelijk staat. Nu gaat
+ * het zoals JSON het wil: \" \\ en \u00XX. Een halve UTF-16-reeks (D800-DFFF)
+ * gaat als \uXXXX, zodat JavaScript precies dezelfde tekens terugkrijgt, ook
+ * als hij los staat.
+ *
+ * `schuin`: een backslash wordt een schuine streep, zoals vroeger. Alleen voor
+ * de map, het model en het bestand van de bus: de app onthoudt de gekozen
+ * apparaten per bus onder het pad zoals plugin 12 het gaf ("c:/omsi 2/...";
+ * zie busSleutel in main/index.ts), en Windows neemt een / net zo lief.
+ *
+ * Past niet alles in `ruimte`, dan stopt hij na het laatste hele teken --
+ * nooit halverwege een escape of een UTF-8-reeks, want dan brak de JSON -- en
+ * geeft hij 0. Paste alles: 1.
+ */
+static int json_tekst(char *doel, size_t ruimte, const wchar_t *bron, int aantal, int schuin) {
+  static const char hex[] = "0123456789abcdef";
+  if (ruimte == 0) return 0;
+  size_t p = 0;
+  for (int i = 0; i < aantal; i++) {
+    const unsigned int c = bron[i];
+    char stuk[6];
+    size_t n = 0;
+    if (c == '"' || (c == '\\' && !schuin)) {
+      stuk[n++] = '\\';
+      stuk[n++] = (char)c;
+    } else if (c == '\\') {
+      stuk[n++] = '/';
+    } else if (c < 0x20 || (c >= 0xd800 && c <= 0xdfff)) {
+      stuk[n++] = '\\';
+      stuk[n++] = 'u';
+      stuk[n++] = hex[(c >> 12) & 0xf];
+      stuk[n++] = hex[(c >> 8) & 0xf];
+      stuk[n++] = hex[(c >> 4) & 0xf];
+      stuk[n++] = hex[c & 0xf];
+    } else if (c < 0x80) {
+      stuk[n++] = (char)c;
+    } else if (c < 0x800) {
+      stuk[n++] = (char)(0xc0 | (c >> 6));
+      stuk[n++] = (char)(0x80 | (c & 0x3f));
+    } else {
+      stuk[n++] = (char)(0xe0 | (c >> 12));
+      stuk[n++] = (char)(0x80 | ((c >> 6) & 0x3f));
+      stuk[n++] = (char)(0x80 | (c & 0x3f));
+    }
+    /* Een paar (hoog en laag) hoort bij elkaar: allebei erin of geen van beide. */
+    const int paar = c >= 0xd800 && c <= 0xdbff && i + 1 < aantal && bron[i + 1] >= 0xdc00 &&
+                     bron[i + 1] <= 0xdfff;
+    if (p + n + (paar ? 6 : 0) >= ruimte) {
+      doel[p] = 0;
+      return 0;
+    }
+    memcpy(doel + p, stuk, n);
+    p += n;
+  }
+  doel[p] = 0;
+  return 1;
+}
+
+/*
+ * Leest een string zoals Delphi hem in het geheugen neerzet, als UTF-16.
+ *
+ * Voor elke string staat een kopje: vier bytes ervoor hoeveel tekens hij telt,
  * en tien bytes ervoor hoe breed een teken is (1 of 2 bytes). Daarmee valt er
  * niets te raden, en is een verkeerd adres te herkennen aan een onmogelijke
- * lengte of breedte.
- *
- * Aanhalingstekens worden een spatie en backslashes een schuine streep, want
- * dit gaat rechtstreeks een JSON-bestand in. Voor het pad van de bus is dat
- * precies goed: Windows neemt een schuine streep net zo lief.
+ * lengte of breedte. Hooguit `max` tekens; was er meer, dan wordt `*heel` 0.
+ * Geeft het aantal tekens, of -1 als het geen string is.
  */
-static void copy_omsi_string(char *doel, size_t ruimte, DWORD tekst) {
-  doel[0] = 0;
-  if (!plausible_ptr(tekst)) return;
+static int lees_omsi_tekst(DWORD tekst, wchar_t *doel, int max, int *heel) {
+  *heel = 1;
+  if (!plausible_ptr(tekst) || max <= 0) return -1;
   __try {
     const int lengte = *(const int *)(ULONG_PTR)(tekst - 4);
     const unsigned short breedte = *(const unsigned short *)(ULONG_PTR)(tekst - 10);
-    if (lengte <= 0 || lengte > 2048) return;
-    wchar_t schoon[SCHERM_TEKENS];
-    int n = 0;
-    if (breedte == 2) {
-      const wchar_t *w = (const wchar_t *)(ULONG_PTR)tekst;
-      while (n < lengte && n < SCHERM_TEKENS - 1) {
-        const wchar_t c = w[n];
-        schoon[n] = (c == L'"' || c < 32) ? L' ' : (c == L'\\') ? L'/' : c;
-        n++;
-      }
-      schoon[n] = 0;
-    } else if (breedte == 1) {
-      const unsigned char *a = (const unsigned char *)(ULONG_PTR)tekst;
-      char ruw[SCHERM_TEKENS];
-      while (n < lengte && n < SCHERM_TEKENS - 1) {
-        const unsigned char c = a[n];
-        ruw[n] = (c == '"' || c < 32) ? ' ' : (c == '\\') ? '/' : (char)c;
-        n++;
-      }
-      ruw[n] = 0;
-      /* OMSI schrijft zijn tekst in Windows-1252; zie copy_text. */
-      if (MultiByteToWideChar(1252, 0, ruw, -1, schoon, SCHERM_TEKENS) == 0) return;
-    } else {
-      return;
+    if (lengte <= 0 || lengte > OMSI_TEKST_GRENS) return -1;
+    int n = lengte;
+    if (n > max) {
+      n = max;
+      *heel = 0;
     }
-    if (!WideCharToMultiByte(CP_UTF8, 0, schoon, -1, doel, (int)ruimte, NULL, NULL)) doel[0] = 0;
+    if (breedte == 2) {
+      memcpy(doel, (const void *)(ULONG_PTR)tekst, (size_t)n * sizeof(wchar_t));
+      return n;
+    }
+    if (breedte == 1) {
+      /*
+       * OMSI schrijft zijn tekst in Windows-1252; zie copy_text. Daarin is elke
+       * byte precies een UTF-16-teken. Met de lengte erbij, zodat een nul
+       * midden in de tekst gewoon een teken is en niet het einde.
+       */
+      const int m = MultiByteToWideChar(1252, 0, (const char *)(ULONG_PTR)tekst, n, doel, max);
+      return m > 0 ? m : -1;
+    }
+    return -1;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
-    doel[0] = 0;
+    *heel = 0;
+    return -1;
   }
 }
 
 /*
- * Welke schermvariabelen wil de app zien?
+ * Een string uit het geheugen van OMSI, als JSON-tekst; zie lees_omsi_tekst en
+ * json_tekst. Anders dan copy_text, dat tekst aangereikt krijgt van de
+ * plugin-API, staat hier een wijzer naar een string in OMSI's eigen geheugen.
  *
- * Een naam per regel, zoals ze in de model.cfg van de bus staan. De app
- * schrijft het bestand zodra ze merkt dat er een andere bus rijdt; hier wordt
- * er hooguit een keer per seconde naar gekeken.
+ * Geeft 1 als de hele string in `doel` staat (een lege ook), anders 0: dan
+ * staat er een afgekapt stuk, of niets. Wie op naam zoekt, neemt alleen een
+ * hele -- een afgekapte naam is een andere naam.
  */
-static void lees_vragen(void) {
-  if (!g_vragenPad[0]) return;
-  const ULONGLONG nu = GetTickCount64();
-  if (g_vragenGekeken && nu - g_vragenGekeken < 1000) return;
-  g_vragenGekeken = nu;
+static int omsi_json(char *doel, size_t ruimte, DWORD tekst, int schuin) {
+  wchar_t tekens[SCHERM_WAARDE_MAX];
+  if (ruimte == 0) return 0;
+  doel[0] = 0;
+  if (!tekst) return 1; /* zo zet Delphi een lege string neer */
+  int heel = 0;
+  /* Elk teken wordt minstens een byte: meer dan `ruimte` tekens past nooit. */
+  const int max = ruimte < SCHERM_WAARDE_MAX ? (int)ruimte : SCHERM_WAARDE_MAX;
+  const int n = lees_omsi_tekst(tekst, tekens, max, &heel);
+  if (n < 0) return 0;
+  return json_tekst(doel, ruimte, tekens, n, schuin) && heel;
+}
 
-  HANDLE bestand = CreateFileW(g_vragenPad, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+static int copy_omsi_string(char *doel, size_t ruimte, DWORD tekst) {
+  return omsi_json(doel, ruimte, tekst, 0);
+}
+
+/*
+ * Alleen de bestandsnaam, zonder de map ervoor: "...\Model\17_almex_screen_6.o3d"
+ * wordt "17_almex_screen_6.o3d". Zo staat hij ook in de model.cfg.
+ */
+static int omsi_bestandsnaam(char *doel, size_t ruimte, DWORD tekst) {
+  wchar_t tekens[1024];
+  if (ruimte == 0) return 0;
+  doel[0] = 0;
+  int heel = 0;
+  const int n = lees_omsi_tekst(tekst, tekens, 1024, &heel);
+  if (n < 0 || !heel) return 0;
+  int begin = 0;
+  for (int i = 0; i < n; i++)
+    if (tekens[i] == L'\\' || tekens[i] == L'/') begin = i + 1;
+  return json_tekst(doel, ruimte, tekens + begin, n - begin, 0);
+}
+
+/*
+ * Een lijst namen uit een bestand van de app, een naam per regel.
+ *
+ * Voor de stringvariabelen (vragen.txt) en de getalvariabelen (getallen.txt)
+ * hetzelfde. De app schrijft het bestand zodra ze merkt dat er een andere bus
+ * rijdt; hier wordt er hooguit een keer per seconde naar gekeken. `vers` telt
+ * op als de lijst anders is dan de vorige, zodat de namen opnieuw opgezocht
+ * worden.
+ *
+ * Een regel met een aanhalingsteken, een backslash of een stuurteken slaat hij
+ * over: zo'n naam komt in een varlist niet voor, en hij gaat letterlijk
+ * live.json in. Een regel van meer dan 63 bytes ook -- en die wordt niet
+ * afgekapt, want een afgekapte naam kan precies een andere naam zijn.
+ */
+#define NAMENLIJST_MAX 512 /* de grootste van VRAGEN_MAX en GETALLEN_MAX */
+
+static void lees_namenlijst(const wchar_t *pad, char (*lijst)[SCHERM_NAAM_MAX], int max,
+                            int *aantalUit, int *vers, ULONGLONG *gekeken) {
+  if (!pad[0]) return;
+  const ULONGLONG nu = GetTickCount64();
+  if (*gekeken && nu - *gekeken < 1000) return;
+  *gekeken = nu;
+  if (max > NAMENLIJST_MAX) max = NAMENLIJST_MAX;
+
+  HANDLE bestand = CreateFileW(pad, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
                                OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
   if (bestand == INVALID_HANDLE_VALUE) return;
-  char tekst[VRAGEN_MAX * SCHERM_NAAM_MAX];
+  /*
+   * Statisch en niet op de stapel: samen ruim 60 kB, en OMSI roept ons aan op
+   * de zijne. Genoeg voor NAMENLIJST_MAX regels van 63 bytes met CRLF.
+   */
+  static char tekst[NAMENLIJST_MAX * (SCHERM_NAAM_MAX + 2) + 1];
+  static char nieuw[NAMENLIJST_MAX][SCHERM_NAAM_MAX];
   DWORD gelezen = 0;
   const BOOL ok = ReadFile(bestand, tekst, sizeof(tekst) - 1, &gelezen, NULL);
   CloseHandle(bestand);
   if (!ok) return;
+  /* Paste het bestand niet, dan is de laatste regel misschien half: die niet. */
+  if (gelezen == sizeof(tekst) - 1)
+    while (gelezen > 0 && tekst[gelezen - 1] != '\n') gelezen--;
   tekst[gelezen] = 0;
 
-  char nieuw[VRAGEN_MAX][SCHERM_NAAM_MAX];
-  memset(nieuw, 0, sizeof(nieuw));
+  const size_t grootte = (size_t)max * SCHERM_NAAM_MAX;
+  memset(nieuw, 0, grootte);
   int aantal = 0;
   const char *p = tekst;
-  while (*p && aantal < VRAGEN_MAX) {
+  while (*p && aantal < max) {
     while (*p == '\r' || *p == '\n' || *p == ' ' || *p == '\t') p++;
     int n = 0;
-    while (p[n] && p[n] != '\r' && p[n] != '\n' && n < SCHERM_NAAM_MAX - 1) n++;
+    while (p[n] && p[n] != '\r' && p[n] != '\n') n++;
+    const char *volgende = p + n;
     while (n > 0 && (p[n - 1] == ' ' || p[n - 1] == '\t')) n--;
-    if (n > 0) {
+    int bruikbaar = n > 0 && n < SCHERM_NAAM_MAX;
+    for (int i = 0; i < n && bruikbaar; i++) {
+      const unsigned char c = (unsigned char)p[i];
+      if (c == '"' || c == '\\' || c < 0x20) bruikbaar = 0;
+    }
+    if (bruikbaar) {
       memcpy(nieuw[aantal], p, (size_t)n);
       nieuw[aantal][n] = 0;
       aantal++;
     }
-    while (*p && *p != '\n') p++;
+    p = volgende;
   }
-  if (aantal == g_vragenAantal && memcmp(nieuw, g_vragen, sizeof(nieuw)) == 0) return;
-  memcpy(g_vragen, nieuw, sizeof(g_vragen));
-  g_vragenAantal = aantal;
-  g_vragenVers++;
+  if (aantal == *aantalUit && memcmp(nieuw, lijst, grootte) == 0) return;
+  memcpy(lijst, nieuw, grootte);
+  *aantalUit = aantal;
+  (*vers)++;
+}
+
+/* Welke stringvariabelen wil de app zien? */
+static void lees_vragen(void) {
+  lees_namenlijst(g_vragenPad, g_vragen, VRAGEN_MAX, &g_vragenAantal, &g_vragenVers,
+                  &g_vragenGekeken);
+}
+
+/* En welke getalvariabelen? */
+static void lees_getalvragen(void) {
+  lees_namenlijst(g_getallenPad, g_getalVragen, GETALLEN_MAX, &g_getalVragenAantal,
+                  &g_getalVragenVers, &g_getalVragenGekeken);
 }
 
 /*
@@ -988,6 +1300,7 @@ static void lees_vragen(void) {
  */
 static void lees_busvars(DWORD voertuig) {
   for (int i = 0; i < VRAGEN_MAX; i++) g_varWaarde[i][0] = 0;
+  g_varsGelezen = 0;
   g_busNaam[0] = g_busModel[0] = g_busPad[0] = g_busBestand[0] = 0;
 
   /*
@@ -1000,6 +1313,21 @@ static void lees_busvars(DWORD voertuig) {
 
   const DWORD bestand = *(const DWORD *)(ULONG_PTR)(voertuig + OFS_COMPL_MAPOBJ);
   const DWORD exemplaar = *(const DWORD *)(ULONG_PTR)(voertuig + OFS_COMPL_INST);
+  /*
+   * Eerst wie de bus is, en pas daarna of hij stringvariabelen heeft. 63 van de
+   * 601 .bus-bestanden in Vehicles hebben geen [stringvarnamelist] (vooral
+   * vrachtwagens, AI en aanhangers). Stond dit na die toets, dan kreeg zo'n bus
+   * geen model en vond de app zijn model.cfg niet -- terwijl zijn getallen en
+   * wat OMSI van hem toont er wel zijn. Paden met een schuine streep; zie
+   * json_tekst.
+   */
+  if (plausible_ptr(bestand)) {
+    copy_omsi_string(g_busNaam, sizeof(g_busNaam), *(const DWORD *)(ULONG_PTR)(bestand + OFS_CMO_NAAM));
+    omsi_json(g_busModel, sizeof(g_busModel), *(const DWORD *)(ULONG_PTR)(bestand + OFS_CMO_MODEL), 1);
+    omsi_json(g_busPad, sizeof(g_busPad), *(const DWORD *)(ULONG_PTR)(bestand + OFS_CMO_PAD), 1);
+    omsi_json(g_busBestand, sizeof(g_busBestand),
+              *(const DWORD *)(ULONG_PTR)(bestand + OFS_CMO_BESTAND), 1);
+  }
   const DWORD namen =
       plausible_ptr(bestand) ? *(const DWORD *)(ULONG_PTR)(bestand + OFS_CMO_STRNAMEN) : 0;
   const DWORD waarden =
@@ -1009,11 +1337,6 @@ static void lees_busvars(DWORD voertuig) {
     g_namenAantal = 0;
     return;
   }
-  copy_omsi_string(g_busNaam, sizeof(g_busNaam), *(const DWORD *)(ULONG_PTR)(bestand + OFS_CMO_NAAM));
-  copy_omsi_string(g_busModel, sizeof(g_busModel), *(const DWORD *)(ULONG_PTR)(bestand + OFS_CMO_MODEL));
-  copy_omsi_string(g_busPad, sizeof(g_busPad), *(const DWORD *)(ULONG_PTR)(bestand + OFS_CMO_PAD));
-  copy_omsi_string(g_busBestand, sizeof(g_busBestand),
-                   *(const DWORD *)(ULONG_PTR)(bestand + OFS_CMO_BESTAND));
 
   const int aantalNamen = *(const int *)(ULONG_PTR)(namen - 4);
   const int aantalWaarden = *(const int *)(ULONG_PTR)(waarden - 4);
@@ -1025,7 +1348,9 @@ static void lees_busvars(DWORD voertuig) {
     g_namenVers = -1;
     g_namenAantal = aantalNamen < NAMEN_MAX ? aantalNamen : NAMEN_MAX;
     for (int i = 0; i < g_namenAantal; i++) {
-      copy_omsi_string(g_namen[i], SCHERM_NAAM_MAX, *(const DWORD *)(ULONG_PTR)(namen + (DWORD)i * 4));
+      /* Een naam die niet heel past, kan nooit een gevraagde naam zijn: leeg laten. */
+      if (!copy_omsi_string(g_namen[i], SCHERM_NAAM_MAX, *(const DWORD *)(ULONG_PTR)(namen + (DWORD)i * 4)))
+        g_namen[i][0] = 0;
     }
     g_schermenGeschreven = 0;
     meld("bus %s (%s): %d stringvariabelen", g_busNaam, g_busModel, aantalNamen);
@@ -1051,6 +1376,7 @@ static void lees_busvars(DWORD voertuig) {
     copy_omsi_string(g_varWaarde[v], SCHERM_WAARDE_MAX,
                      *(const DWORD *)(ULONG_PTR)(waarden + (DWORD)i * 4));
   }
+  g_varsGelezen = 1;
 
   /* En af en toe de hele lijst, voor schermen.json. */
   const ULONGLONG nu = GetTickCount64();
@@ -1081,18 +1407,25 @@ static void lees_busvars(DWORD voertuig) {
                       g_mem.ticketPrijs, g_mem.ticketGegeven, g_mem.ticketKlaar,
                       g_opdrachtNr, g_opdrachtScancode, g_opdrachtMod, g_opdrachtFout);
   if (p <= 0) return;
-  int geteld = 0;
+  int geteld = 0, afgekapt = 0;
   for (int i = 0; i < g_namenAantal && i < aantalWaarden; i++) {
     if (!g_namen[i][0]) continue;
     char waarde[SCHERM_WAARDE_MAX];
     copy_omsi_string(waarde, sizeof(waarde), *(const DWORD *)(ULONG_PTR)(waarden + (DWORD)i * 4));
-    const int n = _snprintf_s(g_dump + p, sizeof(g_dump) - (size_t)p, _TRUNCATE, "%s\"%s\":\"%s\"",
-                              geteld ? "," : "", g_namen[i], waarde);
-    if (n <= 0) break;
+    /* Ruimte houden voor het slot: zonder slot is het hele bestand geen JSON. */
+    const int n = (size_t)p + 64 < sizeof(g_dump)
+                      ? _snprintf_s(g_dump + p, sizeof(g_dump) - 64 - (size_t)p, _TRUNCATE,
+                                    "%s\"%s\":\"%s\"", geteld ? "," : "", g_namen[i], waarde)
+                      : -1;
+    if (n <= 0) {
+      afgekapt = 1;
+      break;
+    }
     p += n;
     geteld++;
   }
-  const int slot = _snprintf_s(g_dump + p, sizeof(g_dump) - (size_t)p, _TRUNCATE, "}}");
+  const int slot = _snprintf_s(g_dump + p, sizeof(g_dump) - (size_t)p, _TRUNCATE,
+                               "},\"afgekapt\":%s}", afgekapt ? "true" : "false");
   if (slot <= 0) {
     g_dumpLengte = 0;
     return;
@@ -1100,6 +1433,382 @@ static void lees_busvars(DWORD voertuig) {
   g_dumpLengte = p + slot;
 }
 
+
+/*
+ * Zet `lengte` bytes in `pad`, via een tijdelijk bestand: wie leest, ziet nooit
+ * een half bestand. Geeft 1 als het gelukt is.
+ */
+static int schrijf_via_tmp(const wchar_t *tijdelijk, const wchar_t *pad, const char *inhoud,
+                           int lengte) {
+  HANDLE bestand = CreateFileW(tijdelijk, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
+                               FILE_ATTRIBUTE_NORMAL, NULL);
+  if (bestand == INVALID_HANDLE_VALUE) return 0;
+  DWORD geschreven = 0;
+  const BOOL ok = WriteFile(bestand, inhoud, (DWORD)lengte, &geschreven, NULL);
+  CloseHandle(bestand);
+  if (!ok || geschreven != (DWORD)lengte) return 0;
+  return MoveFileExW(tijdelijk, pad, MOVEFILE_REPLACE_EXISTING) ? 1 : 0;
+}
+
+/*
+ * Namen opzoeken zonder op hoofdletters te letten, zoals bij de strings. Alleen
+ * A-Z: de namen in een varlist zijn gewone letters, en zo vouwen de hash en
+ * de vergelijking precies hetzelfde.
+ */
+static char klein(char c) { return c >= 'A' && c <= 'Z' ? (char)(c - 'A' + 'a') : c; }
+
+static int zelfde_naam(const char *a, const char *b) {
+  for (;; a++, b++) {
+    if (klein(*a) != klein(*b)) return 0;
+    if (!*a) return 1;
+  }
+}
+
+/* FNV-1a over de naam in kleine letters: "ALMEX_MENU" en "almex_menu" vallen op dezelfde plek. */
+static unsigned int getal_hash(const char *naam) {
+  unsigned int h = 2166136261u;
+  for (; *naam; naam++) {
+    h ^= (unsigned char)klein(*naam);
+    h *= 16777619u;
+  }
+  return h & (GETAL_HASH - 1);
+}
+
+/*
+ * De gevraagde namen in een hashtabel. Zo hoeft een bus van 2580 namen niet
+ * 2580 keer langs alle 512 vragen: elke naam van de bus wordt een keer
+ * opgezocht. Vraagt de app dezelfde naam twee keer (in andere letters), dan
+ * verwijst de tweede naar de eerste.
+ */
+static void maak_getalhash(void) {
+  for (int h = 0; h < GETAL_HASH; h++) g_getalHash[h] = -1;
+  for (int v = 0; v < GETALLEN_MAX; v++) g_getalZelfde[v] = -1;
+  for (int v = 0; v < g_getalVragenAantal && v < GETALLEN_MAX; v++) {
+    unsigned int h = getal_hash(g_getalVragen[v]);
+    /* Er zijn twee keer zoveel plekken als vragen: er is altijd een lege. */
+    while (g_getalHash[h] >= 0 && !zelfde_naam(g_getalVragen[g_getalHash[h]], g_getalVragen[v]))
+      h = (h + 1) & (GETAL_HASH - 1);
+    if (g_getalHash[h] >= 0)
+      g_getalZelfde[v] = g_getalHash[h];
+    else
+      g_getalHash[h] = (short)v;
+  }
+}
+
+/* Welke vraag hoort bij deze naam van de bus? -1 als de app hem niet vroeg. */
+static int zoek_getalvraag(const char *naam) {
+  unsigned int h = getal_hash(naam);
+  while (g_getalHash[h] >= 0) {
+    if (zelfde_naam(g_getalVragen[g_getalHash[h]], naam)) return g_getalHash[h];
+    h = (h + 1) & (GETAL_HASH - 1);
+  }
+  return -1;
+}
+
+/*
+ * De hele lijst getalvariabelen, als getallen.json naast live.json.
+ *
+ * Hooguit eens per twee seconden, net als schermen.json. De app heeft hem niet
+ * nodig om iets te tonen -- wat ze vraagt staat in live.json -- maar zonder
+ * deze lijst is van buiten niet te zien of een naam die niets doet wel bestaat,
+ * en welke waarde hij heeft. Een naam die twee keer in de varlists staat, staat
+ * hier ook twee keer; JSON.parse houdt dan de laatste. Een eigen __try: een
+ * fout in deze lijst mag de gevraagde getallen niet meenemen.
+ */
+static void maak_getallenlijst(DWORD namen, DWORD waarden, int aantal) {
+  const ULONGLONG nu = GetTickCount64();
+  if (g_getalDumpLengte > 0 || (g_getalDumpGemaakt && nu - g_getalDumpGemaakt < 2000)) return;
+  g_getalDumpGemaakt = nu;
+  __try {
+    int p = _snprintf_s(g_getalDump, sizeof(g_getalDump), _TRUNCATE,
+                        "{\"bus\":\"%s\",\"aantal\":%d,\"getallen\":{", g_busNaam, aantal);
+    if (p <= 0) return;
+    int afgekapt = 0, geteld = 0;
+    for (int i = 0; i < aantal; i++) {
+      const DWORD tekst = *(const DWORD *)(ULONG_PTR)(namen + (DWORD)i * 4);
+      if (!tekst) continue; /* een lege regel in de varlist */
+      char naam[SCHERM_NAAM_MAX * 2];
+      if (!copy_omsi_string(naam, sizeof(naam), tekst) || !naam[0]) continue;
+      const DWORD plek = *(const DWORD *)(ULONG_PTR)(waarden + (DWORD)i * 4);
+      char getal[32];
+      strcpy_s(getal, sizeof(getal), "null");
+      if (plausible_ptr(plek)) {
+        const float w = *(const float *)(ULONG_PTR)plek;
+        if (isfinite(w)) _snprintf_s(getal, sizeof(getal), _TRUNCATE, "%.9g", (double)w);
+      }
+      /* Ruimte houden voor het slot; wat niet past valt eraf, en dat staat er dan bij. */
+      const int n = (size_t)p + 64 < sizeof(g_getalDump)
+                        ? _snprintf_s(g_getalDump + p, sizeof(g_getalDump) - 64 - (size_t)p,
+                                      _TRUNCATE, "%s\"%s\":%s", geteld ? "," : "", naam, getal)
+                        : -1;
+      if (n <= 0) {
+        afgekapt = 1;
+        break;
+      }
+      p += n;
+      geteld++;
+    }
+    const int slot = _snprintf_s(g_getalDump + p, sizeof(g_getalDump) - (size_t)p, _TRUNCATE,
+                                 "},\"afgekapt\":%s}", afgekapt ? "true" : "false");
+    g_getalDumpLengte = slot > 0 ? p + slot : 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    g_getalDumpLengte = 0;
+  }
+}
+
+/*
+ * De getalvariabelen van de bus van de speler; zie OFS_CMO_GETALNAMEN.
+ *
+ * Zelfde opzet als lees_busvars: de namen horen bij het bustype en worden
+ * alleen opgezocht als je in een andere bus stapt of de app iets anders vraagt;
+ * per beeld worden alleen de gevraagde waarden gelezen. Zonder onderscheid
+ * tussen hoofd- en kleine letters, en de eerste naam telt: in de Hamburgse
+ * elektrobus staan bremse_halte, cp_stopbrake_targeton en cp_innenlicht_sos_sw
+ * twee keer in de varlists, elk met een eigen getal.
+ *
+ * Met een eigen __try. Hij draait binnen die van read_memory, en een fout hier
+ * zou daar de hele geheugenstand wissen: positie, dienstregeling en
+ * kaartverkoop weg, om een getal. Nu vergeet hij alleen de getallen.
+ */
+static void lees_busgetallen(DWORD voertuig) {
+  memset(g_getalStaat, 0, sizeof(g_getalStaat));
+  g_getalAantalBus = 0;
+  __try {
+    /* Deelt dit voertuig het script met een ander, dan staan de getallen daar. */
+    const DWORD ouder = *(const DWORD *)(ULONG_PTR)(voertuig + OFS_CMOI_SCRIPTOUDER);
+    if (plausible_ptr(ouder) && ouder != voertuig) voertuig = ouder;
+
+    const DWORD bestand = *(const DWORD *)(ULONG_PTR)(voertuig + OFS_COMPL_MAPOBJ);
+    const DWORD exemplaar = *(const DWORD *)(ULONG_PTR)(voertuig + OFS_COMPL_INST);
+    const DWORD namen =
+        plausible_ptr(bestand) ? *(const DWORD *)(ULONG_PTR)(bestand + OFS_CMO_GETALNAMEN) : 0;
+    /* Eerst waar OMSI's eigen zichtbaarheidscode kijkt, dan de wijzer op het voertuig. */
+    DWORD bron =
+        plausible_ptr(exemplaar) ? *(const DWORD *)(ULONG_PTR)(exemplaar + OFS_COI_GETALWAARDEN) : 0;
+    DWORD waarden = plausible_ptr(bron) ? *(const DWORD *)(ULONG_PTR)bron : 0;
+    if (!plausible_ptr(waarden)) {
+      bron = *(const DWORD *)(ULONG_PTR)(voertuig + OFS_CMOI_GETALWAARDEN);
+      waarden = plausible_ptr(bron) ? *(const DWORD *)(ULONG_PTR)bron : 0;
+    }
+    if (!plausible_ptr(namen) || !plausible_ptr(waarden)) {
+      g_getalNamenBron = 0;
+      return;
+    }
+    const int aantalNamen = *(const int *)(ULONG_PTR)(namen - 4);
+    const int aantalWaarden = *(const int *)(ULONG_PTR)(waarden - 4);
+    if (aantalNamen <= 0 || aantalNamen > GETAL_NAMEN_GRENS || aantalWaarden <= 0 ||
+        aantalWaarden > GETAL_NAMEN_GRENS)
+      return;
+    const int aantal = aantalNamen < aantalWaarden ? aantalNamen : aantalWaarden;
+
+    /* Een andere bus: opnieuw opzoeken. */
+    if (namen != g_getalNamenBron || aantalNamen != g_getalNamenAantal) {
+      g_getalNamenBron = namen;
+      g_getalNamenAantal = aantalNamen;
+      g_getalNamenVers = -1;
+      g_getalDumpGemaakt = 0;
+      if (namen != g_getalGemeld) {
+        g_getalGemeld = namen;
+        meld("bus %s: %d getalvariabelen", g_busNaam, aantalNamen);
+      }
+    }
+
+    if (g_getalNamenVers != g_getalVragenVers) {
+      maak_getalhash();
+      int uniek = 0;
+      for (int v = 0; v < GETALLEN_MAX; v++) {
+        g_getalIndex[v] = -1;
+        if (v < g_getalVragenAantal && g_getalZelfde[v] < 0) uniek++;
+      }
+      int gevonden = 0;
+      for (int i = 0; i < aantal && gevonden < uniek; i++) {
+        const DWORD tekst = *(const DWORD *)(ULONG_PTR)(namen + (DWORD)i * 4);
+        if (!tekst) continue; /* een lege regel in de varlist */
+        /* Ruimer dan een vraag lang mag zijn: een langere naam past dan niet heel en telt niet. */
+        char naam[SCHERM_NAAM_MAX * 2];
+        if (!copy_omsi_string(naam, sizeof(naam), tekst) || !naam[0]) continue;
+        const int v = zoek_getalvraag(naam);
+        if (v >= 0 && g_getalIndex[v] < 0) {
+          g_getalIndex[v] = i;
+          gevonden++;
+        }
+      }
+      for (int v = 0; v < g_getalVragenAantal && v < GETALLEN_MAX; v++)
+        if (g_getalZelfde[v] >= 0) g_getalIndex[v] = g_getalIndex[g_getalZelfde[v]];
+      /* Pas als alles opgezocht is: liep het halverwege mis, dan de volgende keer opnieuw. */
+      g_getalNamenVers = g_getalVragenVers;
+    }
+
+    for (int v = 0; v < g_getalVragenAantal && v < GETALLEN_MAX; v++) {
+      const int i = g_getalIndex[v];
+      if (i < 0 || i >= aantal) {
+        g_getalStaat[v] = GETAL_ONBEKEND;
+        continue;
+      }
+      const DWORD plek = *(const DWORD *)(ULONG_PTR)(waarden + (DWORD)i * 4);
+      if (!plausible_ptr(plek)) {
+        g_getalStaat[v] = GETAL_GEEN;
+        continue;
+      }
+      const float w = *(const float *)(ULONG_PTR)plek;
+      g_getalWaarde[v] = w;
+      g_getalStaat[v] = isfinite(w) ? GETAL_GETAL : GETAL_GEEN;
+    }
+    g_getalAantalBus = aantal;
+
+    maak_getallenlijst(namen, waarden, aantal);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    memset(g_getalStaat, 0, sizeof(g_getalStaat));
+    g_getalAantalBus = 0;
+    g_getalNamenBron = 0;
+  }
+}
+
+/*
+ * meshes.json: welke plek in "zichtbaar" welke mesh is.
+ *
+ * Per mesh het o3d-bestand zonder map, de plek van de variabele uit
+ * [visible] (-1 als er geen is, of als de bus hem niet kent), het doel, en de
+ * naam van die variabele. Zo kan de app haar eigen telling van de [mesh]-regels
+ * naast die van OMSI leggen: OMSI slaat een mesh over als zijn o3d niet
+ * bestaat, en dan schuift alles erna een plek op.
+ *
+ * Alleen als er een ander model is, het aantal verandert of het model in
+ * live.json anders heet. Een eigen __try: een fout hier mag de vlaggen niet
+ * meenemen. Ook dan geldt deze bus als gedaan -- anders probeerde hij het tien
+ * keer per seconde opnieuw.
+ *
+ * Een naam die niet heel past, wordt leeg en niet afgekapt: een afgekapte
+ * o3d-naam zou bij een andere mesh uit de cfg kunnen passen.
+ */
+static void maak_meshlijst(DWORD co, DWORD items, int aantal, DWORD namen) {
+  g_meshBron = co;
+  g_meshBronAantal = aantal;
+  strcpy_s(g_meshModel, sizeof(g_meshModel), g_busModel);
+  g_meshDumpLengte = 0;
+  g_meshSchrijfFout = 0;
+  g_meshOpSchijf = 0;
+  __try {
+    const int aantalNamen = plausible_ptr(namen) ? *(const int *)(ULONG_PTR)(namen - 4) : 0;
+    int p = _snprintf_s(g_meshDump, sizeof(g_meshDump), _TRUNCATE,
+                        "{\"model\":\"%s\",\"aantal\":%d,\"meshes\":[", g_busModel, aantal);
+    if (p <= 0) return;
+    int afgekapt = 0;
+    for (int j = 0; j < aantal; j++) {
+      const DWORD mesh = *(const DWORD *)(ULONG_PTR)(items + (DWORD)j * 4);
+      char o3d[256], varnaam[SCHERM_NAAM_MAX * 2];
+      int var = -1, doel = 0;
+      o3d[0] = varnaam[0] = 0;
+      if (plausible_ptr(mesh)) {
+        if (!omsi_bestandsnaam(o3d, sizeof(o3d), *(const DWORD *)(ULONG_PTR)(mesh + OFS_MESH_O3D)))
+          o3d[0] = 0;
+        var = *(const int *)(ULONG_PTR)(mesh + OFS_MESH_VAR);
+        doel = *(const int *)(ULONG_PTR)(mesh + OFS_MESH_DOEL);
+        if (var >= 0 && var < aantalNamen && aantalNamen <= GETAL_NAMEN_GRENS &&
+            !copy_omsi_string(varnaam, sizeof(varnaam),
+                              *(const DWORD *)(ULONG_PTR)(namen + (DWORD)var * 4)))
+          varnaam[0] = 0;
+      }
+      /* Ruimte houden voor het slot; een mesh die niet past valt eraf, met de rest. */
+      const int n = (size_t)p + 64 < sizeof(g_meshDump)
+                        ? _snprintf_s(g_meshDump + p, sizeof(g_meshDump) - 64 - (size_t)p,
+                                      _TRUNCATE, "%s[\"%s\",%d,%d,\"%s\"]", j ? "," : "", o3d, var,
+                                      doel, varnaam)
+                        : -1;
+      if (n <= 0) {
+        afgekapt = 1;
+        break;
+      }
+      p += n;
+    }
+    const int slot = _snprintf_s(g_meshDump + p, sizeof(g_meshDump) - (size_t)p, _TRUNCATE,
+                                 "],\"afgekapt\":%s}", afgekapt ? "true" : "false");
+    if (slot <= 0) return;
+    g_meshDumpLengte = p + slot;
+    meld("model %s: %d meshes", g_busModel, aantal);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    g_meshDumpLengte = 0;
+    meld("meshlijst van %s niet te lezen", g_busModel);
+  }
+}
+
+/*
+ * Per mesh of OMSI hem nu toont; zie OFS_COI_MESHINSTS.
+ *
+ * Van hetzelfde voertuig als lees_busvars (na ScriptShareParent), zodat het
+ * model in live.json en de meshes bij elkaar horen. Alleen als de twee lijsten
+ * even lang zijn -- dan hoort plek j in de ene bij plek j in de andere; zo
+ * leest OMSI ze zelf ook (VA 0x5fcf01 en 0x5fcf94, met hetzelfde register).
+ *
+ * Met een eigen __try, om dezelfde reden als lees_busgetallen.
+ */
+static void lees_zichtbaarheid(DWORD voertuig) {
+  g_meshAantal = 0;
+  g_zichtbaar[0] = 0;
+  __try {
+    const DWORD ouder = *(const DWORD *)(ULONG_PTR)(voertuig + OFS_CMOI_SCRIPTOUDER);
+    if (plausible_ptr(ouder) && ouder != voertuig) voertuig = ouder;
+
+    const DWORD exemplaar = *(const DWORD *)(ULONG_PTR)(voertuig + OFS_COMPL_INST);
+    if (!plausible_ptr(exemplaar)) return;
+    const DWORD co = *(const DWORD *)(ULONG_PTR)(exemplaar + OFS_COI_COMPLOBJ);
+    const DWORD ml = plausible_ptr(co) ? *(const DWORD *)(ULONG_PTR)(co + OFS_CO_MESHES) : 0;
+    const DWORD il = *(const DWORD *)(ULONG_PTR)(exemplaar + OFS_COI_MESHINSTS);
+    if (!plausible_ptr(ml) || !plausible_ptr(il)) return;
+    const DWORD meshes = *(const DWORD *)(ULONG_PTR)(ml + 4);
+    const int aantal = *(const int *)(ULONG_PTR)(ml + 8);
+    const DWORD exemplaren = *(const DWORD *)(ULONG_PTR)(il + 4);
+    const int aantalExemplaren = *(const int *)(ULONG_PTR)(il + 8);
+    if (aantal <= 0 || aantal > MESHES_MAX || aantal != aantalExemplaren ||
+        !plausible_ptr(meshes) || !plausible_ptr(exemplaren))
+      return;
+
+    for (int j = 0; j < aantal; j++) {
+      const DWORD inst = *(const DWORD *)(ULONG_PTR)(exemplaren + (DWORD)j * 4);
+      g_zichtbaar[j] =
+          plausible_ptr(inst) && *(const BYTE *)(ULONG_PTR)(inst + OFS_INST_ZICHTBAAR) ? '1' : '0';
+    }
+    g_zichtbaar[aantal] = 0;
+    g_meshAantal = aantal;
+
+    /*
+     * Ook als alleen de naam van het model anders is: stond die bij de eerste
+     * keer nog leeg (tijdens het laden), dan bleef meshes.json anders met een
+     * verkeerd "model" staan, en paste hij nooit bij bus.model in live.json.
+     */
+    if (co != g_meshBron || aantal != g_meshBronAantal || strcmp(g_busModel, g_meshModel) != 0) {
+      const DWORD bestand = *(const DWORD *)(ULONG_PTR)(voertuig + OFS_COMPL_MAPOBJ);
+      const DWORD namen =
+          plausible_ptr(bestand) ? *(const DWORD *)(ULONG_PTR)(bestand + OFS_CMO_GETALNAMEN) : 0;
+      maak_meshlijst(co, meshes, aantal, namen);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    g_meshAantal = 0;
+    g_zichtbaar[0] = 0;
+  }
+}
+
+/* getallen.json weg, net als schermen.json. Lukt het niet, dan over twee seconden weer. */
+static void schrijf_getallenlijst(void) {
+  if (g_getalDumpLengte <= 0 || !g_getalLijstPad[0]) return;
+  schrijf_via_tmp(g_getalLijstTemp, g_getalLijstPad, g_getalDump, g_getalDumpLengte);
+  g_getalDumpLengte = 0;
+}
+
+/*
+ * meshes.json weg. Die komt maar een keer per bus, dus lukt het niet -- de app
+ * had hem net open, bijvoorbeeld -- dan bij het volgende beeld opnieuw.
+ */
+static void schrijf_meshlijst(void) {
+  if (g_meshDumpLengte <= 0 || !g_meshLijstPad[0]) return;
+  if (schrijf_via_tmp(g_meshLijstTemp, g_meshLijstPad, g_meshDump, g_meshDumpLengte)) {
+    g_meshDumpLengte = 0;
+    g_meshOpSchijf = 1;
+    return;
+  }
+  if (!g_meshSchrijfFout) meld("meshes.json schrijven mislukt: Windows-fout %lu", GetLastError());
+  g_meshSchrijfFout = 1;
+}
 
 /*
  * Zet weg wat lees_busvars verzameld heeft.
@@ -1243,7 +1952,7 @@ static void flush_state(int alive) {
   int vp = 0;
   int varsAfgekapt = 0;
   vars[0] = 0;
-  for (int i = 0; i < g_vragenAantal && i < VRAGEN_MAX; i++) {
+  for (int i = 0; i < g_vragenAantal && i < VRAGEN_MAX && g_varsGelezen; i++) {
     /* Een naam die deze bus niet kent, hoort er niet als lege regel in te staan. */
     if (g_vraagIndex[i] < 0) continue;
     const int n = _snprintf_s(vars + vp, sizeof(vars) - (size_t)vp, _TRUNCATE, "%s\"%s\":\"%s\"",
@@ -1256,6 +1965,55 @@ static void flush_state(int alive) {
     }
     vp += n;
   }
+  /*
+   * En de getallen die de app vroeg: "naam":getal, of null als de bus de naam
+   * kent maar er geen getal staat. %.9g geeft een float precies terug (6 wordt
+   * "6", 0.5 wordt "0.5") en is altijd geldige JSON. Namen die de bus niet
+   * kent, gaan apart in "getallenOnbekend": een [visible] erop is in OMSI
+   * altijd waar, en de app moet dat kunnen onderscheiden van "niet gelezen".
+   * Een vraag is hooguit 63 bytes en een getal hooguit 15 tekens: het past
+   * altijd, maar liever zeggen dat er iets mist dan het stil weglaten.
+   */
+  static char getallen[GETALLEN_MAX * (SCHERM_NAAM_MAX + 24)];
+  static char onbekend[GETALLEN_MAX * (SCHERM_NAAM_MAX + 4)];
+  int gp = 0, op = 0;
+  int getallenAfgekapt = 0;
+  getallen[0] = onbekend[0] = 0;
+  for (int i = 0; i < g_getalVragenAantal && i < GETALLEN_MAX; i++) {
+    const int staat = g_getalStaat[i];
+    if (staat == GETAL_ONBEKEND && g_getalAantalBus > 0) {
+      const int n = _snprintf_s(onbekend + op, sizeof(onbekend) - (size_t)op, _TRUNCATE, "%s\"%s\"",
+                                op ? "," : "", g_getalVragen[i]);
+      if (n <= 0) {
+        getallenAfgekapt = 1;
+        onbekend[op] = 0;
+      } else {
+        op += n;
+      }
+    } else if (staat == GETAL_GETAL || staat == GETAL_GEEN) {
+      char getal[32];
+      if (staat == GETAL_GETAL)
+        _snprintf_s(getal, sizeof(getal), _TRUNCATE, "%.9g", (double)g_getalWaarde[i]);
+      else
+        strcpy_s(getal, sizeof(getal), "null");
+      const int n = _snprintf_s(getallen + gp, sizeof(getallen) - (size_t)gp, _TRUNCATE,
+                                "%s\"%s\":%s", gp ? "," : "", g_getalVragen[i], getal);
+      if (n <= 0) {
+        getallenAfgekapt = 1;
+        getallen[gp] = 0;
+      } else {
+        gp += n;
+      }
+    }
+  }
+  /*
+   * Wat OMSI toont, maar alleen als meshes.json van dit model al op schijf
+   * staat. Zonder die lijst weet de app niet welke plek welke mesh is, en een
+   * nieuwe bus zag ze anders eerst met de lijst van de vorige: dan klopte de
+   * uitlijning niet, en dat onthield ze voor deze bus (main/scherm.ts). Lukt
+   * het schrijven van meshes.json niet, dan blijft het hier "" tot het lukt.
+   */
+  const int meshKlaar = g_meshAantal > 0 && g_meshOpSchijf;
   /*
    * Het geheugenblok. Past dit niet, dan zou er een halve regel in live.json
    * belanden en is het hele bericht geen JSON meer; dan liever een leeg blok.
@@ -1304,25 +2062,36 @@ static void flush_state(int alive) {
       "\"line\":\"%s\",\"terminus\":\"%s\",\"matrix\":\"%s\","
       "\"bus\":{\"naam\":\"%s\",\"model\":\"%s\",\"pad\":\"%s\",\"bestand\":\"%s\"},"
       "\"vars\":{%s},\"varsAfgekapt\":%s,"
+      "\"getallen\":{%s},\"getallenOnbekend\":[%s],\"getallenAfgekapt\":%s,\"getalAantal\":%d,"
+      "\"meshAantal\":%d,\"zichtbaar\":\"%s\","
       "\"ibis\":{\"bestemming\":\"%s\",\"lijn\":\"%s\","
       "\"lawo1\":\"%s\",\"lawo2\":\"%s\",\"lawo3\":\"%s\",\"lawo4\":\"%s\","
       "\"afr1\":\"%s\",\"afr2\":\"%s\"}%s",
+      /*
+       * Door veilig(): een busscript dat door nul deelt geeft OMSI NaN, en
+       * "nan" in het bericht is geen JSON -- dan kon de app het hele bestand
+       * niet lezen, en niet alleen dat ene getal.
+       */
       alive ? "true" : "false", PLUGIN_VERSIE, g_seen, g_seenSys, g_seenStr, g_strKind,
-      g_sys[SYS_TIME], g_sys[SYS_DAY], g_sys[SYS_MONTH], g_sys[SYS_YEAR],
-      g_var[VAR_VELOCITY], g_var[VAR_HUMANS], g_var[VAR_SCHEDULE_ACTIVE],
-      g_var[VAR_TARGET_INDEX], g_var[VAR_TANK], g_var[VAR_KM], g_var[VAR_M],
-      g_var[VAR_ENTRY_REQ], g_var[VAR_EXIT_REQ], g_var[VAR_TICKET],
-      g_var[VAR_ENTRY_OPEN], g_var[VAR_EXIT_OPEN], g_var[VAR_AT_STATION],
-      g_var[VAR_BRIGHTNESS], g_var[VAR_STREETCOND], g_sys[SYS_PRECIP_RATE],
-      g_sys[SYS_PRECIP_TYPE], g_var[VAR_LIGHTS_LOW], g_var[VAR_BLINKER_L],
-      g_var[VAR_BLINKER_R], g_var[VAR_BRAKELIGHT], g_var[VAR_ENGINE_ON],
-      g_var[VAR_BUSSTOP_INDEX],
-      g_maxBrake, g_maxAccel, g_topSpeed, g_harshBrakes, g_harshAccels,
-      g_var[VAR_BATTERY], g_sys[SYS_TEMPERATURE],
-      g_collisions, g_collisionEnergy, g_worstCollision,
+      veilig(g_sys[SYS_TIME]), veilig(g_sys[SYS_DAY]), veilig(g_sys[SYS_MONTH]),
+      veilig(g_sys[SYS_YEAR]),
+      veilig(g_var[VAR_VELOCITY]), veilig(g_var[VAR_HUMANS]), veilig(g_var[VAR_SCHEDULE_ACTIVE]),
+      veilig(g_var[VAR_TARGET_INDEX]), veilig(g_var[VAR_TANK]), veilig(g_var[VAR_KM]),
+      veilig(g_var[VAR_M]),
+      veilig(g_var[VAR_ENTRY_REQ]), veilig(g_var[VAR_EXIT_REQ]), veilig(g_var[VAR_TICKET]),
+      veilig(g_var[VAR_ENTRY_OPEN]), veilig(g_var[VAR_EXIT_OPEN]), veilig(g_var[VAR_AT_STATION]),
+      veilig(g_var[VAR_BRIGHTNESS]), veilig(g_var[VAR_STREETCOND]), veilig(g_sys[SYS_PRECIP_RATE]),
+      veilig(g_sys[SYS_PRECIP_TYPE]), veilig(g_var[VAR_LIGHTS_LOW]), veilig(g_var[VAR_BLINKER_L]),
+      veilig(g_var[VAR_BLINKER_R]), veilig(g_var[VAR_BRAKELIGHT]), veilig(g_var[VAR_ENGINE_ON]),
+      veilig(g_var[VAR_BUSSTOP_INDEX]),
+      veilig(g_maxBrake), veilig(g_maxAccel), veilig(g_topSpeed), g_harshBrakes, g_harshAccels,
+      veilig(g_var[VAR_BATTERY]), veilig(g_sys[SYS_TEMPERATURE]),
+      g_collisions, veilig(g_collisionEnergy), veilig(g_worstCollision),
       g_str[STR_BUSSTOP], g_str[STR_DELAY_MIN], g_str[STR_DELAY_SEC],
       g_str[STR_LINE], g_str[STR_TERMINUS], g_str[STR_MATRIX],
       g_busNaam, g_busModel, g_busPad, g_busBestand, vars, varsAfgekapt ? "true" : "false",
+      getallen, onbekend, getallenAfgekapt ? "true" : "false", g_getalAantalBus,
+      meshKlaar ? g_meshAantal : 0, meshKlaar ? g_zichtbaar : "",
       g_str[STR_IBIS_TERMINUS], g_str[STR_IBIS_LIJN],
       g_str[STR_LAWO1], g_str[STR_LAWO2], g_str[STR_LAWO3], g_str[STR_LAWO4],
       g_str[STR_AFR1], g_str[STR_AFR2], mem);
@@ -1363,11 +2132,15 @@ static void maybe_flush(void) {
   toets_bijhouden();
   lees_opdracht();
   lees_vragen();
+  lees_getalvragen();
   if (!g_ready || now - g_lastWrite < WRITE_INTERVAL_MS) return;
   g_lastWrite = now;
   read_memory();
+  /* meshes.json vóór live.json: de vlaggen in live.json horen bij een lijst die er al is. */
+  schrijf_meshlijst();
   flush_state(1);
   schrijf_schermen();
+  schrijf_getallenlijst();
 }
 
 __declspec(dllexport) void __stdcall PluginStart(void *owner) {
@@ -1398,6 +2171,15 @@ __declspec(dllexport) void __stdcall PluginStart(void *owner) {
   _snwprintf_s(g_vragenPad, MAX_PATH, _TRUNCATE, L"%s\\OMSI Career\\vragen.txt", base);
   _snwprintf_s(g_schermenPad, MAX_PATH, _TRUNCATE, L"%s\\OMSI Career\\schermen.json", base);
   _snwprintf_s(g_schermenTemp, MAX_PATH, _TRUNCATE, L"%s\\OMSI Career\\schermen.tmp", base);
+  /*
+   * getallen.txt blijft staan, net als vragen.txt: de app schrijft alleen als
+   * er iets verandert, en draaide ze al, dan komt er anders niets meer.
+   */
+  _snwprintf_s(g_getallenPad, MAX_PATH, _TRUNCATE, L"%s\\OMSI Career\\getallen.txt", base);
+  _snwprintf_s(g_getalLijstPad, MAX_PATH, _TRUNCATE, L"%s\\OMSI Career\\getallen.json", base);
+  _snwprintf_s(g_getalLijstTemp, MAX_PATH, _TRUNCATE, L"%s\\OMSI Career\\getallen.tmp", base);
+  _snwprintf_s(g_meshLijstPad, MAX_PATH, _TRUNCATE, L"%s\\OMSI Career\\meshes.json", base);
+  _snwprintf_s(g_meshLijstTemp, MAX_PATH, _TRUNCATE, L"%s\\OMSI Career\\meshes.tmp", base);
   _snwprintf_s(g_path, MAX_PATH, _TRUNCATE, L"%s\\OMSI Career\\live.json", base);
 
   memset(g_sys, 0, sizeof(g_sys));
@@ -1430,6 +2212,27 @@ __declspec(dllexport) void __stdcall PluginStart(void *owner) {
   g_schermenGeschreven = 0;
   g_dumpLengte = 0;
   memset(g_vragen, 0, sizeof(g_vragen));
+  /* De getallen en de meshes evenmin. */
+  g_getalNamenBron = 0;
+  g_getalNamenAantal = 0;
+  g_getalNamenVers = -1;
+  g_getalGemeld = 0;
+  g_getalVragenAantal = 0;
+  g_getalVragenVers = 0;
+  g_getalVragenGekeken = 0;
+  g_getalAantalBus = 0;
+  g_getalDumpLengte = 0;
+  g_getalDumpGemaakt = 0;
+  memset(g_getalVragen, 0, sizeof(g_getalVragen));
+  memset(g_getalStaat, 0, sizeof(g_getalStaat));
+  g_meshAantal = 0;
+  g_zichtbaar[0] = 0;
+  g_meshBron = 0;
+  g_meshBronAantal = 0;
+  g_meshModel[0] = 0;
+  g_meshDumpLengte = 0;
+  g_meshSchrijfFout = 0;
+  g_meshOpSchijf = 0;
   detect_version();
   g_ready = 1;
   g_levensteken = GetTickCount64();

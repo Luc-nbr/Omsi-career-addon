@@ -1,4 +1,5 @@
 import { knoppenVanModel, modelcfgVanBus, type Modelknop, type Uitlijning } from './busscherm'
+import type { Schermstand } from '../shared/scherm'
 
 /**
  * De apparaten van een bus, nagebouwd zoals ze in de cabine zitten.
@@ -78,6 +79,11 @@ export interface Paneel {
   rijen: Profielknop[][]
   /** Het scherm zoals het in de bus ligt, als dat gemeten kon worden. */
   vlak?: Paneelvlak
+  /**
+   * Het scherm zoals OMSI het tekent: de stand bij een vorm die de telefoon op
+   * id ophaalt (shared/scherm.ts). Is die er, dan gaat hij voor `vlak`.
+   */
+  scherm?: Schermstand
 }
 
 /**

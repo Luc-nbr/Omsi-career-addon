@@ -52,6 +52,37 @@ export interface LiveData {
   vars?: Record<string, string>
   /** Pasten niet alle gevraagde variabelen in het bericht? Dan mist er iets. */
   varsAfgekapt?: boolean
+  /**
+   * De getalvariabelen die de app vroeg (`getallen.txt`, zie `schrijfGetallen`),
+   * als float zoals het busscript ze ziet; de sleutel is de naam zoals gevraagd.
+   * `null`: de bus kent de naam, maar er staat geen getal (NaN, oneindig, een
+   * lege wijzer). Een naam die de bus niet kent staat hier niet maar in
+   * `getallenOnbekend`. Ontbreekt bij een plugin ouder dan 13.
+   */
+  getallen?: Record<string, number | null>
+  /**
+   * Gevraagd, maar de bus kent de naam niet. Een `[visible]` op zo'n naam is in
+   * OMSI altijd waar (omsi.exe VA 0x5fcf0e). Alleen gevuld als `getalAantal`
+   * groter is dan 0; anders is er niets gelezen en weet niemand het.
+   */
+  getallenOnbekend?: string[]
+  /** Pasten niet alle gevraagde getallen in het bericht? */
+  getallenAfgekapt?: boolean
+  /** Hoeveel getalvariabelen de bus van de speler heeft; 0 = niet gelezen. */
+  getalAantal?: number
+  /**
+   * Hoeveel meshes OMSI van deze bus heeft: de [mesh]-regels van de model.cfg,
+   * zonder die waarvan de o3d ontbreekt. 0 = niet te lezen.
+   */
+  meshAantal?: number
+  /**
+   * Per mesh '1' als OMSI hem nu toont, anders '0' -- rechtstreeks uit het
+   * geheugen, dus precies wat het spel tekent, voor elke bus. Welke plek welke
+   * mesh is, staat in meshes.json (zie `leesMeshlijst`); de plugin zet dit
+   * pas hier als die lijst van dit model al op schijf staat. Leeg (en
+   * `meshAantal` 0) als het niet te lezen was, of de lijst nog niet weg kon.
+   */
+  zichtbaar?: string
   /** Bitmasker van de variabelen die OMSI werkelijk heeft doorgegeven. */
   seen: number
   /**
@@ -803,26 +834,130 @@ export function kaartnamenVan(data: LiveData): string[] | undefined {
 export const VRAGEN_MAX = 160
 
 /**
- * Welke stringvariabelen de plugin moet doorgeven.
+ * Kan de plugin deze naam gebruiken? Hij slaat een regel over met een ", een \
+ * of een stuurteken, of van meer dan 63 bytes -- afkappen doet hij niet, want
+ * een afgekapte naam kan precies een andere naam zijn (zie `lees_namenlijst` in
+ * plugin/omsicareer.c). Zo'n naam komt in een varlist niet voor; hier weglaten
+ * houdt de lijst gelijk met wat de plugin werkelijk aanneemt.
  *
- * De app schrijft ze in `vragen.txt` naast live.json; de plugin zoekt ze op in
- * de bus en zet ze in `vars`. Alleen schrijven als er iets verandert -- het
- * bestand wordt anders tien keer per seconde overschreven terwijl er niets
- * anders in staat.
+ * Spaties of tabs aan het begin of eind ook: die knipt de plugin eraf, en dan
+ * stond ' almex_menu' in live.json als 'almex_menu' -- onder een sleutel die
+ * de app nooit opzoekt.
  */
-export function schrijfVragen(namen: string[]): void {
-  const lijst = namen.slice(0, VRAGEN_MAX)
+function bruikbareNaam(naam: string): boolean {
+  return (
+    naam.length > 0 &&
+    Buffer.byteLength(naam, 'utf8') <= 63 &&
+    !/["\\\u0000-\u001f]/.test(naam) &&
+    !/^[ \t]|[ \t]$/.test(naam)
+  )
+}
+
+/**
+ * Een namenlijst voor de plugin: een naam per regel, CRLF, UTF-8, naast
+ * live.json. Alleen schrijven als er iets verandert -- het bestand wordt anders
+ * tien keer per seconde overschreven terwijl er niets anders in staat.
+ */
+function schrijfNamenlijst(bestand: string, namen: string[], max: number, wat: string): void {
+  const lijst = namen.filter(bruikbareNaam).slice(0, max)
   const inhoud = lijst.join('\r\n') + (lijst.length > 0 ? '\r\n' : '')
-  const pad = join(liveMap(), 'vragen.txt')
+  const pad = join(liveMap(), bestand)
   try {
     if (existsSync(pad) && readFileSync(pad, 'utf8') === inhoud) return
     const tijdelijk = pad + '.tmp'
     writeFileSync(tijdelijk, inhoud)
     renameSync(tijdelijk, pad)
-    log(`vragen aan de plugin: ${lijst.length} variabelen`)
+    log(`${wat} aan de plugin: ${lijst.length} variabelen`)
   } catch (fout) {
-    log(`vragen.txt schrijven mislukt: ${String(fout)}`)
+    log(`${bestand} schrijven mislukt: ${String(fout)}`)
   }
+}
+
+/**
+ * Welke stringvariabelen de plugin moet doorgeven.
+ *
+ * De app schrijft ze in `vragen.txt`; de plugin zoekt ze op in de bus en zet ze
+ * in `vars`.
+ */
+export function schrijfVragen(namen: string[]): void {
+  schrijfNamenlijst('vragen.txt', namen, VRAGEN_MAX, 'vragen')
+}
+
+/**
+ * Zoveel getalvariabelen neemt de plugin aan; verder in de lijst valt eraf.
+ *
+ * Moet gelijk zijn aan `GETALLEN_MAX` in plugin/omsicareer.c. De Citybus O530
+ * van Kajosoft gebruikt er in zijn eentje 293 in een [visible]; zet dus vooraan
+ * wat de speler ziet.
+ */
+export const GETALLEN_MAX = 512
+
+/**
+ * Welke getalvariabelen de plugin moet doorgeven (plugin 13 en hoger).
+ *
+ * In `getallen.txt`, naast vragen.txt; de plugin zet ze in `getallen` of
+ * `getallenOnbekend` van live.json. Een eigen bestand en geen voorvoegsel in
+ * vragen.txt: een plugin ouder dan 13 laat het dan gewoon liggen, in plaats van
+ * er zijn plekken voor stringvariabelen mee te vullen.
+ */
+export function schrijfGetallen(namen: string[]): void {
+  schrijfNamenlijst('getallen.txt', namen, GETALLEN_MAX, 'getallen')
+}
+
+/** De laatst gelezen meshes.json, op tijd en grootte van het bestand. */
+let meshlijstOnthouden:
+  | { sleutel: string; lijst: { model: string; meshes: [string, number, number, string][] } | undefined }
+  | undefined
+
+/**
+ * Welke mesh van OMSI welke is: meshes.json, van de plugin (13 en hoger).
+ *
+ * `zichtbaar` in live.json heeft een teken per mesh, in de volgorde waarin OMSI
+ * ze heeft: de [mesh]-regels van de model.cfg, zonder die waarvan de o3d
+ * ontbreekt (in de Hamburgse elektrobus 621 regels, 608 meshes). Hier staat per
+ * plek het o3d-bestand zonder map, de plek van de variabele uit [visible] (-1
+ * als er geen is of de bus hem niet kent), het doel en de naam van die
+ * variabele -- zodat de app haar eigen telling ernaast kan leggen, in plaats
+ * van erop te vertrouwen. `model` is geschreven zoals `bus.model` in live.json;
+ * hoort het bij een andere bus, dan geldt de lijst niet.
+ *
+ * De plugin schrijft hem alleen als er een ander model komt; tot het bestand
+ * verandert, geeft dit dezelfde lijst terug zonder hem opnieuw te lezen.
+ */
+export function leesMeshlijst(): { model: string; meshes: [string, number, number, string][] } | undefined {
+  const pad = join(liveMap(), 'meshes.json')
+  try {
+    const stand = statSync(pad)
+    const sleutel = `${pad}|${stand.mtimeMs}|${stand.size}`
+    if (meshlijstOnthouden?.sleutel === sleutel) return meshlijstOnthouden.lijst
+    const lijst = meshlijstVan(JSON.parse(readFileSync(pad, 'utf8')))
+    meshlijstOnthouden = { sleutel, lijst }
+    return lijst
+  } catch {
+    // Nog niet geschreven (plugin ouder dan 13, of nog geen bus), of net vervangen.
+    return undefined
+  }
+}
+
+/** Alleen een lijst in de vorm die de plugin schrijft; anders niets. */
+function meshlijstVan(ruw: unknown): { model: string; meshes: [string, number, number, string][] } | undefined {
+  if (!ruw || typeof ruw !== 'object') return undefined
+  const { model, meshes } = ruw as { model?: unknown; meshes?: unknown }
+  if (typeof model !== 'string' || !Array.isArray(meshes)) return undefined
+  const regels: [string, number, number, string][] = []
+  for (const regel of meshes) {
+    if (!Array.isArray(regel)) return undefined
+    const [o3d, variabele, doel, naam] = regel as unknown[]
+    if (
+      typeof o3d !== 'string' ||
+      typeof variabele !== 'number' ||
+      typeof doel !== 'number' ||
+      typeof naam !== 'string'
+    )
+      return undefined
+    regels.push([o3d, variabele, doel, naam])
+  }
+  return { model, meshes: regels }
 }
 
 /** Alles wat de bus aan tekst bijhoudt; de plugin ververst het eens per twee tellen. */
