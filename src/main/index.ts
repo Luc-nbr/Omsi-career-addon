@@ -106,6 +106,7 @@ import {
   schermvormOp,
   standVoor
 } from './scherm'
+import { triggersVan } from '../core/schermvorm'
 import {
   busfotoAdres,
   busfotoAfgehandeld,
@@ -1697,10 +1698,10 @@ function busApparaten(live: LiveData | undefined): Busapparaat[] | undefined {
  * Eens per vijf tellen nagekeken: het verandert alleen als iemand keyboard.cfg
  * aanpast, en dat is meestal de app zelf.
  */
-let knoppenStand: { beschikbaar: string[] } | undefined
+let knoppenStand: { beschikbaar: string[]; straks?: number } | undefined
 let knoppenGekeken = 0
 
-function busknoppen(): { beschikbaar: string[] } {
+function busknoppen(): { beschikbaar: string[]; straks?: number } {
   const nu = Date.now()
   if (knoppenStand && nu - knoppenGekeken < 5000) return knoppenStand
   knoppenGekeken = nu
@@ -1711,52 +1712,170 @@ function busknoppen(): { beschikbaar: string[] } {
      * Zie `bruikbareToetsen`: een knop op een onbewezen toetscombinatie telt
      * niet mee.
      */
-    knoppenStand = { beschikbaar: bruikbareToetsen(omsi()) }
+    knoppenStand = { beschikbaar: bruikbareToetsen(omsi(), actiesVoorBusknoppen()) }
   } catch {
     knoppenStand = { beschikbaar: [] }
   }
+  /* Staan er knoppen klaar om bijgeschreven te worden, dan hoort de telefoon dat. */
+  const straks = inDeWachtrij()
+  if (straks > 0) knoppenStand.straks = straks
   return knoppenStand
 }
 
-async function zetBusknoppenAan(): Promise<{ toegevoegd: number; geenPlek: number; omsiDraait?: boolean } | undefined> {
+/**
+ * De knoppen van de apparaten die nu in de telefoon staan. Dat is per bus anders
+ * -- bij de ene een AFR 200, bij de andere een ALMEX met een aanraakscherm -- en
+ * het zijn er hooguit een paar tientallen.
+ */
+function actiesVoorBusknoppen(): string[] {
+  const panelen = busPanelen(freshLive()) ?? []
   /*
-   * Niet terwijl OMSI draait.
+   * IN DEZE VOLGORDE, WANT ER ZIJN ER NIET GENOEG VOOR ALLES
    *
-   * Het spel leest `keyboard.cfg` bij het starten en schrijft hem bij het
-   * afsluiten terug uit wat het zelf in geheugen heeft. Wat wij er tussendoor
-   * bij zetten is dan bij het afsluiten weer weg -- en erger: het lijkt te
-   * werken tot je OMSI de volgende keer opstart.
+   * Er zijn hooguit 87 toetscombinaties die OMSI doorgeeft, gedeeld door alle
+   * apparaten van alle bussen die je ooit erbij zette. Bij de eerste ALMEX in een
+   * keyboard.cfg die al 32 knoppen van een AFR droeg, kregen er 4 van de 48 geen
+   * toets -- en omdat de aanraakvlakken ACHTERAAN deze lijst stonden, waren dat
+   * juist knoppen van het scherm. Nu eerst wat je op het scherm aantikt, dan de
+   * toetsen op het apparaat, en als laatste de losse knoppen (de klep, de
+   * grendel, het wisselgeld) -- die zijn het minst erg om te missen.
    */
-  const draait = await leesOmsiProces(OMSI_PROCES)
-  if (draait) {
-    log('busknoppen niet bijgeschreven: OMSI draait, het spel zou keyboard.cfg overschrijven')
-    return { toegevoegd: 0, geenPlek: 0, omsiDraait: true }
-  }
+  const scherm = [...schermActies()]
+  const opApparaat = panelen.flatMap((paneel) => paneel.rijen.flat().map((knop) => knop.actie))
+  const los = panelen.flatMap((paneel) => (paneel.losseRijen ?? []).flat().map((knop) => knop.actie))
+  log(`busknoppen: ${scherm.length} van het scherm, ${opApparaat.length} op het apparaat, ${los.length} los`)
+  return [...scherm, ...opApparaat, ...los]
+}
+
+/** Hoeveel knoppen er in totaal in de wachtrij staan, over alle bussen. */
+function inDeWachtrij(): number {
+  return Object.values(readSettings(userData()).busknoppenStraks ?? {}).reduce(
+    (som, lijst) => som + lijst.length,
+    0
+  )
+}
+
+/** De model.cfg van de bus die nu rijdt; leeg als die niet te vinden is. */
+function modelcfgNu(): string {
+  const bus = freshLive()?.bus
+  if (!bus) return ''
   try {
-    /*
-     * De knoppen van de apparaten die nu in de telefoon staan. Dat is per bus
-     * anders -- bij de ene een AFR 200, bij de andere een Atron met een
-     * aanraakscherm -- en het zijn er hooguit een paar tientallen.
-     */
-    const live = freshLive()
-    /*
-     * En de aanraakvlakken van de nagebouwde schermen: die zitten niet meer in
-     * de rijen, maar moeten in het spel net zo goed aan een toets hangen.
-     */
-    const acties = [
-      ...(busPanelen(live) ?? []).flatMap((paneel) =>
-        /* Ook de dichtgeklapte: die moeten werken zodra je ze openklapt. */
-        [...paneel.rijen, ...(paneel.losseRijen ?? [])].flat().map((knop) => knop.actie)
-      ),
-      ...schermActies()
-    ]
-    const uitslag = zetBustoetsen(omsi(), acties.length > 0 ? acties : undefined)
+    return modelcfgVanBus(omsi(), bus) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Knoppen bijschrijven voor één bus. Met de triggers van die bus mag een toets
+ * gedeeld worden met knoppen van andere bussen; zie zetBustoetsen.
+ */
+function schrijfBusknoppen(
+  modelcfg: string,
+  acties: string[]
+): { toegevoegd: number; gedeeld: number; geenPlek: number } | undefined {
+  try {
+    let triggers: Set<string> | undefined
+    if (modelcfg) {
+      try {
+        triggers = triggersVan(modelcfg)
+      } catch (fout) {
+        logFout('triggers van de bus lezen', fout)
+      }
+    }
+    const uitslag = zetBustoetsen(omsi(), acties.length > 0 ? acties : undefined, { triggers })
     knoppenStand = undefined
     return uitslag
   } catch (fout) {
     logFout('busknoppen bijschrijven', fout)
     return undefined
   }
+}
+
+async function zetBusknoppenAan(): Promise<
+  | { toegevoegd: number; gedeeld: number; geenPlek: number; omsiDraait?: boolean; onthouden?: number }
+  | undefined
+> {
+  /* Nu uitrekenen: terwijl OMSI draait weet de app welke bus en welke apparaten het zijn. */
+  const acties = actiesVoorBusknoppen()
+  const modelcfg = modelcfgNu()
+  /*
+   * NIET TERWIJL OMSI DRAAIT -- MAAR WEL ONTHOUDEN
+   *
+   * Het spel leest `keyboard.cfg` bij het starten en schrijft hem bij het
+   * afsluiten terug uit wat het zelf in geheugen heeft. Wat wij er tussendoor
+   * bij zetten is dan bij het afsluiten weer weg -- en erger: het lijkt te
+   * werken tot je OMSI de volgende keer opstart.
+   *
+   * Tot 26-09 bleef het daarbij: "niet bijgeschreven", en klaar. Maar deze knop
+   * staat in de overlay en op de tablet, en die gebruik je terwijl OMSI draait.
+   * Het lukte dus nooit; het logboek toont acht pogingen in een minuut, en in
+   * keyboard.cfg stond daarna geen enkele ALMEX-toets. Nu wordt het verzoek
+   * bewaard -- per bus, want bij het bijschrijven zijn de scripts van die bus
+   * nodig -- en doet de app het zelf zodra het kan: zie `schrijfStraks`.
+   */
+  const draait = await leesOmsiProces(OMSI_PROCES)
+  if (draait) {
+    const wachtrij = { ...(readSettings(userData()).busknoppenStraks ?? {}) }
+    wachtrij[modelcfg] = [...new Set([...(wachtrij[modelcfg] ?? []), ...acties])]
+    writeSettings(userData(), { busknoppenStraks: wachtrij })
+    knoppenStand = undefined
+    log(`busknoppen onthouden (${acties.length} knoppen): bijgeschreven zodra OMSI dicht is`)
+    wachtOpOmsiDicht()
+    return { toegevoegd: 0, gedeeld: 0, geenPlek: 0, omsiDraait: true, onthouden: inDeWachtrij() }
+  }
+  /* OMSI is dicht: eerst wat er nog klaarstond, dan deze bus. */
+  await schrijfStraks('samen met een nieuw verzoek')
+  return schrijfBusknoppen(modelcfg, acties)
+}
+
+/**
+ * De onthouden knoppen bijschrijven, als dat kan. Alleen met OMSI dicht; zie
+ * `zetBusknoppenAan`. Aangeroepen zodra OMSI dicht is, bij het starten van de
+ * app, en vlak voordat de app OMSI zelf opstart.
+ */
+async function schrijfStraks(waarom: string): Promise<void> {
+  const wachtrij = readSettings(userData()).busknoppenStraks ?? {}
+  if (Object.keys(wachtrij).length === 0) return
+  if (await leesOmsiProces(OMSI_PROCES)) return
+  let toegevoegd = 0
+  let gedeeld = 0
+  let geenPlek = 0
+  for (const [modelcfg, acties] of Object.entries(wachtrij)) {
+    const uitslag = schrijfBusknoppen(modelcfg, acties)
+    if (!uitslag) return
+    toegevoegd += uitslag.toegevoegd
+    gedeeld += uitslag.gedeeld
+    geenPlek += uitslag.geenPlek
+  }
+  writeSettings(userData(), { busknoppenStraks: {} })
+  log(
+    `onthouden busknoppen bijgeschreven (${waarom}): ${toegevoegd} erbij, waarvan ${gedeeld} gedeeld ` +
+      `met een andere bus, ${geenPlek} zonder vrije toets`
+  )
+}
+
+/*
+ * Wachten tot OMSI dicht is, alleen zolang er iets klaarstaat. Twee keer achter
+ * elkaar "dicht" voordat er geschreven wordt: het spel schrijft keyboard.cfg
+ * tijdens het afsluiten, en wie te vroeg is wordt alsnog overschreven.
+ */
+let straksWacht: ReturnType<typeof setInterval> | undefined
+function wachtOpOmsiDicht(): void {
+  if (straksWacht) return
+  let dicht = 0
+  straksWacht = setInterval(() => {
+    void (async () => {
+      if (inDeWachtrij() === 0) {
+        clearInterval(straksWacht)
+        straksWacht = undefined
+        return
+      }
+      dicht = (await leesOmsiProces(OMSI_PROCES)) ? 0 : dicht + 1
+      if (dicht >= 2) await schrijfStraks('OMSI is dicht')
+    })()
+  }, 5000)
+  straksWacht.unref?.()
 }
 
 /*
@@ -2568,9 +2687,17 @@ function apparaatBronnen(): ApparaatBronnen {
           break
         }
         case 'toets': {
-          /* Alleen de toetsen uit de lijst; zie `OMSI_TOETSEN`. */
-          const naam = String(opdracht.toets ?? '') as OmsiToets
-          return { ok: naam in OMSI_TOETSEN ? omsiToets(naam) : false }
+          /*
+           * Dezelfde weg als de overlay: `omsiToets` laat alleen door wat bij een
+           * apparaat van deze bus hoort, en dat is de grens voor wie over het
+           * netwerk komt. Hier stond `naam in OMSI_TOETSEN`, en dat kijkt naar
+           * de SLEUTELS van die lijst (kaartje, ibis7) en niet naar de namen die
+           * de telefoon stuurt (IBIS_7, almex_clickU1). Vanaf de tablet kwam
+           * daardoor geen enkele knop van een apparaat in OMSI aan -- ook niet
+           * als hij wel aan een toets hing.
+           */
+          const naam = String(opdracht.toets ?? '').slice(0, 120)
+          return { ok: naam ? omsiToets(naam as OmsiToets) : false }
         }
       }
     },
@@ -3537,6 +3664,8 @@ function registerHandlers(): void {
       try {
         // Wachten tot het echt gelukt is: de fout komt anders pas later binnen,
         // en dan is er niemand meer die hem opvangt.
+        /* Knoppen die nog aan een toets moesten: nu kan het, OMSI is nog dicht. */
+        await schrijfStraks('voor het starten van OMSI')
         launched = (await launchOmsi(omsi(), readSettings(userData()).windowedOmsi)) === 'gestart'
       } catch {
         // Lukt starten niet, dan doet de speler het zelf.
@@ -3684,6 +3813,8 @@ function registerHandlers(): void {
     let launched = false
     if (!running) {
       try {
+        /* Knoppen die nog aan een toets moesten: nu kan het, OMSI is nog dicht. */
+        await schrijfStraks('voor het starten van OMSI')
         launched = (await launchOmsi(omsi(), readSettings(userData()).windowedOmsi)) === 'gestart'
       } catch {
         // Lukt starten niet, dan doet de speler het zelf; de overlay staat klaar.
@@ -4141,6 +4272,15 @@ if (!app.requestSingleInstanceLock()) {
         `Windows ${process.getSystemVersion?.() ?? ''}, ${process.arch}`
     )
     log(`gebruikersgegevens: ${userData()}`)
+    /*
+     * Knoppen die nog aan een toets moesten. De app kan dicht zijn geweest toen
+     * OMSI afsloot; dan gebeurt het nu, of anders zodra OMSI dicht is.
+     */
+    if (inDeWachtrij() > 0) {
+      void schrijfStraks('bij het starten van de app').then(() => {
+        if (inDeWachtrij() > 0) wachtOpOmsiDicht()
+      })
+    }
     if (pad) log(`logboek: ${pad}`)
     /*
      * Waar `bewaarKopie` zijn kopieën zet voordat de app in een bestand van een

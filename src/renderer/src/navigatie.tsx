@@ -49,7 +49,8 @@ export interface NavFrame {
    * (core/bustoetsen.ts), en tot dat gebeurd is hoort de telefoon ze niet als
    * werkende knoppen te tonen.
    */
-  knoppen?: { beschikbaar: string[] };
+  /** straks: zoveel knoppen staan klaar om bijgeschreven te worden zodra OMSI dicht is. */
+  knoppen?: { beschikbaar: string[]; straks?: number };
   /**
    * De apparaten van deze bus, nagebouwd zoals ze in de cabine zitten. Alleen
    * gevuld voor bussen die de app van binnen kent; zie core/busprofiel.ts.

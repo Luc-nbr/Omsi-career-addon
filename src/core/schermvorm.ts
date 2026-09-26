@@ -1481,6 +1481,28 @@ const opNaam = (a: string, b: string): number => {
  * AI-bus, en die horen er niet bij. Geen .bus gevonden: alle .osc onder
  * `Script\`, op naam.
  */
+/**
+ * Naar welke namen de scripts van deze bus luisteren: elk `{trigger:naam}`, in
+ * kleine letters.
+ *
+ * Nodig om een toets te mogen DELEN met een knop van een andere bus (zie
+ * zetBustoetsen in core/bustoetsen.ts): dat mag alleen als deze bus niet naar
+ * die andere naam luistert, anders gaan er bij één druk twee dingen af.
+ */
+export function triggersVan(modelcfg: string): Set<string> {
+  const uit = new Set<string>()
+  for (const pad of scriptsVan(modelcfg)) {
+    let tekst: string
+    try {
+      tekst = readFileSync(pad, 'latin1')
+    } catch {
+      continue
+    }
+    for (const m of tekst.matchAll(/\{trigger:([^}\r\n]+)\}/gi)) uit.add(m[1].trim().toLowerCase())
+  }
+  return uit
+}
+
 function scriptsVan(modelcfg: string): string[] {
   const map = voertuigmapVan(modelcfg)
   const doel = resolve(modelcfg).toLowerCase()

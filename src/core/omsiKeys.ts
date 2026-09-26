@@ -44,6 +44,11 @@ export function readKeyboard(omsiPath: string, defaults = false): KeyBinding[] {
   const file = defaults
     ? join(omsiPath, 'Inputs', 'keyboard_reset.cfg')
     : keyboardPath(omsiPath)
+  return readKeyboardFile(file)
+}
+
+/** Hetzelfde, voor een toetsbestand op een ander pad -- de kopie van de app bijvoorbeeld. */
+export function readKeyboardFile(file: string): KeyBinding[] {
   if (!existsSync(file)) return []
 
   const lines = readFileSync(file, 'latin1').split('\r\n').map((line) => line.trim())

@@ -1226,11 +1226,20 @@ function IbisApp({
   const schermvorm = useSchermvorm(paneel?.scherm?.vorm, acties);
   /* Een ander apparaat begint weer op het volledige scherm. */
   useEffect(() => setUitVolledig(false), [schermvorm?.id]);
-  const ontbreekt = Boolean(
-    paneel?.rijen.some((rij) => rij.some((knop) => !kan(knop.actie))) ||
-      paneel?.losseRijen?.some((rij) => rij.some((knop) => !kan(knop.actie))) ||
-      schermvorm?.klikken.some((klik) => !kan(klik.actie)),
-  );
+  /*
+   * De losse knoppen tellen hier niet mee. Er zijn niet genoeg toetsen voor alles
+   * (zie actiesVoorBusknoppen in main/index.ts), en die komen als laatste aan de
+   * beurt; een melding die blijft staan omdat de grendel geen toets meer kreeg,
+   * is een melding waar je niets mee kunt. Een losse knop zonder toets staat bij
+   * het openklappen gewoon uit.
+   */
+  const zonderToets = [
+    ...new Set([
+      ...(paneel?.rijen.flat().map((knop) => knop.actie) ?? []),
+      ...(schermvorm?.klikken.map((klik) => klik.actie) ?? []),
+    ]),
+  ].filter((actie) => !kan(actie));
+  const ontbreekt = zonderToets.length > 0;
 
   /** Knoppen in rijen, zoals ze op het apparaat liggen. */
   const toetsrijen = (rijen: Profielknop[][]): JSX.Element[] =>
@@ -1629,12 +1638,24 @@ function IbisApp({
       )}
 
       {ontbreekt && (
-        <div className="afr-aanzetten">
+        /* Welke knoppen het zijn, voor wie het nazoekt; niet in beeld. */
+        <div className="afr-aanzetten" data-zonder-toets={zonderToets.join(" ")}>
           <p>{t(language, "ovl.afrKeysOff")}</p>
-          <p className="afr-let-op">{t(language, "ovl.afrKeysClosed")}</p>
-          <button type="button" onClick={() => acties.knoppenAan()}>
-            {t(language, "ovl.afrKeysOn")}
-          </button>
+          {/*
+            Is het al gevraagd terwijl OMSI draaide, dan staat het klaar en doet
+            de app het zelf zodra het kan. Dat hoort er te staan: eerder zei de
+            knop niets terug, en werd er acht keer op gedrukt.
+          */}
+          {frame.knoppen?.straks ? (
+            <p className="afr-let-op">{t(language, "ovl.afrKeysLater")}</p>
+          ) : (
+            <>
+              <p className="afr-let-op">{t(language, "ovl.afrKeysClosed")}</p>
+              <button type="button" onClick={() => acties.knoppenAan()}>
+                {t(language, "ovl.afrKeysOn")}
+              </button>
+            </>
+          )}
         </div>
       )}
 

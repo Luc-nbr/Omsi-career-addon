@@ -3624,11 +3624,23 @@ const TEXT = {
     fr: 'Les touches de cette imprimante ne sont qu’à la souris dans OMSI. L’app peut les mettre sur une touche ; il faut ensuite relancer OMSI.',
     nl: 'De knoppen van deze automaat zitten in OMSI alleen op de muis. De app kan ze aan een toets hangen; daarna moet OMSI opnieuw starten.'
   },
+  /*
+   * Dit zei eerst "doe dit met OMSI dicht" -- terwijl de knop in de overlay en op
+   * de tablet staat, die je gebruikt terwijl OMSI draait. Nu mag het gewoon: de
+   * app onthoudt het en schrijft de knoppen bij zodra OMSI dicht is.
+   */
   'ovl.afrKeysClosed': {
-    en: 'Do this with OMSI closed: the game rewrites the key file when it quits.',
-    de: 'Bei geschlossenem OMSI: das Spiel schreibt die Tastendatei beim Beenden neu.',
-    fr: 'À faire OMSI fermé : le jeu réécrit le fichier des touches en quittant.',
-    nl: 'Doe dit met OMSI dicht: het spel schrijft het toetsenbestand bij het afsluiten zelf terug.'
+    en: 'Works while OMSI is running too: the app adds them as soon as you quit OMSI, and they work from the next start.',
+    de: 'Geht auch bei laufendem OMSI: die App trägt sie ein, sobald du OMSI beendest, und ab dem nächsten Start funktionieren sie.',
+    fr: 'Possible aussi OMSI ouvert : l’application les ajoute dès que vous quittez OMSI, et ils fonctionnent au prochain démarrage.',
+    nl: 'Kan ook terwijl OMSI draait: de app zet ze erin zodra je OMSI afsluit, en vanaf de volgende start werken ze.'
+  },
+  /* Na het drukken, zolang OMSI nog openstaat. */
+  'ovl.afrKeysLater': {
+    en: 'Noted. As soon as you quit OMSI, the app adds the buttons -- or right before it starts OMSI itself. From the next start, tapping works.',
+    de: 'Notiert. Sobald du OMSI beendest, trägt die App die Tasten ein -- oder kurz bevor sie OMSI selbst startet. Ab dem nächsten Start wirkt das Tippen.',
+    fr: 'Noté. Dès que vous quittez OMSI, l’application ajoute les boutons -- ou juste avant de lancer OMSI elle-même. Au prochain démarrage, toucher fonctionne.',
+    nl: 'Genoteerd. Zodra je OMSI afsluit zet de app de knoppen erin -- of vlak voordat ze OMSI zelf start. Vanaf de volgende start werkt tikken.'
   },
   'ovl.afrKeysOn': {
     en: 'Put the buttons on keys',

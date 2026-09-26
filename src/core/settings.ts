@@ -136,6 +136,36 @@ export interface Settings {
    * het per bustype onthouden wordt en niet per uitvoering.
    */
   busmodules?: Record<string, string[]>
+  /**
+   * Knoppen die aan een toets moeten, maar nog niet konden.
+   *
+   * keyboard.cfg bijschrijven mag alleen met OMSI dicht: het spel schrijft het
+   * bestand bij het afsluiten terug uit zijn eigen geheugen. De knop om het te
+   * doen staat echter in de overlay en op de tablet -- die je gebruikt terwijl
+   * OMSI draait. Zo lukte het nooit: de gebruiker drukte acht keer en er gebeurde
+   * niets. Nu wordt het verzoek hier bewaard, en schrijft de app de knoppen bij
+   * zodra OMSI dicht is, of vlak voordat de app het spel zelf start. Bewaard op
+   * schijf, want tussen "gevraagd" en "OMSI dicht" kan de app ook dichtgaan.
+   */
+  busknoppenStraks?: Record<string, string[]>
+}
+
+/**
+ * Per bus (de model.cfg; leeg als die niet bekend was) de namen, en niet
+ * onbeperkt: het is een wachtrij, geen opslag. Per bus, omdat het bijschrijven
+ * de scripts van die bus nodig heeft om een toets te mogen delen.
+ */
+function geldigeWachtrij(ruw: unknown): Record<string, string[]> | undefined {
+  if (!ruw || typeof ruw !== 'object' || Array.isArray(ruw)) return undefined
+  const uit: Record<string, string[]> = {}
+  for (const [bus, lijst] of Object.entries(ruw as Record<string, unknown>).slice(0, 20)) {
+    if (!Array.isArray(lijst) || bus.length > 400) continue
+    const namen = lijst.filter(
+      (naam): naam is string => typeof naam === 'string' && naam.length > 0 && naam.length <= 120
+    )
+    if (namen.length > 0) uit[bus] = [...new Set(namen)].slice(0, 400)
+  }
+  return Object.keys(uit).length > 0 ? uit : undefined
 }
 
 /** Alleen een lijst namen per bus; wat er verder in het bestand staat telt niet. */
@@ -202,7 +232,8 @@ export function readSettings(userDataPath: string): Settings {
       navDeel: geldigNavDeel(raw.navDeel),
       apparaatSleutel: geldigeSleutel(raw.apparaatSleutel),
       apparaatPoort: geldigePoort(raw.apparaatPoort),
-      busmodules: geldigeModules(raw.busmodules)
+      busmodules: geldigeModules(raw.busmodules),
+      busknoppenStraks: geldigeWachtrij(raw.busknoppenStraks)
     }
   } catch {
     return {
@@ -292,7 +323,12 @@ export function writeSettings(userDataPath: string, settings: Partial<Settings>)
     busmodules:
       settings.busmodules && typeof settings.busmodules === 'object'
         ? geldigeModules(settings.busmodules)
-        : current.busmodules
+        : current.busmodules,
+    /* Een lege lijst betekent "gedaan", dus ook hier het verschil met niets meegegeven. */
+    busknoppenStraks:
+      settings.busknoppenStraks && typeof settings.busknoppenStraks === 'object'
+        ? geldigeWachtrij(settings.busknoppenStraks)
+        : current.busknoppenStraks
   }
   const path = settingsPath(userDataPath)
   mkdirSync(dirname(path), { recursive: true })
