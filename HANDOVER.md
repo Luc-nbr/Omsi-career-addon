@@ -694,6 +694,25 @@ De weg van plugin tot scherm:
 5. `renderer/apparaatscherm.tsx` tekent het op een canvas, met de
    aanraakvlakken erboven.
 
+**Een touchscreen is alleen zijn scherm** (26-09-2026). Heeft het getekende
+scherm zelf aanraakvlakken, dan staan er geen rijen knoppen meer onder. Wat er
+overblijft wordt gescheiden op afstand tot het scherm (`LOS_VAN_HET_SCHERM_MM`,
+100, in `core/schermvorm.ts`): toetsen OP het apparaat blijven staan (het
+cijferblok van de RG-kastjes, tot 91 mm), de rest gaat naar `Paneel.losseRijen`
+en staat dichtgeklapt onder "Losse knoppen" (de klep, de grendel en het
+wisselgeld van de ALMEX, vanaf 124 mm). **Niet weggooien:** bij de muntwisselaar
+van de MAN-A20 en de kaartautomaat van de VHH-bus lopen de munten door de grens
+heen. De losse knoppen worden ook aan een toets gehangen.
+
+**Op de tablet vult een touchscreen het hele scherm** (26-09-2026), in een laag
+die met een portal onder `<body>` hangt -- niet in de telefoon, want die is met
+CSS-zoom opgeschaald en een vaste laag daarbinnen schaalt mee. Linksboven een
+knopje terug naar de telefoon; een oranje stip erop zolang de knoppen niet aan
+een toets hangen. **Leg niets over het scherm:** elke plek kan een knop zijn --
+een eerste versie legde een melding over het vinkje en FIMS van de ALMEX.
+`probe-overlayscherm.cjs` controleert dat. In de overlay op de pc verandert er
+niets; de vlag is `tablet` op `Telefoon`, alleen gezet door apparaat.tsx.
+
 **Een getal dat de plugin niet levert, telt als onzichtbaar.** De klok en de
 knoppen van een ALMEX hangen aan `almex_ein = 1`; ontbreekt dat getal, dan
 blijft het scherm op die plekken leeg. In het spel levert de plugin elk getal
