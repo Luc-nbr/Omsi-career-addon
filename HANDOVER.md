@@ -820,9 +820,15 @@ in het spel nog nagekeken moet worden:
 van de Citaro C2); die krijgen een leeg vlak en hun knoppen werken wel. 12 hebben
 versleutelde meshes waarvan de plek niet te redden is.
 
-**Master is lokaal bij.** Master is doorgespoeld naar de tak
-`claude/ecstatic-noether-296800` en daarna verder gegaan; origin/master staat
-nog terug (`d193f7b`). Pushen is een beslissing voor de gebruiker.
+**0.4.1 is uit** (26-09-2026), als Latest op GitHub, op verzoek van Luc ("breng
+de release uit met alles wat we hebben nu als 4.1"): met de notities in
+`uitgaven/0.4.1.md`, de tag `v0.4.1` op `ed4de75`, en master en die tag gepusht
+(origin/master stond daarvoor op `d193f7b`). De twee bestanden op GitHub zijn
+byte voor byte die in `release/`. Tussendoor liep het nummer intern op tot
+0.4.14 zonder uitgave; het publieke nummer volgt op 0.4.0, dus 0.4.1. De
+Discord-aankondiging staat klaar in `C:\OMSI Enhancer Discord\uitgaven\0.4.1.md`
+en is **niet geplaatst** -- dat doet de gebruiker zelf. Wat na de release op
+master komt, is niet gepusht.
 
 ### 5.0a Eerder (22-09-2026)
 
