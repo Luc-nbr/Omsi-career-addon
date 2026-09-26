@@ -121,6 +121,14 @@ delete inst.busmodules
 delete inst.busknoppenStraks
 delete inst.apparaatSleutel
 delete inst.apparaatPoort
+/*
+ * Er staat al iets klaar van een ANDERE bus -- zoals bij de speler op 26-09: de
+ * Kajosoft, genoteerd terwijl OMSI draaide. Dat mocht de knop bij de volgende
+ * bus niet wegnemen, en deed het wel: de telefoon telde de hele wachtrij.
+ */
+const andereBus = join(nep, 'Vehicles', 'Citybus 628c 628g LF by Kajosoft', 'model', 'model_Conecto_LF_e5.cfg')
+const metAndereBus = existsSync(andereBus)
+if (metAndereBus) inst.busknoppenStraks = { [andereBus]: ['tablet_reset_toggle'] }
 writeFileSync(join(map, 'settings.json'), JSON.stringify(inst, null, 2))
 /* De wachtrij staat per bus (de model.cfg); hier telt alleen wat erin staat. */
 const straks = () => Object.values(JSON.parse(readFileSync(join(map, 'settings.json'), 'utf8')).busknoppenStraks ?? {}).flat()
@@ -251,12 +259,12 @@ app.whenReady().then(async () => {
     voor = await kijk()
   }
   const keyboardVoor = readFileSync(keyboard, 'utf8')
-  console.log('voor:', JSON.stringify({ ...voor, melding: voor.melding.slice(0, 60) }), `almex in keyboard.cfg: ${almexIn()}`)
+  console.log('voor:', JSON.stringify({ ...voor, melding: voor.melding.slice(0, 60) }), `almex in keyboard.cfg: ${almexIn()}`, `andere bus in de wachtrij: ${metAndereBus}`)
 
   /* ---- 1. De knop indrukken terwijl "OMSI" draait ---- */
   await js(overlay, `document.querySelector('.afr-aanzetten button')?.click()`)
   let bewaard = []
-  for (let i = 0; i < 30 && bewaard.length === 0; i++) {
+  for (let i = 0; i < 30 && !bewaard.some((a) => /almex/i.test(a)); i++) {
     await wacht(300)
     bewaard = straks()
   }
@@ -314,6 +322,9 @@ app.whenReady().then(async () => {
   const goed =
     voor.beeld === 'ja' &&
     voor.uit > 0 &&
+    /* Wat er van een andere bus klaarstaat, zegt niets over deze. */
+    voor.knop &&
+    !/genoteerd|noted|notiert|noté/i.test(voor.melding) &&
     bewaard.some((a) => /almex_click/i.test(a)) &&
     onaangeroerd &&
     !genoteerd.knop &&

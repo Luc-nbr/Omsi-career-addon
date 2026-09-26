@@ -1711,6 +1711,7 @@ function busknoppen(): { beschikbaar: string[]; straks?: number } {
   const nu = Date.now()
   if (knoppenStand && nu - knoppenGekeken < 5000) return knoppenStand
   knoppenGekeken = nu
+  let acties: string[] = []
   try {
     /*
      * Alles wat de telefoon kan indrukken en werkelijk in keyboard.cfg staat --
@@ -1718,15 +1719,44 @@ function busknoppen(): { beschikbaar: string[]; straks?: number } {
      * Zie `bruikbareToetsen`: een knop op een onbewezen toetscombinatie telt
      * niet mee.
      */
-    knoppenStand = { beschikbaar: bruikbareToetsen(omsi(), actiesVoorBusknoppen()) }
+    acties = actiesVoorBusknoppen()
+    knoppenStand = { beschikbaar: bruikbareToetsen(omsi(), acties) }
   } catch {
     knoppenStand = { beschikbaar: [] }
   }
-  /* Staan er knoppen klaar om bijgeschreven te worden, dan hoort de telefoon dat. */
-  const straks = inDeWachtrij()
+  /* Staan de knoppen van deze bus klaar om bijgeschreven te worden, dan hoort de telefoon dat. */
+  const straks = straksVanDezeBus(acties, knoppenStand.beschikbaar)
   if (straks > 0) knoppenStand.straks = straks
   return knoppenStand
 }
+
+/**
+ * Hoeveel knoppen van de bus die nu rijdt al klaarstaan om bijgeschreven te
+ * worden -- maar alleen als dat ALLE knoppen zijn die nog geen toets hebben.
+ * Anders nul, en dan staat de knop om ze aan een toets te hangen er weer.
+ *
+ * Tot 26-09 telde dit de hele wachtrij, van alle bussen samen. Stonden er nog
+ * knoppen van een Kajosoft klaar, dan zei de telefoon bij de volgende bus (een
+ * Iveco met een kaartjesprinter) ook "Genoteerd" en was de knop weg -- terwijl
+ * er voor die bus niets genoteerd was.
+ */
+function straksVanDezeBus(acties: string[], beschikbaar: string[]): number {
+  const heeft = new Set(beschikbaar.map((actie) => actie.toLowerCase()))
+  const zonder = [...new Set(acties.map((actie) => actie.toLowerCase()))].filter(
+    (actie) => !heeft.has(actie)
+  )
+  if (zonder.length === 0) return 0
+  const modelcfg = modelcfgNu().toLowerCase()
+  if (!modelcfg) return 0
+  const klaar = new Set(
+    Object.entries(readSettings(userData()).busknoppenStraks ?? {})
+      .filter(([cfg]) => cfg.toLowerCase() === modelcfg)
+      .flatMap(([, lijst]) => lijst.map((actie) => actie.toLowerCase()))
+  )
+  return zonder.every((actie) => klaar.has(actie)) ? zonder.length : 0
+}
+
+let vorigeKnoppenregel = ''
 
 /**
  * De knoppen van de apparaten die nu in de telefoon staan. Dat is per bus anders
@@ -1749,7 +1779,10 @@ function actiesVoorBusknoppen(): string[] {
   const scherm = [...schermActies()]
   const opApparaat = panelen.flatMap((paneel) => paneel.rijen.flat().map((knop) => knop.actie))
   const los = panelen.flatMap((paneel) => (paneel.losseRijen ?? []).flat().map((knop) => knop.actie))
-  log(`busknoppen: ${scherm.length} van het scherm, ${opApparaat.length} op het apparaat, ${los.length} los`)
+  /* Alleen als het verandert: dit loopt elke vijf tellen, en het logboek liep er vol mee. */
+  const regel = `busknoppen: ${scherm.length} van het scherm, ${opApparaat.length} op het apparaat, ${los.length} los`
+  if (regel !== vorigeKnoppenregel) log(regel)
+  vorigeKnoppenregel = regel
   return [...scherm, ...opApparaat, ...los]
 }
 
