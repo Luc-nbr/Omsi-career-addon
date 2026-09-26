@@ -93,7 +93,7 @@ app.whenReady().then(async () => {
     jsx: 'automatic',
     platform: 'browser',
     plugins: [geenLetters],
-    loader: { '.png': 'dataurl', '.svg': 'dataurl', '.woff': 'empty', '.woff2': 'empty' }
+    loader: { '.png': 'dataurl', '.svg': 'dataurl', '.webp': 'empty', '.woff': 'empty', '.woff2': 'empty' }
   })
 
   writeFileSync(

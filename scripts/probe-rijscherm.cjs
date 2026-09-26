@@ -235,7 +235,7 @@ app.whenReady().then(async () => {
     jsx: 'automatic',
     platform: 'browser',
     plugins: [geenLetters],
-    loader: { '.png': 'dataurl', '.svg': 'dataurl', '.woff': 'empty', '.woff2': 'empty' }
+    loader: { '.png': 'dataurl', '.svg': 'dataurl', '.webp': 'empty', '.woff': 'empty', '.woff2': 'empty' }
   })
 
   writeFileSync(
@@ -277,8 +277,13 @@ app.whenReady().then(async () => {
     /* De gegevens horen er te staan, en de balk hoort de rijstap aan te wijzen. */
     const pasErop = m.pas.join('|') === '481902|7341'
     const eigenStap = m.stapLaatst && m.eigenVorm
-    /* De weg terug staat vooraan, want hij is de enige die niets met deze dienst doet. */
-    const terugKnop = m.knoppen.length === 6 && /main menu|hoofdmenu/i.test(m.knoppen[0])
+    /*
+     * De weg terug staat vooraan, want hij is de enige die niets met deze dienst
+     * doet. Niet op het aantal knoppen letten: er kwam er later een bij (een
+     * tablet verbinden), en dat hoort deze controle niet te laten omvallen.
+     */
+    const terugKnop = /main menu|hoofdmenu/i.test(m.knoppen[0] ?? '') &&
+      m.knoppen.filter((k) => /main menu|hoofdmenu/i.test(k)).length === 1
     const greepErtussen =
       m.greep && m.greep.links >= m.vel.rechts - 4 && m.greep.rechts <= m.kaart.links + 4
     /* En hij hoort onder de inhoud te staan, niet eroverheen. */
