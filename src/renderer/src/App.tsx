@@ -34,6 +34,8 @@ import {
   type OmsiState,
   type SessionResult,
   type YardOption,
+  type Busmapinfo,
+  type Busanalyseinfo,
 } from "../../shared/api";
 import { formatDuration, formatTime } from "../../shared/format";
 import { Dienstoverzicht } from "./Dienstoverzicht";
@@ -188,7 +190,7 @@ const STAPPEN_VRIJ: readonly Stap[] = STAPPEN.filter(
  * Welk scherm er staat. De app begint altijd bij de chauffeur en gaat dan naar
  * de modus; daarna pas komt het rijden in beeld.
  */
-type Screen = "profiles" | "modes" | "drive" | "game" | "profiel";
+type Screen = "profiles" | "modes" | "drive" | "game" | "profiel" | "bussen";
 
 /*
  * De stand van de plugin werd hier als los regeltje getoond, in vier smaken --
@@ -364,6 +366,19 @@ export function App(): JSX.Element {
   const [rondleidingOpen, setRondleidingOpen] = useState(false);
   /** De QR-code voor een telefoon of tablet; zie ApparaatDialoog. */
   const [apparaatOpen, setApparaatOpen] = useState(false);
+  /*
+   * BUSSEN KLAARMAKEN
+   *
+   * De lijst met busmappen, de bus die aangetikt is, wat de app erin vond, wat
+   * er aangevinkt staat, en de uitslag van het klaarmaken. Het uitlezen gebeurt
+   * in de werker en kan een minuut duren; zie core/busklaar.ts.
+   */
+  const [bussenKlaar, setBussenKlaar] = useState<Busmapinfo[]>();
+  const [busKlaarKeuze, setBusKlaarKeuze] = useState<string>();
+  const [busKlaarAnalyse, setBusKlaarAnalyse] = useState<Busanalyseinfo>();
+  const [busKlaarAan, setBusKlaarAan] = useState<Set<string>>(new Set());
+  const [busKlaarBezig, setBusKlaarBezig] = useState(false);
+  const [busKlaarMelding, setBusKlaarMelding] = useState<{ tekst: string; fout?: boolean }>();
   const [busfotoScherm, setBusfotoScherm] = useState<
     "installatie" | "bijwerken"
   >();
@@ -449,6 +464,54 @@ export function App(): JSX.Element {
   const [printer, setPrinter] = useState("");
   const finishRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const [language, setLanguage] = useState<Language>(DEFAULT_LANGUAGE);
+
+  /* De lijst bij binnenkomst op "Bussen klaarmaken", met de foto's erbij. */
+  useEffect(() => {
+    if (screen !== "bussen") return;
+    let geldig = true;
+    void window.career.bussen().then((lijst) => {
+      if (!geldig) return;
+      setBussenKlaar(lijst);
+      for (const map of lijst) vraagBusfoto(map.voorbeeld);
+    });
+    return () => {
+      geldig = false;
+    };
+  }, [screen, vraagBusfoto]);
+
+  /*
+   * Een bus uitlezen zodra hij aangetikt is. Wat al gekozen was blijft
+   * aangevinkt; bij een nieuwe bus wat de app aanraadt.
+   */
+  useEffect(() => {
+    if (!busKlaarKeuze) return;
+    let geldig = true;
+    setBusKlaarAnalyse(undefined);
+    setBusKlaarMelding(undefined);
+    void window.career
+      .busAnalyse(busKlaarKeuze)
+      .then((analyse) => {
+        if (!geldig) return;
+        setBusKlaarAnalyse(analyse);
+        setBusKlaarAan(
+          new Set(
+            analyse.gekozen ??
+              analyse.apparaten.filter((x) => x.aanbevolen).map((x) => x.id),
+          ),
+        );
+      })
+      .catch((fout: unknown) => {
+        if (geldig)
+          setBusKlaarMelding({
+            tekst: t(language, "bus.klaarFout", { reden: String(fout) }),
+            fout: true,
+          });
+      });
+    return () => {
+      geldig = false;
+    };
+  }, [busKlaarKeuze, language]);
+
   /*
    * Dag of nacht. `systeem` volgt Windows en is de beginstand; wie het knopje
    * indrukt legt het vast. De opmaak hangt aan een attribuut op de wortel --
@@ -2195,6 +2258,10 @@ export function App(): JSX.Element {
           onMeldingWeg={() => setHubMelding(undefined)}
           onRondleiding={() => setRondleidingOpen(true)}
           onApparaat={() => setApparaatOpen(true)}
+          onBussen={() => {
+            setBusKlaarKeuze(undefined);
+            setScreen("bussen");
+          }}
           onBusplaatjes={() => {
             setBusfotoScherm("bijwerken");
             void bijwerkenBusfotos();
@@ -2300,6 +2367,182 @@ export function App(): JSX.Element {
    * is er geen, en juist daar kies je een bus uit alle 342 en loop je de kans
    * er een te pakken die de kaart niet kent.
    */
+  /*
+   * BUSSEN KLAARMAKEN
+   *
+   * Eerst de bussen als tegels, met hun foto en of ze al klaar zijn. Tik je er een
+   * aan, dan leest de app hem uit en staan zijn apparaten er als tegels: aan of
+   * uit, met wat voor apparaat het is en hoeveel knoppen. "Klaarmaken" bewaart
+   * de keuze en hangt de knoppen aan een toets -- of noteert het, als OMSI
+   * draait. In het spel staan de apparaten daarna gewoon in de telefoon.
+   */
+  if (screen === "bussen") {
+    const kaart = bussenKlaar?.find((map) => map.sleutel === busKlaarKeuze);
+    const soortTekst = (x: Busanalyseinfo["apparaten"][number]): string => {
+      const soort =
+        x.soort === "touchscreen"
+          ? t(
+              language,
+              x.knoppen === 1 ? "bus.soortTouchscreenOne" : "bus.soortTouchscreen",
+              { n: x.knoppen },
+            )
+          : x.soort === "scherm"
+            ? t(language, "bus.soortScherm", { n: x.knoppen })
+            : x.soort === "knoppen"
+              ? t(language, "bus.soortKnoppen", { n: x.knoppen })
+              : t(language, "bus.soortDisplay");
+      const beperking =
+        x.beperking === "script"
+          ? t(language, "bus.beperkingScript")
+          : x.beperking === "versleuteld"
+            ? t(language, "bus.beperkingVersleuteld")
+            : "";
+      return beperking ? `${soort} -- ${beperking}` : soort;
+    };
+    const naarLijst = (): void => {
+      setBusKlaarKeuze(undefined);
+      setBusKlaarAnalyse(undefined);
+      setBusKlaarMelding(undefined);
+    };
+    const klaarmaken = async (): Promise<void> => {
+      if (!busKlaarKeuze || busKlaarBezig) return;
+      setBusKlaarBezig(true);
+      setBusKlaarMelding(undefined);
+      try {
+        const ids = [...busKlaarAan];
+        const uitslag = await window.career.busKlaar(busKlaarKeuze, ids);
+        let tekst: string;
+        if (ids.length === 0) tekst = t(language, "bus.klaarWeg");
+        else if (uitslag.onthouden)
+          tekst = t(language, "bus.klaarOnthouden", { n: uitslag.knoppen });
+        else if (uitslag.bijgeschreven === 0 && uitslag.geenPlek === 0)
+          tekst = t(language, "bus.klaarAlles", { n: uitslag.knoppen });
+        else
+          tekst = t(language, "bus.klaarGedaan", {
+            bij: uitslag.bijgeschreven,
+            gedeeld:
+              uitslag.gedeeld > 0
+                ? t(language, "bus.klaarGedeeld", { n: uitslag.gedeeld })
+                : "",
+          });
+        if (uitslag.geenPlek > 0)
+          tekst += t(language, "bus.klaarGeenPlek", { n: uitslag.geenPlek });
+        setBusKlaarMelding({ tekst, fout: uitslag.geenPlek > 0 });
+        setBussenKlaar(await window.career.bussen());
+      } catch (fout) {
+        setBusKlaarMelding({
+          tekst: t(language, "bus.klaarFout", { reden: String(fout) }),
+          fout: true,
+        });
+      } finally {
+        setBusKlaarBezig(false);
+      }
+    };
+
+    /* Een bus aangetikt: zijn apparaten. */
+    if (busKlaarKeuze) {
+      const apparaten = busKlaarAnalyse?.apparaten ?? [];
+      return (
+        <LanguageProvider language={language}>
+          <Setup
+            stap="bus"
+            stappen={["bus"]}
+            stapnamen={{ bus: t(language, "bus.klaarTitle") }}
+            titel={kaart?.naam ?? busKlaarKeuze}
+            onderschrift={
+              !busKlaarAnalyse
+                ? t(language, "bus.klaarLeest", { bus: kaart?.naam ?? "" })
+                : apparaten.length === 0
+                  ? t(language, "bus.klaarNiets")
+                  : t(language, "bus.klaarKies")
+            }
+            kruimels={[
+              { label: t(language, "bus.klaarTitle"), onDoen: naarLijst },
+              { label: kaart?.naam ?? busKlaarKeuze },
+            ]}
+            koppen={["", "", ""]}
+            rijen={[]}
+            gekozen={-1}
+            onKies={() => {}}
+            tegels={apparaten.map((x) => ({
+              id: x.id,
+              titel: x.naam,
+              onder: soortTekst(x),
+              monogram: x.naam.replace(/[^A-Za-z0-9]/g, "").slice(0, 3).toUpperCase(),
+              gekozen: busKlaarAan.has(x.id),
+              onDoen: () =>
+                setBusKlaarAan((nu) => {
+                  const volgend = new Set(nu);
+                  if (volgend.has(x.id)) volgend.delete(x.id);
+                  else volgend.add(x.id);
+                  return volgend;
+                }),
+            }))}
+            vullend
+            voet={busKlaarMelding?.tekst ?? ""}
+            voetFout={busKlaarMelding?.fout}
+            bezig={busKlaarBezig || !busKlaarAnalyse}
+            startTekst={
+              busKlaarBezig
+                ? t(language, "bus.klaarBezig")
+                : t(language, "bus.klaarDoe")
+            }
+            onStart={() => void klaarmaken()}
+            onTerug={naarLijst}
+            rechtsInBalk={balkRechts}
+          />
+        </LanguageProvider>
+      );
+    }
+
+    /* De lijst met bussen. */
+    const lijst = bussenKlaar ?? [];
+    return (
+      <LanguageProvider language={language}>
+        <Setup
+          stap="bus"
+          stappen={["bus"]}
+          stapnamen={{ bus: t(language, "bus.klaarTitle") }}
+          titel={t(language, "bus.klaarTitle")}
+          onderschrift={t(language, "bus.klaarIntro")}
+          koppen={["", "", ""]}
+          rijen={[]}
+          gekozen={-1}
+          onKies={() => {}}
+          tegels={lijst.map((map) => ({
+            id: map.sleutel,
+            titel: map.naam,
+            onder: map.klaar
+              ? t(language, "bus.klaarIsKlaar", {
+                  apparaten: map.apparaten
+                    .map((id) => id.split("/").pop()?.toUpperCase() ?? id)
+                    .join(", "),
+                })
+              : t(
+                  language,
+                  map.varianten === 1
+                    ? "bus.klaarVariantenOne"
+                    : "bus.klaarVarianten",
+                  { n: map.varianten },
+                ),
+            beeld: busFotos[map.voorbeeld],
+            gekozen: map.klaar,
+            onDoen: () => setBusKlaarKeuze(map.sleutel),
+          }))}
+          vullend
+          voet={t(language, "bus.klaarFoot", {
+            klaar: lijst.filter((map) => map.klaar).length,
+            totaal: lijst.length,
+          })}
+          startTekst={t(language, "bus.klaarNaarHub")}
+          onStart={() => setScreen("modes")}
+          onTerug={() => setScreen("modes")}
+          rechtsInBalk={balkRechts}
+        />
+      </LanguageProvider>
+    );
+  }
+
   if (busScherm === "overzetten" && mapFolder) {
     const terug = (): void => {
       setBusScherm("bus");

@@ -1,4 +1,5 @@
 import type { Schermvorm } from './scherm'
+import type { Busanalyse, Busmap } from '../core/busklaar'
 import type { ActiveDuty, CareerState, CareerSummary, GameMode } from '../core/career'
 import type { LineSummary } from '../core/duty'
 import type { ExamMeasurement } from '../core/exam'
@@ -229,6 +230,30 @@ export interface YardOption {
 }
 
 /** Alles wat het klaarzetten en starten van een dienst nodig heeft. */
+/** Een busmap in de lijst van "Bussen klaarmaken". */
+export interface Busmapinfo extends Busmap {
+  /** Er staan apparaten voor deze bus in de instellingen. */
+  klaar: boolean
+  apparaten: string[]
+}
+
+export interface Busanalyseinfo extends Busanalyse {
+  /** Wat er al gekozen was, als de bus eerder klaargemaakt is. */
+  gekozen?: string[]
+}
+
+export interface Busklaaruitslag {
+  /** Hoeveel verschillende knoppen er aan een toets moesten. */
+  knoppen: number
+  bijgeschreven: number
+  /** Waarvan op een toets van een andere bus of variant. */
+  gedeeld: number
+  /** Knoppen zonder toets, in de variant waar het er het meest waren. */
+  geenPlek: number
+  /** OMSI draaide: onthouden, en bijgeschreven zodra het dicht is. */
+  onthouden?: boolean
+}
+
 export interface BeginRequest {
   duty: Duty
   ibis?: IbisPlan
@@ -704,6 +729,12 @@ export interface CareerApi {
   clearProfilePhoto(id: string): Promise<CareerPayload>
   /** Vinkt af dat de chauffeur zijn personeelsnummer en pincode gezien heeft. */
   dienstpasGezien(): Promise<CareerPayload>
+  /** De geïnstalleerde bussen, per map, en welke al klaargemaakt zijn. */
+  bussen(): Promise<Busmapinfo[]>
+  /** Een bus uitlezen: welke apparaten er zijn en wat ze zijn. Kan een minuut duren. */
+  busAnalyse(sleutel: string): Promise<Busanalyseinfo>
+  /** De gekozen apparaten van een bus bewaren en hun knoppen aan een toets hangen. */
+  busKlaar(sleutel: string, ids: string[]): Promise<Busklaaruitslag>
   /** Leest uit OMSI's eigen situatiebestand wat er van de dienst terechtkwam. */
   checkSession(): Promise<SessionResult>
   completeDuty(

@@ -158,7 +158,7 @@ export interface Settings {
 function geldigeWachtrij(ruw: unknown): Record<string, string[]> | undefined {
   if (!ruw || typeof ruw !== 'object' || Array.isArray(ruw)) return undefined
   const uit: Record<string, string[]> = {}
-  for (const [bus, lijst] of Object.entries(ruw as Record<string, unknown>).slice(0, 20)) {
+  for (const [bus, lijst] of Object.entries(ruw as Record<string, unknown>).slice(0, 200)) {
     if (!Array.isArray(lijst) || bus.length > 400) continue
     const namen = lijst.filter(
       (naam): naam is string => typeof naam === 'string' && naam.length > 0 && naam.length <= 120

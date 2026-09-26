@@ -107,6 +107,7 @@ import {
   standVoor
 } from './scherm'
 import { triggersVan } from '../core/schermvorm'
+import type { Busanalyse, Busmap } from '../core/busklaar'
 import {
   busfotoAdres,
   busfotoAfgehandeld,
@@ -145,6 +146,7 @@ import {
   type OmsiMelding,
   type OmsiOverlays,
   type BeginRequest,
+  type Busklaaruitslag,
   type FreeRequest,
   type DutyDate,
   type DutyRequest,
@@ -255,7 +257,11 @@ interface WerkerAntwoord {
  * werker kost een eigen kopie van de caches, maar hij sluit zodra de ronde
  * klaar is.
  */
-type Werksoort = 'voorgrond' | 'achtergrond' | 'fotos'
+/*
+ * 'bussen': een bus uitlezen om hem klaar te maken duurt tot een minuut. Op de
+ * voorgrondwerker zou dat de kaarten en de dienstenlijst zo lang ophouden.
+ */
+type Werksoort = 'voorgrond' | 'achtergrond' | 'fotos' | 'bussen'
 
 const werkers = new Map<Werksoort, Worker>()
 let volgendeOpdracht = 0
@@ -1855,6 +1861,55 @@ async function schrijfStraks(waarom: string): Promise<void> {
   )
 }
 
+/**
+ * Een bus klaarmaken: de gekozen apparaten bewaren, en hun knoppen per variant
+ * aan een toets hangen -- nu, of zodra OMSI dicht is.
+ *
+ * Per variant (per model.cfg), met de triggers van die variant: twee varianten
+ * rijden nooit tegelijk en mogen toetsen delen. Zie actiesPerVariant in
+ * core/busklaar.ts.
+ */
+async function busKlaarmaken(sleutel: string, ids: string[]): Promise<Busklaaruitslag> {
+  const alles = { ...(readSettings(userData()).busmodules ?? {}) }
+  if (ids.length > 0) alles[sleutel] = ids
+  else delete alles[sleutel]
+  writeSettings(userData(), { busmodules: alles })
+  gekozenOnthouden = alles
+  gekozenGelezen = Date.now()
+  log(`bus klaargemaakt: ${sleutel} met ${ids.join(', ') || 'niets'}`)
+  const leeg: Busklaaruitslag = { knoppen: 0, bijgeschreven: 0, gedeeld: 0, geenPlek: 0 }
+  if (ids.length === 0) return leeg
+
+  const perVariant = await werkerVraag<Record<string, string[]>>(
+    { soort: 'busacties', sleutel, ids },
+    'bussen'
+  )
+  const knoppen = new Set(Object.values(perVariant).flat().map((actie) => actie.toLowerCase())).size
+
+  if (await leesOmsiProces(OMSI_PROCES)) {
+    const wachtrij = { ...(readSettings(userData()).busknoppenStraks ?? {}) }
+    for (const [modelcfg, acties] of Object.entries(perVariant)) {
+      wachtrij[modelcfg] = [...new Set([...(wachtrij[modelcfg] ?? []), ...acties])]
+    }
+    writeSettings(userData(), { busknoppenStraks: wachtrij })
+    knoppenStand = undefined
+    wachtOpOmsiDicht()
+    log(`${sleutel}: ${knoppen} knoppen onthouden, bijgeschreven zodra OMSI dicht is`)
+    return { ...leeg, knoppen, onthouden: true }
+  }
+
+  await schrijfStraks('samen met een bus klaarmaken')
+  const uitslag = { ...leeg, knoppen }
+  for (const [modelcfg, acties] of Object.entries(perVariant)) {
+    const deel = schrijfBusknoppen(modelcfg, acties)
+    if (!deel) continue
+    uitslag.bijgeschreven += deel.toegevoegd
+    uitslag.gedeeld += deel.gedeeld
+    uitslag.geenPlek = Math.max(uitslag.geenPlek, deel.geenPlek)
+  }
+  return uitslag
+}
+
 /*
  * Wachten tot OMSI dicht is, alleen zolang er iets klaarstaat. Twee keer achter
  * elkaar "dicht" voordat er geschreven wordt: het spel schrijft keyboard.cfg
@@ -3110,6 +3165,37 @@ function registerHandlers(): void {
   })
   handle('telefoon:toets', (_event, actie: OmsiToets) => omsiToets(actie))
   handle('telefoon:knoppen', () => zetBusknoppenAan())
+
+  /*
+   * BUSSEN KLAARMAKEN, VANUIT DE APP
+   *
+   * Wat hierboven in het spel gebeurt -- een apparaat erbij zetten en de knoppen
+   * aan een toets hangen -- kan ook vooraf, vanuit de app, voor elke bus die er
+   * staat. De gebruiker: "de gebruiker moet via de app zelf de bus kunnen
+   * toevoegen zodat de app de benodigdheden zelf bouwt voor de bus". Het
+   * uitlezen gebeurt in de werker (core/busklaar.ts) en kan een minuut duren;
+   * het bewaren gebeurt onder dezelfde sleutel die de plugin tijdens het rijden
+   * doorgeeft, dus in het spel staat het apparaat er gewoon.
+   */
+  handle('bussen:lijst', async () => {
+    const mappen = await werkerVraag<Busmap[]>({ soort: 'busmappen' }, 'bussen')
+    const gekozen = readSettings(userData()).busmodules ?? {}
+    return mappen.map((map) => ({
+      ...map,
+      klaar: (gekozen[map.sleutel] ?? []).length > 0,
+      apparaten: gekozen[map.sleutel] ?? []
+    }))
+  })
+  handle('bussen:analyse', async (_event, sleutel: string) => {
+    const analyse = await werkerVraag<Busanalyse>(
+      { soort: 'busanalyse', sleutel: String(sleutel) },
+      'bussen'
+    )
+    return { ...analyse, gekozen: readSettings(userData()).busmodules?.[String(sleutel)] }
+  })
+  handle('bussen:klaar', (_event, sleutel: string, ids: string[]) =>
+    busKlaarmaken(String(sleutel), Array.isArray(ids) ? ids.map(String) : [])
+  )
   handle('telefoon:module', (_event, id: string, aan: boolean) => {
     zetBusmodule(freshLive(), String(id), Boolean(aan))
   })

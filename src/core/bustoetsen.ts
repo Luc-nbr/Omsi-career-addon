@@ -115,11 +115,39 @@ const LETTERS = [
   30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38, 50, 49, 24, 25, 19, 31, 20, 22, 47, 17, 45, 21, 44
 ]
 const FUNCTIETOETSEN = [59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 87, 88]
+/** De cijferrij, 1 tot en met 0. */
+const CIJFERS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+/** - = [ ] ; ' ` \ , . / -- op elk toetsenbord dezelfde scancodes, welke letter er ook op staat. */
+const LEESTEKENS = [12, 13, 26, 27, 39, 40, 41, 43, 51, 52, 53]
+/*
+ * MEER TOETSEN, MET DEZELFDE BEWEZEN MODIFIERS
+ *
+ * Met alleen letters en F-toetsen waren het er 62, min wat OMSI zelf gebruikt:
+ * een stuk of 53 per bus. Over de hele vloot paste de grootste variant van zeven
+ * busmappen daar niet in -- de Lion's City 97 knoppen, de HOH-MAN 76, de
+ * Hamburgse stadsbus 71 (scripts/probe-busklaar.ts --vloot).
+ *
+ * Wat bewezen moest worden is de MODIFIER, niet de toets: de plugin drukt met
+ * SendInput scancodes in, net als een echt toetsenbord, en OMSI leest ze via
+ * DirectInput als scancodes. Ctrl+cijfer gebruikt OMSI bovendien zelf:
+ * keyboard_reset.cfg zet de muntwisselaar op Ctrl+6 tot en met Ctrl+0. Shift+
+ * cijfer, Ctrl/Shift+leesteken en Shift+F-toets gebruikt OMSI nergens. Ze komen
+ * ACHTERAAN, zodat wat al aan een toets hing niet verschuift, en wat OMSI zelf
+ * al gebruikt valt vanzelf af (`bezet` in zetBustoetsen).
+ */
 const KANDIDATEN: { scancode: number; modifiers: number }[] = [
   ...LETTERS.map((scancode) => ({ scancode, modifiers: MOD_CTRL })),
   ...FUNCTIETOETSEN.map((scancode) => ({ scancode, modifiers: MOD_CTRL })),
-  ...LETTERS.map((scancode) => ({ scancode, modifiers: MOD_SHIFT }))
+  ...LETTERS.map((scancode) => ({ scancode, modifiers: MOD_SHIFT })),
+  ...CIJFERS.map((scancode) => ({ scancode, modifiers: MOD_CTRL })),
+  ...CIJFERS.map((scancode) => ({ scancode, modifiers: MOD_SHIFT })),
+  ...FUNCTIETOETSEN.map((scancode) => ({ scancode, modifiers: MOD_SHIFT })),
+  ...LEESTEKENS.map((scancode) => ({ scancode, modifiers: MOD_CTRL })),
+  ...LEESTEKENS.map((scancode) => ({ scancode, modifiers: MOD_SHIFT }))
 ]
+
+/** Hoeveel toetsen de app in totaal kan uitdelen, voor wie wil weten wat er past. */
+export const TOETSEN_TOTAAL = KANDIDATEN.length
 
 /**
  * Modificaties waarvan we weten dat OMSI ze doorgeeft, omdat het spel ze zelf

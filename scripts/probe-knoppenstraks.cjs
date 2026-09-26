@@ -101,6 +101,18 @@ function haalJunctionsLos() {
 }
 const keyboard = join(nep, 'Inputs', 'keyboard.cfg')
 const almexIn = () => (readFileSync(keyboard, 'utf8').match(/almex/gi) ?? []).length
+/*
+ * In de KOPIE de knoppen van de ALMEX en de geldlade weghalen: heeft de speler
+ * de HH20 al klaargemaakt, dan stonden ze er al en valt er niets na te lopen.
+ * Een [entry] is "[entry]", de actie, de scancode en de modifiers.
+ */
+{
+  const tekst = readFileSync(keyboard, 'latin1')
+  const nl = tekst.includes('\r\n') ? '\r\n' : '\n'
+  const blokken = tekst.split(`${nl}[entry]${nl}`)
+  const over = blokken.filter((blok, i) => i === 0 || !/^(almex_|cashdesk_)/i.test(blok))
+  writeFileSync(keyboard, over.join(`${nl}[entry]${nl}`), 'latin1')
+}
 
 inst.tourSeen = true
 inst.omsiPath = nep

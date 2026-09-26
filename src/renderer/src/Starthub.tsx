@@ -39,6 +39,8 @@ interface Props {
   onLogboek: () => void;
   /** Van de bussen die nog geen foto hebben er een maken. */
   onBusplaatjes: () => void;
+  /** Naar "Bussen klaarmaken": een bus uitlezen en zijn knoppen aan een toets hangen. */
+  onBussen: () => void;
   /** Wat er na de laatste dienst te melden valt: de uitkomst, of dat hij geannuleerd is. */
   melding?: string;
   onMeldingWeg?: () => void;
@@ -96,6 +98,7 @@ export function Starthub({
   onChauffeur,
   onLogboek,
   onBusplaatjes,
+  onBussen,
   melding,
   onMeldingWeg,
   onRondleiding,
@@ -314,6 +317,15 @@ export function Starthub({
               Voor de bussen die later kwamen: de installatie maakte de foto's
               van wat er toen stond, deze knop doet de rest.
             */}
+            {/*
+              Een bus klaarmaken: de app leest hem uit, bouwt de schermen van
+              zijn apparaten na en hangt hun knoppen aan een toets. Daarna werkt
+              alles in de overlay en op de tablet, zonder iets in het spel.
+            */}
+            <button type="button" className="hub-knop" onClick={onBussen}>
+              <Icoon naam="bus" />
+              {t(language, "hub.buses")}
+            </button>
             <button type="button" className="hub-knop" onClick={onBusplaatjes}>
               <Icoon naam="bus" />
               {t(language, "photos.sync")}

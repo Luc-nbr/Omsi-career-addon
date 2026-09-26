@@ -74,6 +74,17 @@ const bron = join(process.env.APPDATA, 'omsi-enhancer')
 cpSync(join(bron, 'settings.json'), join(map, 'settings.json'))
 cpSync(join(bron, 'profiles'), join(map, 'profiles'), { recursive: true })
 const inst = JSON.parse(readFileSync(join(map, 'settings.json'), 'utf8'))
+/** Staan deze knoppen, en de vier losse, al in de keyboard.cfg van de speler? Alleen lezen. */
+function almexGebonden(klikken) {
+  let tekst = ''
+  try {
+    tekst = readFileSync(join(inst.omsiPath ?? '', 'Inputs', 'keyboard.cfg'), 'latin1').toLowerCase()
+  } catch {
+    return false
+  }
+  const nodig = [...klikken, 'almex_riegel', 'almex_ticket_toggle', 'cashdesk_change_0500', 'cashdesk_change_1000']
+  return nodig.every((actie) => new RegExp(`\\[entry\\]\\r?\\n${actie.toLowerCase()}\\r?\\n`).test(tekst))
+}
 inst.tourSeen = true
 delete inst.busmodules
 delete inst.apparaatSleutel
@@ -448,8 +459,12 @@ app.whenReady().then(async () => {
     opTablet.beeld === 'ja' &&
     opTablet.volledig &&
     opTablet.bedekt.length === 0 &&
-    /* In de proef hangen de knoppen niet aan een toets: dan hoort de stip er te staan. */
-    opTablet.waarschuwt &&
+    /*
+     * Hangen de knoppen niet aan een toets, dan hoort de stip er te staan; heeft
+     * de speler de ALMEX al klaargemaakt, dan juist niet. Wat er in keyboard.cfg
+     * staat, wordt hier alleen gelezen.
+     */
+    opTablet.waarschuwt === !almexGebonden(nu.klikken) &&
     /* Vult het de hoogte (liggend is de hoogte de grens), op een paar punten na? */
     opTablet.vlak && opTablet.vlak[1] >= opTablet.venster[1] - 4 &&
     !eruit.laag && eruit.balk && eruit.terugKnop && erin &&

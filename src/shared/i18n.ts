@@ -804,6 +804,140 @@ const TEXT = {
     fr: 'Continuer',
     nl: 'Verder'
   },
+  /*
+   * BUSSEN KLAARMAKEN
+   *
+   * Wat de app vooraf voor een bus doet: hem uitlezen, de schermen van zijn
+   * apparaten nabouwen en hun knoppen aan een toets hangen. De woorden die de
+   * speler kent -- touchscreen, knoppen, toets -- en niet die van de code.
+   */
+  'hub.buses': {
+    en: 'Prepare buses',
+    de: 'Busse vorbereiten',
+    fr: 'Préparer les bus',
+    nl: 'Bussen klaarmaken'
+  },
+  'bus.klaarTitle': {
+    en: 'Prepare buses',
+    de: 'Busse vorbereiten',
+    fr: 'Préparer les bus',
+    nl: 'Bussen klaarmaken'
+  },
+  'bus.klaarIntro': {
+    en: 'Pick a bus. The app reads it, rebuilds the screens of its devices and puts their buttons on keys. After that everything works in the overlay and on your tablet, with nothing to do in the game.',
+    de: 'Wähle einen Bus. Die App liest ihn aus, baut die Bildschirme seiner Geräte nach und legt ihre Tasten auf die Tastatur. Danach funktioniert alles im Overlay und auf dem Tablet, ohne etwas im Spiel zu tun.',
+    fr: 'Choisissez un bus. L’application le lit, reconstruit les écrans de ses appareils et attribue leurs boutons à des touches. Ensuite tout fonctionne dans la superposition et sur la tablette, sans rien faire dans le jeu.',
+    nl: 'Kies een bus. De app leest hem uit, bouwt de schermen van zijn apparaten na en hangt hun knoppen aan een toets. Daarna werkt alles in de overlay en op je tablet, zonder iets in het spel te hoeven doen.'
+  },
+  'bus.klaarFoot': {
+    en: '{klaar} of {totaal} buses are prepared.',
+    de: '{klaar} von {totaal} Bussen sind vorbereitet.',
+    fr: '{klaar} bus sur {totaal} sont préparés.',
+    nl: '{klaar} van de {totaal} bussen zijn klaar.'
+  },
+  'bus.klaarVarianten': {
+    en: '{n} variants',
+    de: '{n} Varianten',
+    fr: '{n} variantes',
+    nl: '{n} varianten'
+  },
+  'bus.klaarVariantenOne': { en: '1 variant', de: '1 Variante', fr: '1 variante', nl: '1 variant' },
+  'bus.klaarIsKlaar': { en: 'Ready: {apparaten}', de: 'Bereit: {apparaten}', fr: 'Prêt : {apparaten}', nl: 'Klaar: {apparaten}' },
+  'bus.klaarLeest': {
+    en: 'Reading {bus}. With many variants this can take up to a minute.',
+    de: '{bus} wird ausgelesen. Bei vielen Varianten kann das bis zu einer Minute dauern.',
+    fr: 'Lecture de {bus}. Avec de nombreuses variantes, cela peut prendre une minute.',
+    nl: 'De app leest {bus} uit. Bij een bus met veel varianten kan dat tot een minuut duren.'
+  },
+  'bus.klaarKies': {
+    en: 'Ticked is what the app recommends: everything with a screen and buttons. Tap a device to add or remove it.',
+    de: 'Angehakt ist, was die App empfiehlt: alles mit Bildschirm und Tasten. Tippe ein Gerät an, um es hinzuzufügen oder zu entfernen.',
+    fr: 'Coché : ce que l’application recommande, tout ce qui a un écran et des boutons. Touchez un appareil pour l’ajouter ou le retirer.',
+    nl: 'Aangevinkt is wat de app aanraadt: alles met een scherm en knoppen. Tik een apparaat aan om het erbij te zetten of weg te halen.'
+  },
+  'bus.klaarNiets': {
+    en: 'This bus has no device with buttons that the app can rebuild.',
+    de: 'Dieser Bus hat kein Gerät mit Tasten, das die App nachbauen kann.',
+    fr: 'Ce bus n’a aucun appareil à boutons que l’application peut reconstruire.',
+    nl: 'Deze bus heeft geen apparaat met knoppen dat de app kan nabouwen.'
+  },
+  'bus.soortTouchscreen': {
+    en: 'Touchscreen · {n} buttons',
+    de: 'Touchscreen · {n} Tasten',
+    fr: 'Écran tactile · {n} boutons',
+    nl: 'Touchscreen · {n} knoppen'
+  },
+  'bus.soortTouchscreenOne': {
+    en: 'Touchscreen · 1 button',
+    de: 'Touchscreen · 1 Taste',
+    fr: 'Écran tactile · 1 bouton',
+    nl: 'Touchscreen · 1 knop'
+  },
+  'bus.soortScherm': {
+    en: 'Screen with buttons · {n}',
+    de: 'Bildschirm mit Tasten · {n}',
+    fr: 'Écran avec boutons · {n}',
+    nl: 'Scherm met knoppen · {n}'
+  },
+  'bus.soortKnoppen': { en: 'Buttons only · {n}', de: 'Nur Tasten · {n}', fr: 'Boutons seuls · {n}', nl: 'Alleen knoppen · {n}' },
+  'bus.soortDisplay': { en: 'Screen only', de: 'Nur Bildschirm', fr: 'Écran seul', nl: 'Alleen een scherm' },
+  'bus.beperkingScript': {
+    en: 'the bus script draws this screen itself; the buttons do work',
+    de: 'das Busskript zeichnet diesen Bildschirm selbst; die Tasten funktionieren',
+    fr: 'le script dessine cet écran lui-même ; les boutons fonctionnent',
+    nl: 'het busscript tekent dit scherm zelf; de knoppen werken wel'
+  },
+  'bus.beperkingVersleuteld': {
+    en: 'partly encrypted; not everything can be placed',
+    de: 'teilweise verschlüsselt; nicht alles lässt sich platzieren',
+    fr: 'en partie chiffré ; tout ne peut pas être placé',
+    nl: 'deels versleuteld; niet alles is op zijn plek te zetten'
+  },
+  'bus.klaarDoe': { en: 'Prepare', de: 'Vorbereiten', fr: 'Préparer', nl: 'Klaarmaken' },
+  'bus.klaarBezig': { en: 'Working…', de: 'Einen Moment…', fr: 'Un instant…', nl: 'Bezig…' },
+  'bus.klaarNaarHub': { en: 'Main menu', de: 'Hauptmenü', fr: 'Menu principal', nl: 'Hoofdmenu' },
+  'bus.klaarGedaan': {
+    en: 'Ready. {bij} buttons put on keys{gedeeld}. Everything works in the overlay and on the tablet from the next OMSI start.',
+    de: 'Fertig. {bij} Tasten eingerichtet{gedeeld}. Ab dem nächsten OMSI-Start funktioniert alles im Overlay und auf dem Tablet.',
+    fr: 'Prêt. {bij} boutons attribués{gedeeld}. Tout fonctionne dans la superposition et sur la tablette dès le prochain démarrage d’OMSI.',
+    nl: 'Klaar. {bij} knoppen aan een toets gehangen{gedeeld}. Vanaf de volgende start van OMSI werkt alles in de overlay en op de tablet.'
+  },
+  'bus.klaarGedeeld': {
+    en: ', {n} of them shared with another bus',
+    de: ', davon {n} mit einem anderen Bus geteilt',
+    fr: ', dont {n} partagés avec un autre bus',
+    nl: ', waarvan {n} gedeeld met een andere bus'
+  },
+  'bus.klaarAlles': {
+    en: 'Ready. All {n} buttons already had a key.',
+    de: 'Fertig. Alle {n} Tasten waren schon eingerichtet.',
+    fr: 'Prêt. Les {n} boutons avaient déjà une touche.',
+    nl: 'Klaar. Alle {n} knoppen hadden al een toets.'
+  },
+  'bus.klaarGeenPlek': {
+    en: ' {n} buttons got no key: there are not enough keys for all devices at once. Untick one.',
+    de: ' {n} Tasten bekamen keine Taste: es gibt nicht genug für alle Geräte zugleich. Entferne eines.',
+    fr: ' {n} boutons n’ont pas eu de touche : il n’y en a pas assez pour tous les appareils. Décochez-en un.',
+    nl: ' {n} knoppen kregen geen toets: er zijn er niet genoeg voor alle apparaten tegelijk. Vink er een uit.'
+  },
+  'bus.klaarOnthouden': {
+    en: 'Noted. OMSI is running; as soon as you quit it, the app puts the {n} buttons on keys.',
+    de: 'Notiert. OMSI läuft; sobald du es beendest, richtet die App die {n} Tasten ein.',
+    fr: 'Noté. OMSI tourne ; dès que vous le quittez, l’application attribue les {n} boutons.',
+    nl: 'Genoteerd. OMSI draait; zodra je het afsluit hangt de app de {n} knoppen aan een toets.'
+  },
+  'bus.klaarWeg': {
+    en: 'Nothing ticked: this bus shows no devices anymore.',
+    de: 'Nichts angehakt: dieser Bus zeigt keine Geräte mehr.',
+    fr: 'Rien de coché : ce bus n’affiche plus d’appareils.',
+    nl: 'Niets aangevinkt: bij deze bus staan geen apparaten meer.'
+  },
+  'bus.klaarFout': {
+    en: 'Reading the bus failed: {reden}',
+    de: 'Auslesen fehlgeschlagen: {reden}',
+    fr: 'La lecture du bus a échoué : {reden}',
+    nl: 'Uitlezen mislukt: {reden}'
+  },
   'photos.sync': {
     en: 'Update bus pictures',
     de: 'Busbilder aktualisieren',

@@ -1,5 +1,6 @@
 import { parentPort, workerData } from 'node:worker_threads'
 import { maakKaartlaag } from '../core/kaartlaag'
+import { actiesPerVariant, analyseerBusmap, busmappen, modelcfgsVan, type Busanalyse } from '../core/busklaar'
 import type { DutyRequest } from '../shared/api'
 
 /**
@@ -36,6 +37,9 @@ type Opdracht =
   | { id: number; soort: 'kleurstellingen'; busPad: string }
   | { id: number; soort: 'diensten'; request: DutyRequest }
   | { id: number; soort: 'routes'; folder: string; legs: Array<{ tripFile: string; stopIds: string[] }> }
+  | { id: number; soort: 'busmappen' }
+  | { id: number; soort: 'busanalyse'; sleutel: string }
+  | { id: number; soort: 'busacties'; sleutel: string; ids: string[] }
 
 interface Antwoord {
   id: number
@@ -49,6 +53,15 @@ interface Antwoord {
 
 const { omsiPath, userData } = workerData as { omsiPath: string; userData: string }
 const laag = maakKaartlaag(omsiPath, userData)
+
+/*
+ * Een bus uitlezen kost van twee seconden (de HH20) tot bijna een minuut (een
+ * map met acht modellen en vijf touchscreens per model). Wat al gelezen is, blijft
+ * bewaard zolang de werker leeft: de bestanden van een bus veranderen niet
+ * terwijl de app open staat, en wie dezelfde bus nog eens aantikt hoort niet
+ * opnieuw te wachten.
+ */
+const analyses = new Map<string, Busanalyse>()
 
 parentPort?.on('message', (opdracht: Opdracht) => {
   const begin = Date.now()
@@ -86,7 +99,20 @@ parentPort?.on('message', (opdracht: Opdracht) => {
       uitkomst = laag.bustekening(opdracht.busPad, opdracht.kleurstelling)
     else if (opdracht.soort === 'kleurstellingen') uitkomst = laag.kleurstellingen(opdracht.busPad)
     else if (opdracht.soort === 'diensten') uitkomst = laag.diensten(opdracht.request)
-    else uitkomst = laag.routes(opdracht.folder, opdracht.legs)
+    else if (opdracht.soort === 'busmappen') uitkomst = busmappen(laag.voertuigen())
+    else if (opdracht.soort === 'busanalyse') {
+      let analyse = analyses.get(opdracht.sleutel)
+      if (!analyse) {
+        const cfgs = modelcfgsVan(omsiPath, laag.voertuigen(), opdracht.sleutel)
+        analyse = analyseerBusmap(omsiPath, cfgs, opdracht.sleutel)
+        analyses.set(opdracht.sleutel, analyse)
+        detail = `${cfgs.length} modellen, ${analyse.apparaten.length} apparaten`
+      }
+      uitkomst = analyse
+    } else if (opdracht.soort === 'busacties') {
+      const cfgs = modelcfgsVan(omsiPath, laag.voertuigen(), opdracht.sleutel)
+      uitkomst = actiesPerVariant(omsiPath, cfgs, opdracht.ids)
+    } else uitkomst = laag.routes(opdracht.folder, opdracht.legs)
 
     const antwoord: Antwoord = { id: opdracht.id, ok: true, ms: Date.now() - begin, uitkomst, detail }
     parentPort?.postMessage(antwoord)

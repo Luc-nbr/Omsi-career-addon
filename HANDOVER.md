@@ -733,9 +733,11 @@ dingen stonden dat in de weg, allemaal opgelost:
 3. **`bruikbareToetsen`** kende alleen de vaste lijst van de app, dus stond elke
    knop die uit het model van een bus komt voorgoed uit. Hij krijgt nu de knoppen
    van de apparaten in deze bus mee (`extra`).
-4. **Te weinig toetsen.** Er zijn 53 vrije bewezen combinaties (Ctrl+letter,
-   Ctrl+F-toets, Shift+letter); Ctrl+Shift doet in OMSI niets en is uit de lijst.
-   Daarom **delen**: OMSI's eigen `keyboard_reset.cfg` hangt op tien plekken
+4. **Te weinig toetsen.** Eerst waren er 53 vrije combinaties (Ctrl+letter,
+   Ctrl+F-toets, Shift+letter); sinds "Bussen klaarmaken" ook Ctrl/Shift met de
+   cijfers, Shift+F-toets en Ctrl/Shift met leestekens, samen 101 per bus
+   (`TOETSEN_TOTAAL` in core/bustoetsen.ts). Ctrl+Shift doet in OMSI niets en is
+   uit de lijst. Daarnaast **delen**: OMSI's eigen `keyboard_reset.cfg` hangt op tien plekken
    meerdere handelingen aan één toets (F8 is `bus_linie_plus` én
    `bus_rollband_setT`), omdat een bus alleen naar zijn eigen namen luistert. Een
    toets mag gedeeld worden als alles erop van ons is (niet in
@@ -756,6 +758,37 @@ is -- de rest zijn junctions naar de echte mappen die alleen gelezen worden, en
 die aan het eind met rmdir zonder /s worden losgehaald; **die map nooit
 recursief verwijderen**), en `scripts/probe-toetsdelen.ts` voor de regels van
 het delen.
+
+**Bussen klaarmaken, vanuit de app** (26-09-2026). Wens van de gebruiker: "de
+gebruiker moet via de app zelf de bus kunnen toevoegen zodat de app de
+benodigdheden zelf bouwt voor de bus". Op het hoofdmenu staat "Bussen
+klaarmaken": de bussen per map als tegels (met foto, en "Klaar: ALMEX" als ze
+klaar zijn); tik er een aan en de app leest hem uit, in de werker
+(`core/busklaar.ts`, opdrachten `busmappen`, `busanalyse`, `busacties` in
+`main/kaartwerker.ts`). Elk apparaat wordt een tegel met zijn soort --
+touchscreen, scherm met knoppen, alleen knoppen, alleen een scherm -- en wat
+een scherm én minstens vier knoppen heeft staat aangevinkt. "Klaarmaken"
+(`busKlaarmaken` in main/index.ts) bewaart de keuze in `busmodules` onder
+dezelfde sleutel die de plugin tijdens het rijden doorgeeft (de busmap in
+kleine letters, `vehicles/hh20_ebus2021`), en hangt de knoppen **per variant**
+(per model.cfg, met de triggers van die variant) aan een toets -- of zet ze in
+de wachtrij als OMSI draait. Twee varianten rijden nooit tegelijk en mogen
+toetsen delen.
+
+Over de vloot: 28 van de 32 busmappen hebben een apparaat om klaar te maken;
+uitlezen duurt tot 48 s (de Citybus 530 van Kajosoft, 122 varianten). Twee
+mappen passen niet in 101 toetsen als alles aanstaat -- de Kajosoft-bussen met
+vijf touchscreens en 174 knoppen per variant. Het scherm zegt dan hoeveel
+knoppen geen toets kregen en vraagt er een uit te vinken.
+
+Proeven: `scripts/probe-busklaar.ts` (het uitlezen, met `--vloot` over alle
+bussen) en `scripts/probe-bussenklaar.cjs` (het scherm in de echte app, van het
+hoofdmenu tot keyboard.cfg, met een nagemaakte OMSI-map zoals hierboven).
+**Let op in proeven die een kopie van keyboard.cfg gebruiken:** de speler heeft
+de HH20 inmiddels klaargemaakt, dus de ALMEX-knoppen staan al in zijn bestand.
+`probe-knoppenstraks.cjs` en `probe-bussenklaar.cjs` halen ze daarom eerst uit
+hun kopie; `probe-overlayscherm.cjs` leest het echte bestand en verwacht de
+oranje stip alleen als ze er niet staan.
 
 **Een getal dat de plugin niet levert, telt als onzichtbaar.** De klok en de
 knoppen van een ALMEX hangen aan `almex_ein = 1`; ontbreekt dat getal, dan
@@ -787,10 +820,9 @@ in het spel nog nagekeken moet worden:
 van de Citaro C2); die krijgen een leeg vlak en hun knoppen werken wel. 12 hebben
 versleutelde meshes waarvan de plek niet te redden is.
 
-**Master loopt achter.** De tak `claude/ecstatic-noether-296800` bevat alles van
-master plus 0.4.0, 0.4.1 en dit werk. Master is niet meegegaan en origin/master
-staat nog verder terug (`d193f7b`). Samenvoegen is een snelle doorspoeling --
-er is geen afwijking -- maar dat is een beslissing voor de gebruiker.
+**Master is lokaal bij.** Master is doorgespoeld naar de tak
+`claude/ecstatic-noether-296800` en daarna verder gegaan; origin/master staat
+nog terug (`d193f7b`). Pushen is een beslissing voor de gebruiker.
 
 ### 5.0a Eerder (22-09-2026)
 
