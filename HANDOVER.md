@@ -106,6 +106,12 @@ blijft eenmalig een kopie staan als `laststn.osn.voor-omsi-career`. Verder niets
 | `busmodule.ts` | Stelt uit het model van ELKE bus zelf een apparaat samen: schermpjes, knoppen en hun opschrift |
 | `busvorm.ts` | Waar die schermpjes en knoppen OP het apparaat liggen, gemeten aan de `.o3d`-onderdelen van de bus |
 | `bustoetsen.ts` | De knoppen die OMSI alleen op de muis heeft, bijgeschreven in `keyboard.cfg` |
+| `schermcfg.ts` | Een `model.cfg` gelezen zoals Omsi.exe hem leest: alle `[mesh]`-regels, `[visible]`, `[newanim]`, materialen |
+| `schermvorm.ts` | Het scherm van een apparaat: welke plaatjes, tekstvakken en aanraakvlakken, waar, en wanneer OMSI ze toont |
+| `schermtextuur.ts` | Een textuur van het scherm opzoeken zoals OMSI dat doet, en de materiaalregels erop toepassen |
+| `textuur.ts` | DDS en TGA uitgepakt tot RGBA; herkent het formaat aan de eerste bytes, niet aan de extensie |
+| `png.ts` | PNG lezen en schrijven, voor wat de browser niet zelf kan of zou verkeerd doen |
+| `oft.ts` | De bitmapfonts van OMSI (`Fonts/*.oft`), gelezen zoals Omsi.exe 2.3.004 ze leest |
 | `career.ts` | Loopbaan: diensten, uren, rangen, modi, vergunningen, examens |
 | `exam.ts` | De eisen van het rijexamen en het oordeel erover |
 | `startup.ts` | Het startscherm van OMSI: `laststn.osn` en `[last_map]` |
@@ -658,7 +664,72 @@ hoort niet onder je handen opnieuw op te komen (`probe-beweging.cjs`,
 
 ## 5. Openstaand werk
 
-### 5.0 Waar het nu staat (22-09-2026)
+### 5.0 Waar het nu staat (26-09-2026)
+
+**Het scherm van een apparaat staat nagebouwd in de overlay en op de tablet**
+(26-09-2026). Niet meer de tekst in een eigen kadertje, maar het scherm zoals
+OMSI het tekent: het plaatje van het menu dat aanstaat, de tekst in het
+lettertype van het spel, en de knoppen als aanraakvlakken op hun plek. Over de
+vloot: 351 bussen, 1618 apparaten, waarvan 1134 met een getekend scherm.
+
+Dit werk lag een tijd onafgemaakt in de werkboom van deze tak -- de sessie die
+het bouwde stopte voor het vastleggen. Een veiligheidskopie van die toestand
+staat als `refs/onaf/ibis-schermen-2609` (een stash-object, niet op de
+stash-stapel). Mag weg zodra niemand er meer naar kijkt.
+
+De weg van plugin tot scherm:
+
+1. De app zet in `getallen.txt` welke getalvariabelen de vorm nodig heeft
+   (`schermGetallenVoor`); de plugin (13) beantwoordt ze in `live.json`, samen
+   met de zichtbaarheid van elke mesh (`zichtbaar`, en `meshes.json` met de
+   namen, zodat de app de volgorde kan nalopen).
+2. `main/scherm.ts` bouwt per bus en apparaat één keer de vorm
+   (`core/schermvorm.ts`), wacht daarvoor hooguit drie tellen op de getallen, en
+   zet de plaatjes in een register (`main/schermtexturen.ts`) op een id.
+3. Bij elk beeld komt de stand erbij: teksten, getallen, en de vlaggen van OMSI.
+4. De overlay haalt de vorm op via IPC (`scherm:vorm`) en de plaatjes via het
+   eigen protocol `omsischerm://t/<id>`; de tablet via `api/scherm/<id>` en
+   `textuur/<id>`. Beide alleen op een id van twintig hextekens uit het
+   register -- nooit een pad.
+5. `renderer/apparaatscherm.tsx` tekent het op een canvas, met de
+   aanraakvlakken erboven.
+
+**Een getal dat de plugin niet levert, telt als onzichtbaar.** De klok en de
+knoppen van een ALMEX hangen aan `almex_ein = 1`; ontbreekt dat getal, dan
+blijft het scherm op die plekken leeg. In het spel levert de plugin elk getal
+dat de app vraagt, maar wie een proef schrijft moet ze allemaal beantwoorden --
+zie `scripts/probe-overlayscherm.cjs`.
+
+**Proeven:**
+- `scripts/probe-overlayscherm.cjs` -- de hele weg, met een eigen `live.json`:
+  vraag, antwoord, vorm, overlay, tablet, menuwissel, en of de server een
+  vreemde id of een pad weigert. Dit is de proef om als eerste te draaien.
+- `scripts/probe-schermvorm.ts` -- de vorm over de hele vloot, met harde
+  controles op de nagemeten bussen (`--snel` alleen die).
+- `scripts/probe-apparaatscherm.cjs` -- het tekenen, in een los pagina'tje.
+- `scripts/probe-schermtextuur.ts`, `scripts/probe-letters.ts` -- de plaatjes en
+  de lettertypen.
+
+**Niet in het spel gezien.** Alles hierboven is nagerekend zonder OMSI. Wat er
+in het spel nog nagekeken moet worden:
+- of een tik op een aanraakvlak in OMSI aankomt -- dat gaat via `keyboard.cfg`
+  en vraagt dat de knoppen eerst aan een toets gehangen zijn (met OMSI dicht);
+- of de vlaggen van de plugin (`zichtbaar`) met de volgorde van de app kloppen
+  in een bus die niet de HH20 is;
+- de drempel van alfatest (`[matl_alpha] 1`, nu 128), en of `[visible]` exact
+  of afgerond vergelijkt -- allebei niet in het spel nagemeten.
+
+**Wat er niet na te tekenen valt, en zo blijft:** 52 apparaten tekenen met een
+`[scripttexture]` (het busscript schildert de beeldpunten zelf, zoals de Atron
+van de Citaro C2); die krijgen een leeg vlak en hun knoppen werken wel. 12 hebben
+versleutelde meshes waarvan de plek niet te redden is.
+
+**Master loopt achter.** De tak `claude/ecstatic-noether-296800` bevat alles van
+master plus 0.4.0, 0.4.1 en dit werk. Master is niet meegegaan en origin/master
+staat nog verder terug (`d193f7b`). Samenvoegen is een snelle doorspoeling --
+er is geen afwijking -- maar dat is een beslissing voor de gebruiker.
+
+### 5.0a Eerder (22-09-2026)
 
 **0.4.0 is uit** (22-09-2026), als Latest op GitHub, met de notities in
 `uitgaven/0.4.0.md`. De tag `v0.4.0` hangt aan de tak `claude/ecstatic-noether-296800`;
