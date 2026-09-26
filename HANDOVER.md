@@ -1317,10 +1317,13 @@ van de gebruiker, met een rit erin die misschien nog loopt.
 
 **Bij het openen kom je in het hoofdmenu** (sinds 22-09-2026), en stond er nog
 een dienst open, dan vraagt de app of je verder wilt (`HervatDialog.tsx`).
-Verder rijden brengt je naar het rijscherm; "laat maar staan" laat je in het
-hoofdmenu en raakt de dienst niet aan -- hij blijft in het profiel en de tegel
-zegt nog steeds "verder rijden". Afbreken is iets anders en zit waar het hoort,
-op het rijscherm onder "dienst annuleren".
+Verder rijden brengt je naar het rijscherm; **Verwijderen** (sinds 26-09-2026,
+eerst "laat maar staan") doet hetzelfde als "dienst annuleren" op het
+rijscherm: de dienst gaat uit het profiel, er wordt niets geboekt, en het
+hoofdmenu zegt welke lijn weg is. Zonder tweede vraag, want het venster is de
+vraag. Luc: "dit moet worden, verder rijden of verwijderen". De rode knop heeft
+een vaste tint (#c62f25) en niet `--laat`: die is in het donkere thema te licht
+voor witte letters. Proef: `scripts/probe-hervat.cjs`.
 
 Wie in deze sessie zelf op START drukt gaat wel meteen naar het rijscherm; dat
 staat in `begin`, want daar valt niets te vragen. Het onderscheid hangt aan

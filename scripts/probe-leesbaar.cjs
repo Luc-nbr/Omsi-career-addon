@@ -173,7 +173,7 @@ function Scherm() {
         />
       </div>
       <div className="hub" style={{ position: 'relative', height: '300px' }}>
-        <HervatDialog lijn="849" kaart="Hohenkirchen" onHervatten={() => {}} onVerlaten={() => {}} />
+        <HervatDialog lijn="849" kaart="Hohenkirchen" onHervatten={() => {}} onVerwijderen={() => {}} />
       </div>
       <div className="setup" style={{ position: 'relative', height: '520px' }}>
         <DraaitDialog

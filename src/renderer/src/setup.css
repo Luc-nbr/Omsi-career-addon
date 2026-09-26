@@ -2198,6 +2198,17 @@
   color: var(--vel-ink);
 }
 
+/*
+ * Wat niet terug te draaien is, in rood: het verwijderen van een dienst die
+ * openstond. Een vaste tint en geen --laat: die is in het donkere thema zo licht
+ * dat witte letters erop onder de 4,5 zakken. Deze haalt 5,5 in beide.
+ */
+.setup .dialog .btn.danger,
+.hub .dialog .btn.danger {
+  background: #c62f25;
+  color: #ffffff;
+}
+
 .setup .dialog .btn:disabled,
 .hub .dialog .btn:disabled {
   opacity: 0.5;

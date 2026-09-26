@@ -1316,10 +1316,10 @@ const TEXT = {
     nl: 'Je had nog een dienst openstaan'
   },
   'hervat.body': {
-    en: 'Line {line} on {map} is still running. Carry on with it, or leave it for now? It stays in your profile either way.',
-    de: 'Linie {line} auf {map} läuft noch. Weiterfahren oder vorerst liegen lassen? Der Dienst bleibt so oder so in deinem Profil.',
-    fr: 'La ligne {line} sur {map} est toujours en cours. Reprendre, ou laisser pour l’instant ? Le service reste dans votre profil.',
-    nl: 'Lijn {line} op {map} loopt nog. Verder rijden, of voor nu laten staan? Hij blijft hoe dan ook in je profiel.'
+    en: 'Line {line} on {map} is still running. Carry on with it, or delete it? Deleting cannot be undone; nothing gets booked.',
+    de: 'Linie {line} auf {map} läuft noch. Weiterfahren oder löschen? Löschen lässt sich nicht rückgängig machen; es wird nichts gebucht.',
+    fr: 'La ligne {line} sur {map} est toujours en cours. Reprendre, ou supprimer ? La suppression est définitive ; rien n’est enregistré.',
+    nl: 'Lijn {line} op {map} loopt nog. Verder rijden, of verwijderen? Verwijderen kun je niet terugdraaien; er wordt niets geboekt.'
   },
   'hervat.resume': {
     en: 'Carry on driving',
@@ -1327,11 +1327,17 @@ const TEXT = {
     fr: 'Reprendre',
     nl: 'Verder rijden'
   },
-  'hervat.leave': {
-    en: 'Leave it for now',
-    de: 'Vorerst liegen lassen',
-    fr: 'Laisser pour l’instant',
-    nl: 'Laat maar staan'
+  'hervat.delete': {
+    en: 'Delete',
+    de: 'Löschen',
+    fr: 'Supprimer',
+    nl: 'Verwijderen'
+  },
+  'hervat.deleted': {
+    en: 'Duty on line {line} deleted. Nothing was booked.',
+    de: 'Dienst auf Linie {line} gelöscht. Es wurde nichts gebucht.',
+    fr: 'Service de la ligne {line} supprimé. Rien n’a été enregistré.',
+    nl: 'Dienst op lijn {line} verwijderd. Er is niets geboekt.'
   },
   'draait.title': {
     en: 'OMSI is already running',

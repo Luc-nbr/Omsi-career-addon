@@ -64,7 +64,7 @@ function Scherm() {
           lijn="849"
           kaart="Hohenkirchen - Herrenhof"
           onHervatten={noteer('hervatten')}
-          onVerlaten={noteer('verlaten')}
+          onVerwijderen={noteer('verwijderen')}
         />
       </div>
     </LanguageProvider>
@@ -163,7 +163,7 @@ app.whenReady().then(async () => {
     staat.draaitKnoppen.length === 3 &&
     staat.keuzes.length === 2 &&
     staat.hervatKnoppen.length === 2 &&
-    gedrukt.join('|') === 'terug|klaarzetten|meerijden|verlaten|hervatten'
+    gedrukt.join('|') === 'terug|klaarzetten|meerijden|verwijderen|hervatten'
   console.log(goed ? 'de vragen kloppen' : 'DE VRAGEN KLOPPEN NIET')
   app.exit(goed ? 0 : 1)
 })

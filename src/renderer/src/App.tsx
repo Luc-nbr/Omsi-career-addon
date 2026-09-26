@@ -1298,6 +1298,22 @@ export function App(): JSX.Element {
     naarBegin(t(language, "done.cancelled"));
   }, [confirmed, language, naarBegin]);
 
+  /*
+   * De dienst die openstond verwijderen, vanuit de vraag bij het openen. Net als
+   * cancelDuty, maar zonder de tweede vraag: het venster was de vraag al.
+   */
+  const verwijderOpenDienst = useCallback(
+    async (lijn: string) => {
+      setCareer(await window.career.cancelDuty());
+      setDuties([]);
+      setSelected(undefined);
+      setStarted(false);
+      setStarting(false);
+      naarBegin(t(language, "hervat.deleted", { line: lijn }));
+    },
+    [language, naarBegin],
+  );
+
   /**
    * Dienst starten. Dit zet de situatie klaar in OMSI -- datum, tijd, bus bij de
    * halte en de dienstregeling -- en start daarna pas het spel. Er is geen aparte
@@ -2296,7 +2312,12 @@ export function App(): JSX.Element {
                   setHervatVraag(false);
                   setScreen("drive");
                 }}
-                onVerlaten={() => setHervatVraag(false)}
+                onVerwijderen={() => {
+                  const lijn =
+                    duty.lineNumbers[0] ?? duty.legs[0]?.lineNumber ?? "?";
+                  setHervatVraag(false);
+                  void verwijderOpenDienst(lijn);
+                }}
               />
             ) : !career.state.pasGezien &&
               career.state.personeelsnummer &&
