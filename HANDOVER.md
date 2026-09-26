@@ -713,6 +713,50 @@ een eerste versie legde een melding over het vinkje en FIMS van de ALMEX.
 `probe-overlayscherm.cjs` controleert dat. In de overlay op de pc verandert er
 niets; de vlag is `tablet` op `Telefoon`, alleen gezet door apparaat.tsx.
 
+**Knoppen aan een toets hangen, en waarom een tik soms niets deed** (26-09-2026).
+Een knop van een apparaat werkt in OMSI alleen via `Inputs\keyboard.cfg`: de app
+geeft hem een vrije toets, en de plugin drukt die toets in (`opdracht.txt`). Vier
+dingen stonden dat in de weg, allemaal opgelost:
+
+1. **Bijschrijven mag alleen met OMSI dicht**, want het spel schrijft het bestand
+   bij het afsluiten terug. De knop ervoor staat in de overlay en op de tablet,
+   die je gebruikt terwijl OMSI draait -- het lukte dus nooit. Nu onthoudt de app
+   het verzoek in `Settings.busknoppenStraks` (per model.cfg, want het
+   bijschrijven heeft de scripts van die bus nodig) en schrijft bij zodra OMSI
+   dicht is (`wachtOpOmsiDicht`, twee keer achter elkaar "dicht" gezien), bij het
+   starten van de app, en vlak voordat de app OMSI zelf start (`schrijfStraks`).
+2. **De tabletroute** (`case 'toets'` in de server) keek naar de sleutels van
+   `OMSI_TOETSEN` in plaats van naar de namen; alles werd afgewezen. Nu gaat hij
+   door `omsiToets`, net als de overlay -- en die laat alleen door wat bij een
+   apparaat van deze bus hoort. **Dat is de beveiligingsgrens voor het netwerk;
+   niet verruimen.**
+3. **`bruikbareToetsen`** kende alleen de vaste lijst van de app, dus stond elke
+   knop die uit het model van een bus komt voorgoed uit. Hij krijgt nu de knoppen
+   van de apparaten in deze bus mee (`extra`).
+4. **Te weinig toetsen.** Er zijn 53 vrije bewezen combinaties (Ctrl+letter,
+   Ctrl+F-toets, Shift+letter); Ctrl+Shift doet in OMSI niets en is uit de lijst.
+   Daarom **delen**: OMSI's eigen `keyboard_reset.cfg` hangt op tien plekken
+   meerdere handelingen aan één toets (F8 is `bus_linie_plus` én
+   `bus_rollband_setT`), omdat een bus alleen naar zijn eigen namen luistert. Een
+   toets mag gedeeld worden als alles erop van ons is (niet in
+   `keyboard.omsi-enhancer.bak`), niet een `{trigger:...}` is van de bus waarvoor
+   we schrijven (`triggersVan` in core/schermvorm.ts), en niet van dezelfde bus.
+   Zonder triggers wordt er niet gedeeld. De volgorde is: eerst wat op het scherm
+   ligt, dan de toetsen op het apparaat, dan de losse knoppen.
+
+**Niet in het spel gezien:** dat een GEDEELDE toets in OMSI werkt. Het
+standaardbestand van OMSI doet het zelf, dus het is aannemelijk, maar het is niet
+nagemeten. Werkt een knop van de ALMEX niet en een andere wel, kijk dan eerst of
+de niet-werkende op een gedeelde toets staat (twee `[entry]`-blokken met dezelfde
+scancode en modifier in keyboard.cfg).
+
+Proeven: `scripts/probe-knoppenstraks.cjs` (het hele verloop, met een eigen
+procesje als "OMSI" en een nagemaakte OMSI-map waarin alleen `Inputs` een kopie
+is -- de rest zijn junctions naar de echte mappen die alleen gelezen worden, en
+die aan het eind met rmdir zonder /s worden losgehaald; **die map nooit
+recursief verwijderen**), en `scripts/probe-toetsdelen.ts` voor de regels van
+het delen.
+
 **Een getal dat de plugin niet levert, telt als onzichtbaar.** De klok en de
 knoppen van een ALMEX hangen aan `almex_ein = 1`; ontbreekt dat getal, dan
 blijft het scherm op die plekken leeg. In het spel levert de plugin elk getal
