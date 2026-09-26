@@ -552,6 +552,49 @@ export interface SchermUitvoer {
   vorm: Schermvorm
   texturen: { id: string; pad: string; vlaggen: object }[]
   knoppenOpScherm: string[]
+  /** De klikbare onderdelen van het apparaat die NIET op het scherm liggen. */
+  losseKnoppen: LosseKnop[]
+}
+
+/**
+ * Een knop van het apparaat die geen aanraakvlak werd, met hoe ver hij van het
+ * scherm ligt: loodrecht op het vlak (`vlakMm`) en ernaast, in het vlak, tot de
+ * rand van het scherm (`randMm`, 0 als hij binnen de rand valt).
+ *
+ * Een knop die verder dan een meter van het apparaat ligt, staat er niet bij:
+ * die is al eerder afgevallen en hoort er zeker niet bij.
+ */
+export interface LosseKnop {
+  acties: string[]
+  vlakMm: number
+  randMm: number
+}
+
+/**
+ * Tot hoe ver van het scherm een knop nog OP het apparaat zit.
+ *
+ * Bij een touchscreen horen de knoppen die geen aanraakvlak werden bij één van
+ * twee soorten: toetsen op de voorkant van het apparaat, of iets wat er los van
+ * zit maar in dezelfde groep viel. Gemeten over de hele vloot, als afstand tot
+ * de rand van het scherm (loodrecht op het vlak en ernaast samen):
+ *
+ * - het cijferblok van de RG-kastjes van de Kajosoft-Citybussen: 21 tot 91 mm
+ *   (een deel ligt 6 cm onder het scherm, schuin) -- die horen erbij;
+ * - bij de ALMEX: TICKET TOGGLE 124 mm, de RIEGEL 274 mm, het wisselgeld rond
+ *   330 mm -- die zitten er los van.
+ *
+ * Tussen 91 en 124 zit niets, dus 100. Wat verder ligt, of waarvan de plek niet
+ * te meten is (verder dan een meter, versleuteld), hoort er niet bij.
+ */
+export const LOS_VAN_HET_SCHERM_MM = 100
+
+/** De acties (kleine letters) van de knoppen die niet op het scherm maar wel OP het apparaat liggen. */
+export function knoppenOpApparaat(uit: SchermUitvoer): Set<string> {
+  return new Set(
+    uit.losseKnoppen
+      .filter((knop) => Math.hypot(knop.vlakMm, knop.randMm) <= LOS_VAN_HET_SCHERM_MM)
+      .flatMap((knop) => knop.acties.map((actie) => actie.toLowerCase()))
+  )
 }
 
 /* ------------------------------------------------------------- de analyse */
@@ -607,6 +650,8 @@ interface Analyse {
   lagen: { k: Kandidaat; drie: Drie[] }[]
   teksten: { geo: Geo; mat: number; ctx: CfgMateriaal; drie: Drie[]; benaderd: boolean }[]
   klikken: { geo: Geo; punten: Punt[] }[]
+  /** Klikmeshes met een plek die NIET op het scherm liggen; zie `LosseKnop`. */
+  los: LosseKnop[]
   vlak?: Vlak
   basis?: Geo
   onvolledig: string[]
@@ -855,6 +900,7 @@ function analyseer(
     lagen: [],
     teksten: [],
     klikken: [],
+    los: [],
     onvolledig,
     ontbrekend
   }
@@ -1101,7 +1147,23 @@ function analyseer(
     const ds = punten.map(afstand)
     const gemiddeld = ds.reduce((a, b) => a + b, 0) / ds.length
     const ver = ds.reduce((m, d) => Math.max(m, Math.abs(d)), 0)
-    if (Math.abs(gemiddeld) > 0.005 || ver > 0.01 || !binnenZicht(middenVan(punten), 0.02)) continue
+    if (Math.abs(gemiddeld) > 0.005 || ver > 0.01 || !binnenZicht(middenVan(punten), 0.02)) {
+      /*
+       * Niet op het scherm, maar wel met een plek: onthouden hoe ver ervan af.
+       * Daarmee kan het paneel onderscheiden tussen een toets NAAST het scherm
+       * (het cijferblok van een RG-kastje) en iets dat er los van zit (de
+       * grendel en het wisselgeld die bij de ALMEX in de groep vallen).
+       */
+      const [s, t] = st(middenVan(punten))
+      const buitenS = Math.max(V.s0 - s, 0, s - V.s1)
+      const buitenT = Math.max(V.t0 - t, 0, t - V.t1)
+      analyse.los.push({
+        acties: [...new Set(g.mesh.klikken)],
+        vlakMm: Math.round(Math.abs(gemiddeld) * 1000),
+        randMm: Math.round(Math.hypot(buitenS, buitenT) * 1000)
+      })
+      continue
+    }
     analyse.klikken.push({ geo: g, punten })
   }
   const ontwardeKlikken = analyse.klikken.filter((k) => k.geo.info.versleuteld).map((k) => k.geo.mesh.pad.trim())
@@ -2090,5 +2152,10 @@ export function schermVormVan(invoer: SchermInvoer): SchermUitvoer | undefined {
   const vorm: Schermvorm = { ...zonderId, id }
 
   const opScherm = [...new Set(vorm.klikken.map((k) => k.actie))]
-  return { vorm, texturen: [...texturen.values()], knoppenOpScherm: opScherm }
+  return {
+    vorm,
+    texturen: [...texturen.values()],
+    knoppenOpScherm: opScherm,
+    losseKnoppen: analyse.los
+  }
 }

@@ -1525,6 +1525,38 @@
   min-height: 0;
 }
 
+/*
+ * DE LOSSE KNOPPEN VAN EEN TOUCHSCREEN
+ *
+ * Een ALMEX is alleen zijn scherm; de grijze rijen eronder (de klep, de grendel,
+ * het wisselgeld) hoorden er niet te staan. Ze zijn er wel nog, want bij sommige
+ * bussen heb je ze nodig -- maar als een stil regeltje dat je openklapt, in
+ * dezelfde vorm als "Voeg IBIS-scherm toe", zodat het scherm het enige is dat
+ * opvalt.
+ */
+.paneel-los {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.paneel-los-knop {
+  align-self: center;
+  padding: 5px 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.paneel-los-knop[aria-expanded='true'] {
+  color: rgba(255, 255, 255, 0.85);
+}
+
 .paneel-rij {
   display: grid;
   gap: 4px;

@@ -288,6 +288,7 @@ function Apparaat(): JSX.Element {
                   acties={acties}
                   pixelScale={schaal}
                   language={taal}
+                  tablet
                 />
               </div>
             </div>

@@ -5,6 +5,7 @@ import {
   type JSX,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import type { MapGeometry } from "../../core/geo";
 import type { Duty } from "../../core/types";
 import type { LiveStatus } from "../../core/live";
@@ -22,6 +23,7 @@ import type { Verkoop } from "../../core/live";
 import { NavKaart, stopName, type NavFrame, type RitStand } from "./navigatie";
 import { Apparaatscherm } from "./apparaatscherm";
 import type { Schermvorm } from "../../shared/scherm";
+import type { Profielknop } from "../../core/busprofiel";
 import type { Manoeuvre } from "./RouteMap";
 
 /*
@@ -118,6 +120,7 @@ export function Telefoon({
   pixelScale,
   language,
   extra,
+  tablet,
 }: {
   frame: TelefoonFrame;
   duty?: Duty;
@@ -128,6 +131,11 @@ export function Telefoon({
   pixelScale: number;
   language: Language;
   extra?: ExtraApp;
+  /**
+   * Draait dit op de tablet (apparaat.html) en niet in de overlay? Dan krijgt
+   * een touchscreen het hele scherm; zie IbisApp.
+   */
+  tablet?: boolean;
 }): JSX.Element {
   const [app, setApp] = useState<TelefoonApp>("kaart");
   /*
@@ -180,6 +188,7 @@ export function Telefoon({
               rit={rit}
               acties={acties}
               language={language}
+              tablet={tablet}
             />
           ) : app === "dienst" ? (
             <DienstApp duty={duty} status={frame.status} language={language} />
@@ -1127,11 +1136,13 @@ function IbisApp({
   rit,
   acties,
   language,
+  tablet,
 }: {
   frame: TelefoonFrame;
   rit: RitStand;
   acties: TelefoonActies;
   language: Language;
+  tablet?: boolean;
 }): JSX.Element {
   const status = frame.status;
   const scherm = status?.ibisScherm;
@@ -1161,6 +1172,10 @@ function IbisApp({
     : bruikbaar;
 
   const [welke, setWelke] = useState(0);
+  /** De losse knoppen van een touchscreen: dicht tot je erom vraagt. */
+  const [losOpen, setLosOpen] = useState(false);
+  /** Op de tablet: uit het volledige touchscreen gestapt. */
+  const [uitVolledig, setUitVolledig] = useState(false);
   const [lijstOpen, setLijstOpen] = useState(false);
   const keuzes =
     panelen.length > 0
@@ -1209,10 +1224,39 @@ function IbisApp({
    * wordt één keer op id opgehaald.
    */
   const schermvorm = useSchermvorm(paneel?.scherm?.vorm, acties);
+  /* Een ander apparaat begint weer op het volledige scherm. */
+  useEffect(() => setUitVolledig(false), [schermvorm?.id]);
   const ontbreekt = Boolean(
     paneel?.rijen.some((rij) => rij.some((knop) => !kan(knop.actie))) ||
+      paneel?.losseRijen?.some((rij) => rij.some((knop) => !kan(knop.actie))) ||
       schermvorm?.klikken.some((klik) => !kan(klik.actie)),
   );
+
+  /** Knoppen in rijen, zoals ze op het apparaat liggen. */
+  const toetsrijen = (rijen: Profielknop[][]): JSX.Element[] =>
+    rijen.map((rij, index) => (
+      <div
+        key={index}
+        className="paneel-rij"
+        style={{
+          gridTemplateColumns: rij
+            .map((knop) => (knop.breed ? "2fr" : "1fr"))
+            .join(" "),
+        }}
+      >
+        {rij.map((knop) => (
+          <button
+            key={knop.actie}
+            type="button"
+            className={`paneel-knop${knop.kleur ? ` ${knop.kleur}` : ""}`}
+            disabled={!kan(knop.actie)}
+            onClick={() => acties.toets(knop.actie)}
+          >
+            {knop.opschrift}
+          </button>
+        ))}
+      </div>
+    ));
 
   /*
    * Met een oudere plugin in het spel komen de schermpjes van de bus niet door
@@ -1370,10 +1414,81 @@ function IbisApp({
         </div>
   ) : null;
 
+  /*
+   * OP DE TABLET: HET TOUCHSCREEN OVER HET HELE SCHERM
+   *
+   * Een ALMEX is een aanraakscherm, en op een iPad hoort het dat hele scherm te
+   * zijn -- de gebruiker: "de touchscreen moet op een ipad het hele scherm
+   * bevatten". Het stond als strook in de telefoon, met de balk, de keuzelijst
+   * en de melding eromheen.
+   *
+   * Het gaat met een portal naar <body> en niet in de telefoon zelf: die is op de
+   * tablet met CSS-zoom opgeschaald, en een vaste laag daarbinnen schaalt mee --
+   * in Safari anders dan in Chromium. Erbuiten is het gewoon het scherm.
+   *
+   * Eruit stappen kan met het knopje in de hoek; dan staat de telefoon er weer,
+   * met de balk om naar een andere app te gaan. Een ander apparaat, of terugkomen
+   * in deze app, zet het weer op volledig.
+   */
+  const touchscreen = Boolean(
+    paneel?.scherm && schermvorm && schermvorm.klikken.length > 0,
+  );
+  const volledig = Boolean(tablet && touchscreen && !uitVolledig);
+  const volledigScherm =
+    volledig && paneel?.scherm && schermvorm
+      ? createPortal(
+          <div className="scherm-volledig" data-hit>
+            <Apparaatscherm
+              vorm={schermvorm}
+              stand={paneel.scherm}
+              textuurAdres={acties.textuurAdres}
+              kan={kan}
+              toets={(actie) => acties.toets(actie)}
+              fallback={vlakBeeld ?? undefined}
+            />
+            {/*
+              Het knopje terug naar de telefoon. Zonder toetsen doet een tik
+              niets in OMSI, en dat hoort ook hier te blijken -- maar niet OVER
+              het scherm: een eerdere versie legde een regel tekst onderin, precies
+              over het vinkje en FIMS van de ALMEX, en blokkeerde zo de knoppen
+              waar het om ging. Nu is het een oranje stip op dit knopje; wie erop
+              drukt, komt bij de uitleg in de telefoon.
+            */}
+            <button
+              type="button"
+              className={
+                ontbreekt
+                  ? "scherm-volledig-uit waarschuwt"
+                  : "scherm-volledig-uit"
+              }
+              aria-label={t(language, ontbreekt ? "ovl.fullKeysOff" : "ovl.fullOut")}
+              title={t(language, ontbreekt ? "ovl.fullKeysOff" : "ovl.fullOut")}
+              onClick={() => setUitVolledig(true)}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 6h16v2H4V6Zm0 5h16v2H4v-2Zm0 5h16v2H4v-2Z" fill="currentColor" />
+              </svg>
+            </button>
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
     <div className="ibis" data-hit>
+      {volledigScherm}
       {pluginOud && (
         <p className="verkoop-mopper">{t(language, "ovl.salePluginOld")}</p>
+      )}
+      {/* Terug naar het volledige scherm, als je er net uit gestapt bent. */}
+      {tablet && touchscreen && uitVolledig && (
+        <button
+          type="button"
+          className="module-knop scherm-volledig-in"
+          onClick={() => setUitVolledig(false)}
+        >
+          {t(language, "ovl.fullIn")}
+        </button>
       )}
 
       {/*
@@ -1430,7 +1545,8 @@ function IbisApp({
         </div>
       )}
 
-      {paneel?.scherm && schermvorm ? (
+      {/* Staat het touchscreen over het hele scherm, dan niet ook nog hier. */}
+      {volledig ? null : paneel?.scherm && schermvorm ? (
         /*
          * HET SCHERM ZOALS OMSI HET TEKENT
          *
@@ -1523,32 +1639,36 @@ function IbisApp({
       )}
 
       {paneel ? (
-        /* Het toetsenbord van dit apparaat, rij voor rij zoals het erop ligt. */
-        <div className="paneel-toetsen">
-          {paneel.rijen.map((rij, index) => (
-            <div
-              key={index}
-              className="paneel-rij"
-              style={{
-                gridTemplateColumns: rij
-                  .map((knop) => (knop.breed ? "2fr" : "1fr"))
-                  .join(" "),
-              }}
-            >
-              {rij.map((knop) => (
-                <button
-                  key={knop.actie}
-                  type="button"
-                  className={`paneel-knop${knop.kleur ? ` ${knop.kleur}` : ""}`}
-                  disabled={!kan(knop.actie)}
-                  onClick={() => acties.toets(knop.actie)}
-                >
-                  {knop.opschrift}
-                </button>
-              ))}
+        <>
+          {/* Het toetsenbord van dit apparaat, rij voor rij zoals het erop ligt. */}
+          {paneel.rijen.length > 0 && (
+            <div className="paneel-toetsen">{toetsrijen(paneel.rijen)}</div>
+          )}
+          {/*
+            De losse knoppen van een touchscreen: de klep, de grendel, het
+            wisselgeld. Niet onder het scherm, want het apparaat is alleen dat
+            scherm; wel bereikbaar, want bij sommige bussen heb je ze nodig.
+          */}
+          {paneel.losseRijen && paneel.losseRijen.length > 0 && (
+            <div className="paneel-los">
+              <button
+                type="button"
+                className="paneel-los-knop"
+                aria-expanded={losOpen}
+                onClick={() => setLosOpen((open) => !open)}
+              >
+                {t(language, "ovl.looseKeys", {
+                  aantal: paneel.losseRijen.flat().length,
+                })}
+              </button>
+              {losOpen && (
+                <div className="paneel-toetsen">
+                  {toetsrijen(paneel.losseRijen)}
+                </div>
+              )}
             </div>
-          ))}
-        </div>
+          )}
+        </>
       ) : (
         <>
           {/* De drie standen, zoals de knoppen op het apparaat zelf. */}

@@ -37,7 +37,7 @@ import { modelVanBus } from '../src/core/busmodel'
 import { modulesVanModel, type Busmodule } from '../src/core/busmodule'
 import { findOmsiInstall } from '../src/core/install'
 import { ontleedSchermcfg } from '../src/core/schermcfg'
-import { meshlijstVan, schermGetallenVan, schermVormVan, startwaardenVan, type SchermUitvoer } from '../src/core/schermvorm'
+import { knoppenOpApparaat, meshlijstVan, schermGetallenVan, schermVormVan, startwaardenVan, type SchermUitvoer } from '../src/core/schermvorm'
 import { listVehicles } from '../src/core/vehicles'
 import { isZichtbaar, type Schermdeel, type Schermklik, type Schermvorm, type Zicht } from '../src/shared/scherm'
 
@@ -301,6 +301,26 @@ controle(structuur.length === 0, `vloot: ${structuur.length} gebreken in ${metVo
   )
 }
 
+/*
+ * Kajosoft-Citybus: het RG-kastje is een touchscreen MET een cijferblok ernaast.
+ * Dat cijferblok hoort bij het apparaat en mag dus niet met de losse knoppen
+ * mee weggeklapt worden -- anders is het kastje onbruikbaar. Het ligt tot 91 mm
+ * van het scherm, een deel schuin eronder.
+ */
+{
+  const { cfg, module } = moduleVan('Citybus 628c 628g LF by Kajosoft/model/model_Conecto_LF_e5.cfg', 'lf/rg')
+  controle(!!module, 'Kajosoft RG: apparaat lf/rg gevonden')
+  const r = module ? bouw(cfg, module, startwaardenVan(cfg, schermGetallenVan(cfg, module)) as Record<string, number>) : undefined
+  controle((r?.uit?.knoppenOpScherm.length ?? 0) > 0, `Kajosoft RG: een touchscreen (${r?.uit?.knoppenOpScherm.length ?? 0} aanraakvlakken)`)
+  if (r?.uit) {
+    const opScherm = new Set(r.uit.knoppenOpScherm.map((a) => a.toLowerCase()))
+    const opApparaat = knoppenOpApparaat(r.uit)
+    const toetsen = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'eingabe', 'loeschen'].map((t) => `ibis_${t}`)
+    const kwijt = toetsen.filter((t) => !opScherm.has(t) && !opApparaat.has(t))
+    controle(kwijt.length === 0, `Kajosoft RG: het cijferblok blijft op het apparaat${kwijt.length ? ` (kwijt: ${kwijt.join(', ')})` : ''}`)
+  }
+}
+
 /* HH20: de ALMEX van Luc. */
 {
   const { cfg, module } = moduleVan('HH20_EBus2021/Model/model_21_main.cfg', '/almex')
@@ -369,8 +389,15 @@ controle(structuur.length === 0, `vloot: ${structuur.length} gebreken in ${metVo
         `HH20 ALMEX: sonderansg_${n} is een klik bij ${zicht} op rij ${rij.toFixed(0)} (verwacht ${rijen[n - 1]})`
       )
     }
+    /*
+     * En ook niet OP het apparaat: de ALMEX is een touchscreen, en deze vier
+     * zitten er los van (klep, grendel, wisselgeld: 124 tot ruim 300 mm). Zo gaan
+     * ze uit de rijen onder het scherm naar de dichtgeklapte losse knoppen.
+     */
+    const opApparaat = knoppenOpApparaat(r.uit)
     for (const actie of ['almex_ticket_toggle', 'almex_riegel', 'cashdesk_change_0500', 'cashdesk_change_1000']) {
       controle(klikVan(v, actie).length === 0 && !r.uit.knoppenOpScherm.includes(actie), `HH20 ALMEX: ${actie} is geen klik (fysiek)`)
+      controle(!opApparaat.has(actie), `HH20 ALMEX: ${actie} zit los van het apparaat (niet onder het scherm)`)
     }
     const n1 = v.delen.filter((d) => d.mesh === v.klikken.find((k) => k.actie === 'almex_clickN1')?.mesh)
     controle(n1.length === 0, 'HH20 ALMEX: clickN1 wordt niet getekend (kijkt de andere kant op)')

@@ -3,7 +3,7 @@ import type { Busmodule } from '../core/busmodule'
 import { leesMeshlijst, type LiveData } from '../core/live'
 import { leesOmsiFonts, schermfontVan, zoekFont } from '../core/oft'
 import { textuurBron, zoekSchermtextuur, type Vlaggen } from '../core/schermtextuur'
-import { meshlijstVan, schermGetallenVan, schermVormVan } from '../core/schermvorm'
+import { knoppenOpApparaat, meshlijstVan, schermGetallenVan, schermVormVan } from '../core/schermvorm'
 import type { Schermfont, Schermstand, Schermvorm } from '../shared/scherm'
 import { registreer, textuurBytes, vergeetBehalve } from './schermtexturen'
 
@@ -27,12 +27,15 @@ import { registreer, textuurBytes, vergeetBehalve } from './schermtexturen'
 /** Zo lang wachten we op de getallen van de plugin voordat de vorm toch gebouwd wordt. */
 const WACHT_OP_GETALLEN_MS = 3000
 
+
 interface Bouw {
   /** Wanneer de getallen voor het eerst gevraagd zijn. */
   sinds: number
   getalNamen: string[]
   vorm?: Schermvorm
   knoppenOpScherm: Set<string>
+  /** Knoppen die niet op het scherm maar wel op het apparaat liggen; zie hierboven. */
+  opApparaat: Set<string>
   /** Gebouwd maar er viel geen scherm van te maken: niet elk beeld opnieuw proberen. */
   geen?: boolean
 }
@@ -107,7 +110,7 @@ function bouwVan(modelcfg: string, module: Busmodule): Bouw {
     } catch {
       getalNamen = []
     }
-    bouw = { sinds: Date.now(), getalNamen, knoppenOpScherm: new Set() }
+    bouw = { sinds: Date.now(), getalNamen, knoppenOpScherm: new Set(), opApparaat: new Set() }
     bouwen.set(sleutel, bouw)
   }
   return bouw
@@ -136,10 +139,12 @@ export function schermVoor(
   module: Busmodule,
   live: LiveData | undefined,
   log: (regel: string) => void
-): { vorm: Schermvorm; knoppenOpScherm: Set<string> } | undefined {
+): { vorm: Schermvorm; knoppenOpScherm: Set<string>; opApparaat: Set<string> } | undefined {
   nieuweBus(modelcfg)
   const bouw = bouwVan(modelcfg, module)
-  if (bouw.vorm) return { vorm: bouw.vorm, knoppenOpScherm: bouw.knoppenOpScherm }
+  if (bouw.vorm) {
+    return { vorm: bouw.vorm, knoppenOpScherm: bouw.knoppenOpScherm, opApparaat: bouw.opApparaat }
+  }
   if (bouw.geen) return undefined
 
   const getallen = getallenVan(live)
@@ -173,6 +178,7 @@ export function schermVoor(
   for (const bron of gebouwd.texturen) registreer(bron as Parameters<typeof registreer>[0])
   bouw.vorm = gebouwd.vorm
   bouw.knoppenOpScherm = new Set(gebouwd.knoppenOpScherm)
+  bouw.opApparaat = knoppenOpApparaat(gebouwd)
   vormen.set(gebouwd.vorm.id, gebouwd.vorm)
   log(
     `scherm van ${module.naam}: ${gebouwd.vorm.delen.length} delen, ${gebouwd.vorm.klikken.length} ` +
@@ -180,7 +186,7 @@ export function schermVoor(
       `lettertypen in ${Date.now() - begin} ms` +
       (gebouwd.vorm.onvolledig.length > 0 ? `; niet na te tekenen: ${gebouwd.vorm.onvolledig.slice(0, 5).join(', ')}` : '')
   )
-  return { vorm: gebouwd.vorm, knoppenOpScherm: bouw.knoppenOpScherm }
+  return { vorm: gebouwd.vorm, knoppenOpScherm: bouw.knoppenOpScherm, opApparaat: bouw.opApparaat }
 }
 
 /*

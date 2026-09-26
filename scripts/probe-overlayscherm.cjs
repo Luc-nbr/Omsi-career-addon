@@ -227,6 +227,16 @@ app.whenReady().then(async () => {
       gevuld,
       klikken: [...document.querySelectorAll('.scherm-klik')].map((k) => k.dataset.actie),
       /*
+       * Onder een touchscreen hoort niets te staan dan het scherm: geen grijze
+       * rijen, wel een dichtgeklapt "Losse knoppen" voor de klep, de grendel en
+       * het wisselgeld.
+       */
+      rijen: [...document.querySelectorAll('.paneel-rij')].filter((r) => r.offsetParent !== null).length,
+      los: (() => {
+        const knop = document.querySelector('.paneel-los-knop')
+        return knop ? { tekst: knop.textContent.trim(), open: knop.getAttribute('aria-expanded') } : null
+      })(),
+      /*
        * Of er plaatjes op staan. performance.getEntriesByType ziet eigen
        * protocollen niet, dus kijken we naar het beeld: een foto of een
        * menuplaatje geeft honderden verschillende kleuren, een effen vlak met
@@ -257,6 +267,17 @@ app.whenReady().then(async () => {
     writeFileSync(join(uitvoer, 'overlay-almex-menu0.png'), (await overlay.webContents.capturePage()).toPNG())
     console.log('  afdruk: overlay-almex-menu0.png')
   }
+
+  /* De losse knoppen openklappen: daar horen de klep, de grendel en het wisselgeld. */
+  await js(overlay, `document.querySelector('.paneel-los-knop')?.click()`)
+  await wacht(300)
+  const losOpen = await js(overlay, `({
+    open: document.querySelector('.paneel-los-knop')?.getAttribute('aria-expanded'),
+    knoppen: [...document.querySelectorAll('.paneel-los .paneel-knop')].map((b) => b.textContent.trim())
+  })`)
+  console.log('losse knoppen, opengeklapt:', JSON.stringify(losOpen))
+  await js(overlay, `document.querySelector('.paneel-los-knop')?.click()`)
+  await wacht(200)
 
   /* Een ander menu: het beeld hoort te wisselen. */
   const voor = nu.gevuld
@@ -291,9 +312,10 @@ app.whenReady().then(async () => {
    * deze proef zag daardoor een leeg scherm dat er bij de schermafdruk -- toen
    * het venster wel zichtbaar werd -- gewoon stond.
    */
+  /* Liggend, zoals een iPad in een houder naast het stuur: 1194 x 834. */
   const tablet = new BrowserWindow({
-    width: 834,
-    height: 1194,
+    width: 1194,
+    height: 834,
     show: false,
     webPreferences: { backgroundThrottling: false }
   })
@@ -325,11 +347,35 @@ app.whenReady().then(async () => {
         for (let i = 0; i < d.length; i += 4 * 7) gezien.add((d[i] >> 3) << 10 | (d[i + 1] >> 3) << 5 | (d[i + 2] >> 3))
         kleuren = gezien.size
       }
+      const vlak = scherm?.querySelector('.scherm-vlak')?.getBoundingClientRect()
       return {
         beeld: scherm?.dataset.beeld,
         doek: doek ? [doek.width, doek.height] : null,
         klikken: document.querySelectorAll('.scherm-klik').length,
-        kleuren
+        kleuren,
+        /* Het touchscreen hoort in de laag over het hele scherm te staan. */
+        volledig: Boolean(scherm?.closest('.scherm-volledig')),
+        /*
+         * Niets in de laag mag over een aanraakvlak liggen. Een eerdere versie
+         * zette een regel tekst onderin, precies over het vinkje en FIMS.
+         */
+        bedekt: (() => {
+          const laag = document.querySelector('.scherm-volledig')
+          if (!laag) return []
+          const klikken = [...laag.querySelectorAll('.scherm-klik')].map((k) => [k.dataset.actie, k.getBoundingClientRect()])
+          const rest = [...laag.children].filter((n) => !n.classList.contains('apparaatscherm'))
+          const uit = []
+          for (const n of rest) {
+            const r = n.getBoundingClientRect()
+            for (const [actie, k] of klikken)
+              if (r.left < k.right && r.right > k.left && r.top < k.bottom && r.bottom > k.top) uit.push(actie)
+          }
+          return uit
+        })(),
+        waarschuwt: Boolean(document.querySelector('.scherm-volledig-uit.waarschuwt')),
+        vlak: vlak ? [Math.round(vlak.width), Math.round(vlak.height)] : null,
+        venster: [innerWidth, innerHeight],
+        balk: Boolean(document.querySelector('.dock-knop')?.offsetParent)
       }
     })()`)
   }
@@ -343,6 +389,26 @@ app.whenReady().then(async () => {
     writeFileSync(join(uitvoer, 'tablet-almex.png'), (await tablet.webContents.capturePage()).toPNG())
     console.log('  afdruk: tablet-almex.png')
   }
+
+  /*
+   * Eruit stappen: de laag hoort weg te gaan en de telefoon met zijn balk hoort
+   * er weer te staan, anders kom je nooit meer bij een andere app. En er weer in.
+   */
+  await js(tablet, `document.querySelector('.scherm-volledig-uit')?.click()`)
+  await wacht(500)
+  const eruit = await js(tablet, `({
+    laag: Boolean(document.querySelector('.scherm-volledig')),
+    balk: Boolean(document.querySelector('.dock-knop')?.offsetParent),
+    terugKnop: Boolean(document.querySelector('.scherm-volledig-in'))
+  })`)
+  await js(tablet, `document.querySelector('.scherm-volledig-in')?.click()`)
+  await wacht(500)
+  const erin = await js(tablet, `Boolean(document.querySelector('.scherm-volledig .apparaatscherm'))`)
+  console.log('eruit:', JSON.stringify(eruit), ' er weer in:', erin)
+
+  /* In de overlay op de pc hoort er niets veranderd te zijn. */
+  const overlayVolledig = await js(overlay, `Boolean(document.querySelector('.scherm-volledig'))`)
+  console.log('laag in de overlay (hoort niet):', overlayVolledig)
 
   /*
    * Een id die niet in het register staat, of een pad in plaats van een id,
@@ -371,10 +437,23 @@ app.whenReady().then(async () => {
     nu.kleuren > 200 &&
     gevraagd.includes('almex_ein') &&
     nu.klikken.length >= 7 &&
+    /* Alleen het touchscreen: geen rijen, en de losse knoppen dichtgeklapt. */
+    nu.rijen === 0 &&
+    nu.los !== null &&
+    nu.los.open === 'false' &&
+    losOpen.knoppen.length === 4 &&
     csp.length === 0 &&
     na.beeld === 'ja' &&
     na.klikken.join('|') !== nu.klikken.join('|') &&
     opTablet.beeld === 'ja' &&
+    opTablet.volledig &&
+    opTablet.bedekt.length === 0 &&
+    /* In de proef hangen de knoppen niet aan een toets: dan hoort de stip er te staan. */
+    opTablet.waarschuwt &&
+    /* Vult het de hoogte (liggend is de hoogte de grens), op een paar punten na? */
+    opTablet.vlak && opTablet.vlak[1] >= opTablet.venster[1] - 4 &&
+    !eruit.laag && eruit.balk && eruit.terugKnop && erin &&
+    !overlayVolledig &&
     opTablet.klikken > 0 &&
     opTablet.kleuren > 200 &&
     tabletFouten.length === 0 &&

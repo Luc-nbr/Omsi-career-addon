@@ -3636,6 +3636,37 @@ const TEXT = {
     fr: 'Attribuer des touches',
     nl: 'Knoppen aan een toets hangen'
   },
+  /*
+   * Onder een touchscreen: de knoppen die er los van zitten (de klep, de
+   * grendel, het wisselgeld), dichtgeklapt.
+   */
+  /*
+   * Op de tablet: het touchscreen over het hele scherm, en de weg eruit en terug.
+   */
+  'ovl.fullOut': {
+    en: 'Back to the phone',
+    de: 'Zurück zum Telefon',
+    fr: 'Retour au téléphone',
+    nl: 'Terug naar de telefoon'
+  },
+  'ovl.fullIn': {
+    en: 'Full screen',
+    de: 'Vollbild',
+    fr: 'Plein écran',
+    nl: 'Volledig scherm'
+  },
+  'ovl.fullKeysOff': {
+    en: 'Buttons not yet on keys: tapping does nothing in OMSI',
+    de: 'Tasten noch nicht eingerichtet: Tippen wirkt in OMSI noch nicht',
+    fr: 'Boutons pas encore attribués : toucher ne fait rien dans OMSI',
+    nl: 'Knoppen nog niet aan een toets: tikken doet nog niets in OMSI'
+  },
+  'ovl.looseKeys': {
+    en: 'Other buttons ({aantal})',
+    de: 'Weitere Tasten ({aantal})',
+    fr: 'Autres boutons ({aantal})',
+    nl: 'Losse knoppen ({aantal})'
+  },
   'ovl.afrPrint': { en: 'PRINT', de: 'DRUCKEN', fr: 'IMPRIMER', nl: 'DRUKKEN' },
   'ovl.afrGive': { en: 'HAND OVER', de: 'AUSGEBEN', fr: 'REMETTRE', nl: 'AANGEVEN' },
   'ovl.saleDone': { en: 'Settled', de: 'Erledigt', fr: 'Réglé', nl: 'Afgerekend' },

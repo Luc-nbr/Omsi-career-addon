@@ -1744,7 +1744,10 @@ async function zetBusknoppenAan(): Promise<{ toegevoegd: number; geenPlek: numbe
      * de rijen, maar moeten in het spel net zo goed aan een toets hangen.
      */
     const acties = [
-      ...(busPanelen(live) ?? []).flatMap((paneel) => paneel.rijen.flat().map((knop) => knop.actie)),
+      ...(busPanelen(live) ?? []).flatMap((paneel) =>
+        /* Ook de dichtgeklapte: die moeten werken zodra je ze openklapt. */
+        [...paneel.rijen, ...(paneel.losseRijen ?? [])].flat().map((knop) => knop.actie)
+      ),
       ...schermActies()
     ]
     const uitslag = zetBustoetsen(omsi(), acties.length > 0 ? acties : undefined)
@@ -1865,6 +1868,26 @@ function busPanelen(live: LiveData | undefined): Paneel[] | undefined {
       paneel.rijen = paneel.rijen
         .map((rij) => rij.filter((knop) => !scherm.knoppenOpScherm.has(knop.actie)))
         .filter((rij) => rij.length > 0)
+      /*
+       * Een touchscreen -- het scherm heeft zelf aanraakvlakken -- is alleen dat
+       * scherm. Wat er aan knoppen overblijft en niet op het apparaat zelf zit
+       * (de klep, de grendel, het wisselgeld bij een ALMEX) gaat naar een groep
+       * die de telefoon dichtgeklapt toont; de toetsen op het apparaat (het
+       * cijferblok van een RG-kastje) blijven staan. Zie LOS_VAN_HET_SCHERM_MM in core/schermvorm.ts.
+       */
+      if (scherm.knoppenOpScherm.size > 0) {
+        const opApparaat = (knop: { actie: string }): boolean =>
+          scherm.opApparaat.has(knop.actie.toLowerCase())
+        const los = paneel.rijen
+          .map((rij) => rij.filter((knop) => !opApparaat(knop)))
+          .filter((rij) => rij.length > 0)
+        if (los.length > 0) {
+          paneel.losseRijen = los
+          paneel.rijen = paneel.rijen
+            .map((rij) => rij.filter(opApparaat))
+            .filter((rij) => rij.length > 0)
+        }
+      }
       /*
        * Het nagemeten vlak gaat alleen mee zolang de telefoon niet kan weten welk
        * menu er aanstaat (een plugin van voor versie 13); anders is het elke

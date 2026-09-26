@@ -77,6 +77,21 @@ export interface Paneel {
   tekstkleur: string
   achtergrond: string
   rijen: Profielknop[][]
+  /**
+   * Knoppen die bij een TOUCHSCREEN in de groep vallen maar er los van zitten:
+   * de klep van de kaartprinter, de grendel van de geldlade, het wisselgeld.
+   *
+   * Bij een ALMEX stonden die als grijze rijen onder het scherm, terwijl het
+   * apparaat zelf alleen een aanraakscherm is -- de gebruiker: "dit is een
+   * touchscreen, dus die lelijke knoppen onder het scherm moeten weg". Ze gaan
+   * hierheen, en de telefoon toont ze dichtgeklapt. Weggooien kan niet: bij de
+   * muntwisselaar van de MAN-A20 en de kaartautomaat van de VHH-bus lopen de
+   * munten door de grens heen, en dan zou je de helft kwijtraken.
+   *
+   * Wat OP het apparaat zit (het cijferblok van een RG-kastje, tot 91 mm van het
+   * scherm) blijft in `rijen`. Zie `LOS_VAN_HET_SCHERM_MM` in core/schermvorm.ts.
+   */
+  losseRijen?: Profielknop[][]
   /** Het scherm zoals het in de bus ligt, als dat gemeten kon worden. */
   vlak?: Paneelvlak
   /**

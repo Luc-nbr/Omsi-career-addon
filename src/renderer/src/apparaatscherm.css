@@ -88,3 +88,98 @@
   outline: 2px solid var(--lijn, #ffd23f);
   outline-offset: -2px;
 }
+
+/*
+ * HET TOUCHSCREEN OVER HET HELE SCHERM VAN DE TABLET
+ *
+ * Een laag direct onder <body> (zie IbisApp in telefoon.tsx), buiten de
+ * opgeschaalde telefoon. Het scherm wordt zo groot als het kan zonder te
+ * vervormen: op een liggende iPad (1194 x 834, 1,43) past een ALMEX (1,39) er
+ * bijna precies in; staand komt er zwart boven en onder. Zwart en niet de kleur
+ * van de telefoon, want dat is wat er in de bus om het scherm heen zit.
+ *
+ * viewport-fit=cover staat in apparaat.html, dus de veilige randen komen hier
+ * als binnenmarge terug: anders valt een knop achter de inkeping of de ronde
+ * hoek.
+ */
+.scherm-volledig {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+  background: #000;
+}
+
+.scherm-volledig .apparaatscherm {
+  width: 100%;
+  max-width: none;
+}
+
+/*
+ * Breed als het scherm, of -- als dat te hoog wordt -- zo hoog als het scherm.
+ * `dvh` en niet `vh`: in Safari telt `vh` de adresbalk niet mee en dan valt de
+ * onderste rij knoppen er net af.
+ */
+.scherm-volledig .scherm-vlak {
+  width: min(
+    100%,
+    calc(
+      var(--scherm-verhouding, 1.4) *
+        (100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom))
+    )
+  );
+}
+
+/* Het knopje terug naar de telefoon: klein, in de hoek, en half doorzichtig. */
+.scherm-volledig-uit {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 10px);
+  left: calc(env(safe-area-inset-left) + 10px);
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(20, 26, 38, 0.55);
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.scherm-volledig-uit svg {
+  width: 20px;
+  height: 20px;
+}
+
+/*
+ * Zonder toetsen doet een tik niets in OMSI. Een oranje stip op het knopje, en
+ * niets over het scherm zelf: elke plek daarop kan een knop zijn.
+ */
+.scherm-volledig-uit.waarschuwt {
+  border-color: rgba(240, 180, 41, 0.7);
+}
+
+.scherm-volledig-uit.waarschuwt::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #f0b429;
+  box-shadow: 0 0 0 2px #000;
+}
+
+/* Terug naar het volledige scherm, in de telefoon. */
+.scherm-volledig-in {
+  align-self: center;
+  margin-bottom: 6px;
+}
