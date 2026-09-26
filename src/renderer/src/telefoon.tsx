@@ -1164,6 +1164,24 @@ function IbisApp({
         ? `${(status.metresToStop / 1000).toFixed(1).replace(".", ",")} km`
         : `${status.metresToStop} m`;
 
+  /*
+   * Ligt er een gevuld tekstvak over deze knop heen? Zie de uitleg bij het
+   * tekenen van het apparaat.
+   */
+  const bedekt = (knop: { links: number; breedte: number; boven: number; hoogte: number }): boolean =>
+    (paneel?.vlak?.velden ?? []).some((veld) => {
+      /* Een tekstvak of een tegel waar de bus tekst in heeft gezet. */
+      if (!veld.variabele || !veld.tekst.trim()) return false;
+      const breedOver =
+        Math.min(veld.links + veld.breedte, knop.links + knop.breedte) -
+        Math.max(veld.links, knop.links);
+      const hoogOver =
+        Math.min(veld.boven + veld.hoogte, knop.boven + knop.hoogte) -
+        Math.max(veld.boven, knop.boven);
+      if (breedOver <= 0 || hoogOver <= 0) return false;
+      return breedOver * hoogOver > knop.breedte * knop.hoogte * 0.4;
+    });
+
   const toets = (
     actie: string,
     tekst: string,
@@ -1239,7 +1257,115 @@ function IbisApp({
         </div>
       )}
 
-      {getoond ? (
+      {paneel?.vlak ? (
+        /*
+         * HET APPARAAT ZOALS HET IN DE BUS ZIT
+         *
+         * Elk vak op zijn eigen plek, gemeten aan de 3D-onderdelen van de bus
+         * (core/busvorm.ts): de haltelijst onder elkaar, de klok rechtsboven, de
+         * verkooptegels als vlakken waar je op kunt tikken. Een apparaat toont
+         * maar één menu tegelijk en de vakken van de andere menu's liggen er
+         * overheen -- maar die zijn leeg, en leeg wordt niet getekend. Zo staat er
+         * precies op wat er in het spel op staat.
+         */
+        <div className="ibis-groot">
+          <div
+            className="paneel-vlak"
+            style={{
+              aspectRatio: String(paneel.vlak.verhouding),
+              ["--vlak-verhouding" as string]: String(paneel.vlak.verhouding),
+            }}
+          >
+            {paneel.vlak.velden.map((veld, index) => {
+              const woord = veld.tekst || veld.opschrift || "";
+              /*
+               * Een knop zonder eigen tekst hoort bij een ander menu van het
+               * apparaat, en op een apparaat staat maar één menu tegelijk. Ligt
+               * er een vak met tekst overheen, dan is dát het menu dat aanstaat
+               * en hoort deze knop er niet te zijn. Zo verdwijnen de vier
+               * verborgen tegels en de FIMS-knoppen zodra de verkoop in beeld
+               * staat -- precies zoals in het spel.
+               */
+              if (veld.actie && !veld.variabele && bedekt(veld)) return null;
+              const breed = veld.breedte * 100;
+              /*
+               * Hoe groot de letters mogen zijn: niet hoger dan het vak, en niet
+               * breder dan wat er aan tekens in past. Een teken is ruim de helft
+               * van zijn hoogte breed. De maten rekenen tegen het vlak zelf
+               * (`cqw`, `cqh`), zodat het op een telefoon en op een tablet
+               * hetzelfde apparaat blijft.
+               */
+              const passend = breed / (0.62 * Math.max(1, woord.length || 4));
+              /*
+               * Alles in `cqw`, de breedte van het apparaat. De hoogte van het
+               * vak kan daar gewoon in uitgedrukt worden -- het apparaat heeft
+               * een vaste verhouding -- en dat scheelt `container-type: size`.
+               * Dat laatste gaf in Chromium nul terug, en dan verdween alle
+               * tekst: een lettergrootte van nul beeldpunten.
+               */
+              const hoog = (veld.hoogte * 78) / paneel.vlak!.verhouding;
+              const letter = `min(${hoog.toFixed(2)}cqw, ${passend.toFixed(2)}cqw)`;
+              const plaats = {
+                left: `${(veld.links * 100).toFixed(2)}%`,
+                top: `${(veld.boven * 100).toFixed(2)}%`,
+                width: `${breed.toFixed(2)}%`,
+                height: `${(veld.hoogte * 100).toFixed(2)}%`,
+                fontSize: letter,
+              };
+              if (veld.actie) {
+                return (
+                  <button
+                    key={`${veld.actie}-${index}`}
+                    type="button"
+                    className={veld.variabele ? "vlak-knop tekst" : "vlak-knop stil"}
+                    style={
+                      veld.variabele
+                        ? { ...plaats, color: veld.tekstkleur, background: veld.achtergrond }
+                        : plaats
+                    }
+                    disabled={!kan(veld.actie)}
+                    onClick={() => acties.toets(veld.actie!)}
+                  >
+                    {woord}
+                  </button>
+                );
+              }
+              /* Een leeg vak hoort niet te gloeien; dat menu staat gewoon uit. */
+              if (!woord.trim()) return null;
+              return (
+                /*
+                 * De achtergrond hoort om de TEKST heen en niet om het hele vak:
+                 * de vakken van een apparaat overlappen elkaar -- de vertraging
+                 * van een ALMEX ligt half over de klok -- en met een vullend
+                 * vlak dekte het ene vak het andere af.
+                 */
+                <span
+                  key={`${veld.variabele ?? index}`}
+                  className="vlak-veld"
+                  data-uit={veld.uitlijning}
+                  style={plaats}
+                >
+                  <b style={{ color: veld.tekstkleur, background: veld.achtergrond }}>
+                    {woord}
+                  </b>
+                </span>
+              );
+            })}
+          </div>
+          {paneel.merk && <p className="paneel-merk">{paneel.merk}</p>}
+          {/*
+            Alles leeg is niet hetzelfde als kapot: een ALMEX die uitstaat
+            schrijft niets in zijn schermvakken. Dat hoort erbij te staan, anders
+            is het een zwart vlak waar niemand iets van begrijpt.
+          */}
+          {paneel.vlak.velden.every((veld) => !veld.variabele || !veld.tekst.trim()) && (
+            <p className="paneel-uit">{t(language, "ovl.deviceOff")}</p>
+          )}
+        </div>
+      ) : paneel && paneel.regels.length === 0 ? (
+        /* Een apparaat zonder schermpje -- een geldlade -- heeft alleen knoppen. */
+        <></>
+      ) : getoond ? (
         <div className="ibis-groot">
           <div
             className={paneel ? "ibis-apparaat paneel-scherm" : "ibis-apparaat"}

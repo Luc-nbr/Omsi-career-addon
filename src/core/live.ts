@@ -794,6 +794,15 @@ export function kaartnamenVan(data: LiveData): string[] | undefined {
 }
 
 /**
+ * Zoveel namen neemt de plugin aan; verder in de lijst valt eraf.
+ *
+ * Moet gelijk zijn aan `VRAGEN_MAX` in plugin/omsicareer.c. Wie de lijst
+ * samenstelt zet dus vooraan waar de speler naar kijkt: de ALMEX van een
+ * Hamburgse bus heeft in zijn eentje al tweeentwintig schermpjes.
+ */
+export const VRAGEN_MAX = 160
+
+/**
  * Welke stringvariabelen de plugin moet doorgeven.
  *
  * De app schrijft ze in `vragen.txt` naast live.json; de plugin zoekt ze op in
@@ -802,7 +811,7 @@ export function kaartnamenVan(data: LiveData): string[] | undefined {
  * anders in staat.
  */
 export function schrijfVragen(namen: string[]): void {
-  const lijst = namen.slice(0, 160)
+  const lijst = namen.slice(0, VRAGEN_MAX)
   const inhoud = lijst.join('\r\n') + (lijst.length > 0 ? '\r\n' : '')
   const pad = join(liveMap(), 'vragen.txt')
   try {

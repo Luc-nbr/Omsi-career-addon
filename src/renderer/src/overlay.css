@@ -2864,3 +2864,119 @@
   flex: 1;
   margin-top: 4px;
 }
+
+/*
+ * HET APPARAAT ZOALS HET IN DE BUS ZIT
+ *
+ * Elk vak en elke aanraaktoets op zijn eigen plek, in delen van het apparaat
+ * zelf. Waar die plekken vandaan komen staat in core/busvorm.ts: ze zijn uit de
+ * 3D-onderdelen van de bus gemeten.
+ *
+ * `container-type: size` hoort HIER en nergens anders: de vakken rekenen hun
+ * lettergrootte tegen het apparaat (`cqw`, `cqh`), en zonder deze regel zouden
+ * ze tegen het venster rekenen en op een tablet twee keer zo groot worden.
+ */
+.paneel-vlak {
+  container-type: inline-size;
+  position: relative;
+  /*
+   * Niet hoger dan twee vijfde van het paneel: op een tablet wordt het paneel
+   * uitgerekt tot de volle breedte, en dan nam een apparaat van bijna twee bij
+   * een het hele scherm in beslag en stonden zijn toetsen eronder buiten beeld.
+   * De verhouding van het apparaat blijft staan; hij wordt alleen smaller.
+   */
+  width: min(100%, calc(var(--vlak-verhouding, 2) * var(--paneel-hoog, 620px) * 0.4));
+  margin: 0 auto;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-klein);
+  background: #15171a;
+  overflow: hidden;
+}
+
+.vlak-veld,
+.vlak-knop {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 0 1px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  /*
+   * Geen letterruimte. Die wordt hier overgeërfd van de overlay, en de
+   * lettergrootte is precies uitgerekend op wat er aan tekens in het vak past --
+   * met een beetje ruimte ertussen liep de bestemming van het schermpje af.
+   */
+  letter-spacing: 0;
+  line-height: 1;
+  white-space: pre;
+  overflow: hidden;
+}
+
+.vlak-veld {
+  justify-content: flex-start;
+}
+
+/* De tekst zelf, met de kleuren van het vak eromheen. */
+.vlak-veld b {
+  display: inline-block;
+  padding: 0 0.12em;
+  border-radius: 1px;
+  font-weight: inherit;
+  text-shadow: 0 0 0.35em currentColor;
+}
+
+.vlak-veld[data-uit='midden'] {
+  justify-content: center;
+}
+
+.vlak-veld[data-uit='rechts'] {
+  justify-content: flex-end;
+}
+
+.vlak-knop {
+  justify-content: center;
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  background: #d8d6d0;
+  color: #17181a;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+/*
+ * Een toets met tekst uit de bus erop: de acht verkooptegels van een ALMEX. Die
+ * horen bij het scherm, dus hebben ze geen knopkleur maar een randje.
+ */
+.vlak-knop.tekst {
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 2px;
+  font-weight: 600;
+  text-shadow: 0 0 0.35em currentColor;
+}
+
+.vlak-knop:disabled {
+  opacity: 0.32;
+  cursor: default;
+}
+
+/* Een knop van een ander menu ligt onder de tekst, niet erover. */
+.vlak-knop.stil {
+  z-index: 1;
+  background: rgba(216, 214, 208, 0.9);
+}
+
+.vlak-veld,
+.vlak-knop.tekst {
+  z-index: 2;
+}
+
+/* Waarom een nagebouwd apparaat leeg blijft: het staat in de bus gewoon uit. */
+.paneel-uit {
+  margin: 4px 0 0;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 11px;
+  text-align: center;
+}

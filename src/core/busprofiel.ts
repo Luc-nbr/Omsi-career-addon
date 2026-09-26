@@ -1,4 +1,4 @@
-import { knoppenVanModel, modelcfgVanBus, type Modelknop } from './busscherm'
+import { knoppenVanModel, modelcfgVanBus, type Modelknop, type Uitlijning } from './busscherm'
 
 /**
  * De apparaten van een bus, nagebouwd zoals ze in de cabine zitten.
@@ -65,12 +65,49 @@ export interface Paneel {
   id: string
   naam: string
   merk?: string
-  /** De regels van het schermpje, in de volgorde van boven naar beneden. */
+  /**
+   * De regels van het schermpje, van boven naar beneden.
+   *
+   * Voor een apparaat waarvan de app de indeling heeft kunnen NAMETEN staat de
+   * tekst in `vlak` en blijft dit leeg; zie `Paneelvlak`.
+   */
   regels: string[]
   tekens: number
   tekstkleur: string
   achtergrond: string
   rijen: Profielknop[][]
+  /** Het scherm zoals het in de bus ligt, als dat gemeten kon worden. */
+  vlak?: Paneelvlak
+}
+
+/**
+ * Eén tekstvak op het scherm van een apparaat, op de plek waar het in de bus zit.
+ *
+ * Alles in delen van het scherm: `links` 0 is de linkerrand, `boven` 0 de
+ * bovenrand. Waar die plekken vandaan komen staat in core/busvorm.ts -- ze zijn
+ * uit de 3D-onderdelen van de bus gemeten, niet gegokt.
+ */
+export interface Paneelveld {
+  /** Waar de tekst vandaan komt; leeg bij een knop die alleen een opschrift heeft. */
+  variabele?: string
+  tekst: string
+  /** Aantikbaar: de verkooptegels van een ALMEX zijn knop en scherm in één. */
+  actie?: string
+  /** Wat erop staat als het geen tekst uit de bus is. */
+  opschrift?: string
+  links: number
+  breedte: number
+  boven: number
+  hoogte: number
+  tekstkleur: string
+  achtergrond: string
+  uitlijning: Uitlijning
+}
+
+/** Het scherm van een apparaat: zijn vakken, en hoe breed het is ten opzichte van hoog. */
+export interface Paneelvlak {
+  verhouding: number
+  velden: Paneelveld[]
 }
 
 /** Een bus die de app van binnen kent. */

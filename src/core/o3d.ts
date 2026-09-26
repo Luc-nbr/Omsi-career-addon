@@ -30,10 +30,15 @@ import { readFileSync } from 'node:fs'
  * - `0x26` materialen: **altijd** een uint16 aantal (ook in versie 7), dan per
  *   materiaal 11 floats (diffuus rgba, specular rgb, emissie rgb, macht) en de
  *   textuurnaam als lengtebyte plus latin-1 tekens.
- * - `0x79` een 4x4-matrix van floats: de plaatsing van dit deel in het
- *   voertuig. Rijgewijs, met de verschuiving in de laatste rij (elementen 12,
- *   13, 14) -- af te lezen aan `Woman01.o3d`, waar alleen 13 en 14 van nul
- *   afwijken. 18.453 modellen dragen de eenheidsmatrix, 36.552 iets anders.
+ * - `0x79` een 4x4-matrix van floats, rijgewijs, met de verschuiving in de
+ *   laatste rij (elementen 12, 13, 14) -- af te lezen aan `Woman01.o3d`, waar
+ *   alleen 13 en 14 van nul afwijken. 18.453 modellen dragen de eenheidsmatrix,
+ *   36.552 iets anders. **Niet over de hoekpunten heen rekenen**: die staan al
+ *   in de maten van het voertuig. Nagemeten aan `17_almex_s_hst1.o3d` uit de
+ *   Hamburgse stadsbus: de hoekpunten liggen op y 1,690 en z 4,028 -- dat is
+ *   waar de ALMEX in de bus zit -- en de matrix zegt 1,688 / 4,028, dus hij
+ *   herhaalt alleen waar het deel omheen draait. Met de matrix er nog eens
+ *   overheen kwam de bus twee keer zo ver van zichzelf te liggen.
  * - `0x54` beenderen: alleen bij mensen en bij harmonicabalgen (197 bestanden).
  *
  * De blokken komen in één volgorde voor: 17-49-26-79 (54.808 bestanden),
@@ -121,7 +126,12 @@ export interface O3dModel {
    */
   materiaalPerDriehoek: Uint16Array
   materialen: O3dMateriaal[]
-  /** De 4x4-matrix uit blok 0x79, rijgewijs. Ontbreekt als het blok er niet is. */
+  /**
+   * De 4x4-matrix uit blok 0x79, rijgewijs. Ontbreekt als het blok er niet is.
+   *
+   * Het draaipunt van dit deel, niet zijn plaats: de hoekpunten staan al waar ze
+   * horen. Zie de kop van dit bestand.
+   */
   transform?: number[]
   /** Alleen gevuld als het bestand een beenderenblok heeft. */
   beenderen?: O3dBeen[]

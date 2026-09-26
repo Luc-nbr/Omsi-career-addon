@@ -61,6 +61,7 @@ import { bruikbareToetsen, zetBustoetsen } from '../core/bustoetsen'
 import {
   describeLive,
   leesSchermen,
+  VRAGEN_MAX,
   liveMap,
   pluginLogboek,
   readLive,
@@ -1552,6 +1553,36 @@ function spoorVanDeVerkoop(live: ReturnType<typeof readLive>): void {
 const schermenPerBus = new Map<string, Busapparaat[]>()
 let vorigeVragen = ''
 
+/*
+ * Een lege uitkomst mag niet blijven hangen.
+ *
+ * `[]` is waar in JavaScript, dus een bus die één keer geen model.cfg opleverde
+ * -- een half gevuld pad tijdens het laden, of Defender die het bestand een tel
+ * vasthoudt -- bleef de hele sessie zonder schermpjes en zonder apparaten. Nu
+ * wordt zo'n lezing na tien tellen nog eens geprobeerd.
+ */
+const LEEG_OPNIEUW_MS = 10000
+/** En hoe vaak; een bus die werkelijk niets heeft hoeft niet eeuwig herlezen. */
+const LEEG_POGINGEN = 3
+const leegSinds = new Map<string, { sinds: number; pogingen: number }>()
+
+/** Waar of de vorige lezing leeg was en het lang genoeg geleden is. */
+function nogEensProberen(sleutel: string, aantal: number): boolean {
+  const nu = Date.now()
+  if (aantal > 0) {
+    leegSinds.delete(sleutel)
+    return false
+  }
+  const stand = leegSinds.get(sleutel)
+  if (stand === undefined) {
+    leegSinds.set(sleutel, { sinds: nu, pogingen: 0 })
+    return false
+  }
+  if (stand.pogingen >= LEEG_POGINGEN || nu - stand.sinds < LEEG_OPNIEUW_MS) return false
+  leegSinds.set(sleutel, { sinds: nu, pogingen: stand.pogingen + 1 })
+  return true
+}
+
 function busApparaten(live: LiveData | undefined): Busapparaat[] | undefined {
   const bus = live?.bus
   if (!bus || (!bus.pad && !bus.model && !bus.bestand)) return undefined
@@ -1564,7 +1595,7 @@ function busApparaten(live: LiveData | undefined): Busapparaat[] | undefined {
   }
   const sleutel = `${bus.pad}|${bus.model}|${bus.bestand}`
   let apparaten = schermenPerBus.get(sleutel)
-  if (!apparaten) {
+  if (!apparaten || nogEensProberen(`schermen:${sleutel}`, apparaten.length)) {
     apparaten = apparatenVanBus(omsiMap, bus)
     schermenPerBus.set(sleutel, apparaten)
     log(
@@ -1579,10 +1610,26 @@ function busApparaten(live: LiveData | undefined): Busapparaat[] | undefined {
    * staan dus niet in de model.cfg, maar wel in de lijst die de plugin van de
    * bus doorgeeft (schermen.json).
    */
+  /*
+   * WAT DE PLUGIN MOET OPZOEKEN, IN DEZE VOLGORDE
+   *
+   * De plugin neemt er `VRAGEN_MAX` aan; wat verder in de lijst staat valt
+   * eraf, zonder klacht. Dus komt vooraan waar de speler naar kijkt: de
+   * apparaten die hij zelf in de telefoon gezet heeft. Stond dat achteraan, dan
+   * viel bij een volle bus juist het apparaat weg waar het om ging en bleef zijn
+   * scherm leeg.
+   */
   const namen: string[] = []
-  for (const apparaat of apparaten) {
-    for (const naam of apparaat.variabelen) if (!namen.includes(naam)) namen.push(naam)
+  const erbij = (naam: string): void => {
+    if (naam && !namen.includes(naam)) namen.push(naam)
   }
+  const gekozen = new Set(gekozenModules(bus))
+  const modules = busModules(live)
+  for (const module of modules) {
+    if (!gekozen.has(module.id)) continue
+    for (const naam of module.variabelen) erbij(naam)
+  }
+  for (const apparaat of apparaten) for (const naam of apparaat.variabelen) erbij(naam)
   /*
    * De namen op de knoppen van de kaartautomaat hangen aan geen enkele textuur
    * -- ze staan niet in de model.cfg -- maar ze zijn er wel, en de kaartverkoop
@@ -1591,10 +1638,10 @@ function busApparaten(live: LiveData | undefined): Busapparaat[] | undefined {
    */
   const soorten = apparaten.map((apparaat) => apparaat.naam.toLowerCase())
   if (soorten.some((naam) => naam.startsWith('afr'))) {
-    for (let i = 0; i < 10; i++) namen.push(`afr_ticketname_${i}`)
+    for (let i = 0; i < 10; i++) erbij(`afr_ticketname_${i}`)
   }
   if (soorten.some((naam) => naam.startsWith('atron'))) {
-    for (let i = 1; i <= 8; i++) namen.push(`atron_ticket${i}`)
+    for (let i = 1; i <= 8; i++) erbij(`atron_ticket${i}`)
   }
 
   /*
@@ -1603,19 +1650,19 @@ function busApparaten(live: LiveData | undefined): Busapparaat[] | undefined {
    * een toegevoegd apparaat -- de ALMEX van een Hamburgse bus -- zwart: hij
    * stond er wel, maar er kwam geen tekst in.
    */
-  for (const module of busModules(live)) {
-    for (const vak of module.schermen) {
-      if (!namen.includes(vak.variabele)) namen.push(vak.variabele)
-    }
-  }
+  for (const module of modules) for (const naam of module.variabelen) erbij(naam)
 
   const alles = leesSchermen()
   for (const naam of Object.keys(alles?.vars ?? {})) {
-    if (/ticketname|_ticket\d|zifferneingabe|eingabe/i.test(naam) && !namen.includes(naam)) {
-      namen.push(naam)
-    }
+    if (/ticketname|_ticket\d|zifferneingabe|eingabe/i.test(naam)) erbij(naam)
   }
-  const vraag = namen.slice(0, 64).join('\n')
+  /*
+   * Het wisselsignaal moet over dezelfde lijst gaan als wat er weggeschreven
+   * wordt. Keek dit naar de eerste vierenzestig, dan werd een verandering in de
+   * staart -- en daar staan juist de namen die er later bijkomen -- nooit
+   * doorgegeven.
+   */
+  const vraag = namen.slice(0, VRAGEN_MAX).join('\n')
   if (vraag !== vorigeVragen) {
     vorigeVragen = vraag
     schrijfVragen(namen)
@@ -1720,12 +1767,12 @@ function busModules(live: LiveData | undefined): Busmodule[] {
   }
   const sleutel = `${bus.pad}|${bus.model}|${bus.bestand}`
   let modules = modulesPerBus.get(sleutel)
-  if (!modules) {
+  if (!modules || nogEensProberen(`modules:${sleutel}`, modules.length)) {
     modules = modulesVanBus(omsiMap, bus)
     modulesPerBus.set(sleutel, modules)
     log(
       `apparaten in ${bus.naam || bus.pad}: ` +
-        (modules.map((m) => `${m.naam} (${m.schermen.length} schermpjes, ${m.knoppen.length} knoppen)`).join(', ') ||
+        (modules.map((m) => `${m.naam} (${m.vakken.length} schermpjes, ${m.knoppen.length} knoppen)`).join(', ') ||
           'geen')
     )
     const namen = new Set(Object.values(OMSI_TOETSEN).map((naam) => naam.toLowerCase()))
@@ -1758,13 +1805,28 @@ function gekozenModules(bus: LiveData['bus']): string[] {
 
 function busPanelen(live: LiveData | undefined): Paneel[] | undefined {
   const bus = live?.bus
-  if (!bus || !live.vars) return undefined
+  if (!bus) return undefined
   let omsiMap: string
   try {
     omsiMap = omsi()
   } catch {
     return undefined
   }
+
+  /*
+   * EERST DE APPARATEN DIE DE SPELER ZELF ERBIJ GEZET HEEFT
+   *
+   * Die hangen aan niets: de app stelt ze samen uit de model.cfg op schijf, en
+   * of er op dit moment tekst in staat doet niet mee. Ze stonden hieronder, na
+   * twee poorten -- geen `vars` en geen schermen.json -- en die gaan tijdens het
+   * laden, in het menu en tussen twee diensten allebei dicht. Dan verdween het
+   * apparaat uit beeld in plaats van dat het zijn laatste tekst vasthield.
+   */
+  const gekozen = gekozenModules(bus)
+  const zelf = busModules(live)
+    .filter((module) => gekozen.includes(module.id))
+    .map((module) => paneelVanModule(module, live.vars ?? {}))
+
   const sleutel = `${bus.pad}|${bus.model}|${bus.bestand}`
   let profiel = profielPerBus.get(sleutel)
   if (profiel === undefined) {
@@ -1776,7 +1838,7 @@ function busPanelen(live: LiveData | undefined): Paneel[] | undefined {
     const namen = new Set(
       Object.keys(leesSchermen()?.vars ?? {}).map((naam) => naam.toLowerCase())
     )
-    if (namen.size === 0) return undefined
+    if (namen.size === 0) return zelf.length > 0 ? zelf : undefined
     profiel = profielVanBus(omsiMap, bus, namen)?.profiel ?? null
     profielPerBus.set(sleutel, profiel)
     log(
@@ -1785,17 +1847,10 @@ function busPanelen(live: LiveData | undefined): Paneel[] | undefined {
         : `busprofiel: geen voor ${bus.naam || bus.pad}; de generieke weergave blijft`
     )
   }
-  const uitProfiel = profiel ? panelenVan(profiel, live.vars) : []
-  /*
-   * En de apparaten die de speler er zelf bij gezet heeft met "Voeg IBIS-scherm
-   * toe". Een apparaat dat het profiel al toont komt er niet nog een keer bij.
-   */
+  const uitProfiel = profiel ? panelenVan(profiel, live.vars ?? {}) : []
+  /* Een apparaat dat het profiel al uitgewerkt toont komt er niet nog eens bij. */
   const alGetoond = new Set(uitProfiel.map((paneel) => paneel.id))
-  const gekozen = gekozenModules(bus)
-  const erbij = busModules(live)
-    .filter((module) => gekozen.includes(module.id) && !alGetoond.has(module.id))
-    .map((module) => paneelVanModule(module, live.vars ?? {}))
-  const alles = [...uitProfiel, ...erbij]
+  const alles = [...uitProfiel, ...zelf.filter((paneel) => !alGetoond.has(paneel.id))]
   return alles.length > 0 ? alles : undefined
 }
 
@@ -1814,7 +1869,7 @@ function busmoduleLijst(live: LiveData | undefined): {
   return modules.map((module) => ({
     id: module.id,
     naam: module.naam,
-    schermen: module.schermen.length,
+    schermen: module.vakken.length,
     knoppen: module.knoppen.length,
     erbij: gekozen.includes(module.id) || paneelIds.has(module.id)
   }))

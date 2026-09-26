@@ -3606,6 +3606,12 @@ const TEXT = {
     nl: '+ Voeg IBIS-scherm toe'
   },
   'ovl.moduleHide': { en: 'Done', de: 'Fertig', fr: 'Terminé', nl: 'Klaar' },
+  'ovl.deviceOff': {
+    en: 'This device is off in the bus: it is not writing anything to its display.',
+    de: 'Dieses Gerät ist im Bus aus: es schreibt nichts auf seine Anzeige.',
+    fr: 'Cet appareil est éteint dans le bus : il n’écrit rien sur son écran.',
+    nl: 'Dit apparaat staat in de bus uit: er komt geen tekst op zijn schermpje.'
+  },
   'ovl.moduleSize': {
     en: '{schermen} displays, {knoppen} buttons',
     de: '{schermen} Anzeigen, {knoppen} Tasten',

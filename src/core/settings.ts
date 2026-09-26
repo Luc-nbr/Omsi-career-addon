@@ -226,7 +226,20 @@ export function readSettings(userDataPath: string): Settings {
  */
 export function writeSettings(userDataPath: string, settings: Partial<Settings>): Settings {
   const current = readSettings(userDataPath)
+  /*
+   * ALLES WAT ER STOND BLIJFT STAAN
+   *
+   * `clean` vervangt het hele bestand, en drie keer op rij is er een veld
+   * weggevallen doordat het hieronder niet opnieuw werd opgeschreven: eerst de
+   * kennismaking (`tourSeen`), toen de versleepte scheiding (`navDeel`), en nu
+   * de apparaten die de speler in de telefoon had gezet (`busmodules`) -- die
+   * kwamen nooit op schijf, dus stond de ALMEX van een Hamburgse bus na twee
+   * tellen weer uit. Wat `readSettings` teruggeeft is al nagekeken, dus is het
+   * veilig om ermee te beginnen; wie daarna een veld vergeet verliest niets
+   * meer.
+   */
   const clean: Settings = {
+    ...current,
     language: isLanguage(settings.language) ? settings.language : current.language,
     overlayRate: isOverlayRate(settings.overlayRate) ? settings.overlayRate : current.overlayRate,
     windowedOmsi:
@@ -270,7 +283,16 @@ export function writeSettings(userDataPath: string, settings: Partial<Settings>)
      */
     navDeel: geldigNavDeel(settings.navDeel) ?? current.navDeel,
     apparaatSleutel: geldigeSleutel(settings.apparaatSleutel) ?? current.apparaatSleutel,
-    apparaatPoort: geldigePoort(settings.apparaatPoort) ?? current.apparaatPoort
+    apparaatPoort: geldigePoort(settings.apparaatPoort) ?? current.apparaatPoort,
+    /*
+     * Wel het verschil houden tussen "niets meegegeven" en "een lege lijst":
+     * haalt de speler zijn laatste apparaat weg, dan komt hier `{}` langs, en
+     * met `??` bleef de oude lijst dan staan en kwam het apparaat terug.
+     */
+    busmodules:
+      settings.busmodules && typeof settings.busmodules === 'object'
+        ? geldigeModules(settings.busmodules)
+        : current.busmodules
   }
   const path = settingsPath(userDataPath)
   mkdirSync(dirname(path), { recursive: true })

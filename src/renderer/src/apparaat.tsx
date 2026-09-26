@@ -260,6 +260,9 @@ function Apparaat(): JSX.Element {
                * het paneel houdt dezelfde verhouding aan als op de pc.
                */
               ["--paneel-letter-max" as string]: `${Math.round(paneel.hoog / 18)}px`,
+              /* En hoe hoog het paneel is, zodat een nagebouwd apparaat weet
+                 hoeveel ruimte er onder hem overblijft voor zijn toetsen. */
+              ["--paneel-hoog" as string]: `${Math.round(paneel.hoog)}px`,
             }}
           >
             {/*

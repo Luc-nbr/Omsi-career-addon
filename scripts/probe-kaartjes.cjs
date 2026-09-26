@@ -175,9 +175,18 @@ app.whenReady().then(async () => {
   const dicht = await js(overlay, `({ kaartjes: Boolean(document.querySelector('.kaartjes')) })`)
   console.log('deur weer dicht:', JSON.stringify(dicht))
 
-  /* De kaartsoorten staan als tegels, niet als lijst. */
+  /*
+   * De kaartsoorten staan als tegels, niet als lijst.
+   *
+   * Eerst terug naar het overzicht: het kaartje dat op de automaat in de bus
+   * gekozen stond, staat in de app al open -- dat is de bedoeling -- en dan is
+   * er geen tegellijst te zien. Het pijltje linksboven brengt je terug, net als
+   * bij de gebruiker.
+   */
   schrijf(true, -1)
   await wacht(1800)
+  await js(overlay, `document.querySelector('.kaartterug')?.click()`)
+  await wacht(400)
   const tegels = await js(overlay, `({
     tegels: document.querySelectorAll('.kaarttegels button').length,
     lijst: document.querySelectorAll('.kaartlijst button').length,
@@ -195,6 +204,8 @@ app.whenReady().then(async () => {
   const prijs = Number(uitPak[1] ?? '1.90')
   schrijf(true, -1, { kaartje: 1, prijs, gegeven: 10 })
   await wacht(1800)
+  await js(overlay, `document.querySelector('.kaartterug')?.click()`)
+  await wacht(400)
   const verkoop = await js(overlay, `({
     scherm: Boolean(document.querySelector('.verkoop')),
     tegelsErbij: document.querySelectorAll('.kaarttegels button').length,

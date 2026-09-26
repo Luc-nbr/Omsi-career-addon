@@ -22,3 +22,6 @@ release-new/
 .claude/settings.local.json
 .impeccable/
 skills/
+
+# De afdrukken van scripts/schermafdruk-apparaat.cjs
+scripts/afdruk/
