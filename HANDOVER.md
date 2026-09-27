@@ -759,37 +759,41 @@ die aan het eind met rmdir zonder /s worden losgehaald; **die map nooit
 recursief verwijderen**), en `scripts/probe-toetsdelen.ts` voor de regels van
 het delen.
 
-**Vrij rijden: zelf een dienst samenstellen, en de overlay gaat mee**
-(27-09-2026). Luc: "In die modus moeten spelers zelf een dienst kunnen
-samenstellen. Ze kiezen een map, daarna kiezen de lijnen die ze willen rijden,
-daarna volgt de gebruikelijke setup. Wat erbij moet komen is dat de overlay ook
-tijdens het rijden andere omlopen accepteert."
+**Vrij rijden: kaart, beginpunt en bus -- de omloop kies je in OMSI** (27-09-2026).
+Luc: "Vrij rijden modus moet helemaal geen dienst genereren, de speler kiest in
+omsi een omloop en de overlay detecteert dat, in vrije modus kiest de speler
+enkel een kaart, beginpunt en bus." (Een eerste versie die dezelfde dag uit
+aangevinkte lijnen een dienst samenstelde, is daarmee vervangen.)
 
-- **Opzet:** kaart -> lijnen (vinkjes, `Rij.aan` in Setup.tsx; niets aangevinkt is
-  elke lijn) -> de gewone dienststap, met `lineFiles` = de aangevinkte lijnen en
-  een weerkeuze erbij -> bus -> START. Het oude formulier (halte, datum, tijd),
-  `startVrij` en `free:start` zijn weg: een vrije dienst gaat dezelfde weg als
-  een gewone (`duty:confirm` met `mode: 'free'`, `duty:begin` met `weather`),
-  dus met rijscherm, aanmelden, wacht over OMSI en de vraag "meerijden?" als
-  OMSI al draait.
-- **Niets geboekt:** `finish` in App.tsx en `sluitLopendeDienstAf` in main zetten
-  een vrije dienst niet in het logboek.
+- **Opzet:** kaart -> beginpunt (de haltes van de kaart, op de plek van de
+  dienststap; twee perrons met dezelfde naam krijgen (1) en (2), en de gekozen
+  halte staat op de kaart) -> bus -> START. Geen lijnen, geen dienst, niets in
+  het profiel, niets geboekt. `free:start` zet de bus bij de halte, met de
+  datum uit het tijdvak van de kaart en de tijd van de klok van de pc, en start
+  OMSI. Draait OMSI al, dan wordt er niets klaargezet en gaat de overlay meteen
+  open.
+- **De vrije rit** staat alleen in het hoofdproces (`vrijeRit`), niet in het
+  profiel. Een dienst aannemen of `free:stop` ("Vrij rijden stoppen" op het
+  rijscherm van vrij rijden) sluit hem af, met de overlay.
+- **De overlay zonder omloop** zegt hoe je er een kiest (`frame.vrij`,
+  `ovl.freePickTour`). `openOverlay` en `overlay:set` mogen zonder dienst, maar
+  alleen bij een vrije rit.
 - **Meegaan:** `volgOmloopInOmsi` in main/index.ts, elk beeld. Staat er in het
-  dienstregelingsmenu van OMSI een omloop die niet bij de dienst hoort
+  dienstregelingsmenu van OMSI een omloop die de overlay nog niet toont
   (`mem.lineName`, `tourName`, `tripName`, met `schedActive`), dan bouwt
-  `dutyFromTour` (core/duty.ts) die omloop op vanaf de gekozen rit, komen de
-  IBIS-codes erbij (het wagenpark naast de bus die OMSI noemt, het jaar van het
-  spel), en wordt dat de dienst: in het profiel, in de overlay en op het
-  rijscherm (`dienst:gevolgd`). De aanmelding hangt bij vrij rijden aan de rit
-  zelf en niet aan de dienst (`telefoonSleutel`), dus die blijft staan. Eens per
-  keuze, en opnieuw per aangenomen dienst.
+  `dutyFromTour` (core/duty.ts) die op vanaf de gekozen rit, komen de IBIS-codes
+  erbij (het wagenpark naast de bus die OMSI noemt, het jaar van het spel), en
+  krijgen de overlay, de tablet en het rijscherm hem (`vrij:gevolgd`). De
+  aanmelding hangt aan de vrije rit (`vrij<n>` in telefoonSleutel) en blijft dus
+  staan; er valt niets te aanvaarden (`telefoon.aanvaard` gaat vanzelf aan).
 - **Wat het niet volgt:** alleen een lijn en route in de IBIS intoetsen zonder het
   dienstregelingsmenu, en een andere kaart laden in OMSI (de plugin geeft de
   kaart niet door, en logfile.txt is tijdens het spelen op slot).
 
 Proeven: `scripts/probe-omloopvolgen.ts` (dutyFromTour over alle kaarten, 276
 van 276) en `scripts/probe-vrijrijden.cjs` (het hele verloop in de echte app,
-met een eigen procesje als "OMSI").
+met een eigen procesje als "OMSI" dat al draait; starten met OMSI dicht wordt
+daar met opzet NIET nagelopen, want dan schrijft de app in de spelmap).
 
 **LET OP -- wat er bij de eerste versie van die proef misging (27-09).** De
 vraag "draait OMSI?" op de busstap (`omsi:running`) en de controle in
@@ -1009,10 +1013,10 @@ string en geeft een foutmelding die nergens naar de oorzaak wijst.
 
 **Verder open:**
 
-- **In vrije modus losse ritten aan je dienst toevoegen.** De gebruiker vroeg ooit
-  "in vrije modus is er selectie mogelijk per lijn en kunnen handmatig meer
-  ritten worden toegevoegd". Het eerste deel staat er sinds 27-09 (lijnen
-  aanvinken; zie 5.0); losse ritten met de hand toevoegen nog niet.
+- **Een oude wens over vrij rijden is vervallen.** Ooit: "in vrije modus is er
+  selectie mogelijk per lijn en kunnen handmatig meer ritten worden
+  toegevoegd". Op 27-09 zei Luc dat vrij rijden helemaal geen dienst hoort te
+  maken; de omloop kies je in OMSI. Zie 5.0.
 - **De Discord-aankondiging van 0.3.1 is geschreven maar mogelijk niet geplaatst.**
   Hij staat in `C:\OMSI Enhancer Discord\uitgaven\0.3.1.md`; de links erin werken,
   want de release bestaat. Of hij er ook staat weet de app niet -- vraag het.
@@ -1030,9 +1034,10 @@ string en geeft een foutmelding die nergens naar de oorzaak wijst.
 - **De vergunningenlijst is nooit met een echte vergunning gezien.** Die verschijnt
   pas als je een examen werkelijk rijdt en haalt; de probe komt niet verder dan
   het examenscherm. De code volgt dezelfde logica als het oude `CareerPanel`.
-- **Vrij rijden kon geen remise kiezen.** Sinds 27-09 heeft vrij rijden een dienst en
-  loopt het door dezelfde busstap als een dienst, dus hoort het remisescherm er
-  te werken; apart nagelopen is dat niet.
+- **Vrij rijden kan geen remise kiezen.** `duty:yards` heeft een dienst nodig, en
+  bij vrij rijden is er vooraf geen; het remisescherm toont daar alleen de tegel
+  om er een bij te halen. De IBIS-codes komen er onderweg alsnog, uit het
+  wagenpark naast de bus (volgOmloopInOmsi).
 
 ### 5.1 Wegennet en routes — opgelost, met twee losse eindjes
 

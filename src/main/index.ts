@@ -54,7 +54,6 @@ import { readTileGrid, type MapGeometry } from '../core/geo'
 import { LaneNetwork, type TripRoute } from '../core/routing'
 import { VehicleTracker, type VehiclePosition } from '../core/vehicle'
 import { buildIbisPlan, type IbisPlan } from '../core/ibis'
-import type { WeatherKind } from '../shared/weather'
 import { apparatenVanBus, modelcfgVanBus, type Busapparaat } from '../core/busscherm'
 import { panelenVan, profielVanBus, type Busprofiel, type Paneel } from '../core/busprofiel'
 import { modulesVanBus, paneelVanModule, type Busmodule } from '../core/busmodule'
@@ -153,6 +152,8 @@ import {
   type OmsiMelding,
   type OmsiOverlays,
   type BeginRequest,
+  type FreeRequest,
+  type FreeResult,
   type Busklaaruitslag,
   type DutyDate,
   type DutyRequest,
@@ -984,27 +985,31 @@ function currentDuty(): Duty | undefined {
 }
 
 /*
- * VRIJ RIJDEN VOLGT WAT JE IN OMSI KIEST
+ * VRIJ RIJDEN: DE OVERLAY VOLGT WAT JE IN OMSI KIEST
  *
- * Luc: "als een speler tijdens het rijden bedenkt om toch een andere lijn te
- * selecteren gaat de overlay daar in mee, en biedt dan de instructies passend
- * bij die geselecteerde lijn". Bij een dienst in dienst of carriere zegt de
- * overlay dan dat je de verkeerde rit rijdt -- daar is de dienst de opdracht.
- * Bij vrij rijden is de dienst een voorstel, en is wat je in het
- * dienstregelingsmenu van OMSI kiest de nieuwe opdracht.
+ * Luc: "Vrij rijden modus moet helemaal geen dienst genereren, de speler kiest
+ * in omsi een omloop en de overlay detecteert dat, in vrije modus kiest de
+ * speler enkel een kaart, beginpunt en bus." Een vrije rit (`vrijeRit`) heeft
+ * dus geen dienst en staat niet in het profiel: de app zet kaart, beginpunt en
+ * bus klaar, start OMSI en opent de overlay. De dienst ontstaat pas als je in
+ * het dienstregelingsmenu van OMSI een omloop kiest.
  *
  * De plugin geeft door welke lijn, omloop en rit OMSI op de bus heeft staan
  * (`mem.lineName`, `tourName`, `tripName`), en of het menu werkelijk rijdt
  * (`schedActive`; terwijl je in het menu bladert staat er al een rit in het
- * geheugen die je nog niet gekozen hebt). Past die niet bij de dienst, dan
- * wordt de omloop uit de dienstregeling van de kaart opgebouwd
- * (dutyFromTour in core/duty.ts), met zijn IBIS-codes, en wordt dat de dienst:
- * in het profiel, in de overlay, op de tablet en op het rijscherm. De
- * aanmelding blijft staan; zie telefoonSleutel.
+ * geheugen die je nog niet gekozen hebt). Hoort die niet bij wat de overlay nu
+ * toont, dan wordt de omloop uit de dienstregeling van de kaart opgebouwd
+ * (dutyFromTour in core/duty.ts), vanaf de gekozen rit, met zijn IBIS-codes, en
+ * krijgen de overlay, de tablet en het hoofdvenster die. Kies je later een
+ * andere, dan gaat hij weer mee. De aanmelding blijft staan: die hangt aan de
+ * vrije rit, niet aan de omloop (telefoonSleutel).
  *
  * Eens per keuze: dezelfde lijn, omloop en rit worden niet elk beeld opnieuw
  * opgebouwd, ook niet als het opbouwen niets opleverde.
  */
+let vrijeRit:
+  | { mapFolder: string; mapName: string; vehiclePath?: string; sinds: string }
+  | undefined
 let gevolgd = ''
 
 function ritSleutelVan(naam: string): string {
@@ -1013,32 +1018,31 @@ function ritSleutelVan(naam: string): string {
 }
 
 function volgOmloopInOmsi(live: ReturnType<typeof readLive>): void {
-  const lopend = career?.activeDuty
-  if (!career || !lopend || lopend.mode !== 'free' || !lopend.startedAt) return
+  const rit = vrijeRit
+  if (!rit || career?.activeDuty) return
   const mem = live?.mem
   if (!live?.alive || !mem || mem.ok !== 1 || !(mem.schedActive > 0.5) || !mem.tripName.trim()) return
-  const nu = currentDuty()
-  if (!nu) return
 
   const keuze = {
     lineFile: mem.lineName.trim(),
     tourNumber: mem.tourName.trim(),
     tripFile: mem.tripName.trim()
   }
-  // Met het moment van aannemen erin: een nieuwe vrije dienst begint opnieuw met kijken.
-  const sleutel = `${lopend.confirmedAt}|${nu.mapFolder}|${keuze.lineFile}|${keuze.tourNumber}|${ritSleutelVan(keuze.tripFile)}`
+  // Met het begin van de rit erin: een nieuwe vrije rit begint opnieuw met kijken.
+  const sleutel = `${rit.sinds}|${keuze.lineFile}|${keuze.tourNumber}|${ritSleutelVan(keuze.tripFile)}`
   if (sleutel === gevolgd) return
   gevolgd = sleutel
 
-  /* Rijdt de dienst deze rit al, in deze omloop? Dan valt er niets te volgen. */
-  const rit = ritSleutelVan(keuze.tripFile)
-  if (nu.legs.some((leg) => ritSleutelVan(leg.tripFile) === rit && leg.tourNumber.trim() === keuze.tourNumber)) {
+  /* Toont de overlay deze rit al, in deze omloop? Dan valt er niets te volgen. */
+  const nu = overlayDuty
+  const ritNu = ritSleutelVan(keuze.tripFile)
+  if (nu?.legs.some((leg) => ritSleutelVan(leg.tripFile) === ritNu && leg.tourNumber.trim() === keuze.tourNumber)) {
     return
   }
 
   let nieuw: Duty | undefined
   try {
-    nieuw = dutyFromTour(map(nu.mapFolder), network(nu.mapFolder), {
+    nieuw = dutyFromTour(map(rit.mapFolder), network(rit.mapFolder), {
       ...keuze,
       clockMinutes: live.time / 60
     })
@@ -1047,7 +1051,7 @@ function volgOmloopInOmsi(live: ReturnType<typeof readLive>): void {
     return
   }
   if (!nieuw) {
-    log(`vrij rijden: lijn ${keuze.lineFile}, omloop ${keuze.tourNumber}, rit ${keuze.tripFile} staat niet in de dienstregeling van ${nu.mapName}`)
+    log(`vrij rijden: lijn ${keuze.lineFile}, omloop ${keuze.tourNumber}, rit ${keuze.tripFile} staat niet in de dienstregeling van ${rit.mapName}`)
     return
   }
 
@@ -1056,10 +1060,7 @@ function volgOmloopInOmsi(live: ReturnType<typeof readLive>): void {
    * rijdt -- de bus die OMSI noemt, of anders die van de dienst -- en de codes
    * verschillen per tijdvak, dus telt het jaar van het spel.
    */
-  const toegewezen = lopend.assignment as Assignment
-  const busPad = live.bus?.pad
-    ? join(live.bus.pad, 'bus.bus')
-    : lopend.vehicleOverride || toegewezen.vehicle?.relativePath
+  const busPad = live.bus?.pad ? join(live.bus.pad, 'bus.bus') : rit.vehiclePath
   let ibis: IbisPlan | undefined
   if (busPad) {
     try {
@@ -1069,18 +1070,29 @@ function volgOmloopInOmsi(live: ReturnType<typeof readLive>): void {
     }
   }
 
-  career = { ...career, activeDuty: { ...lopend, assignment: { ...toegewezen, duty: nieuw } } }
-  writeProfile(userData(), career)
   overlayDuty = nieuw
   overlayIbis = ibis
+  /* Er valt niets te aanvaarden: de chauffeur koos deze omloop zelf. */
+  telefoon.aanvaard = true
   lastFrame = undefined
   log(
     `vrij rijden volgt OMSI: lijn ${nieuw.lineNumbers.join('/') || keuze.lineFile}, omloop ${nieuw.tourNumber}, ` +
       `${nieuw.legs.length} ritten vanaf ${formatTime(nieuw.start)}${ibis ? `, IBIS lijn ${ibis.line}` : ''}`
   )
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('dienst:gevolgd', { career: careerPayload(), ibis })
+    mainWindow.webContents.send('vrij:gevolgd', { duty: nieuw, ibis })
   }
+}
+
+/** Een vrije rit afsluiten: de overlay dicht, en wat hij volgde weg. */
+function stopVrijeRit(): void {
+  if (!vrijeRit) return
+  log(`vrij rijden gestopt: ${vrijeRit.mapName}`)
+  vrijeRit = undefined
+  gevolgd = ''
+  overlayDuty = undefined
+  overlayIbis = undefined
+  closeOverlay()
 }
 
 /**
@@ -1188,8 +1200,7 @@ function sluitLopendeDienstAf(): void {
   if (!career || !lopend) return
 
   const duty = currentDuty()
-  // Vrij rijden telt niet mee in de loopbaan; zie ook finish in App.tsx.
-  if (!duty || !baseline() || lopend.exam || lopend.mode === 'free') {
+  if (!duty || !baseline() || lopend.exam) {
     career = { ...career, activeDuty: undefined }
     writeProfile(userData(), career)
     return
@@ -1460,15 +1471,13 @@ function telefoonPad(): string {
  */
 function telefoonSleutel(): string {
   const duty = currentDuty()
-  if (!duty) return ''
+  if (!duty && !vrijeRit) return ''
   /*
    * Vrij rijden volgt de omloop die je in OMSI kiest; dan verandert de dienst
-   * onderweg, en hoort de aanmelding te blijven staan. Hij hangt dan aan de rit
-   * zelf: de chauffeur en het moment van aannemen.
+   * onderweg, en hoort de aanmelding te blijven staan. Hij hangt dan aan de
+   * vrije rit zelf.
    */
-  if (career?.activeDuty?.mode === 'free') {
-    return `${career.id}|vrij|${career.activeDuty.confirmedAt}`
-  }
+  if (vrijeRit && !career?.activeDuty) return `vrij${vrijeRitten}`
   const aangenomen = (career?.activeDuty?.assignment as Assignment | undefined)?.duty
   const zelfde = aangenomen && aanmeldSleutelVan(aangenomen) === aanmeldSleutelVan(duty)
   return zelfde
@@ -2340,6 +2349,8 @@ function pushFrame(): void {
     vehicle: vehicleOnMap(live, duty),
     duty,
     ibis: overlayIbis,
+    /* Een vrije rit: dan zegt de overlay hoe je in OMSI een omloop kiest, zolang er geen is. */
+    vrij: vrijeRit && !career?.activeDuty ? { kaart: vrijeRit.mapName } : undefined,
     /*
      * De kaartjes van deze kaart gaan mee in het beeld. Ze veranderen niet
      * tijdens een dienst, maar de overlay heeft geen eigen brug naar het
@@ -2347,7 +2358,7 @@ function pushFrame(): void {
      * beeld wordt pas verstuurd als er iets aan verandert, en een kaartset is
      * een handvol regels.
      */
-    kaartjes: kaartsetVoorOverlay(duty?.mapFolder),
+    kaartjes: kaartsetVoorOverlay(duty?.mapFolder ?? vrijeRit?.mapFolder),
     knoppen: busknoppen(),
     panelen: busPanelen(live),
     busmodules: busmoduleLijst(live),
@@ -2394,6 +2405,7 @@ function frameVoorApparaat(frame: {
   knoppen?: unknown
   panelen?: unknown
   busmodules?: unknown
+  vrij?: unknown
   telefoon: TelefoonStand
 }): unknown {
   return {
@@ -2403,6 +2415,7 @@ function frameVoorApparaat(frame: {
     vehicle: frame.vehicle,
     duty: frame.duty,
     ibis: frame.ibis,
+    vrij: frame.vrij,
     kaartjes: frame.kaartjes,
     /*
      * De apparaten van deze bus en welke knoppen er aan een toets hangen. Die
@@ -2496,8 +2509,12 @@ function closeOverlay(): void {
   apparaatBeeld({ connected: false })
 }
 
-function openOverlay(duty: Duty, ibis?: IbisPlan): void {
-  overlayDuty = duty
+function openOverlay(duty: Duty | undefined, ibis?: IbisPlan): void {
+  /*
+   * Zonder dienst alleen bij een vrije rit: dan houdt de overlay wat hij al
+   * volgde, en anders toont hij hoe je in OMSI een omloop kiest.
+   */
+  if (duty) overlayDuty = duty
   if (ibis) overlayIbis = ibis
   if (overlayIsOpen()) return
   // Een vers venster weet nog niets; het eerste beeld moet er hoe dan ook komen.
@@ -2742,9 +2759,7 @@ function prepareSituation(
   lineNumber: string,
   terminus: string,
   yard?: string,
-  kleurstelling?: string,
-  /** Alleen bij vrij rijden gekozen; anders houdt OMSI zijn eigen weer. */
-  weather?: WeatherKind
+  kleurstelling?: string
 ) {
   const when = date ?? dutyDate(duty.mapFolder, duty.days | duty.period)
   if (!when) throw new Error('Geen datum gevonden waarop deze omloop rijdt.')
@@ -2771,8 +2786,7 @@ function prepareSituation(
           trailer: aanhangerVan(vehiclePath, kleurstelling)
         }
       : undefined,
-    spawn,
-    weather
+    spawn
     /*
      * Geen `timetable` meer.
      *
@@ -3866,6 +3880,69 @@ function registerHandlers(): void {
   )
 
   /**
+   * Vrij rijden: kaart, beginpunt en bus klaarzetten, en verder niets.
+   *
+   * Geen dienst, niets in het profiel, niets geboekt. De datum komt uit het
+   * tijdvak van de kaart en de tijd van de klok van de pc; welke omloop je rijdt
+   * kies je daarna zelf in OMSI, en de overlay volgt dat (volgOmloopInOmsi).
+   * Draait OMSI al, dan wordt er niets klaargezet -- het spel leest zijn
+   * startscherm alleen bij het opstarten -- en gaat de overlay meteen open.
+   */
+  handle('free:start', async (_event, request: FreeRequest): Promise<FreeResult> => {
+    const running = await isOmsiRunning(`${OMSI_PROCES}.exe`)
+    stopVrijeRit()
+    vrijeRitten += 1
+    vrijeRit = {
+      mapFolder: request.mapFolder,
+      mapName: map(request.mapFolder).name,
+      vehiclePath: request.vehiclePath,
+      sinds: new Date().toISOString()
+    }
+    log(
+      `vrij rijden: ${vrijeRit.mapName}, bus ${request.vehiclePath ?? '?'}, beginpunt ${request.stopId ?? 'geen'}` +
+        (running ? ' -- OMSI draait al, niets klaargezet' : '')
+    )
+
+    let launched = false
+    if (!running) {
+      const result = writeSituation(omsi(), {
+        mapFolder: request.mapFolder,
+        name: 'OMSI Enhancer — vrij rijden',
+        description: `Vrij rijden vanaf ${formatTime(request.minutes)}.`,
+        year: request.year,
+        dayOfYear: request.dayOfYear,
+        minutes: request.minutes,
+        vehicle: request.vehiclePath
+          ? {
+              relativePath: request.vehiclePath,
+              lineNumber: '',
+              terminus: '',
+              vars: kleurVars(request.vehiclePath, request.kleurstelling),
+              // Een gelede bus is twee voertuigen; zonder dit begin je met een halve.
+              trailer: aanhangerVan(request.vehiclePath, request.kleurstelling)
+            }
+          : undefined,
+        spawn: request.vehiclePath ? spawnFor(request.mapFolder, request.stopId) : undefined
+      })
+      presetStartup(omsi(), request.mapFolder, result.file)
+      klaargezet = { mapFolder: request.mapFolder, file: result.file }
+      try {
+        /* Knoppen die nog aan een toets moesten: nu kan het, OMSI is nog dicht. */
+        await schrijfStraks('voor het starten van OMSI')
+        launched = (await launchOmsi(omsi(), readSettings(userData()).windowedOmsi)) === 'gestart'
+      } catch {
+        // Lukt starten niet, dan doet de speler het zelf.
+      }
+    }
+    if (freshLive()?.alive) openOverlay(undefined)
+    return { running, launched }
+  })
+
+  handle('free:stop', () => {
+    stopVrijeRit()
+  })
+
+  /**
    * De chauffeur neemt een dienst aan. Vanaf nu staat hij in het profiel en
    * blijft hij daar tot hij is afgerond of geannuleerd. Een tweede dienst
    * aannemen terwijl er een loopt kan niet.
@@ -3880,6 +3957,7 @@ function registerHandlers(): void {
       exam?: ActiveDuty['exam']
     ) => {
       if (!career || career.activeDuty) return careerPayload()
+      stopVrijeRit()
       return persist({
         ...career,
         activeDuty: {
@@ -3982,8 +4060,7 @@ function registerHandlers(): void {
           request.lineNumber,
           request.terminus,
           request.yard,
-          request.kleurstelling,
-          request.weather
+          request.kleurstelling
         )
       } catch (cause) {
         prepareError = cause instanceof Error ? cause.message : String(cause)
@@ -4046,7 +4123,7 @@ function registerHandlers(): void {
    * sluit een overlay die de app voor dicht aanzag. Levert de werkelijke stand.
    */
   handle('overlay:set', (_event, duty: Duty | undefined, open: boolean, ibis?: IbisPlan) => {
-    if (open && duty) openOverlay(duty, ibis)
+    if (open && (duty || vrijeRit)) openOverlay(duty ?? undefined, ibis)
     else if (!open) closeOverlay()
     return overlayIsOpen()
   })

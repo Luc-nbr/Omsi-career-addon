@@ -605,21 +605,6 @@
     var(--route);
 }
 
-/*
- * Een vinkje in plaats van een bolletje: hier kies je er meer dan een, zoals de
- * lijnen bij vrij rijden. Een vierkant zegt dat, een rondje zegt "een van".
- */
-.dienstbol.vink {
-  border-radius: 4px;
-}
-
-.dienstrij[aria-pressed='true'] .dienstbol.vink {
-  background:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
-      center / 12px 12px no-repeat,
-    var(--route);
-}
-
 .dienstduur {
   display: flex;
   align-items: center;
@@ -833,6 +818,17 @@
 .dienstenvel[data-keuze='nee'] .dienstrij,
 .dienstenvel[data-keuze='nee'] .kolomkoppen {
   grid-template-columns: 1.6fr 0.7fr 0.7fr;
+}
+
+/* Eén kolom: de naam over de hele breedte; zie data-kolommen in Setup.tsx. */
+.dienstenvel[data-kolommen='1'] .dienstrij,
+.dienstenvel[data-kolommen='1'] .kolomkoppen {
+  grid-template-columns: 26px 1fr;
+}
+
+.dienstenvel[data-kolommen='1'] .dienstrij > span:not(.dienstbol):not(.dienstnaam),
+.dienstenvel[data-kolommen='1'] .kolomkoppen > :nth-child(n + 3) {
+  display: none;
 }
 
 /* Er valt hier niets te kiezen, dus ook niets op te lichten. */
@@ -4249,4 +4245,16 @@
 .hub-apparaat svg {
   width: 15px;
   height: 15px;
+}
+
+/*
+ * Het rijscherm van vrij rijden: de omloop die in OMSI gekozen is, rit voor rit.
+ * Hetzelfde overzicht als onder een dienst in de dienstenlijst, maar hier is het
+ * de inhoud van het vel en mag het de hoogte vullen.
+ */
+.vrij-omloop {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 2px 12px;
 }

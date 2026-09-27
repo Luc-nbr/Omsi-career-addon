@@ -108,10 +108,12 @@ const api: CareerApi = {
   chooseProfilePhoto: (id) => ipcRenderer.invoke('career:photo', id),
   clearProfilePhoto: (id) => ipcRenderer.invoke('career:photo:clear', id),
   dienstpasGezien: () => ipcRenderer.invoke('career:pas:gezien'),
-  onDienstGevolgd: (handler) => {
+  startFree: (request) => ipcRenderer.invoke('free:start', request),
+  stopFree: () => ipcRenderer.invoke('free:stop'),
+  onVrijGevolgd: (handler) => {
     const heen = (_event: unknown, gevolgd: Parameters<typeof handler>[0]) => handler(gevolgd)
-    ipcRenderer.on('dienst:gevolgd', heen)
-    return () => ipcRenderer.removeListener('dienst:gevolgd', heen)
+    ipcRenderer.on('vrij:gevolgd', heen)
+    return () => ipcRenderer.removeListener('vrij:gevolgd', heen)
   },
   bussen: () => ipcRenderer.invoke('bussen:lijst'),
   busAnalyse: (sleutel) => ipcRenderer.invoke('bussen:analyse', sleutel),

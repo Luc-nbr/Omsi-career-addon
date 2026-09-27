@@ -39,6 +39,11 @@ export interface NavFrame {
   connected: boolean;
   /** OMSI staat open, maar de kaart laadt nog: de plugin geeft pas daarna iets door. */
   laadt?: boolean;
+  /**
+   * Een vrije rit: geen dienst vooraf. Zolang er in OMSI geen omloop gekozen is,
+   * zegt de overlay hoe dat gaat; daarna volgt hij die omloop.
+   */
+  vrij?: { kaart: string };
   /** De kaartsoorten van deze kaart, met hun prijzen; zie core/kaartjes.ts. */
   kaartjes?: Kaartset;
   /**
@@ -399,6 +404,13 @@ export function NavKaart({
 }): JSX.Element {
   const { status } = frame;
   const { leg, passed, readable, ibisLoaded, started, upcoming, bus } = rit;
+  if (!duty && frame.vrij) {
+    return (
+      <div className="empty">
+        {t(language, "ovl.freePickTour", { kaart: frame.vrij.kaart })}
+      </div>
+    );
+  }
   if (!duty || !geometry) {
     return <div className="empty">{t(language, "ovl.mapLoading")}</div>;
   }

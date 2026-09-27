@@ -16,7 +16,6 @@ import { EXAM_LIMITS } from "../../core/exam";
 import type { IbisPlan } from "../../core/ibis";
 import type { PluginStatus } from "../../core/pluginInstall";
 import type { Vehicle } from "../../core/vehicles";
-import { WEATHER_KINDS, type WeatherKind } from "../../shared/weather";
 import {
   TIME_WINDOWS,
   type Assignment,
@@ -163,8 +162,9 @@ const STAPPEN_DIENST: readonly Stap[] = STAPPEN.filter(
 const STAPPEN_CARRIERE: readonly Stap[] = STAPPEN.filter(
   (naam) => naam !== "line" && naam !== "rijden",
 );
+/* Vrij rijden: kaart, beginpunt (op de plek van de dienst) en bus. */
 const STAPPEN_VRIJ: readonly Stap[] = STAPPEN.filter(
-  (naam) => naam !== "licence" && naam !== "rijden",
+  (naam) => naam !== "line" && naam !== "licence" && naam !== "rijden",
 );
 
 /**
@@ -502,20 +502,29 @@ export function App(): JSX.Element {
   const [thema, setThema] = useState<Thema>("systeem");
 
   /*
-   * VRIJ RIJDEN: JE STELT JE DIENST ZELF SAMEN
+   * VRIJ RIJDEN: KAART, BEGINPUNT EN BUS
    *
-   * Luc: "In die modus moeten spelers zelf een dienst kunnen samenstellen. Ze
-   * kiezen een map, daarna kiezen de lijnen die ze willen rijden, daarna volgt
-   * de gebruikelijke setup." De lijnen die je aanvinkt zijn de lijnen waar de
-   * dienstgenerator overheen mag lopen -- niets aangevinkt is elke lijn -- en
-   * daarna gaat het zoals bij een dienst: een dienst kiezen, een bus, starten.
-   * Het weer kies je er zelf bij; de rest volgt uit de dienst.
-   *
-   * Onderweg mag je van gedachten veranderen: kies je in OMSI een andere
-   * omloop, dan gaat de dienst mee (volgOmloopInOmsi in main/index.ts).
+   * Luc: "Vrij rijden modus moet helemaal geen dienst genereren, de speler
+   * kiest in omsi een omloop en de overlay detecteert dat, in vrije modus kiest
+   * de speler enkel een kaart, beginpunt en bus." Dus geen dienst, niets in het
+   * profiel: de app zet de bus bij de gekozen halte, start OMSI en opent de
+   * overlay. Welke omloop je rijdt kies je in het dienstregelingsmenu van OMSI;
+   * het hoofdproces bouwt die op en stuurt hem hierheen (`vrijGevolgd`).
    */
-  const [vrijeLijnen, setVrijeLijnen] = useState<string[]>([]);
-  const [vrijWeer, setVrijWeer] = useState<WeatherKind>("clear");
+  const [vrijeHalte, setVrijeHalte] = useState("");
+  /** De haltes van de kaart, om te kiezen waar de bus komt te staan. */
+  const [vrijeHaltes, setVrijeHaltes] = useState<
+    Array<{ id: string; name: string }>
+  >([]);
+  /** De bus die de app bij deze kaart voorstelt; bij vrij rijden is er geen dienst. */
+  const [vrijeTip, setVrijeTip] = useState<Vehicle>();
+  /** Er loopt een vrije rit; het rijscherm van vrij rijden staat. */
+  const [vrijBezig, setVrijBezig] = useState(false);
+  /** De omloop die in OMSI gekozen is, zodra die er is. */
+  const [vrijGevolgd, setVrijGevolgd] = useState<{
+    duty: Duty;
+    ibis?: IbisPlan;
+  }>();
 
   /*
    * Carriere: de vergunningstap toont wat je mag, of het examen dat daarachter
@@ -691,19 +700,6 @@ export function App(): JSX.Element {
     };
   }, [stap, started]);
 
-  /*
-   * Bij binnenkomst op de lijnstap staat de bovenste regel gemarkeerd, terwijl
-   * er nog niets gekozen is: het scherm liet een keuze zien die het niet had
-   * gemaakt, en de kaart bleef daardoor leeg. Nu kiest hij die eerste lijn ook
-   * echt, en licht de route meteen op.
-   */
-  useEffect(() => {
-    if (stap !== "line" || lineFile || lines.length === 0 || busy) return;
-    const eerste = lines[0].lineFile;
-    setLineFile(eerste);
-    void generateRef.current?.(eerste);
-  }, [stap, lineFile, lines, busy]);
-
   const selectedMap = useMemo(
     () => maps.find((m) => m.folder === mapFolder),
     [maps, mapFolder],
@@ -845,15 +841,57 @@ export function App(): JSX.Element {
     setSelected(undefined);
   }, [mode]);
   useEffect(() => {
-    if (stap !== "duty" || busy || confirmed) return;
+    // Vrij rijden zoekt geen dienst: de dienststap is daar het beginpunt.
+    if (mode === "free" || stap !== "duty" || busy || confirmed) return;
     if (duties.length > 0 || !mapFolder) return;
     void generateRef.current?.();
-  }, [stap, busy, confirmed, duties.length, mapFolder]);
+  }, [mode, stap, busy, confirmed, duties.length, mapFolder]);
 
-  /* Andere kaart, andere lijnen: wat er aangevinkt stond bestaat daar niet. */
+  /*
+   * Wat de beginpuntstap nodig heeft: de haltes van de kaart, en de bus die de
+   * app bij deze kaart voorstelt. Een halte-id van Spandau bestaat niet op
+   * Grundorf, dus een andere kaart begint weer zonder beginpunt.
+   */
   useEffect(() => {
-    setVrijeLijnen([]);
-  }, [mapFolder]);
+    setVrijeHalte("");
+    if (mode !== "free" || !mapFolder) {
+      setVrijeHaltes([]);
+      setVrijeTip(undefined);
+      return;
+    }
+    let geldig = true;
+    void window.career.geometry(mapFolder).then((gevonden) => {
+      if (!geldig) return;
+      /*
+       * Een halte heeft vaak twee perrons met dezelfde naam, een per richting.
+       * Allebei staan ze erin -- de bus komt aan de goede kant te staan -- met
+       * een nummer erachter om ze uit elkaar te houden.
+       */
+      const opNaam = (gevonden?.stops ?? [])
+        .filter((halte) => halte.name)
+        .sort((a, b) => a.name.localeCompare(b.name));
+      const geteld = new Map<string, number>();
+      setVrijeHaltes(
+        opNaam.map((halte) => {
+          const n = (geteld.get(halte.name) ?? 0) + 1;
+          geteld.set(halte.name, n);
+          const dubbel = opNaam.filter((h) => h.name === halte.name).length > 1;
+          return { id: halte.id, name: dubbel ? `${halte.name} (${n})` : halte.name };
+        }),
+      );
+    });
+    void window.career
+      .suggestVehicle(mapFolder)
+      .then((bus) => {
+        if (geldig) setVrijeTip(bus);
+      })
+      .catch(() => {
+        // Geen voorstel is geen fout; dan kies je zelf uit alles.
+      });
+    return () => {
+      geldig = false;
+    };
+  }, [mode, mapFolder]);
 
   /*
    * Opnieuw diensten zoeken zodra je de lengte of het dagdeel verzet.
@@ -882,13 +920,13 @@ export function App(): JSX.Element {
      * van gekozen is `lineFile` daar leeg -- en dus deed de schuif niets meer.
      * Een lege lijn is geen ontbrekende lijn maar "elke lijn".
      */
-    if (confirmed || !mapFolder) return;
+    if (confirmed || !mapFolder || mode === "free") return;
     const wacht = setTimeout(
       () => void generateRef.current?.(lineFile || undefined),
       400,
     );
     return () => clearTimeout(wacht);
-  }, [lengthIndex, timeWindow, lineFile, confirmed, mapFolder]);
+  }, [lengthIndex, timeWindow, lineFile, confirmed, mapFolder, mode]);
 
   /*
    * Eens per seconde, en alleen tijdens het rijden. De plugin schrijft tien keer
@@ -1155,9 +1193,7 @@ export function App(): JSX.Element {
               ? (career?.state?.licences ?? [])
                   .filter((vergunning) => vergunning.mapFolder === mapFolder)
                   .map((vergunning) => vergunning.lineFile)
-              : mode === "free" && vrijeLijnen.length > 0
-                ? vrijeLijnen
-                : undefined,
+              : undefined,
         });
         if (found.length === 0) {
           setDuties([]);
@@ -1182,16 +1218,7 @@ export function App(): JSX.Element {
         setBusy(false);
       }
     },
-    [
-      mapFolder,
-      lengthIndex,
-      timeWindow,
-      lineFile,
-      language,
-      confirmed,
-      mode,
-      vrijeLijnen,
-    ],
+    [mapFolder, lengthIndex, timeWindow, lineFile, language, confirmed, mode],
   );
 
   // De verwijzing bijwerken, zodat het effect hierboven de laatste versie pakt.
@@ -1307,7 +1334,6 @@ export function App(): JSX.Element {
             lineNumber: ibis?.line || duty.legs[0]?.lineNumber || "",
             terminus: duty.legs[0]?.terminus ?? "",
             yard: ibis?.yard,
-            weather: mode === "free" ? vrijWeer : undefined,
           });
         } catch (cause) {
           setNote(
@@ -1404,7 +1430,7 @@ export function App(): JSX.Element {
         setBusy(false);
       }
     },
-    [duty, confirmed, ibis, vehicle, assignment, language, busKleur, mode, vrijWeer],
+    [duty, confirmed, ibis, vehicle, assignment, language, busKleur],
   );
 
   /**
@@ -1430,19 +1456,76 @@ export function App(): JSX.Element {
    * bij het opstarten. Dat hoort te blijken voordat de dienst in je loopbaan
    * staat en niet als mededeling erna.
    */
+  /**
+   * Vrij rijden: kaart, beginpunt en bus klaarzetten, OMSI starten, en naar het
+   * rijscherm van vrij rijden. De datum komt uit het tijdvak van de kaart en de
+   * tijd van de klok van de pc: welke omloop je rijdt, kies je in OMSI.
+   */
+  const startVrij = useCallback(async () => {
+    if (!selectedMap || busy) return;
+    const bus = vehicleOverride || vrijeTip?.relativePath;
+    if (!bus || !vrijeHalte) {
+      setError(t(language, "free.startPick"));
+      return;
+    }
+    setBusy(true);
+    setError(undefined);
+    setNote(t(language, "start.preparing"));
+    try {
+      const nu = new Date();
+      const result = await window.career.startFree({
+        mapFolder,
+        vehiclePath: bus,
+        kleurstelling:
+          busKleur && busKleur.pad === bus ? busKleur.naam : undefined,
+        stopId: vrijeHalte,
+        year: selectedMap.year,
+        dayOfYear: selectedMap.dayOfYear || 180,
+        minutes: nu.getHours() * 60 + nu.getMinutes(),
+      });
+      setVrijGevolgd(undefined);
+      setVrijBezig(true);
+      setNote(
+        result.running
+          ? t(language, "free.alreadyRunning")
+          : t(language, "free.ready", { map: selectedMap.name }),
+      );
+      // Tot het spel er is, zegt het venstertje dat; dan gaat de overlay open.
+      setStarting(!result.running);
+      setOverlayOpen(await window.career.overlayIsOpen());
+    } catch (cause) {
+      setNote(undefined);
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  }, [
+    selectedMap,
+    busy,
+    vehicleOverride,
+    vrijeTip,
+    vrijeHalte,
+    mapFolder,
+    busKleur,
+    language,
+  ]);
+
   const drukOpStart = useCallback(() => {
     /*
-     * Ook bij vrij rijden. Daar was het klaarzetten eerst het hele starten,
-     * zonder dienst om mee te rijden. Nu is er wel een dienst, en dan is
-     * meerijden juist wat vrij rijden vraagt: je stapt in het spel dat al
-     * draait, kiest daar zelf een omloop, en de overlay gaat mee.
+     * Vrij rijden heeft geen dienst om aan te nemen of mee te rijden: START zet
+     * de bus neer en start OMSI. Draait het al, dan zet het hoofdproces niets
+     * klaar en gaat de overlay meteen open; zie free:start.
      */
+    if (mode === "free") {
+      void startVrij();
+      return;
+    }
     if (omsiDraaitAl && !started) {
       setDraaitVraag(true);
       return;
     }
     void startAlles();
-  }, [omsiDraaitAl, started, startAlles]);
+  }, [mode, omsiDraaitAl, started, startAlles, startVrij]);
 
   /**
    * Carriere: examen afleggen op de aangewezen lijn.
@@ -1661,24 +1744,19 @@ export function App(): JSX.Element {
   }, []);
 
   /*
-   * Vrij rijden: in OMSI een andere omloop gekozen. Het hoofdproces heeft de
-   * dienst al omgezet; het rijscherm gaat mee en zegt wat er gebeurde. Het
-   * scherm blijft waar het is -- dit is geen nieuwe dienst om naartoe te gaan.
+   * Vrij rijden: in OMSI een omloop gekozen. Het hoofdproces heeft hem al
+   * opgebouwd en aan de overlay gegeven; hier komt hij op het rijscherm van
+   * vrij rijden te staan.
    */
   useEffect(
     () =>
-      window.career.onDienstGevolgd(({ career: payload }) => {
-        setCareer(payload);
-        const held = payload.state?.activeDuty?.assignment as
-          | Assignment
-          | undefined;
-        if (!held) return;
-        setDuties([held]);
-        setSelected(0);
+      window.career.onVrijGevolgd((gevolgd) => {
+        setVrijGevolgd(gevolgd);
         setNote(
           t(language, "free.followed", {
-            line: held.duty.lineNumbers.join("/") || held.duty.lineFile,
-            tour: held.duty.tourNumber,
+            line:
+              gevolgd.duty.lineNumbers.join("/") || gevolgd.duty.lineFile,
+            tour: gevolgd.duty.tourNumber,
           }),
         );
       }),
@@ -1710,20 +1788,7 @@ export function App(): JSX.Element {
         2,
         Math.round((duty?.totalStops ?? 0) / 10),
       );
-      if (mode === "free") {
-        /*
-         * Vrij rijden telt niet mee in je loopbaan: je stelde de dienst zelf
-         * samen en kon onderweg van omloop wisselen. De dienst gaat weg zoals
-         * bij annuleren, en het hoofdmenu zegt wat je reed.
-         */
-        setCareer(await window.career.cancelDuty());
-        uitkomst =
-          result.finished && (result.drivenKm ?? 0) > 0
-            ? t(language, "done.free", {
-                km: (result.drivenKm ?? 0).toFixed(1),
-              })
-            : t(language, "done.nothing");
-      } else if (exam) {
+      if (exam) {
         const payload = await window.career.finishExam(
           duty,
           {
@@ -1801,7 +1866,7 @@ export function App(): JSX.Element {
     } finally {
       setBusy(false);
     }
-  }, [duty, vehicle, exam, language, naarBegin, mode]);
+  }, [duty, vehicle, exam, language, naarBegin]);
 
   useEffect(() => {
     finishRef.current = finish;
@@ -2576,6 +2641,105 @@ export function App(): JSX.Element {
    * dienst al liep. Een lopende dienst ziet er in elke modus hetzelfde uit: er
    * valt niets meer te kiezen, alleen nog te rijden en af te ronden.
    */
+  /*
+   * HET RIJSCHERM VAN VRIJ RIJDEN
+   *
+   * Geen dienst om af te ronden: zolang je geen omloop koos staat hier hoe dat
+   * in OMSI gaat, en daarna de omloop die de overlay volgt, rit voor rit, met
+   * zijn route op de kaart. "Stoppen" sluit de overlay en brengt je terug naar
+   * het hoofdmenu; er wordt niets geboekt.
+   */
+  if (vrijBezig && mode === "free" && screen === "drive") {
+    const gevolgd = vrijGevolgd?.duty;
+    const stoppen = async (): Promise<void> => {
+      await window.career.stopFree();
+      setVrijBezig(false);
+      setVrijGevolgd(undefined);
+      setOverlayOpen(false);
+      setStarting(false);
+      naarBegin(t(language, "free.stopped"));
+    };
+    return (
+      <LanguageProvider language={language}>
+        <Setup
+          stap="rijden"
+          stappen={[...STAPPEN_VRIJ, "rijden"]}
+          stapnamen={{ duty: t(language, "setup.step.start") }}
+          rechtsInBalk={balkRechts}
+          lijn={gevolgd?.lineNumbers[0] ?? gevolgd?.legs[0]?.lineNumber}
+          duty={gevolgd}
+          titel={t(language, "free.drivingTitle")}
+          onderschrift={
+            gevolgd
+              ? t(language, "free.drivingTour", {
+                  line: gevolgd.lineNumbers.join("/") || gevolgd.lineFile,
+                  tour: gevolgd.tourNumber,
+                })
+              : t(language, "free.drivingPick", {
+                  map: selectedMap?.name ?? "",
+                })
+          }
+          /*
+           * Het rijscherm toont zijn inhoud niet als rijen maar in het vel zelf;
+           * zie het rijscherm van een dienst hieronder. De omloop staat er rit
+           * voor rit, net als bij het kiezen van een dienst.
+           */
+          koppen={["", "", ""]}
+          rijen={[]}
+          gekozen={0}
+          onKies={() => {}}
+          voet={error ?? note ?? ""}
+          voetFout={Boolean(error)}
+          metKaart
+          onStart={() => void stoppen()}
+          startTekst={t(language, "free.stop")}
+          bezig={busy}
+          tweede={[
+            {
+              tekst: t(
+                language,
+                overlayOpen ? "act.overlayHide" : "act.overlayShow",
+              ),
+              onDoen: () =>
+                void window.career
+                  .setOverlay(undefined, !overlayOpen)
+                  .then(setOverlayOpen),
+            },
+            {
+              tekst: t(language, "dev.connect"),
+              onDoen: () => setApparaatOpen(true),
+            },
+          ]}
+          onTerug={() => setScreen("modes")}
+          inhoud={
+            <>
+              {gevolgd && (
+                <div className="vrij-omloop">
+                  <Dienstoverzicht duty={gevolgd} />
+                </div>
+              )}
+              {starting && (
+                <StartingDialog
+                  onDone={() => {
+                    setStarting(false);
+                    setNote((nu) => nu ?? t(language, "app.omsiReady"));
+                    void window.career
+                      .setOverlay(undefined, true)
+                      .then(setOverlayOpen);
+                  }}
+                  onDismiss={() => setStarting(false)}
+                />
+              )}
+              {apparaatOpen && (
+                <ApparaatDialoog onClose={() => setApparaatOpen(false)} />
+              )}
+            </>
+          }
+        />
+      </LanguageProvider>
+    );
+  }
+
   if (started && duty && screen === "drive") {
     const volledig = assignment ? (
       <DutyCard
@@ -2877,7 +3041,38 @@ export function App(): JSX.Element {
       days: 0,
       period: 0,
     };
-    const kaartDuty = gekozenDuty ?? leegOpDeKaart;
+    /*
+     * Bij vrij rijden: de gekozen halte op de kaart. Een halte heeft vaak twee
+     * perrons met dezelfde naam; pas op de kaart zie je aan welke kant van de
+     * weg de bus komt te staan. Een "rit" van één halte is genoeg om hem te
+     * tekenen, en de kaart zoomt erop in.
+     */
+    const beginHalte =
+      mode === "free" && vrijeHalte
+        ? vrijeHaltes.find((item) => item.id === vrijeHalte)
+        : undefined;
+    const kaartDuty =
+      beginHalte && leegOpDeKaart
+        ? {
+            ...leegOpDeKaart,
+            legs: [
+              {
+                tripFile: "",
+                lineFile: "",
+                lineNumber: "",
+                terminus: "",
+                departure: 0,
+                arrival: 0,
+                minutes: 0,
+                tourNumber: "",
+                layoverBefore: 0,
+                stops: [beginHalte.name],
+                stopIds: [beginHalte.id],
+                stopTimes: [0],
+              },
+            ],
+          }
+        : (gekozenDuty ?? leegOpDeKaart);
 
     /*
      * Welke bussen er op de busstap staan.
@@ -2887,9 +3082,10 @@ export function App(): JSX.Element {
      * geen dienst om tegen te passen -- daar is de aanbeveling de bus die op
      * deze kaart het meest rondrijdt, en verder staat alles gewoon open.
      */
-    const aanbevolenBus = vehicle?.relativePath;
+    const aanbevolenBus =
+      mode === "free" ? vrijeTip?.relativePath : vehicle?.relativePath;
     const bussen =
-      gekozenDuty
+      gekozenDuty || mode === "free"
         ? [...vehicles].sort((a, b) => {
             if (a.relativePath === aanbevolenBus) return -1;
             if (b.relativePath === aanbevolenBus) return 1;
@@ -3295,9 +3491,7 @@ export function App(): JSX.Element {
          * tegel doet hetzelfde als een regel: hij kiest de kaart en gaat door.
          */
         const naarVolgende = (): void =>
-          setStap(
-            mode === "free" ? "line" : mode === "career" ? "licence" : "duty",
-          );
+          setStap(mode === "career" ? "licence" : "duty");
         const gekozenKaart = maps.find((item) => item.folder === mapFolder);
         const wisselaar = (
           <div
@@ -3407,62 +3601,6 @@ export function App(): JSX.Element {
           knop: t(language, "setup.next"),
         };
       }
-      if (stap === "line") {
-        /*
-         * Bij vrij rijden vink je de lijnen aan die je wilt rijden, zoveel als
-         * je wilt; de dienst loopt daarna alleen over die lijnen. Niets
-         * aangevinkt is elke lijn van de kaart. In de andere modi bestaat deze
-         * stap niet: daar loopt de dienst over alles (of over je vergunningen).
-         */
-        const aan = new Set(vrijeLijnen);
-        return {
-          stap: "line",
-          titel: t(language, "setup.lineTitle"),
-          onderschrift: t(language, "setup.freeLinesIntro"),
-          koppen: [
-            t(language, "setup.colLine"),
-            t(language, "setup.colTrips"),
-            t(language, "setup.colAverage"),
-          ],
-          rijen: lines.map((item) => ({
-            id: item.lineFile,
-            cellen: [
-              item.lineNumbers.join(", ") || item.lineFile,
-              String(item.trips),
-              formatDuration(item.averageMinutes, language),
-            ] as [string, string, string],
-            klok: true,
-            aan: aan.has(item.lineFile),
-          })),
-          index: -1,
-          kies: (index) => {
-            const gekozen = lines[index]?.lineFile;
-            if (!gekozen) return;
-            setVrijeLijnen((nu) =>
-              nu.includes(gekozen)
-                ? nu.filter((lijn) => lijn !== gekozen)
-                : [...nu, gekozen],
-            );
-            /* Een andere keuze is een andere vraag: de oude diensten kloppen niet meer. */
-            setDuties([]);
-            setSelected(undefined);
-          },
-          voet:
-            vrijeLijnen.length === 0
-              ? t(language, "setup.freeLinesAll", {
-                  map: selectedMap?.name ?? "",
-                  count: lines.length,
-                })
-              : t(language, "setup.freeLinesSome", {
-                  count: vrijeLijnen.length,
-                  total: lines.length,
-                }),
-          verder: () => {
-            void generate().then(() => setStap("duty"));
-          },
-          knop: t(language, "setup.next"),
-        };
-      }
       if (stap === "bus") {
         const ontleed = bussen.map((bus) => ({ bus, ...ontleedBus(bus) }));
 
@@ -3487,9 +3625,11 @@ export function App(): JSX.Element {
             hofAanbod.find((item) => item.folder === vehicle.folder))
           : undefined;
 
-        const tipBus = assignment?.vehicle;
+        const tipBus = mode === "free" ? vrijeTip : assignment?.vehicle;
         const beste = tipBus ? ontleedBus(tipBus) : undefined;
-        const nuGekozen = vehicleOverride || vehicle?.relativePath;
+        const nuGekozen =
+          vehicleOverride ||
+          (mode === "free" ? vrijeTip?.relativePath : vehicle?.relativePath);
         const gekozenOntleed = nuGekozen
           ? ontleed.find((item) => item.bus.relativePath === nuGekozen)
           : undefined;
@@ -4062,6 +4202,49 @@ export function App(): JSX.Element {
         };
       }
 
+      /*
+       * HET BEGINPUNT -- alleen bij vrij rijden.
+       *
+       * Op de plek van de dienst: waar de bus komt te staan. Er valt geen dienst
+       * te kiezen; die kies je straks in OMSI. De kaart ernaast toont het net.
+       */
+      if (mode === "free") {
+        const halte = vrijeHaltes.find((item) => item.id === vrijeHalte);
+        return {
+          stap: "duty" as Stap,
+          titel: t(language, "setup.startTitle"),
+          onderschrift: t(language, "setup.startIntro"),
+          koppen: [t(language, "setup.colStop"), "", ""] as [
+            string,
+            string,
+            string,
+          ],
+          rijen: vrijeHaltes.map((item) => ({
+            id: item.id,
+            cellen: [item.name, "", ""] as [string, string, string],
+          })),
+          index: vrijeHaltes.findIndex((item) => item.id === vrijeHalte),
+          kies: (index) => {
+            setVrijeHalte(vrijeHaltes[index]?.id ?? "");
+            setError(undefined);
+          },
+          voet: halte
+            ? t(language, "setup.startFoot", {
+                stop: halte.name,
+                map: selectedMap?.name ?? "",
+              })
+            : t(language, "free.startPick"),
+          verder: () => {
+            if (!vrijeHalte) {
+              setError(t(language, "free.startPick"));
+              return;
+            }
+            setStap("bus");
+          },
+          knop: t(language, "setup.next"),
+        };
+      }
+
       return {
         stap: "duty",
         titel: `${t(language, "setup.duties")}${gekozenDuty ? ` · ${gekozenDuty.lineNumbers[0] ?? ""}` : ""}`,
@@ -4115,31 +4298,6 @@ export function App(): JSX.Element {
                 ))}
               </div>
             </div>
-
-            {/*
-              Bij vrij rijden kies je het weer er zelf bij; bij een dienst
-              houdt OMSI zijn eigen weer.
-            */}
-            {mode === "free" && (
-              <div className="regelaar">
-                <div className="regelaar-kop">
-                  <label>{t(language, "free.weather")}</label>
-                </div>
-                <div className="regelaar-chips">
-                  {WEATHER_KINDS.map((soort) => (
-                    <button
-                      key={soort}
-                      type="button"
-                      aria-pressed={vrijWeer === soort}
-                      disabled={confirmed}
-                      onClick={() => setVrijWeer(soort)}
-                    >
-                      {t(language, `weather.${soort}` as const)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </>
         ),
         koppen: [
@@ -4213,7 +4371,12 @@ export function App(): JSX.Element {
            * Op de kaartstap is er nog geen dienst; dan tekent het vel het net
            * van de kaart die je aanwijst.
            */
-          netkaart={opzetStap === "map" && mapFolder ? mapFolder : undefined}
+          netkaart={
+            (opzetStap === "map" || (mode === "free" && opzetStap === "duty")) &&
+            mapFolder
+              ? mapFolder
+              : undefined
+          }
           onStart={() => {
             setBusrit((nu) => nu + 1);
             vel.verder();
@@ -4226,6 +4389,12 @@ export function App(): JSX.Element {
               : mode === "free"
                 ? STAPPEN_VRIJ
                 : STAPPEN_DIENST
+          }
+          /* Bij vrij rijden staat op de plek van de dienst het beginpunt. */
+          stapnamen={
+            mode === "free"
+              ? { duty: t(language, "setup.step.start") }
+              : undefined
           }
           tegels={vel.tegels}
           kruimels={vel.kruimels}
@@ -4264,7 +4433,14 @@ export function App(): JSX.Element {
                   staan en niet pas in het venstertje zelf.
                 */}
                 {omsiDraaitAl && (
-                  <p>{t(language, "app.omsiDraaitAl")}</p>
+                  <p>
+                    {t(
+                      language,
+                      mode === "free"
+                        ? "free.alreadyRunning"
+                        : "app.omsiDraaitAl",
+                    )}
+                  </p>
                 )}
                 {schermmodus === "volledig" && (
                   <>

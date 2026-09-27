@@ -5,7 +5,6 @@ import type { LineSummary } from '../core/duty'
 import type { ExamMeasurement } from '../core/exam'
 import type { ControllerConfig } from './controllers'
 import type { KeyBinding } from '../core/omsiKeys'
-import type { WeatherKind } from './weather'
 import type { ProfileSummary } from '../core/profiles'
 import type { MapGeometry } from '../core/geo'
 import type { IbisPlan } from '../core/ibis'
@@ -156,6 +155,29 @@ export interface DutyRequest {
   lineFiles?: string[]
 }
 
+/**
+ * Vrij rijden: kaart, beginpunt en bus, en verder niets. Geen dienst -- die
+ * kies je zelf in OMSI, en de overlay volgt wat je kiest.
+ */
+export interface FreeRequest {
+  mapFolder: string
+  vehiclePath?: string
+  /** De kleurstelling op naam, zoals OMSI's "Appearance"; leeg laat OMSI kiezen. */
+  kleurstelling?: string
+  /** De halte waar de bus komt te staan. */
+  stopId?: string
+  /** Het tijdvak van de kaart, en de tijd van de klok van de pc. */
+  year: number
+  dayOfYear: number
+  minutes: number
+}
+
+export interface FreeResult {
+  /** OMSI draaide al: er is niets klaargezet. */
+  running: boolean
+  launched: boolean
+}
+
 /** Een toegewezen dienst met de bus die erbij gezocht is. */
 /** De dag waarop deze omloop volgens de dienstregeling rijdt. */
 export interface DutyDate {
@@ -259,8 +281,6 @@ export interface BeginRequest {
   lineNumber: string
   terminus: string
   yard?: string
-  /** Alleen bij vrij rijden: het weer dat de chauffeur koos. */
-  weather?: WeatherKind
 }
 
 export interface BeginResult {
@@ -703,11 +723,15 @@ export interface CareerApi {
   clearProfilePhoto(id: string): Promise<CareerPayload>
   /** Vinkt af dat de chauffeur zijn personeelsnummer en pincode gezien heeft. */
   dienstpasGezien(): Promise<CareerPayload>
+  /** Vrij rijden: kaart, beginpunt en bus klaarzetten en OMSI starten. */
+  startFree(request: FreeRequest): Promise<FreeResult>
+  /** De vrije rit afsluiten: de overlay gaat dicht. */
+  stopFree(): Promise<void>
   /**
-   * Vrij rijden: in OMSI een andere omloop gekozen, en de dienst ging mee. Met
-   * het profiel zoals het nu is, en de IBIS-codes van de nieuwe omloop.
+   * Vrij rijden: in OMSI een omloop gekozen, en de overlay volgt hem. Met de
+   * omloop als dienst en zijn IBIS-codes.
    */
-  onDienstGevolgd(handler: (gevolgd: { career: CareerPayload; ibis?: IbisPlan }) => void): () => void
+  onVrijGevolgd(handler: (gevolgd: { duty: Duty; ibis?: IbisPlan }) => void): () => void
   /** De geïnstalleerde bussen, per map, en welke al klaargemaakt zijn. */
   bussen(): Promise<Busmapinfo[]>
   /** Een bus uitlezen: welke apparaten er zijn en wat ze zijn. Kan een minuut duren. */

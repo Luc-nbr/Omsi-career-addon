@@ -118,9 +118,17 @@ app.whenReady().then(async () => {
    * Wachten tot het hoofdmenu er staat, en een venstertje dat daarna opengaat
    * (dienstpas, een dienst die nog openstaat) wegklikken.
    */
+  /*
+   * Zonder openstaande dienst begint de app bij de chauffeurs; dan eerst Verder.
+   * Met een dienst begint hij in het hoofdmenu, met de vraag of je verder wilt.
+   */
   for (let i = 0; i < 40; i++) {
     await wacht(250)
     if (await js(hoofd, `document.querySelectorAll('.hub-knop').length > 0`)) break
+    if (await js(hoofd, `/Wie rijdt er vandaag|Who is driving/.test(document.body.innerText)`)) {
+      await js(hoofd, `document.querySelector('.startknop')?.click()`)
+      await wacht(800)
+    }
   }
   await wacht(1500)
   await js(hoofd, `document.querySelector('.dialog .btn.ghost, .dialog .btn')?.click()`)

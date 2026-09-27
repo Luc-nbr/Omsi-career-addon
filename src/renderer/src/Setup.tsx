@@ -74,12 +74,6 @@ export interface Rij {
    * want acht van die blokken tegelijk is geen lijst meer.
    */
   detail?: ReactNode;
-  /**
-   * Aangevinkt of niet, als je er meer dan een mag kiezen -- de lijnen bij vrij
-   * rijden. Dan telt `gekozen` niet, en staat er een vinkje in plaats van een
-   * bolletje.
-   */
-  aan?: boolean;
 }
 
 /**
@@ -761,6 +755,17 @@ export function Setup({
         className="vel dienstenvel"
         data-stap={stap}
         data-keuze={keuzeloos ? "nee" : "ja"}
+        /*
+         * Staat er in geen enkele rij iets in de tweede en derde kolom -- de
+         * haltes bij vrij rijden -- dan krijgt de naam de hele breedte. Anders
+         * bleef er een derde over voor "Elsa-Brand…", en was van twee perrons
+         * met dezelfde naam niet te zien welke welke was.
+         */
+        data-kolommen={
+          rijen.length > 0 && rijen.every((rij) => !rij.cellen[1] && !rij.cellen[2])
+            ? "1"
+            : "3"
+        }
       >
         <div className="velkop">
           {/*
@@ -936,17 +941,14 @@ export function Setup({
                   type="button"
                   className="dienstrij"
                   ref={index === gekozen ? gekozenRef : undefined}
-                  aria-pressed={rij.aan ?? index === gekozen}
+                  aria-pressed={index === gekozen}
                   disabled={Boolean(rij.uit)}
                   title={rij.uit}
                   onClick={() => onKies(index)}
                 >
                   {/* Geen bolletje als er niets te kiezen valt; dat belooft een keuze. */}
                   {!keuzeloos && (
-                    <span
-                      className={rij.aan === undefined ? "dienstbol" : "dienstbol vink"}
-                      aria-hidden="true"
-                    />
+                    <span className="dienstbol" aria-hidden="true" />
                   )}
                   {/*
                     De eerste kolom kapt gewoon aan het eind af: dat die bussen

@@ -191,7 +191,12 @@ export function Telefoon({
               tablet={tablet}
             />
           ) : app === "dienst" ? (
-            <DienstApp duty={duty} status={frame.status} language={language} />
+            <DienstApp
+              duty={duty}
+              vrij={frame.vrij}
+              status={frame.status}
+              language={language}
+            />
           ) : app === "pauze" ? (
             <PauzeApp
               duty={duty}
@@ -484,14 +489,24 @@ function Dock({
  */
 function DienstApp({
   duty,
+  vrij,
   status,
   language,
 }: {
   duty?: Duty;
+  vrij?: { kaart: string };
   status?: LiveStatus;
   language: Language;
 }): JSX.Element {
-  if (!duty) return <div className="empty">{t(language, "ovl.appNoDuty")}</div>;
+  if (!duty) {
+    return (
+      <div className="empty">
+        {vrij
+          ? t(language, "ovl.freePickTour", { kaart: vrij.kaart })
+          : t(language, "ovl.appNoDuty")}
+      </div>
+    );
+  }
   const nuIndex = status?.legIndex;
   return (
     <div className="app-lijst met-rail" data-hit>
