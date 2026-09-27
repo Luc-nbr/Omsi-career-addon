@@ -248,12 +248,26 @@ function padVan(ctx: CanvasRenderingContext2D, st: number[], breed: number, hoog
  * - 0: helemaal (de server leverde het plaatje al zonder doorzichtigheid);
  * - 1 (alfatest): helemaal of niet, drempel een half (ONZEKER, zoals op de server);
  * - 2 (mengen): de diffuse alfa.
+ *
+ * Met `[alphascale]` gaat dat nog maal de waarde van de variabele (0..1). Tot
+ * 27-09 ontbrak dat: de zwarte dimlaag van de Faremaster in de O560 lag dan
+ * altijd dekkend over het scherm, en van het hele scherm bleef alleen de tekst
+ * over. Levert de plugin geen getallen, of kent de bus de naam niet, dan telt
+ * de laag zoals zonder [alphascale]; een getal dat er niet is (NaN) telt als 0.
  */
-function dekkingVan(deel: Schermdeel): number {
-  const a = Math.min(1, Math.max(0, deel.kleur?.[3] ?? 1));
+function dekkingVan(deel: Schermdeel, stand: Schermstand): number {
+  let schaal = 1;
+  if (deel.alfaschaal !== undefined && stand.g && !(stand.o ?? []).includes(deel.alfaschaal)) {
+    const waarde = stand.g[deel.alfaschaal];
+    schaal =
+      typeof waarde === "number" && Number.isFinite(waarde)
+        ? Math.min(1, Math.max(0, waarde))
+        : 0;
+  }
+  const a = Math.min(1, Math.max(0, deel.kleur?.[3] ?? 1)) * schaal;
   if (deel.alfa === 2) return a;
   if (deel.alfa === 1) return a >= 0.5 ? 1 : 0;
-  return 1;
+  return schaal > 0 ? 1 : 0;
 }
 
 /**
@@ -501,7 +515,7 @@ function tekenDeel(
      * (`\S:n`) beschildert het busscript zelf en is niet na te tekenen: die
      * wordt een vlak in de lege kleur, zodat er niets van eronder doorschijnt.
      */
-    const dekking = deel.soort === "script" ? 1 : dekkingVan(deel);
+    const dekking = deel.soort === "script" ? 1 : dekkingVan(deel, stand);
     if (dekking <= 0) return;
     ctx.save();
     try {
@@ -529,7 +543,7 @@ function tekenDeel(
    * tekstvelden van de AFR hebben diffuse alfa 0 en zijn in het spel gewoon
    * te lezen (nakijken_achtergrond.md §3).
    */
-  const dekking = deel.soort === "tekst" ? 1 : dekkingVan(deel);
+  const dekking = deel.soort === "tekst" ? 1 : dekkingVan(deel, stand);
   if (dekking <= 0) return;
   const ondoorzichtig = deel.alfa === 0;
   if (groepen.length === 1) {

@@ -114,6 +114,11 @@ export interface Schermdeel {
    * plaatje, bij waarde k het plaatje van item k (een id, of null = geen).
    */
   keuze?: { getal: number; items: (string | null)[] }
+  /**
+   * `[alphascale] <variabele>`: plek in `Schermvorm.getallen`; de dekking van
+   * dit deel maal die waarde (0..1). Zie `dekkingVan` in apparaatscherm.tsx.
+   */
+  alfaschaal?: number
   /** `kleur`, en bij `alfa` 2 de doorzichtigheid (a) van een `beeld`: 0..1. */
   kleur?: [number, number, number, number]
   /** `tekst`. */

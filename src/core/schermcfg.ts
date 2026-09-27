@@ -78,6 +78,13 @@ export interface CfgMateriaalstand {
   /** `[texcoordtransX|Y] <var>`. */
   texcoordX?: string
   texcoordY?: string
+  /**
+   * `[alphascale] <var>`: de doorzichtigheid van dit materiaal maal de waarde
+   * van de variabele. De Faremaster van de O560 legt zo een zwarte laag over
+   * zijn scherm (`SU_II_dummy.dds`, `Faremaster_Dim`) die alleen 's nachts
+   * dimt; overdag is de waarde 0 en is de laag er niet.
+   */
+  alfaSchaal?: string
 }
 
 /** Eén `[matl]` of `[matl_change]` met alles wat er tot het volgende materiaal bij hoort. */
@@ -186,7 +193,8 @@ const LENGTE: Record<string, number> = {
   '[matl_envmap]': 2,
   '[texcoordtransX]': 1,
   '[texcoordtransY]': 1,
-  '[matl_noZwrite]': 0
+  '[matl_noZwrite]': 0,
+  '[alphascale]': 1
 }
 
 /**
@@ -537,6 +545,9 @@ export function ontleedSchermcfg(modelcfg: string, regels: string[]): ModelCfg {
         return
       case '[texcoordtransY]':
         stand.texcoordY = args(0).trim()
+        return
+      case '[alphascale]':
+        stand.alfaSchaal = args(0).trim() || undefined
         return
     }
   }

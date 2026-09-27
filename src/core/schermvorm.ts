@@ -1802,6 +1802,7 @@ export function schermGetallenVan(modelcfg: string, module: Busmodule): string[]
         zet(s.lightmap?.variabele)
         zet(s.texcoordX)
         zet(s.texcoordY)
+        zet(s.alfaSchaal)
       }
     }
     for (const anim of g.keten) {
@@ -1974,6 +1975,7 @@ export function schermVormVan(invoer: SchermInvoer): SchermUitvoer | undefined {
     if (pad) deel.textuur = registreer(pad, vlaggen)
     if (alfa === 2) deel.kleur = kleur
     if (ctx?.freetex?.variabele) deel.freetex = stringIndex(ctx.freetex.variabele)
+    if (ctx?.alfaSchaal) deel.alfaschaal = getalIndex(ctx.alfaSchaal)
     if (!pad && deel.freetex === undefined) {
       onvolledig.push(`textuur ontbreekt: ${naam} (${rol} ${g.mesh.pad})`)
       return undefined

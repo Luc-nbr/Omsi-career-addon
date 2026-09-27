@@ -880,6 +880,21 @@ in het spel nog nagekeken moet worden:
 - de drempel van alfatest (`[matl_alpha] 1`, nu 128), en of `[visible]` exact
   of afgerond vergelijkt -- allebei niet in het spel nagemeten.
 
+**`[alphascale]` wordt nagetekend** (27-09-2026). Luc: "Probleempje met het
+schermpje in de coach o560, dit scherm komt niet goed terug in de overlay" --
+in het spel turquoise met een wit meldingsvak, in de overlay alleen de klok op
+zwart. De Faremaster (uit de Urbino II) kiest zijn plaatje met
+`[matl_freetex]` (`Faremaster_Maintexture = "FaremasterMain.dds"`), en dat
+kwam wel goed door. Maar erover ligt `SU_II_dummy.dds`, een zwart vlak met
+`[alphascale] Faremaster_Dim` (0 overdag, 0,3 of 0,6 bij dimmen). De app kende
+die regel niet en tekende het vlak altijd dekkend. Nu: `alfaSchaal` in
+core/schermcfg.ts, `alfaschaal` op het deel (core/schermvorm.ts), de variabele
+gaat mee in getallen.txt, en `dekkingVan` in apparaatscherm.tsx vermenigvuldigt.
+Levert de plugin geen getallen of kent de bus de naam niet, dan telt de laag
+zoals zonder [alphascale]. In 444 model.cfg's van de vloot staat [alphascale].
+Proef: `scripts/probe-schermdim.cjs` (Dim 0: licht 162, 225 kleuren; 0,6:
+licht 64; 1: zwart).
+
 **Wat er niet na te tekenen valt, en zo blijft:** 52 apparaten tekenen met een
 `[scripttexture]` (het busscript schildert de beeldpunten zelf, zoals de Atron
 van de Citaro C2); die krijgen een leeg vlak en hun knoppen werken wel. 12 hebben
