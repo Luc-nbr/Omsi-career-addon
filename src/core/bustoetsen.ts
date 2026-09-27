@@ -135,6 +135,35 @@ const LEESTEKENS = [12, 13, 26, 27, 39, 40, 41, 43, 51, 52, 53]
  * ACHTERAAN, zodat wat al aan een toets hing niet verschuift, en wat OMSI zelf
  * al gebruikt valt vanzelf af (`bezet` in zetBustoetsen).
  */
+/*
+ * TOETSEN DIE WINDOWS ZELF OPPAKT -- NOOIT UITDELEN, NOOIT INDRUKKEN
+ *
+ * F10 is in Windows de menutoets. Loslaten zet het venster in de menustand, en
+ * Shift+F10 opent het snelmenu. OMSI zit dan in die stand: geen toetsen, geen
+ * muis, geen nieuw beeld, terwijl de klok van het spel doorloopt -- tot je
+ * klikt of Esc drukt. Luc, 26-09: "mijn omsi verliest telkens focus, waardoor
+ * omsi tijdelijk geen inputs krijgt en het beeld bevriest zonder dat de
+ * simulatie stopt". Het logboek van de plugin liet het zien: na Shift+F10
+ * (opdracht 133 en 141) kwamen de volgende vier en zeven tikken niet meer aan.
+ * OMSI gebruikt F10 zelf nergens, vermoedelijk precies hierom; de app deelde
+ * hem uit, met Ctrl sinds de knoppen op Ctrl kwamen en met Shift sinds de
+ * uitbreiding naar 101 toetsen.
+ *
+ * Shift+` (de toets links van de 1) opent standaard de overlay van Discord,
+ * die dan muis en toetsen van het spel overneemt.
+ *
+ * Staat een knop van ons al op zo'n toets, dan verhuist `verlegVerbodenToetsen`
+ * hem; tot dan telt hij als "zonder toets" en drukt de app hem niet in.
+ */
+const F10 = 68
+const BACKTICK = 41
+
+export function verbodenToets(scancode: number, modifiers: number): boolean {
+  if (scancode === F10) return true
+  if (scancode === BACKTICK && (modifiers & MOD_SHIFT) !== 0) return true
+  return false
+}
+
 const KANDIDATEN: { scancode: number; modifiers: number }[] = [
   ...LETTERS.map((scancode) => ({ scancode, modifiers: MOD_CTRL })),
   ...FUNCTIETOETSEN.map((scancode) => ({ scancode, modifiers: MOD_CTRL })),
@@ -144,7 +173,7 @@ const KANDIDATEN: { scancode: number; modifiers: number }[] = [
   ...FUNCTIETOETSEN.map((scancode) => ({ scancode, modifiers: MOD_SHIFT })),
   ...LEESTEKENS.map((scancode) => ({ scancode, modifiers: MOD_CTRL })),
   ...LEESTEKENS.map((scancode) => ({ scancode, modifiers: MOD_SHIFT }))
-]
+].filter((kandidaat) => !verbodenToets(kandidaat.scancode, kandidaat.modifiers))
 
 /** Hoeveel toetsen de app in totaal kan uitdelen, voor wie wil weten wat er past. */
 export const TOETSEN_TOTAAL = KANDIDATEN.length
@@ -155,6 +184,11 @@ export const TOETSEN_TOTAAL = KANDIDATEN.length
  * eerdere versie van de app en hoort hij opnieuw gelegd te worden.
  */
 const GOEDE_MOD = [MOD_CTRL, MOD_SHIFT, 0]
+
+/** Een binding die de app mag indrukken: bewezen modifier, en niet een toets van Windows zelf. */
+function goedeToets(binding: { scancode: number; modifiers: number }): boolean {
+  return GOEDE_MOD.includes(binding.modifiers & ~1) && !verbodenToets(binding.scancode, binding.modifiers)
+}
 
 /**
  * Welke toetsen die de telefoon kan indrukken er werkelijk liggen.
@@ -177,9 +211,7 @@ export function bruikbareToetsen(omsiPath: string, extra: string[] = []): string
     return []
   }
   const goed = new Set(
-    bindings
-      .filter((binding) => GOEDE_MOD.includes(binding.modifiers & ~1))
-      .map((binding) => binding.action.toLowerCase())
+    bindings.filter(goedeToets).map((binding) => binding.action.toLowerCase())
   )
   return [...new Set([...Object.values(OMSI_TOETSEN), ...extra])].filter((naam) =>
     goed.has(naam.toLowerCase())
@@ -210,9 +242,7 @@ export function toetsenStandVan(omsiPath: string, acties: string[]): {
     return { ontbreekt: acties, aanwezig: [], backup: false }
   }
   const goed = new Set(
-    bindings
-      .filter((binding) => GOEDE_MOD.includes(binding.modifiers & ~1))
-      .map((binding) => binding.action.toLowerCase())
+    bindings.filter(goedeToets).map((binding) => binding.action.toLowerCase())
   )
   const uniek = [...new Set(acties)]
   return {
@@ -235,15 +265,73 @@ export function toetsenStand(omsiPath: string): {
     return { ontbreekt: BUSTOETSEN, aanwezig: [], backup: false }
   }
   const goed = new Set(
-    bindings
-      .filter((binding) => GOEDE_MOD.includes(binding.modifiers & ~1))
-      .map((binding) => binding.action.toLowerCase())
+    bindings.filter(goedeToets).map((binding) => binding.action.toLowerCase())
   )
   return {
     ontbreekt: BUSTOETSEN.filter((toets) => !goed.has(toets.actie.toLowerCase())),
     aanwezig: BUSTOETSEN.filter((toets) => goed.has(toets.actie.toLowerCase())),
     backup: existsSync(backupPad(omsiPath))
   }
+}
+
+/** Onze bindingen op een toets van Windows; leeg als de app nog nooit iets bijschreef. */
+function verbodenVanOns(omsiPath: string): { bindings: KeyBinding[]; fout: KeyBinding[] } {
+  if (!existsSync(backupPad(omsiPath))) return { bindings: [], fout: [] }
+  let bindings: KeyBinding[]
+  try {
+    bindings = readKeyboard(omsiPath)
+  } catch {
+    return { bindings: [], fout: [] }
+  }
+  const vanDeSpeler = new Set(
+    readKeyboardFile(backupPad(omsiPath)).map((binding) => binding.action.toLowerCase())
+  )
+  const fout = bindings.filter(
+    (binding) =>
+      verbodenToets(binding.scancode, binding.modifiers) && !vanDeSpeler.has(binding.action.toLowerCase())
+  )
+  return { bindings, fout }
+}
+
+/** Hoeveel knoppen van ons er nog op een toets van Windows staan. */
+export function aantalVerbodenToetsen(omsiPath: string): number {
+  return verbodenVanOns(omsiPath).fout.length
+}
+
+/**
+ * Knoppen die de app eerder op een toets van Windows zette (F10, Shift+`),
+ * verhuizen naar een vrije toets. Alleen die van ons: wat de speler zelf op F10
+ * zette -- niet in de kopie van voor ons eerste bijschrijven -- blijft staan.
+ *
+ * Alleen met OMSI dicht aanroepen, net als zetBustoetsen: het spel schrijft
+ * keyboard.cfg bij het afsluiten terug. Is er geen vrije toets meer, dan gaat de
+ * binding eruit en telt de knop als "zonder toets"; beter geen toets dan een die
+ * het spel stillegt.
+ */
+export function verlegVerbodenToetsen(omsiPath: string): { verlegd: number; weg: number } {
+  const niets = { verlegd: 0, weg: 0 }
+  const { bindings, fout } = verbodenVanOns(omsiPath)
+  if (fout.length === 0) return niets
+  const over = bindings.filter((binding) => !fout.includes(binding))
+  const bezet = new Set(over.map((binding) => `${binding.scancode}|${binding.modifiers}`))
+  let verlegd = 0
+  let weg = 0
+  for (const binding of fout) {
+    const plek = KANDIDATEN.find((kandidaat) => !bezet.has(`${kandidaat.scancode}|${kandidaat.modifiers}`))
+    if (!plek) {
+      weg += 1
+      continue
+    }
+    bezet.add(`${plek.scancode}|${plek.modifiers}`)
+    over.push({ ...binding, scancode: plek.scancode, modifiers: plek.modifiers })
+    verlegd += 1
+  }
+  writeKeyboard(omsiPath, over)
+  log(
+    `knoppen van een toets van Windows gehaald (F10, Shift+\`): ${verlegd} verlegd, ${weg} zonder vrije toets -- ` +
+      fout.map((binding) => binding.action).join(', ')
+  )
+  return { verlegd, weg }
 }
 
 /**
@@ -265,13 +353,27 @@ export function zetBustoetsen(
   const gevraagd = [...new Set(acties.filter((actie) => actie && actie.length < 80))]
   const onze = new Set(gevraagd.map((actie) => actie.toLowerCase()))
   /*
+   * Wat de speler zelf had: de kopie van voor ons eerste bijschrijven, of --
+   * als die er nog niet is -- alles wat er nu staat.
+   */
+  const vanDeSpeler = new Set(
+    (existsSync(backupPad(omsiPath)) ? readKeyboardFile(backupPad(omsiPath)) : readKeyboard(omsiPath)).map(
+      (binding) => binding.action.toLowerCase()
+    )
+  )
+  /*
    * Onze eigen regels gaan er eerst uit. Anders blijft een knop van een vorige
    * versie op zijn oude toets staan -- en dan zegt de app dat alles er is
-   * terwijl die knop niets doet.
+   * terwijl die knop niets doet. Hetzelfde voor een knop van ons op een toets
+   * die Windows zelf oppakt (`verbodenToets`); een binding van de speler op F10
+   * blijft staan, daar komen we niet aan.
    */
-  const bindings = readKeyboard(omsiPath).filter(
-    (binding) => !(onze.has(binding.action.toLowerCase()) && !GOEDE_MOD.includes(binding.modifiers & ~1))
-  )
+  const bindings = readKeyboard(omsiPath).filter((binding) => {
+    const actie = binding.action.toLowerCase()
+    if (!onze.has(actie)) return true
+    if (!GOEDE_MOD.includes(binding.modifiers & ~1)) return false
+    return !(verbodenToets(binding.scancode, binding.modifiers) && !vanDeSpeler.has(actie))
+  })
   const bezet = new Set(bindings.map((binding) => `${binding.scancode}|${binding.modifiers}`))
   const bekend = new Set(bindings.map((binding) => binding.action.toLowerCase()))
   /* De sectie waar de knoppen van voertuigen in horen; zonder die sectie achteraan. */
@@ -305,9 +407,6 @@ export function zetBustoetsen(
    *   op één toets zijn er altijd twee tegelijk.
    * Eerst altijd een vrije toets; delen pas als die op zijn.
    */
-  const vanDeSpeler = new Set(
-    readKeyboardFile(backupPad(omsiPath)).map((binding) => binding.action.toLowerCase())
-  )
   const opToets = new Map<string, string[]>()
   for (const binding of bindings) {
     const sleutel = `${binding.scancode}|${binding.modifiers}`

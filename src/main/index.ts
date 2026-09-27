@@ -57,7 +57,13 @@ import { buildIbisPlan, type IbisPlan } from '../core/ibis'
 import { apparatenVanBus, modelcfgVanBus, type Busapparaat } from '../core/busscherm'
 import { panelenVan, profielVanBus, type Busprofiel, type Paneel } from '../core/busprofiel'
 import { modulesVanBus, paneelVanModule, type Busmodule } from '../core/busmodule'
-import { bruikbareToetsen, zetBustoetsen } from '../core/bustoetsen'
+import {
+  aantalVerbodenToetsen,
+  bruikbareToetsen,
+  verbodenToets,
+  verlegVerbodenToetsen,
+  zetBustoetsen
+} from '../core/bustoetsen'
 import {
   describeLive,
   leesSchermen,
@@ -1460,6 +1466,15 @@ function omsiToets(actie: string): boolean {
     logFout('keyboard.cfg lezen', fout)
     return false
   }
+  /*
+   * F10 en Shift+` pakt Windows (of Discord) zelf op, en dan staat OMSI stil
+   * tot je klikt; zie verbodenToets in core/bustoetsen.ts. Liever een knop die
+   * niets doet: zodra OMSI dicht is verhuist de app hem naar een andere toets.
+   */
+  if (verbodenToets(scancode, modifiers)) {
+    log(`toets ${naam} staat op ${scancode}/${modifiers}, een toets van Windows; niet ingedrukt`)
+    return false
+  }
   opdrachtNr += 1
   try {
     writeFileSync(join(liveMap(), 'opdracht.txt'), `${opdrachtNr} ${scancode} ${modifiers}\n`)
@@ -1875,8 +1890,18 @@ async function zetBusknoppenAan(): Promise<
  */
 async function schrijfStraks(waarom: string): Promise<void> {
   const wachtrij = readSettings(userData()).busknoppenStraks ?? {}
-  if (Object.keys(wachtrij).length === 0) return
+  const verkeerd = aantalVerbodenToetsen(omsi())
+  if (Object.keys(wachtrij).length === 0 && verkeerd === 0) return
   if (await leesOmsiProces(OMSI_PROCES)) return
+  /*
+   * Knoppen die een eerdere versie op F10 of Shift+` zette, eerst weg van die
+   * toets: daar stond OMSI van stil. Zie verlegVerbodenToetsen.
+   */
+  if (verkeerd > 0) {
+    verlegVerbodenToetsen(omsi())
+    knoppenStand = undefined
+  }
+  if (Object.keys(wachtrij).length === 0) return
   let toegevoegd = 0
   let gedeeld = 0
   let geenPlek = 0
@@ -4393,9 +4418,16 @@ if (!app.requestSingleInstanceLock()) {
     log(`gebruikersgegevens: ${userData()}`)
     /*
      * Knoppen die nog aan een toets moesten. De app kan dicht zijn geweest toen
-     * OMSI afsloot; dan gebeurt het nu, of anders zodra OMSI dicht is.
+     * OMSI afsloot; dan gebeurt het nu, of anders zodra OMSI dicht is. En
+     * knoppen die nog op F10 of Shift+` staan: die verhuizen op hetzelfde moment.
      */
-    if (inDeWachtrij() > 0) {
+    let verkeerd = 0
+    try {
+      verkeerd = aantalVerbodenToetsen(omsi())
+    } catch {
+      // Nog geen OMSI gekozen; dan is er ook niets bijgeschreven.
+    }
+    if (inDeWachtrij() > 0 || verkeerd > 0) {
       void schrijfStraks('bij het starten van de app').then(() => {
         if (inDeWachtrij() > 0) wachtOpOmsiDicht()
       })
