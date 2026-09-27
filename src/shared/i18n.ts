@@ -159,6 +159,18 @@ const TEXT = {
     fr: '{aantal} livrées',
     nl: '{aantal} kleurstellingen'
   },
+  'done.free': {
+    en: 'Free play finished: {km} km. Free play does not count towards your career.',
+    de: 'Freie Fahrt beendet: {km} km. Freies Fahren zählt nicht für deine Karriere.',
+    fr: 'Trajet libre terminé : {km} km. Le jeu libre ne compte pas pour votre carrière.',
+    nl: 'Vrije rit afgerond: {km} km. Vrij rijden telt niet mee in je loopbaan.'
+  },
+  'free.followed': {
+    en: 'You picked line {line}, tour {tour} in OMSI. The duty, the overlay and the IBIS codes follow it.',
+    de: 'Du hast in OMSI Linie {line}, Umlauf {tour} gewählt. Dienst, Overlay und IBIS-Codes folgen.',
+    fr: 'Vous avez choisi la ligne {line}, service {tour} dans OMSI. Le service, la surimpression et les codes IBIS suivent.',
+    nl: 'Je koos in OMSI lijn {line}, omloop {tour}. De dienst, de overlay en de IBIS-codes gaan mee.'
+  },
   'done.cancelled': {
     en: 'Duty cancelled. Nothing was booked.',
     de: 'Dienst abgebrochen. Es wurde nichts gebucht.',
@@ -227,10 +239,10 @@ const TEXT = {
   },
   'tour.freeTitle': { en: 'Free drive', de: 'Freies Fahren', fr: 'Conduite libre', nl: 'Vrij rijden' },
   'tour.freeText': {
-    en: 'You choose everything yourself: the line, the bus, the spot, the weather, the date and the time. The app sets it up in OMSI and offers the overlay.',
-    de: 'Du wählst alles selbst: Linie, Bus, Ort, Wetter, Datum und Uhrzeit. Die App richtet es in OMSI ein und bietet das Overlay an.',
-    fr: "Vous choisissez tout : la ligne, le bus, l'emplacement, la météo, la date et l'heure. L'application prépare OMSI et propose la surcouche.",
-    nl: 'Jij kiest alles zelf: de lijn, de bus, de plek, het weer, de datum en de tijd. De app zet het klaar in OMSI en biedt de overlay aan.'
+    en: 'You put your own duty together: tick the lines you want, and the app builds a duty from them. Pick another tour in OMSI while driving and the overlay follows, with the right IBIS codes.',
+    de: 'Du stellst deinen Dienst selbst zusammen: Hake die Linien an, und die App baut daraus einen Dienst. Wählst du unterwegs in OMSI einen anderen Umlauf, folgt das Overlay mit den passenden IBIS-Codes.',
+    fr: "Vous composez votre service : cochez les lignes voulues et l'application en fait un service. Choisissez un autre service dans OMSI en route et la surcouche suit, avec les bons codes IBIS.",
+    nl: 'Je stelt je dienst zelf samen: vink de lijnen aan die je wilt, en de app maakt er een dienst van. Kies je onderweg in OMSI een andere omloop, dan gaat de overlay mee, met de juiste IBIS-codes.'
   },
   'tour.recordTitle': { en: 'Your service record', de: 'Deine Dienstakte', fr: 'Vos états de service', nl: 'Je staat van dienst' },
   'tour.recordText': {
@@ -1058,10 +1070,10 @@ const TEXT = {
   },
   'mode.free': { en: 'Free play', de: 'Freies Fahren', fr: 'Jeu libre', nl: 'Vrij rijden' },
   'mode.freeIntro': {
-    en: 'You choose the line, the bus, the place, the weather, the date and the time. The app only sets it up in OMSI and offers the overlay.',
-    de: 'Du wählst Linie, Bus, Ort, Wetter, Datum und Uhrzeit. Die App richtet es nur in OMSI ein und bietet das Overlay an.',
-    fr: 'Vous choisissez la ligne, le bus, le lieu, la météo, la date et l’heure. L’application ne fait que préparer OMSI et proposer la surimpression.',
-    nl: 'Jij kiest de lijn, de bus, de plek, het weer, de datum en de tijd. De app zet het alleen klaar in OMSI en biedt de overlay aan.'
+    en: 'You pick the lines you want to drive, and the app builds a duty from them. Change your mind in OMSI and the overlay follows. Nothing is booked.',
+    de: 'Du wählst die Linien, die du fahren willst, und die App stellt daraus einen Dienst zusammen. Wählst du in OMSI um, folgt das Overlay. Es wird nichts gebucht.',
+    fr: 'Vous choisissez les lignes, l’application en compose un service. Changez d’avis dans OMSI et la surimpression suit. Rien n’est enregistré.',
+    nl: 'Jij kiest de lijnen die je wilt rijden en de app stelt er een dienst uit samen. Kies je in OMSI iets anders, dan gaat de overlay mee. Er wordt niets geboekt.'
   },
   'mode.otherDriver': { en: 'Other driver', de: 'Anderer Fahrer', fr: 'Autre conducteur', nl: 'Andere chauffeur' },
   // ---------- opnieuw kijken wat er geïnstalleerd is ----------
@@ -1229,25 +1241,7 @@ const TEXT = {
     fr: 'Rien n’est enregistré ni évalué. L’application écrit la situation, lance OMSI et pose la surimpression.',
     nl: 'Er wordt niets geboekt en niets beoordeeld. De app schrijft de situatie, start OMSI en legt de overlay erboven.'
   },
-  'free.noLine': {
-    en: 'Without a line you simply drive around; the overlay then has no route to show.',
-    de: 'Ohne Linie fährst du einfach herum; das Overlay hat dann keine Strecke zu zeigen.',
-    fr: 'Sans ligne, vous roulez librement ; la surimpression n’a alors aucun itinéraire à afficher.',
-    nl: 'Zonder lijn rijd je gewoon rond; de overlay heeft dan geen route om te tonen.'
-  },
-  'free.stop': { en: 'Where the bus starts', de: 'Wo der Bus steht', fr: 'Où démarre le bus', nl: 'Waar de bus begint' },
-  'free.stopAuto': { en: 'At the first stop of the line', de: 'An der ersten Haltestelle der Linie', fr: 'Au premier arrêt de la ligne', nl: 'Bij de eerste halte van de lijn' },
-  'free.date': { en: 'Date', de: 'Datum', fr: 'Date', nl: 'Datum' },
-  'free.time': { en: 'Time', de: 'Uhrzeit', fr: 'Heure', nl: 'Tijd' },
   'free.weather': { en: 'Weather', de: 'Wetter', fr: 'Météo', nl: 'Weer' },
-  'free.start': { en: 'Set up and start OMSI', de: 'Einrichten und OMSI starten', fr: 'Préparer et lancer OMSI', nl: 'Klaarzetten en OMSI starten' },
-  'free.starting': { en: 'Setting up…', de: 'Wird eingerichtet…', fr: 'Préparation…', nl: 'Bezig met klaarzetten…' },
-  'free.ready': {
-    en: 'Ready. OMSI opens on {map}; press Start there.',
-    de: 'Fertig. OMSI öffnet auf {map}; drücke dort auf Start.',
-    fr: 'Prêt. OMSI s’ouvre sur {map} ; appuyez sur Start.',
-    nl: 'Klaar. OMSI opent op {map}; druk daar op Start.'
-  },
   'weather.clear': { en: 'Clear', de: 'Klar', fr: 'Dégagé', nl: 'Helder' },
   'weather.summer': { en: 'Summer day', de: 'Sommertag', fr: 'Journée d’été', nl: 'Zomerdag' },
   'weather.cloudy': { en: 'Overcast', de: 'Bewölkt', fr: 'Couvert', nl: 'Bewolkt' },
@@ -3125,7 +3119,6 @@ const TEXT = {
   'setup.step.licence': { en: 'Licence', de: 'Lizenz', fr: 'Permis', nl: 'Vergunning' },
   'setup.step.duty': { en: 'Duty', de: 'Dienst', fr: 'Service', nl: 'Dienst' },
   /* Bij vrij rijden staat op die plek in de reeks geen dienst maar je eigen rit. */
-  'setup.step.free': { en: 'Drive', de: 'Fahrt', fr: 'Trajet', nl: 'Rit' },
   'setup.step.bus': { en: 'Bus', de: 'Bus', fr: 'Bus', nl: 'Bus' },
   /* De laatste stap, en de enige waarin je niets kiest. */
   'setup.step.rijden': {
@@ -3341,6 +3334,24 @@ const TEXT = {
 
   /* De lijnstap. */
   'setup.lineTitle': { en: 'Lines', de: 'Linien', fr: 'Lignes', nl: 'Lijnen' },
+  'setup.freeLinesIntro': {
+    en: 'Tick the lines you want to drive. The app builds duties from those lines only; with nothing ticked, every line counts.',
+    de: 'Hake die Linien an, die du fahren willst. Die App stellt Dienste nur aus diesen Linien zusammen; ist nichts angehakt, zählen alle.',
+    fr: 'Cochez les lignes que vous voulez conduire. L’application compose des services avec ces lignes seulement ; si rien n’est coché, toutes comptent.',
+    nl: 'Vink de lijnen aan die je wilt rijden. De app stelt alleen uit die lijnen diensten samen; vink je niets aan, dan tellen ze allemaal.'
+  },
+  'setup.freeLinesAll': {
+    en: '{map} · nothing ticked: all {count} lines',
+    de: '{map} · nichts angehakt: alle {count} Linien',
+    fr: '{map} · rien de coché : les {count} lignes',
+    nl: '{map} · niets aangevinkt: alle {count} lijnen'
+  },
+  'setup.freeLinesSome': {
+    en: '{count} of {total} lines ticked',
+    de: '{count} von {total} Linien angehakt',
+    fr: '{count} lignes cochées sur {total}',
+    nl: '{count} van de {total} lijnen aangevinkt'
+  },
   'setup.lineIntro': {
     en: 'Pick the line you want to drive',
     de: 'Wähle die Linie, die du fahren willst',
@@ -3453,20 +3464,6 @@ const TEXT = {
     de: '{file} · kennt hier {matched} Ziele',
     fr: '{file} · connaît {matched} destinations ici',
     nl: '{file} · kent hier {matched} bestemmingen'
-  },
-  'setup.noLine': { en: 'No line', de: 'Keine Linie', fr: 'Aucune ligne', nl: 'Geen lijn' },
-  'setup.freeTitle': { en: 'Your drive', de: 'Deine Fahrt', fr: 'Votre trajet', nl: 'Je rit' },
-  'setup.freeIntro': {
-    en: 'No duty, no timetable to keep. Say where and when, and it is set up.',
-    de: 'Kein Dienst, kein Fahrplan. Sag wo und wann, dann steht es bereit.',
-    fr: 'Pas de service, pas d’horaire. Dites où et quand, et tout est prêt.',
-    nl: 'Geen dienst, geen dienstregeling. Zeg waar en wanneer, dan staat het klaar.'
-  },
-  'setup.freeFoot': {
-    en: 'Pick a bus next; {map} is ready at {time}.',
-    de: 'Wähle als Nächstes einen Bus; {map} steht um {time} bereit.',
-    fr: 'Choisissez ensuite un bus ; {map} est prêt à {time}.',
-    nl: 'Kies hierna een bus; {map} staat klaar om {time}.'
   },
   'setup.colBus': { en: 'Bus', de: 'Bus', fr: 'Bus', nl: 'Bus' },
   'setup.colFleet': { en: 'Fleet', de: 'Fuhrpark', fr: 'Parc', nl: 'Wagenpark' },

@@ -156,33 +156,6 @@ export interface DutyRequest {
   lineFiles?: string[]
 }
 
-/** Wat vrij rijden nodig heeft: de speler stelt alles zelf samen. */
-export interface FreeRequest {
-  mapFolder: string
-  /** Optioneel: dan staat het dienstregelingsmenu meteen op deze lijn. */
-  lineFile?: string
-  vehiclePath?: string
-  /** De kleurstelling op naam, zoals OMSI's "Appearance"; leeg laat OMSI kiezen. */
-  kleurstelling?: string
-  /** Waar de bus komt te staan; zonder halte zet de app hem bij de lijn neer. */
-  stopId?: string
-  yard?: string
-  year: number
-  dayOfYear: number
-  /** Tijd in minuten na middernacht. */
-  minutes: number
-  weather: WeatherKind
-}
-
-export interface FreeResult {
-  file: string
-  startup?: PreparedSituation['startup']
-  launched: boolean
-  running: boolean
-  /** De dienst die erbij hoort, als er een lijn gekozen was; anders niets. */
-  duty: Duty | null
-}
-
 /** Een toegewezen dienst met de bus die erbij gezocht is. */
 /** De dag waarop deze omloop volgens de dienstregeling rijdt. */
 export interface DutyDate {
@@ -286,6 +259,8 @@ export interface BeginRequest {
   lineNumber: string
   terminus: string
   yard?: string
+  /** Alleen bij vrij rijden: het weer dat de chauffeur koos. */
+  weather?: WeatherKind
 }
 
 export interface BeginResult {
@@ -630,7 +605,6 @@ export interface CareerApi {
   /** Legt de examenrit langs de eisen en zet het oordeel in het profiel. */
   finishExam(duty: Duty, measured: ExamMeasurement, basic: boolean): Promise<CareerPayload>
   /** Vrij rijden: alleen klaarzetten en starten, zonder dienst en zonder logboek. */
-  startFree(request: FreeRequest): Promise<FreeResult>
   ibis(duty: Duty, vehicle: Vehicle, year: number, yard?: string): Promise<IbisPlan>
   /** De wagenparkbestanden die naast deze bus liggen, met hun kennis van deze dienst. */
   yards(duty: Duty, vehicle: Vehicle, year: number): Promise<YardOption[]>
@@ -729,6 +703,11 @@ export interface CareerApi {
   clearProfilePhoto(id: string): Promise<CareerPayload>
   /** Vinkt af dat de chauffeur zijn personeelsnummer en pincode gezien heeft. */
   dienstpasGezien(): Promise<CareerPayload>
+  /**
+   * Vrij rijden: in OMSI een andere omloop gekozen, en de dienst ging mee. Met
+   * het profiel zoals het nu is, en de IBIS-codes van de nieuwe omloop.
+   */
+  onDienstGevolgd(handler: (gevolgd: { career: CareerPayload; ibis?: IbisPlan }) => void): () => void
   /** De geïnstalleerde bussen, per map, en welke al klaargemaakt zijn. */
   bussen(): Promise<Busmapinfo[]>
   /** Een bus uitlezen: welke apparaten er zijn en wat ze zijn. Kan een minuut duren. */

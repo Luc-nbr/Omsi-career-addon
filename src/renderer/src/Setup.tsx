@@ -74,6 +74,12 @@ export interface Rij {
    * want acht van die blokken tegelijk is geen lijst meer.
    */
   detail?: ReactNode;
+  /**
+   * Aangevinkt of niet, als je er meer dan een mag kiezen -- de lijnen bij vrij
+   * rijden. Dan telt `gekozen` niet, en staat er een vinkje in plaats van een
+   * bolletje.
+   */
+  aan?: boolean;
 }
 
 /**
@@ -930,14 +936,17 @@ export function Setup({
                   type="button"
                   className="dienstrij"
                   ref={index === gekozen ? gekozenRef : undefined}
-                  aria-pressed={index === gekozen}
+                  aria-pressed={rij.aan ?? index === gekozen}
                   disabled={Boolean(rij.uit)}
                   title={rij.uit}
                   onClick={() => onKies(index)}
                 >
                   {/* Geen bolletje als er niets te kiezen valt; dat belooft een keuze. */}
                   {!keuzeloos && (
-                    <span className="dienstbol" aria-hidden="true" />
+                    <span
+                      className={rij.aan === undefined ? "dienstbol" : "dienstbol vink"}
+                      aria-hidden="true"
+                    />
                   )}
                   {/*
                     De eerste kolom kapt gewoon aan het eind af: dat die bussen

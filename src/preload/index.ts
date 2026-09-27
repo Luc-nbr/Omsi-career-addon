@@ -43,7 +43,6 @@ const api: CareerApi = {
   lines: (mapFolder) => ipcRenderer.invoke('map:lines', mapFolder),
   examDuty: (mapFolder, lineFile) => ipcRenderer.invoke('duty:exam', mapFolder, lineFile),
   finishExam: (duty, measured, basic) => ipcRenderer.invoke('career:exam', duty, measured, basic),
-  startFree: (request) => ipcRenderer.invoke('free:start', request),
   ibis: (duty, vehicle, year, yard) => ipcRenderer.invoke('duty:ibis', duty, vehicle, year, yard),
   yards: (duty, vehicle, year) => ipcRenderer.invoke('duty:yards', duty, vehicle, year),
   setOverlay: (duty, open, ibis) => ipcRenderer.invoke('overlay:set', duty, open, ibis),
@@ -109,6 +108,11 @@ const api: CareerApi = {
   chooseProfilePhoto: (id) => ipcRenderer.invoke('career:photo', id),
   clearProfilePhoto: (id) => ipcRenderer.invoke('career:photo:clear', id),
   dienstpasGezien: () => ipcRenderer.invoke('career:pas:gezien'),
+  onDienstGevolgd: (handler) => {
+    const heen = (_event: unknown, gevolgd: Parameters<typeof handler>[0]) => handler(gevolgd)
+    ipcRenderer.on('dienst:gevolgd', heen)
+    return () => ipcRenderer.removeListener('dienst:gevolgd', heen)
+  },
   bussen: () => ipcRenderer.invoke('bussen:lijst'),
   busAnalyse: (sleutel) => ipcRenderer.invoke('bussen:analyse', sleutel),
   busKlaar: (sleutel, ids) => ipcRenderer.invoke('bussen:klaar', sleutel, ids),

@@ -29,8 +29,8 @@ import {
   PHOTO_EXTENSIONS
 } from '../core/profiles'
 import {
+  dutyFromTour,
   examTrip,
-  generateDuty,
   listLines,
   type LineSummary,
   type Network
@@ -54,6 +54,7 @@ import { readTileGrid, type MapGeometry } from '../core/geo'
 import { LaneNetwork, type TripRoute } from '../core/routing'
 import { VehicleTracker, type VehiclePosition } from '../core/vehicle'
 import { buildIbisPlan, type IbisPlan } from '../core/ibis'
+import type { WeatherKind } from '../shared/weather'
 import { apparatenVanBus, modelcfgVanBus, type Busapparaat } from '../core/busscherm'
 import { panelenVan, profielVanBus, type Busprofiel, type Paneel } from '../core/busprofiel'
 import { modulesVanBus, paneelVanModule, type Busmodule } from '../core/busmodule'
@@ -153,7 +154,6 @@ import {
   type OmsiOverlays,
   type BeginRequest,
   type Busklaaruitslag,
-  type FreeRequest,
   type DutyDate,
   type DutyRequest,
   type HofOffer,
@@ -746,9 +746,15 @@ async function maakAlleBusfotos(): Promise<void> {
  */
 let omsiMelding: OmsiMelding | undefined
 /*
- * Welk proces de wacht bewaakt. Altijd Omsi, behalve in een proef: die zet een
- * eigen programma neer dat vastloopt, zodat er nooit aan het echte spel van de
+ * Welk proces OMSI is. Altijd Omsi, behalve in een proef: die zet een eigen
+ * programma neer dat vastloopt, zodat er nooit aan het echte spel van de
  * speler gekomen wordt.
+ *
+ * ELKE VRAAG "DRAAIT OMSI?" GEBRUIKT DIT. Tot 27-09 keek alleen de wacht
+ * ernaar; de vraag op de busstap en de controle vlak voor het klaarzetten
+ * zochten vast naar Omsi.exe. Een proef met een eigen "OMSI" kreeg dan geen
+ * vraag "OMSI draait al", zette de situatie klaar in de echte spelmap en
+ * startte het echte spel -- zo gebeurd bij scripts/probe-vrijrijden.cjs.
  */
 const OMSI_PROCES = process.env.OMSI_ENHANCER_PROEFPROCES || 'Omsi'
 const omsiWacht = {
@@ -977,6 +983,106 @@ function currentDuty(): Duty | undefined {
   return overlayDuty ?? (career?.activeDuty?.assignment as Assignment | undefined)?.duty
 }
 
+/*
+ * VRIJ RIJDEN VOLGT WAT JE IN OMSI KIEST
+ *
+ * Luc: "als een speler tijdens het rijden bedenkt om toch een andere lijn te
+ * selecteren gaat de overlay daar in mee, en biedt dan de instructies passend
+ * bij die geselecteerde lijn". Bij een dienst in dienst of carriere zegt de
+ * overlay dan dat je de verkeerde rit rijdt -- daar is de dienst de opdracht.
+ * Bij vrij rijden is de dienst een voorstel, en is wat je in het
+ * dienstregelingsmenu van OMSI kiest de nieuwe opdracht.
+ *
+ * De plugin geeft door welke lijn, omloop en rit OMSI op de bus heeft staan
+ * (`mem.lineName`, `tourName`, `tripName`), en of het menu werkelijk rijdt
+ * (`schedActive`; terwijl je in het menu bladert staat er al een rit in het
+ * geheugen die je nog niet gekozen hebt). Past die niet bij de dienst, dan
+ * wordt de omloop uit de dienstregeling van de kaart opgebouwd
+ * (dutyFromTour in core/duty.ts), met zijn IBIS-codes, en wordt dat de dienst:
+ * in het profiel, in de overlay, op de tablet en op het rijscherm. De
+ * aanmelding blijft staan; zie telefoonSleutel.
+ *
+ * Eens per keuze: dezelfde lijn, omloop en rit worden niet elk beeld opnieuw
+ * opgebouwd, ook niet als het opbouwen niets opleverde.
+ */
+let gevolgd = ''
+
+function ritSleutelVan(naam: string): string {
+  const basis = naam.trim().split(/[\\/]/).pop() ?? ''
+  return basis.replace(/\.ttp$/i, '').trim().toLowerCase()
+}
+
+function volgOmloopInOmsi(live: ReturnType<typeof readLive>): void {
+  const lopend = career?.activeDuty
+  if (!career || !lopend || lopend.mode !== 'free' || !lopend.startedAt) return
+  const mem = live?.mem
+  if (!live?.alive || !mem || mem.ok !== 1 || !(mem.schedActive > 0.5) || !mem.tripName.trim()) return
+  const nu = currentDuty()
+  if (!nu) return
+
+  const keuze = {
+    lineFile: mem.lineName.trim(),
+    tourNumber: mem.tourName.trim(),
+    tripFile: mem.tripName.trim()
+  }
+  // Met het moment van aannemen erin: een nieuwe vrije dienst begint opnieuw met kijken.
+  const sleutel = `${lopend.confirmedAt}|${nu.mapFolder}|${keuze.lineFile}|${keuze.tourNumber}|${ritSleutelVan(keuze.tripFile)}`
+  if (sleutel === gevolgd) return
+  gevolgd = sleutel
+
+  /* Rijdt de dienst deze rit al, in deze omloop? Dan valt er niets te volgen. */
+  const rit = ritSleutelVan(keuze.tripFile)
+  if (nu.legs.some((leg) => ritSleutelVan(leg.tripFile) === rit && leg.tourNumber.trim() === keuze.tourNumber)) {
+    return
+  }
+
+  let nieuw: Duty | undefined
+  try {
+    nieuw = dutyFromTour(map(nu.mapFolder), network(nu.mapFolder), {
+      ...keuze,
+      clockMinutes: live.time / 60
+    })
+  } catch (fout) {
+    logFout('omloop uit OMSI opbouwen', fout)
+    return
+  }
+  if (!nieuw) {
+    log(`vrij rijden: lijn ${keuze.lineFile}, omloop ${keuze.tourNumber}, rit ${keuze.tripFile} staat niet in de dienstregeling van ${nu.mapName}`)
+    return
+  }
+
+  /*
+   * De IBIS-codes van de nieuwe omloop. Het wagenpark ligt naast de bus die je
+   * rijdt -- de bus die OMSI noemt, of anders die van de dienst -- en de codes
+   * verschillen per tijdvak, dus telt het jaar van het spel.
+   */
+  const toegewezen = lopend.assignment as Assignment
+  const busPad = live.bus?.pad
+    ? join(live.bus.pad, 'bus.bus')
+    : lopend.vehicleOverride || toegewezen.vehicle?.relativePath
+  let ibis: IbisPlan | undefined
+  if (busPad) {
+    try {
+      ibis = buildIbisPlan(omsi(), busPad, nieuw, live.year || new Date().getFullYear())
+    } catch (fout) {
+      logFout('IBIS-codes van de gevolgde omloop', fout)
+    }
+  }
+
+  career = { ...career, activeDuty: { ...lopend, assignment: { ...toegewezen, duty: nieuw } } }
+  writeProfile(userData(), career)
+  overlayDuty = nieuw
+  overlayIbis = ibis
+  lastFrame = undefined
+  log(
+    `vrij rijden volgt OMSI: lijn ${nieuw.lineNumbers.join('/') || keuze.lineFile}, omloop ${nieuw.tourNumber}, ` +
+      `${nieuw.legs.length} ritten vanaf ${formatTime(nieuw.start)}${ibis ? `, IBIS lijn ${ibis.line}` : ''}`
+  )
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('dienst:gevolgd', { career: careerPayload(), ibis })
+  }
+}
+
 /**
  * Wat er van deze dienst gereden is.
  *
@@ -1082,7 +1188,8 @@ function sluitLopendeDienstAf(): void {
   if (!career || !lopend) return
 
   const duty = currentDuty()
-  if (!duty || !baseline() || lopend.exam) {
+  // Vrij rijden telt niet mee in de loopbaan; zie ook finish in App.tsx.
+  if (!duty || !baseline() || lopend.exam || lopend.mode === 'free') {
     career = { ...career, activeDuty: undefined }
     writeProfile(userData(), career)
     return
@@ -1157,7 +1264,7 @@ async function herstelStartscherm(): Promise<void> {
   if (nu - laatsteProcesKijk < 30000) return
   laatsteProcesKijk = nu
 
-  const draait = await isOmsiRunning()
+  const draait = await isOmsiRunning(`${OMSI_PROCES}.exe`)
   const netAf = omsiDraaide && !draait
   omsiDraaide = draait
   if (netAf) meldPluginLogboek('OMSI is net afgesloten')
@@ -1354,6 +1461,14 @@ function telefoonPad(): string {
 function telefoonSleutel(): string {
   const duty = currentDuty()
   if (!duty) return ''
+  /*
+   * Vrij rijden volgt de omloop die je in OMSI kiest; dan verandert de dienst
+   * onderweg, en hoort de aanmelding te blijven staan. Hij hangt dan aan de rit
+   * zelf: de chauffeur en het moment van aannemen.
+   */
+  if (career?.activeDuty?.mode === 'free') {
+    return `${career.id}|vrij|${career.activeDuty.confirmedAt}`
+  }
   const aangenomen = (career?.activeDuty?.assignment as Assignment | undefined)?.duty
   const zelfde = aangenomen && aanmeldSleutelVan(aangenomen) === aanmeldSleutelVan(duty)
   return zelfde
@@ -2216,6 +2331,7 @@ function pushFrame(): void {
   spoorVanDeVerkoop(live)
   telVerkoop(live)
   captureBaseline(live)
+  volgOmloopInOmsi(live)
   const duty = currentDuty()
   const frame = {
     connected: Boolean(live?.alive),
@@ -2626,7 +2742,9 @@ function prepareSituation(
   lineNumber: string,
   terminus: string,
   yard?: string,
-  kleurstelling?: string
+  kleurstelling?: string,
+  /** Alleen bij vrij rijden gekozen; anders houdt OMSI zijn eigen weer. */
+  weather?: WeatherKind
 ) {
   const when = date ?? dutyDate(duty.mapFolder, duty.days | duty.period)
   if (!when) throw new Error('Geen datum gevonden waarop deze omloop rijdt.')
@@ -2653,7 +2771,8 @@ function prepareSituation(
           trailer: aanhangerVan(vehiclePath, kleurstelling)
         }
       : undefined,
-    spawn
+    spawn,
+    weather
     /*
      * Geen `timetable` meer.
      *
@@ -3344,7 +3463,7 @@ function registerHandlers(): void {
 
   handle('game:settings', async () => ({
     values: readGameSettings(omsi()),
-    omsiRunning: await isOmsiRunning()
+    omsiRunning: await isOmsiRunning(`${OMSI_PROCES}.exe`)
   }))
 
   handle('game:settings:save', (_event, changes: Record<string, string>) => {
@@ -3359,7 +3478,7 @@ function registerHandlers(): void {
       bindings: readKeyboard(omsi()),
       keyNames: [...readKeyNames(omsi(), language === 'DEU' ? 'DEU' : 'ENG')],
       labels: [...readActionLabels(omsi(), language)],
-      omsiRunning: await isOmsiRunning()
+      omsiRunning: await isOmsiRunning(`${OMSI_PROCES}.exe`)
     }
   })
 
@@ -3371,7 +3490,7 @@ function registerHandlers(): void {
   handle('game:controllers', async () => ({
     controllers: readControllers(omsi()),
     labels: [...readActionLabels(omsi(), omsiLanguage())],
-    omsiRunning: await isOmsiRunning()
+    omsiRunning: await isOmsiRunning(`${OMSI_PROCES}.exe`)
   }))
 
   handle('game:controllers:save', (_event, controllers: ControllerConfig[]) => {
@@ -3400,7 +3519,7 @@ function registerHandlers(): void {
   handle('omsi:live', () => Boolean(freshLive()?.alive))
 
   /** Draait het spel al? Los van de plugin, die zich pas meldt met een bus. */
-  handle('omsi:running', () => isOmsiRunning())
+  handle('omsi:running', () => isOmsiRunning(`${OMSI_PROCES}.exe`))
 
   /*
    * Wat de bus op dit moment doorgeeft, voor het hoofdvenster.
@@ -3465,7 +3584,7 @@ function registerHandlers(): void {
         omsi(),
         pluginSourceDir(process.resourcesPath, app.isPackaged),
         app.isPackaged ? undefined : join(process.cwd(), 'plugin'),
-        await isOmsiRunning().catch(() => undefined)
+        await isOmsiRunning(`${OMSI_PROCES}.exe`).catch(() => undefined)
       )
       if (pluginStatus.error) log(`plugin installeren: ${pluginStatus.error}`)
     }
@@ -3747,78 +3866,6 @@ function registerHandlers(): void {
   )
 
   /**
-   * Vrij rijden: alleen klaarzetten wat de speler zelf heeft samengesteld.
-   *
-   * Er komt geen dienst aan te pas en er wordt niets geboekt. Kiest hij een
-   * lijn, dan zoeken we daar de omloop bij die het dichtst bij zijn tijd
-   * vertrekt -- dan staat het dienstregelingsmenu ook meteen goed en heeft de
-   * overlay een route om te tekenen.
-   */
-  handle('free:start', async (_event, request: FreeRequest) => {
-    const loaded = map(request.mapFolder)
-    const net = network(request.mapFolder)
-
-    const duty = request.lineFile
-      ? generateDuty(loaded, net, {
-          lineFile: request.lineFile,
-          targetMinutes: 90,
-          earliestStart: request.minutes - 30,
-          latestStart: request.minutes + 120
-        })
-      : undefined
-
-    const vehiclePath = request.vehiclePath
-    const spawnStop = request.stopId ?? duty?.legs[0]?.stopIds[0]
-    const spawn = vehiclePath ? spawnFor(request.mapFolder, spawnStop) : undefined
-
-    const result = writeSituation(omsi(), {
-      mapFolder: request.mapFolder,
-      name: 'OMSI Enhancer — vrij rijden',
-      description: duty
-        ? `Lijn ${duty.lineNumbers.join('/')} vanaf ${formatTime(request.minutes)}.`
-        : `Vrij rijden vanaf ${formatTime(request.minutes)}.`,
-      year: request.year,
-      dayOfYear: request.dayOfYear,
-      minutes: request.minutes,
-      vehicle: vehiclePath
-        ? {
-            relativePath: vehiclePath,
-            lineNumber: duty?.lineNumbers[0] ?? '',
-            terminus: duty?.legs[0]?.terminus ?? '',
-            yard: request.yard,
-            vars: kleurVars(vehiclePath, request.kleurstelling),
-            // Ook bij vrij rijden: een gelede bus is twee voertuigen.
-            trailer: aanhangerVan(vehiclePath, request.kleurstelling)
-          }
-        : undefined,
-      spawn,
-      weather: request.weather
-      // Ook hier geen omloop vooraf; zie de uitleg hierboven.
-    })
-
-    const startup = presetStartup(omsi(), request.mapFolder, result.file)
-    klaargezet = { mapFolder: request.mapFolder, file: result.file }
-    // Elke vrije rit begint met aanmelden, ook als hij op de vorige lijkt.
-    vrijeRitten += 1
-    if (duty) openOverlay(duty)
-
-    let launched = false
-    const running = await isOmsiRunning()
-    if (!running) {
-      try {
-        // Wachten tot het echt gelukt is: de fout komt anders pas later binnen,
-        // en dan is er niemand meer die hem opvangt.
-        /* Knoppen die nog aan een toets moesten: nu kan het, OMSI is nog dicht. */
-        await schrijfStraks('voor het starten van OMSI')
-        launched = (await launchOmsi(omsi(), readSettings(userData()).windowedOmsi)) === 'gestart'
-      } catch {
-        // Lukt starten niet, dan doet de speler het zelf.
-      }
-    }
-    return { file: result.file, startup, launched, running, duty: duty ?? null }
-  })
-
-  /**
    * De chauffeur neemt een dienst aan. Vanaf nu staat hij in het profiel en
    * blijft hij daar tot hij is afgerond of geannuleerd. Een tweede dienst
    * aannemen terwijl er een loopt kan niet.
@@ -3912,7 +3959,7 @@ function registerHandlers(): void {
      * lost), dan startte de app het spel hieronder zonder dat er iets
      * klaarstond, op het startscherm van de vorige keer.
      */
-    const running = await isOmsiRunning()
+    const running = await isOmsiRunning(`${OMSI_PROCES}.exe`)
     const meerijden = request.meerijden === true && running
     if (meerijden) {
       log(`Meerijden in een draaiend OMSI: niets klaargezet voor ${duty.mapName}`)
@@ -3935,7 +3982,8 @@ function registerHandlers(): void {
           request.lineNumber,
           request.terminus,
           request.yard,
-          request.kleurstelling
+          request.kleurstelling,
+          request.weather
         )
       } catch (cause) {
         prepareError = cause instanceof Error ? cause.message : String(cause)
