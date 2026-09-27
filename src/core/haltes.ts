@@ -20,6 +20,25 @@ export interface HalteInfo {
   stopt: number
 }
 
+/**
+ * Alle eindbestemmingen van de kaart, zoals ze op de film staan: de `terminus`
+ * van elke rit uit de kiesbare omlopen. Daaraan meet vrij rijden de
+ * wagenparken naast een bus, want een dienst is er vooraf niet.
+ */
+export function bestemmingenVan(map: OmsiMap): string[] {
+  const kiesbaar = map.tours.some((tour) => tour.userAllowed)
+    ? map.tours.filter((tour) => tour.userAllowed)
+    : map.tours
+  const uit = new Set<string>()
+  for (const tour of kiesbaar) {
+    for (const entry of tour.trips) {
+      const terminus = map.trips.get(entry.tripFile.toLowerCase())?.terminus?.trim()
+      if (terminus) uit.add(terminus)
+    }
+  }
+  return [...uit]
+}
+
 /** "4" voor "15", en "N1" na "45": op nummer, en letters erachter. */
 function opNummer(a: string, b: string): number {
   return a.localeCompare(b, 'nl', { numeric: true, sensitivity: 'base' })

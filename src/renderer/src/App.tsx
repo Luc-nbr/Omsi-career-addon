@@ -1065,8 +1065,13 @@ export function App(): JSX.Element {
   const vehicle = useMemo(() => {
     if (vehicleOverride)
       return vehicles.find((v) => v.relativePath === vehicleOverride);
-    return assignment?.vehicle ?? undefined;
-  }, [vehicleOverride, vehicles, assignment]);
+    /*
+     * Bij vrij rijden is er geen dienst met een bus erbij; dan is de bus die de
+     * app bij de kaart voorstelt de gekozen bus, tot je een andere aanklikt.
+     * Zonder dit bleef de remisestap leeg zolang je de voorgestelde nam.
+     */
+    return assignment?.vehicle ?? (mode === "free" ? vrijeTip : undefined);
+  }, [vehicleOverride, vehicles, assignment, mode, vrijeTip]);
 
   /** Voertuigen gegroepeerd per map, anders is de lijst van 351 onleesbaar. */
   const vehicleGroups = useMemo(() => {
@@ -1126,6 +1131,24 @@ export function App(): JSX.Element {
    * keuze: een wagenpark van het ene busmodel zegt niets over het andere.
    */
   useEffect(() => {
+    /*
+     * Bij vrij rijden is er vooraf geen dienst om de wagenparken aan te meten;
+     * dan meet het hoofdproces ze aan alle eindbestemmingen van de kaart.
+     */
+    if (mode === "free" && vehicle && selectedMap && mapFolder) {
+      let current = true;
+      void window.career
+        .vrijeYards(mapFolder, vehicle.relativePath, selectedMap.year)
+        .then((options) => {
+          if (current) setYards(options);
+        })
+        .catch(() => {
+          if (current) setYards([]);
+        });
+      return () => {
+        current = false;
+      };
+    }
     if (!duty || !vehicle || !selectedMap) {
       setYards([]);
       return;
@@ -1139,7 +1162,7 @@ export function App(): JSX.Element {
     return () => {
       current = false;
     };
-  }, [duty, vehicle, selectedMap, hofTeller]);
+  }, [duty, vehicle, selectedMap, hofTeller, mode, mapFolder]);
 
   /*
    * Kent deze bus de kaart helemaal niet, dan vragen we of we het wagenpark
@@ -1541,6 +1564,7 @@ export function App(): JSX.Element {
         dayOfYear: wanneer.dayOfYear,
         minutes: (uren || 0) * 60 + (minuten || 0),
         weather: vrijWeer,
+        yard: yardOverride || yards.find((optie) => optie.suggested)?.name,
       });
       setVrijGevolgd(undefined);
       setVrijBezig(true);
@@ -1567,6 +1591,8 @@ export function App(): JSX.Element {
     vrijeDatum,
     vrijeTijd,
     vrijWeer,
+    yardOverride,
+    yards,
     mapFolder,
     busKleur,
     language,

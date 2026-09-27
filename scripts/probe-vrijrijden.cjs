@@ -333,6 +333,29 @@ app.whenReady().then(async () => {
     stop(1)
     return
   }
+  /*
+   * Het wagenpark: Luc, "het moet gewoon de map herkennen en die toepassen".
+   * Welke bus er voorgesteld wordt verschilt per pc; heeft hij een wagenpark
+   * dat naar de kaart heet, dan hoort dat het voorstel te zijn.
+   */
+  /*
+   * Door naar de remisestap: steeds de aangewezen tegel aantikken (merk, type,
+   * uitvoering, kleurstelling) tot het wagenpark aan de beurt is. Die stap
+   * bleef bij vrij rijden leeg.
+   */
+  for (let i = 0; i < 6; i++) {
+    if (await js(hoofd, `/Remise|Depot/.test(document.querySelector('h1, h2')?.textContent ?? '')`)) break
+    await js(hoofd, `(document.querySelector('.tegel[aria-pressed=true]') ?? document.querySelector('.tegel'))?.click()`)
+    await wacht(900)
+  }
+  const remise = await js(hoofd, `({ titel: document.querySelector('h1, h2')?.textContent ?? '', tegels: [...document.querySelectorAll('.tegel')].map((t) => ({ tekst: t.textContent.trim().slice(0, 40), aan: t.getAttribute('aria-pressed') === 'true' })) })`)
+  console.log(`remisestap "${remise.titel}": ${remise.tegels.length} tegels; gekozen: ${remise.tegels.filter((t) => t.aan).map((t) => t.tekst).join(', ')}`)
+  await beeld('vrij-remise.png')
+  const bus = await js(hoofd, `window.career.suggestVehicle('${KAART}').then((b) => b?.relativePath ?? '')`)
+  const wagenparken = bus ? await js(hoofd, `window.career.vrijeYards('${KAART}', ${JSON.stringify(bus)}, 2016)`) : []
+  const voorstel = wagenparken.find((optie) => optie.suggested)?.name ?? ''
+  const heeftKaartHof = wagenparken.some((optie) => /rheinhausen/i.test(optie.name))
+  console.log(`wagenparken bij ${bus}: ${wagenparken.map((o) => `${o.name} ${o.known}/${o.total}`).join(', ')}; voorstel ${voorstel || 'geen'}`)
   await js(hoofd, `document.querySelector('.startknop')?.click()`)
   /* innerText volgt text-transform: de startknop staat in hoofdletters. */
   const rijscherm = await wachtOp(`/Vrij rijden stoppen|Stop free play/i.test(document.body.innerText)`, 60)
@@ -391,7 +414,14 @@ app.whenReady().then(async () => {
   const fouten = meldingen.filter((m) => !/Electron Security Warning|willReadFrequently/.test(m))
   console.log('meldingen:', fouten.length ? fouten.map((m) => m.slice(0, 140)) : 'geen')
 
+  const startRegel = log.split(/\r?\n/).reverse().find((r) => /vrij rijden: .*beginpunt/.test(r)) ?? ''
+  console.log(`  bij START: ${startRegel.slice(24, 220)}`)
   const goed =
+    /Remise|Depot/.test(remise.titel) &&
+    remise.tegels.length > 1 &&
+    remise.tegels.some((t) => t.aan && (!heeftKaartHof || /rheinhausen/i.test(t.tekst))) &&
+    (!heeftKaartHof || /rheinhausen/i.test(voorstel)) &&
+    (!voorstel || startRegel.includes(`wagenpark ${voorstel}`)) &&
     haltes > 5 &&
     soorten.length === 2 &&
     beginRijen > 0 &&

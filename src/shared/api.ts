@@ -173,6 +173,8 @@ export interface FreeRequest {
   dayOfYear: number
   minutes: number
   weather?: WeatherKind
+  /** Het wagenpark (.hof) naast de bus; leeg laat OMSI kiezen. */
+  yard?: string
 }
 
 export interface FreeResult {
@@ -732,6 +734,8 @@ export interface CareerApi {
   stopFree(): Promise<void>
   /** Per halte van een kaart: welke lijnen er stoppen, en of ritten er beginnen. */
   haltes(mapFolder: string): Promise<HalteInfo[]>
+  /** De wagenparken naast een bus, gemeten aan alle eindbestemmingen van de kaart. */
+  vrijeYards(mapFolder: string, vehiclePath: string, year: number): Promise<YardOption[]>
   /**
    * Vrij rijden: in OMSI een omloop gekozen, en de overlay volgt hem. Met de
    * omloop als dienst en zijn IBIS-codes.

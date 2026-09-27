@@ -214,6 +214,36 @@ export function matchHof(hof: Hof, termini: string[]): HofMatch {
   return { hof, matched: wanted.filter((name) => codes.has(name)).length, codes }
 }
 
+/**
+ * Het wagenpark dat bij een kaart hoort, voor vrij rijden.
+ *
+ * Luc: "het moet gewoon de map herkennen en die toepassen". Veel bussen hebben
+ * een wagenpark per kaart naast zich -- de O560 Berlin.hof, Grundorf.hof en
+ * Krefrath.hof. Heet er een naar de kaart (naar de map of de naam, zonder
+ * spaties en leestekens: Grundorf.hof bij "Region Grundorf V4"), dan is dat
+ * het; zijn het er meer, dan wat de meeste bestemmingen van de kaart kent en
+ * in het tijdvak valt. Heet er geen naar de kaart, dan het wagenpark dat de
+ * meeste bestemmingen kent (pickHof). Geen enkele: niets, en OMSI kiest.
+ */
+export function hofVoorKaart(
+  hofs: Hof[],
+  kaart: { folder: string; name: string },
+  termini: string[],
+  year?: number
+): string | undefined {
+  const kaal = (tekst: string): string => tekst.toLowerCase().replace(/[^a-z0-9äöüß]/g, '')
+  const kaartNamen = [kaal(kaart.folder), kaal(kaart.name)].filter((naam) => naam.length >= 4)
+  const vanDezeKaart = hofs.filter((hof) =>
+    [kaal(hof.name), kaal(basename(hof.file, extname(hof.file)))].some(
+      (naam) => naam.length >= 4 && kaartNamen.some((k) => k.includes(naam) || naam.includes(k))
+    )
+  )
+  if (vanDezeKaart.length > 0) {
+    return pickHof(vanDezeKaart, termini, year)?.hof.name ?? vanDezeKaart[0].name
+  }
+  return pickHof(hofs, termini, year)?.hof.name
+}
+
 export function pickHof(hofs: Hof[], termini: string[], year?: number): HofMatch | undefined {
   const scored: HofMatch[] = hofs.map((hof) => matchHof(hof, termini))
 

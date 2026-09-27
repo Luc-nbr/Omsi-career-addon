@@ -28,7 +28,7 @@ import {
   zorgVoorDienstgegevens,
   PHOTO_EXTENSIONS
 } from '../core/profiles'
-import { haltesVan } from '../core/haltes'
+import { bestemmingenVan, haltesVan } from '../core/haltes'
 import {
   dutyFromTour,
   examTrip,
@@ -142,7 +142,7 @@ import { spawnAtStop } from '../core/spawn'
 import { listMaps } from '../core/timetable'
 import type { Vehicle } from '../core/vehicles'
 import type { Duty, DutyLeg, OmsiMap } from '../core/types'
-import { listHofs, matchHof, pickHof } from '../core/hof'
+import { hofVoorKaart, listHofs, matchHof, pickHof } from '../core/hof'
 import { placeHof, planHofs, readPlacements, writePlacements } from '../core/hofTool'
 import { readScreenMode } from '../core/schermmodus'
 import {
@@ -1009,7 +1009,7 @@ function currentDuty(): Duty | undefined {
  * opgebouwd, ook niet als het opbouwen niets opleverde.
  */
 let vrijeRit:
-  | { mapFolder: string; mapName: string; vehiclePath?: string; sinds: string }
+  | { mapFolder: string; mapName: string; vehiclePath?: string; yard?: string; sinds: string }
   | undefined
 let gevolgd = ''
 
@@ -1062,10 +1062,18 @@ function volgOmloopInOmsi(live: ReturnType<typeof readLive>): void {
    * verschillen per tijdvak, dus telt het jaar van het spel.
    */
   const busPad = live.bus?.pad ? join(live.bus.pad, 'bus.bus') : rit.vehiclePath
+  /*
+   * Het wagenpark dat de chauffeur bij het starten koos -- alleen als hij nog in
+   * dezelfde busmap rijdt; een wagenpark van een ander model bestaat daar niet,
+   * en dan kiest buildIbisPlan zelf.
+   */
+  const zelfdeMap =
+    rit.vehiclePath && busPad && dirname(busPad).toLowerCase().replace(/\\/g, '/') ===
+      dirname(rit.vehiclePath).toLowerCase().replace(/\\/g, '/')
   let ibis: IbisPlan | undefined
   if (busPad) {
     try {
-      ibis = buildIbisPlan(omsi(), busPad, nieuw, live.year || new Date().getFullYear())
+      ibis = buildIbisPlan(omsi(), busPad, nieuw, live.year || new Date().getFullYear(), zelfdeMap ? rit.yard : undefined)
     } catch (fout) {
       logFout('IBIS-codes van de gevolgde omloop', fout)
     }
@@ -1078,7 +1086,7 @@ function volgOmloopInOmsi(live: ReturnType<typeof readLive>): void {
   lastFrame = undefined
   log(
     `vrij rijden volgt OMSI: lijn ${nieuw.lineNumbers.join('/') || keuze.lineFile}, omloop ${nieuw.tourNumber}, ` +
-      `${nieuw.legs.length} ritten vanaf ${formatTime(nieuw.start)}${ibis ? `, IBIS lijn ${ibis.line}` : ''}`
+      `${nieuw.legs.length} ritten vanaf ${formatTime(nieuw.start)}${ibis ? `, IBIS lijn ${ibis.line} uit wagenpark ${ibis.yard ?? '?'}` : ''}`
   )
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('vrij:gevolgd', { duty: nieuw, ibis })
@@ -3906,10 +3914,12 @@ function registerHandlers(): void {
       mapFolder: request.mapFolder,
       mapName: map(request.mapFolder).name,
       vehiclePath: request.vehiclePath,
+      yard: request.yard,
       sinds: new Date().toISOString()
     }
     log(
-      `vrij rijden: ${vrijeRit.mapName}, bus ${request.vehiclePath ?? '?'}, beginpunt ${request.stopId ?? 'geen'}` +
+      `vrij rijden: ${vrijeRit.mapName}, bus ${request.vehiclePath ?? '?'}, beginpunt ${request.stopId ?? 'geen'}, ` +
+        `wagenpark ${request.yard ?? 'door OMSI gekozen'}` +
         (running ? ' -- OMSI draait al, niets klaargezet' : '')
     )
 
@@ -3927,6 +3937,7 @@ function registerHandlers(): void {
               relativePath: request.vehiclePath,
               lineNumber: '',
               terminus: '',
+              yard: request.yard,
               vars: kleurVars(request.vehiclePath, request.kleurstelling),
               // Een gelede bus is twee voertuigen; zonder dit begin je met een halve.
               trailer: aanhangerVan(request.vehiclePath, request.kleurstelling)
@@ -3952,6 +3963,39 @@ function registerHandlers(): void {
   handle('free:stop', () => {
     stopVrijeRit()
   })
+
+  /*
+   * De wagenparken naast een bus, bij vrij rijden.
+   *
+   * Luc: "in de vrije modus werkt de hof file selection niet". `duty:yards`
+   * meet elk wagenpark aan de eindbestemmingen van de dienst, en bij vrij
+   * rijden is er vooraf geen dienst: de remisestap bleef leeg. Hier wordt
+   * gemeten aan alle eindbestemmingen van de kaart (bestemmingenVan) -- dan
+   * zegt het getal welk wagenpark het best bij deze kaart past.
+   *
+   * En het voorstel is het wagenpark van deze kaart: Luc, "het moet gewoon de
+   * map herkennen en die toepassen". Heet een wagenpark naar de kaart
+   * (Krefrath.hof bij Krefrath, Grundorf.hof bij Region Grundorf), dan is dat
+   * het; anders het wagenpark dat de meeste bestemmingen kent. Wie niets kiest,
+   * krijgt dat voorstel bij START (startVrij in App.tsx).
+   */
+  handle(
+    'free:yards',
+    (_event, folder: string, vehiclePath: string, year: number): YardOption[] => {
+      const kaart = map(String(folder))
+      const termini = bestemmingenVan(kaart)
+      const hofs = listHofs(join(omsi(), String(vehiclePath)))
+      const suggested = hofVoorKaart(hofs, kaart, termini, year)
+      return hofs
+        .map((hof) => ({
+          name: hof.name,
+          known: matchHof(hof, termini).matched,
+          total: termini.length,
+          suggested: hof.name === suggested
+        }))
+        .sort((a, b) => b.known - a.known || a.name.localeCompare(b.name))
+    }
+  )
 
   /* Per halte welke lijnen er stoppen en of ritten er beginnen; zie core/haltes.ts. */
   handle('map:haltes', (_event, folder: string) => haltesVan(map(String(folder))))

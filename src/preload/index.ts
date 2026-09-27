@@ -111,6 +111,7 @@ const api: CareerApi = {
   startFree: (request) => ipcRenderer.invoke('free:start', request),
   stopFree: () => ipcRenderer.invoke('free:stop'),
   haltes: (mapFolder) => ipcRenderer.invoke('map:haltes', mapFolder),
+  vrijeYards: (mapFolder, vehiclePath, year) => ipcRenderer.invoke('free:yards', mapFolder, vehiclePath, year),
   onVrijGevolgd: (handler) => {
     const heen = (_event: unknown, gevolgd: Parameters<typeof handler>[0]) => handler(gevolgd)
     ipcRenderer.on('vrij:gevolgd', heen)
