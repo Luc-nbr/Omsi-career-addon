@@ -18,6 +18,7 @@ import {
   PLUGIN_VERSIE,
   type AanmeldUitslag,
   type TelefoonStand,
+  type WisselAanbod,
 } from "../../shared/telefoon";
 import type { Verkoop } from "../../core/live";
 import { NavKaart, stopName, type NavFrame, type RitStand } from "./navigatie";
@@ -71,6 +72,10 @@ export interface TelefoonActies {
   /** Geen nummer en pincode bekend; dan zonder aanmelden verder. */
   overslaan(): void;
   aanvaarden(): void;
+  /** Andere diensten die nu in OMSI te rijden zijn; zie `dienstAanbod` in main. */
+  aanbod(): Promise<WisselAanbod>;
+  /** Er een uit het aanbod aannemen; `false` als dat aanbod niet meer geldt. */
+  wissel(nr: number): Promise<boolean>;
   pauze(vanaf?: number): void;
   ibisKlaar(tripKey: string): void;
   /**
@@ -145,6 +150,8 @@ export function Telefoon({
    */
   const [manoeuvre, setManoeuvre] = useState<Manoeuvre>();
   const [limit, setLimit] = useState<number>();
+  /** Staat het lijstje met andere diensten open? */
+  const [kiezen, setKiezen] = useState(false);
 
   /*
    * De deur open is het moment van de kaartverkoop.
@@ -167,6 +174,22 @@ export function Telefoon({
   if (!stand.aangemeld) {
     return <AanmeldPaneel stand={stand} acties={acties} language={language} />;
   }
+  /*
+   * Voor de dienstopdracht, want ook wie al getekend heeft mag nog ruilen. Na
+   * de ruil staat er een nieuwe opdracht, en die teken je opnieuw.
+   */
+  if (kiezen && stand.wisselbaar) {
+    return (
+      <AndereDienst
+        acties={acties}
+        language={language}
+        onKlaar={() => {
+          setKiezen(false);
+          setApp("kaart");
+        }}
+      />
+    );
+  }
   if (duty && !stand.aanvaard) {
     return (
       <DienstOpdracht
@@ -174,6 +197,7 @@ export function Telefoon({
         chauffeur={frame.chauffeur}
         language={language}
         onAanvaard={acties.aanvaarden}
+        onAnder={stand.wisselbaar ? () => setKiezen(true) : undefined}
       />
     );
   }
@@ -191,7 +215,12 @@ export function Telefoon({
               tablet={tablet}
             />
           ) : app === "dienst" ? (
-            <DienstApp duty={duty} status={frame.status} language={language} />
+            <DienstApp
+              duty={duty}
+              status={frame.status}
+              language={language}
+              onAnder={stand.wisselbaar ? () => setKiezen(true) : undefined}
+            />
           ) : app === "pauze" ? (
             <PauzeApp
               duty={duty}
@@ -486,10 +515,13 @@ function DienstApp({
   duty,
   status,
   language,
+  onAnder,
 }: {
   duty?: Duty;
   status?: LiveStatus;
   language: Language;
+  /** Een andere dienst kiezen; ontbreekt als dat hier niet kan. */
+  onAnder?: () => void;
 }): JSX.Element {
   if (!duty) return <div className="empty">{t(language, "ovl.appNoDuty")}</div>;
   const nuIndex = status?.legIndex;
@@ -519,6 +551,11 @@ function DienstApp({
           )}
         </div>
       ))}
+      {onAnder && (
+        <button type="button" className="wissel-open" onClick={onAnder}>
+          {t(language, "ovl.swapOpen")}
+        </button>
+      )}
     </div>
   );
 }
@@ -775,11 +812,14 @@ function DienstOpdracht({
   chauffeur,
   language,
   onAanvaard,
+  onAnder,
 }: {
   duty: Duty;
   chauffeur?: { naam: string };
   language: Language;
   onAanvaard: () => void;
+  /** Liever een andere dienst; ontbreekt bij een examen en bij vrij rijden. */
+  onAnder?: () => void;
 }): JSX.Element {
   const klok = (minuten: number): string => formatTime(minuten);
   return (
@@ -814,6 +854,118 @@ function DienstOpdracht({
 
       <button type="button" className="opdracht-teken" onClick={onAanvaard}>
         {t(language, "ovl.dutyAccept")}
+      </button>
+      {onAnder && (
+        <button type="button" className="aanmeld-door" onClick={onAnder}>
+          {t(language, "ovl.swapOpen")}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Een andere dienst kiezen terwijl OMSI al draait.
+ *
+ * WAAROM DIT ER IS
+ * Een gebruiker vroeg of hij een andere omloop kon aannemen zonder OMSI af te
+ * sluiten en opnieuw te starten. Dat kon al, maar via drie schermen van de app
+ * op de pc: annuleren, een nieuwe dienst kiezen, "meerijden". Hier gaat het op
+ * de telefoon die je in de bus al voor je hebt.
+ *
+ * Het aanbod rekent het hoofdproces uit: vanaf de klok van OMSI, op de dag die
+ * het spel speelt, zodat elke dienst in deze lijst ook echt in het
+ * dienstregelingsmenu staat. Tikken is aannemen; de nieuwe dienstopdracht die
+ * daarna verschijnt is de bevestiging, want die teken je nog.
+ */
+function AndereDienst({
+  acties,
+  language,
+  onKlaar,
+}: {
+  acties: TelefoonActies;
+  language: Language;
+  /** Terug, met of zonder andere dienst. */
+  onKlaar: () => void;
+}): JSX.Element {
+  const [aanbod, setAanbod] = useState<WisselAanbod>();
+  const [fout, setFout] = useState(false);
+  const [bezig, setBezig] = useState(false);
+
+  useEffect(() => {
+    let geldig = true;
+    acties
+      .aanbod()
+      .then((uit) => {
+        if (geldig) setAanbod(uit);
+      })
+      .catch(() => {
+        if (geldig) setFout(true);
+      });
+    return () => {
+      geldig = false;
+    };
+  }, [acties]);
+
+  const kies = async (nr: number): Promise<void> => {
+    setBezig(true);
+    setFout(false);
+    try {
+      if (await acties.wissel(nr)) onKlaar();
+      else setFout(true);
+    } catch {
+      setFout(true);
+    } finally {
+      setBezig(false);
+    }
+  };
+
+  return (
+    <div className="opdracht wissel" data-hit>
+      <p className="opdracht-kop">{t(language, "ovl.swapTitle")}</p>
+      <p className="wissel-uitleg">{t(language, "ovl.swapNote")}</p>
+
+      {!aanbod && !fout && (
+        <p className="wissel-leeg">{t(language, "ovl.swapLoading")}</p>
+      )}
+      {aanbod?.reden === "geen" && (
+        <p className="wissel-leeg">{t(language, "ovl.swapNone")}</p>
+      )}
+      {fout && <p className="aanmeld-fout">{t(language, "ovl.swapFailed")}</p>}
+
+      {aanbod && aanbod.diensten.length > 0 && (
+        <ul className="wissel-lijst">
+          {aanbod.diensten.map((dienst) => (
+            <li key={dienst.nr}>
+              <button
+                type="button"
+                className="wissel-dienst"
+                disabled={bezig}
+                onClick={() => void kies(dienst.nr)}
+              >
+                <span className="wissel-tijd">
+                  {formatTime(dienst.start)}
+                  <small>{formatTime(dienst.eind)}</small>
+                </span>
+                <span className="wissel-wat">
+                  <b>
+                    {t(language, "ovl.appLine", { line: dienst.lijnen || "—" })}
+                    {" · "}
+                    {t(language, "ovl.swapTour", { tour: dienst.omloop || "—" })}
+                  </b>
+                  <small>
+                    {dienst.vanaf ? `${dienst.vanaf} · ` : ""}
+                    {t(language, "ovl.swapTrips", { count: dienst.ritten })}
+                  </small>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <button type="button" className="aanmeld-door" onClick={onKlaar}>
+        {t(language, "ovl.swapBack")}
       </button>
     </div>
   );

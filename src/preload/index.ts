@@ -1,5 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { BusfotoStand, CareerApi, DutyRequest, KaartenStand, OmsiMelding } from '../shared/api'
+import type {
+  BusfotoStand,
+  CareerApi,
+  CareerPayload,
+  DutyRequest,
+  KaartenStand,
+  OmsiMelding
+} from '../shared/api'
 
 /**
  * De renderer praat alleen via deze brug met het bestandssysteem; er staat geen
@@ -75,6 +82,13 @@ const api: CareerApi = {
   telefoonOverslaan: () => ipcRenderer.invoke('telefoon:overslaan'),
   telefoonAanvaard: () => ipcRenderer.invoke('telefoon:aanvaard'),
   telefoonPauze: (vanaf) => ipcRenderer.invoke('telefoon:pauze', vanaf),
+  telefoonAanbod: () => ipcRenderer.invoke('telefoon:aanbod'),
+  telefoonWissel: (nr) => ipcRenderer.invoke('telefoon:wissel', nr),
+  onDienstGewisseld: (handler) => {
+    const listener = (_event: unknown, payload: CareerPayload): void => handler(payload)
+    ipcRenderer.on('dienst:gewisseld', listener)
+    return () => ipcRenderer.removeListener('dienst:gewisseld', listener)
+  },
   telefoonIbis: (tripKey) => ipcRenderer.invoke('telefoon:ibis', tripKey),
   telefoonToets: (actie) => ipcRenderer.invoke('telefoon:toets', actie),
   telefoonKnoppen: () => ipcRenderer.invoke('telefoon:knoppen'),

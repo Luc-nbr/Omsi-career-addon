@@ -3540,6 +3540,55 @@ const TEXT = {
     fr: 'Accepter le service',
     nl: 'Dienst aanvaarden'
   },
+  'ovl.swapOpen': {
+    en: 'Choose another duty',
+    de: 'Anderen Dienst wählen',
+    fr: 'Choisir un autre service',
+    nl: 'Andere dienst kiezen'
+  },
+  'ovl.swapTitle': {
+    en: 'Another duty',
+    de: 'Anderer Dienst',
+    fr: 'Autre service',
+    nl: 'Andere dienst'
+  },
+  'ovl.swapNote': {
+    en: 'Duties that still depart today in OMSI. Your current duty is dropped without being logged; OMSI keeps running, and you pick the new tour in its timetable menu.',
+    de: 'Dienste, die heute in OMSI noch abfahren. Dein jetziger Dienst entfällt ohne Buchung; OMSI läuft weiter, und den neuen Umlauf wählst du im Fahrplanmenü.',
+    fr: 'Les services qui partent encore aujourd’hui dans OMSI. Votre service actuel est abandonné sans être enregistré ; OMSI continue, et vous choisissez le nouveau roulement dans son menu d’horaires.',
+    nl: 'Diensten die vandaag in OMSI nog vertrekken. Je huidige dienst vervalt zonder boeking; OMSI blijft draaien, en de nieuwe omloop kies je in het dienstregelingsmenu.'
+  },
+  'ovl.swapLoading': {
+    en: 'The depot is looking…',
+    de: 'Der Betriebshof sucht…',
+    fr: 'Le dépôt cherche…',
+    nl: 'De remise zoekt…'
+  },
+  'ovl.swapNone': {
+    en: 'No other duty departs in the next two hours.',
+    de: 'In den nächsten zwei Stunden fährt kein anderer Dienst ab.',
+    fr: 'Aucun autre service ne part dans les deux prochaines heures.',
+    nl: 'In de komende twee uur vertrekt er geen andere dienst.'
+  },
+  'ovl.swapFailed': {
+    en: 'That did not work. Try again.',
+    de: 'Das hat nicht geklappt. Versuche es noch einmal.',
+    fr: 'Cela n’a pas fonctionné. Réessayez.',
+    nl: 'Dat lukte niet. Probeer het nog eens.'
+  },
+  'ovl.swapTrips': {
+    en: '{count} trips',
+    de: '{count} Fahrten',
+    fr: '{count} courses',
+    nl: '{count} ritten'
+  },
+  'ovl.swapTour': {
+    en: 'tour {tour}',
+    de: 'Umlauf {tour}',
+    fr: 'roulement {tour}',
+    nl: 'omloop {tour}'
+  },
+  'ovl.swapBack': { en: 'Back', de: 'Zurück', fr: 'Retour', nl: 'Terug' },
   'ovl.appIbis': { en: 'IBIS', de: 'IBIS', fr: 'IBIS', nl: 'IBIS' },
   'ovl.ibisTo': { en: 'To', de: 'Ziel', fr: 'Direction', nl: 'Naar' },
   'ovl.ibisNext': { en: 'Next stop', de: 'Nächste Haltestelle', fr: 'Prochain arrêt', nl: 'Volgende halte' },

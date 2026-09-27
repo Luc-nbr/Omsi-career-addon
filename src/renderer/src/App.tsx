@@ -767,6 +767,22 @@ export function App(): JSX.Element {
   const confirmed = Boolean(active);
   const exam = active?.exam;
   const activeKey = active ? `${career?.state?.id}|${active.confirmedAt}` : "";
+  /*
+   * De telefoon kan een andere dienst aannemen terwijl er gereden wordt (zie
+   * `wisselDienst` in main). Dat is een nieuwe dienst met een nieuw moment van
+   * aannemen, en daarop springt het effect hieronder -- maar het is geen
+   * dienst die "openstond": wie rijdt, hoort op het rijscherm te blijven en
+   * niet in het hoofdmenu de vraag te krijgen of hij verder wil.
+   */
+  const gewisseldRef = useRef(false);
+  useEffect(
+    () =>
+      window.career.onDienstGewisseld((payload) => {
+        gewisseldRef.current = true;
+        setCareer(payload);
+      }),
+    [],
+  );
   useEffect(() => {
     /*
      * Geen lopende dienst -- een verse chauffeur, of net geannuleerd -- dan
@@ -811,7 +827,11 @@ export function App(): JSX.Element {
      * of je verder wilt. Wie in deze sessie zelf op START drukt gaat er wel
      * meteen heen; dat staat in `begin`, want daar valt niets te vragen.
      */
-    if (active.startedAt) {
+    if (gewisseldRef.current) {
+      gewisseldRef.current = false;
+      setHervatVraag(false);
+      setNote(t(language, "start.riding"));
+    } else if (active.startedAt) {
       setScreen("modes");
       setHervatVraag(true);
     } else {

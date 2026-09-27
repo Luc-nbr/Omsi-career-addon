@@ -15,7 +15,7 @@ import {
 } from "./telefoon";
 import { dutyKeyOf } from "../../shared/telefoon";
 import type { Schermvorm } from "../../shared/scherm";
-import type { AanmeldUitslag } from "../../shared/telefoon";
+import type { AanmeldUitslag, WisselAanbod } from "../../shared/telefoon";
 import "@fontsource/hanken-grotesk/400.css";
 import "@fontsource/hanken-grotesk/500.css";
 import "@fontsource/hanken-grotesk/700.css";
@@ -92,6 +92,12 @@ function Apparaat(): JSX.Element {
         ),
       overslaan: () => void stuur({ wat: "overslaan" }).catch(() => undefined),
       aanvaarden: () => void stuur({ wat: "aanvaard" }).catch(() => undefined),
+      aanbod: () =>
+        stuur({ wat: "aanbod" }).then((uit) => uit as WisselAanbod),
+      wissel: (nr) =>
+        stuur({ wat: "wissel", nr }).then(
+          (uit) => (uit as { ok?: boolean }).ok === true,
+        ),
       pauze: (vanaf) => void stuur({ wat: "pauze", vanaf }).catch(() => undefined),
       ibisKlaar: (tripKey) => void stuur({ wat: "ibis", tripKey }).catch(() => undefined),
       toets: (actie) => void stuur({ wat: "toets", toets: actie }).catch(() => undefined),

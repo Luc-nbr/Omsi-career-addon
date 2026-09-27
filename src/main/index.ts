@@ -81,11 +81,14 @@ import {
   LEGE_TELEFOON,
   OMSI_TOETSEN,
   aanmeldSleutelVan,
+  dienstSleutelVan,
   dutyKeyOf,
   type AanmeldUitslag,
   type OmsiToets,
-  type TelefoonStand
+  type TelefoonStand,
+  type WisselAanbod
 } from '../shared/telefoon'
+import { runsOn } from '../core/calendar'
 import {
   apparaatBeeld,
   apparaatKijkt,
@@ -1402,7 +1405,8 @@ function telefoonBeeld(): TelefoonStand {
     pauzeVanaf: telefoon.pauzeVanaf,
     ibisReady: telefoon.ibisReady,
     nummerLengte: career?.personeelsnummer?.length ?? 0,
-    pinLengte: career?.pincode?.length ?? 0
+    pinLengte: career?.pincode?.length ?? 0,
+    wisselbaar: wisselbareDienst() !== undefined
   }
 }
 
@@ -1411,6 +1415,182 @@ function telefoonGewijzigd(): void {
   bewaarTelefoon()
   lastFrame = undefined
   pushFrame()
+}
+
+/**
+ * Het laatste aanbod aan andere diensten, zoals de telefoon het te zien kreeg.
+ *
+ * De telefoon kiest er met een volgnummer uit en stuurt geen dienst terug: een
+ * tablet op het netwerk kan zo niets anders laten aannemen dan wat hier stond.
+ */
+let wisselAanbod: { sleutel: string; diensten: Assignment[] } | undefined
+
+/** Hoeveel diensten de telefoon aanbiedt; meer past niet op het scherm zonder zoeken. */
+const WISSEL_AANTAL = 6
+
+/**
+ * De aangenomen dienst, als de chauffeur die hier mag ruilen. Niet bij een
+ * examen -- dat hoort bij één lijn -- en niet als de overlay iets anders rijdt
+ * dan wat er aangenomen is: dan is er niets om tegen te ruilen.
+ */
+function wisselbareDienst(): Assignment | undefined {
+  const actief = career?.activeDuty
+  if (!actief || actief.exam) return undefined
+  const aangenomen = actief.assignment as Assignment | undefined
+  if (!aangenomen?.duty) return undefined
+  const lopend = currentDuty()
+  if (lopend && aanmeldSleutelVan(lopend) !== aanmeldSleutelVan(aangenomen.duty)) return undefined
+  return aangenomen
+}
+
+/**
+ * Andere diensten die nu nog te rijden zijn, terwijl OMSI al draait.
+ *
+ * WAAROM DIT ER IS
+ * Een gebruiker: "wenn man eine Fahrt ändern möchte, wäre es praktisch, wenn
+ * man direkt im Menü eine andere Tour auswählen bzw. annehmen könnte, ohne
+ * dafür jedes Mal OMSI beenden und neu starten zu müssen." Het kon al --
+ * annuleren, een nieuwe kiezen, "meerijden" -- maar dat liep over drie
+ * schermen van de app, terwijl je in de bus zit met de telefoon voor je neus.
+ *
+ * WAT HET AANBOD BEPAALT
+ * Het spel loopt al, dus de klok en de datum liggen vast. Een omloop die
+ * vandaag niet rijdt staat niet in het dienstregelingsmenu van OMSI, en een
+ * dienst die al vertrokken is, is geen keuze meer. Vandaar: vertrek vanaf de
+ * klok van het spel tot twee uur later, op de dag die OMSI nu speelt, op
+ * dezelfde kaart en ongeveer even lang als de dienst die er nu staat. In de
+ * carrière alleen op lijnen met een vergunning, net als in het keuzescherm.
+ */
+async function dienstAanbod(): Promise<WisselAanbod> {
+  const aangenomen = wisselbareDienst()
+  if (!aangenomen) return { diensten: [], reden: 'niet' }
+  const oud = aangenomen.duty
+  const folder = oud.mapFolder
+
+  const live = freshLive()
+  const speelt = live?.alive === true && live.year > 0 && live.month > 0 && live.day > 0
+  const klok = speelt ? Math.floor(live.time / 60) : undefined
+  const datum = speelt
+    ? new Date(Date.UTC(live.year, live.month - 1, live.day))
+    : aangenomen.date?.iso
+      ? new Date(`${aangenomen.date.iso}T00:00:00Z`)
+      : undefined
+
+  const request: DutyRequest = {
+    mapFolder: folder,
+    targetMinutes: Math.max(30, oud.end - oud.start),
+    window: 'heledag',
+    // Zonder klok van het spel: rond de dienst die er stond.
+    earliestStart: klok ?? oud.start - 60,
+    latestStart: (klok ?? oud.start) + 120,
+    lineFiles:
+      career?.activeDuty?.mode === 'career'
+        ? (career.licences ?? [])
+            .filter((vergunning) => vergunning.mapFolder === folder)
+            .map((vergunning) => vergunning.lineFile)
+        : undefined
+  }
+
+  let gevonden: Assignment[]
+  try {
+    gevonden = await werkerVraag<Assignment[]>({ soort: 'diensten', request })
+  } catch (fout) {
+    logFout('andere diensten via de werker', fout)
+    gevonden = laag().diensten(request)
+  }
+
+  const kalender = laag().kalender(folder)
+  const huidig = dienstSleutelVan(oud)
+  const diensten = gevonden
+    .filter(({ duty }) => dienstSleutelVan(duty) !== huidig)
+    .filter(({ duty }) => !datum || runsOn(duty.days | duty.period, datum, kalender))
+    .sort((a, b) => a.duty.start - b.duty.start)
+    .slice(0, WISSEL_AANTAL)
+
+  wisselAanbod = { sleutel: aanmeldSleutelVan(oud), diensten }
+  log(
+    `andere diensten voor ${folder}: ${diensten.length} van ${gevonden.length}` +
+      (klok !== undefined ? ` vanaf ${formatTime(klok)}` : ' (geen klok van OMSI)')
+  )
+  return {
+    diensten: diensten.map(({ duty }, nr) => ({
+      nr,
+      lijnen: duty.lineNumbers.join(' / ') || duty.legs[0]?.lineNumber || '',
+      omloop: duty.tourNumber,
+      start: duty.start,
+      eind: duty.end,
+      ritten: duty.legs.length,
+      vanaf: duty.legs[0]?.stops[0] ?? ''
+    })),
+    reden: diensten.length === 0 ? 'geen' : undefined
+  }
+}
+
+/**
+ * Een dienst uit het aanbod aannemen in plaats van de huidige.
+ *
+ * Het is geannuleerd en opnieuw aangenomen in één handeling, met "meerijden"
+ * erachter: OMSI draait al, dus er wordt niets klaargezet, en de chauffeur
+ * kiest de omloop zelf in het dienstregelingsmenu -- de telefoon zegt welke.
+ * Wat er van de oude dienst gereden is, wordt niet geboekt, net als bij
+ * annuleren. De bus blijft dezelfde: daar zit je in.
+ *
+ * Aangemeld blijf je, want je bent dezelfde chauffeur in dezelfde bus. Tekenen
+ * moet opnieuw: het is een andere opdracht.
+ */
+function wisselDienst(nr: number): boolean {
+  const aangenomen = wisselbareDienst()
+  const actief = career?.activeDuty
+  if (!career || !actief || !aangenomen) return false
+  if (!wisselAanbod || wisselAanbod.sleutel !== aanmeldSleutelVan(aangenomen.duty)) return false
+  const nieuw = Number.isInteger(nr) ? wisselAanbod.diensten[nr] : undefined
+  if (!nieuw) return false
+
+  const busPad =
+    actief.vehicleOverride || aangenomen.vehicle?.relativePath || nieuw.vehicle?.relativePath || ''
+  let ibis: IbisPlan | undefined
+  if (busPad) {
+    try {
+      ibis = buildIbisPlan(omsi(), busPad, nieuw.duty, era(nieuw.duty.mapFolder).year, overlayIbis?.yard)
+    } catch (fout) {
+      logFout('IBIS-codes voor de andere dienst', fout)
+    }
+  }
+
+  const nu = new Date().toISOString()
+  persist({
+    ...career,
+    activeDuty: {
+      assignment: nieuw,
+      vehicleOverride: busPad,
+      confirmedAt: nu,
+      mode: actief.mode,
+      // Er wordt al gereden; de nulmeting komt bij de volgende verse stand.
+      startedAt: actief.startedAt ? nu : undefined
+    }
+  })
+  captureBaseline()
+
+  overlayDuty = nieuw.duty
+  overlayIbis = ibis
+  wisselAanbod = undefined
+  // Zoals bij meerijden: wat er voor de oude dienst klaarstond, geldt niet meer.
+  klaargezet = undefined
+
+  const aangemeld = telefoon.aangemeld
+  telefoon = telefoonVoor(telefoonSleutel())
+  telefoon.aangemeld = aangemeld
+  telefoonGewijzigd()
+
+  log(
+    `Andere dienst via de telefoon: omloop ${aangenomen.duty.tourNumber} ` +
+      `(${formatTime(aangenomen.duty.start)}) wordt ${nieuw.duty.tourNumber} ` +
+      `(${formatTime(nieuw.duty.start)}) op ${nieuw.duty.mapFolder}`
+  )
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('dienst:gewisseld', careerPayload())
+  }
+  return true
 }
 
 /**
@@ -2755,6 +2935,10 @@ function apparaatBronnen(): ApparaatBronnen {
           telefoon.aanvaard = true
           telefoonGewijzigd()
           return { ok: true }
+        case 'aanbod':
+          return dienstAanbod()
+        case 'wissel':
+          return { ok: wisselDienst(Number(opdracht.nr)) }
         case 'pauze':
           telefoon.pauzeVanaf =
             typeof opdracht.vanaf === 'number' && Number.isFinite(opdracht.vanaf)
@@ -3197,6 +3381,8 @@ function registerHandlers(): void {
     telefoonGewijzigd()
   })
   handle('telefoon:toets', (_event, actie: OmsiToets) => omsiToets(actie))
+  handle('telefoon:aanbod', () => dienstAanbod())
+  handle('telefoon:wissel', (_event, nr: number) => wisselDienst(Number(nr)))
   handle('telefoon:knoppen', () => zetBusknoppenAan())
 
   /*

@@ -183,6 +183,8 @@ function Overlay(): JSX.Element | null {
       aanmelden: (nummer, pin) => window.career.telefoonAanmelden(nummer, pin),
       overslaan: () => void window.career.telefoonOverslaan(),
       aanvaarden: () => void window.career.telefoonAanvaard(),
+      aanbod: () => window.career.telefoonAanbod(),
+      wissel: (nr) => window.career.telefoonWissel(nr),
       pauze: (vanaf) => void window.career.telefoonPauze(vanaf),
       ibisKlaar: (tripKey) => void window.career.telefoonIbis(tripKey),
       toets: (actie) => void window.career.telefoonToets(actie),

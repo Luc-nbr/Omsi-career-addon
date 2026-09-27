@@ -502,8 +502,8 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
         duties = generateDuties(loaded, net, {
           targetMinutes: request.targetMinutes,
           toleranceMinutes: tolerance,
-          earliestStart: window.from,
-          latestStart: window.to,
+          earliestStart: request.earliestStart ?? window.from,
+          latestStart: request.latestStart ?? window.to,
           lineFile: request.lineFile,
           lineFiles: request.lineFiles
         })

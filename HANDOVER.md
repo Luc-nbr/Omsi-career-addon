@@ -1315,6 +1315,31 @@ die OMSI moet inlezen. De vraag komt daar dus niet en de oude melding klopt.
 **De app sluit OMSI niet af** om het opnieuw te kunnen starten. Dat is het spel
 van de gebruiker, met een rit erin die misschien nog loopt.
 
+**Een andere dienst kiezen kan op de telefoon** (sinds 27-09-2026). Een
+gebruiker vroeg of hij een andere omloop kon aannemen zonder OMSI opnieuw te
+starten. Dat kon al via annuleren + nieuwe dienst + meerijden, maar over drie
+schermen van de app. Nu staat er op de dienstopdracht en onderaan de dienst-app
+een knop "andere dienst kiezen" (`AndereDienst` in `telefoon.tsx`):
+
+- Het aanbod rekent het hoofdproces uit (`dienstAanbod` in `main/index.ts`):
+  dezelfde kaart, ongeveer dezelfde lengte, vertrek vanaf de klok van OMSI tot
+  twee uur later (`DutyRequest.earliestStart/latestStart`), en alleen omlopen die
+  rijden op de datum die het spel speelt (`runsOn`) -- anders staan ze niet in
+  het dienstregelingsmenu. In de carrière alleen vergunde lijnen. Zonder verse
+  live.json valt het terug op de tijd en datum van de huidige dienst.
+- De telefoon kiest met een volgnummer uit het aanbod en stuurt geen dienst
+  terug; een tablet op het netwerk kan dus niets anders laten aannemen.
+- `wisselDienst` is annuleren en aannemen in één: de oude dienst wordt niet
+  geboekt, de bus blijft dezelfde (`vehicleOverride`), er wordt niets klaargezet
+  (`klaargezet` gaat weg, zoals bij meerijden), en de nulmeting begint opnieuw.
+  Aangemeld blijf je; tekenen moet opnieuw, want het is een andere opdracht.
+- Het hoofdvenster hoort het via `dienst:gewisseld` en blijft op het rijscherm
+  (`gewisseldRef` in `App.tsx`); zonder dat zou het nieuwe `confirmedAt` de
+  vraag "verder rijden of verwijderen" oproepen.
+- Niet bij een examen en niet bij vrij rijden: `TelefoonStand.wisselbaar`.
+
+Nog niet in het spel nagekeken; alleen het scherm is met nepgegevens bekeken.
+
 **Bij het openen kom je in het hoofdmenu** (sinds 22-09-2026), en stond er nog
 een dienst open, dan vraagt de app of je verder wilt (`HervatDialog.tsx`).
 Verder rijden brengt je naar het rijscherm; **Verwijderen** (sinds 26-09-2026,

@@ -11,7 +11,7 @@ import type { MapGeometry } from '../core/geo'
 import type { IbisPlan } from '../core/ibis'
 import type { TripRoute } from '../core/routing'
 import type { PluginStatus } from '../core/pluginInstall'
-import type { AanmeldUitslag } from './telefoon'
+import type { AanmeldUitslag, WisselAanbod } from './telefoon'
 import type { Duty } from '../core/types'
 import type { Vehicle } from '../core/vehicles'
 import type { LiveStatus } from '../core/live'
@@ -154,6 +154,13 @@ export interface DutyRequest {
    * die verzameling gewoon overheen mag lopen.
    */
   lineFiles?: string[]
+  /**
+   * Vroegste en laatste vertrek in minuten na middernacht; gaat voor `window`.
+   * Voor een andere dienst terwijl OMSI al draait: de klok van het spel loopt
+   * dan al, en een dienst die om zes uur begon is om tien uur geen keuze meer.
+   */
+  earliestStart?: number
+  latestStart?: number
 }
 
 /** Wat vrij rijden nodig heeft: de speler stelt alles zelf samen. */
@@ -521,6 +528,15 @@ export interface CareerApi {
   telefoonPauze(vanaf?: number): Promise<void>
   /** "IBIS ingevoerd" voor deze rit. */
   telefoonIbis(tripKey: string): Promise<void>
+  /** Andere diensten die nu in OMSI te rijden zijn, in plaats van de aangenomen. */
+  telefoonAanbod(): Promise<WisselAanbod>
+  /** Er een uit dat aanbod aannemen; `false` als het aanbod intussen niet meer geldt. */
+  telefoonWissel(nr: number): Promise<boolean>
+  /**
+   * De telefoon heeft een andere dienst aangenomen. Het hoofdvenster hoort dat
+   * van buiten, want het koos die dienst niet zelf. Geeft een afmelder terug.
+   */
+  onDienstGewisseld(handler: (payload: CareerPayload) => void): () => void
   /**
    * Een toets van OMSI laten indrukken: het kaartje geven of het wisselgeld
    * teruggeven. Geeft terug of de opdracht weggeschreven is; of hij ook
