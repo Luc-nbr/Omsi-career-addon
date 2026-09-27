@@ -214,16 +214,18 @@ function Overlay(): JSX.Element | null {
       .catch(() => undefined);
   }, []);
 
+  /* De kaart van de dienst, of bij een vrije rit zonder omloop die van de rit. */
+  const kaartMap = duty?.mapFolder ?? frame.vrij?.mapFolder;
   useEffect(() => {
-    if (!duty?.mapFolder) return;
+    if (!kaartMap) return;
     let current = true;
-    void window.career.geometry(duty.mapFolder).then((found) => {
+    void window.career.geometry(kaartMap).then((found) => {
       if (current) setGeometry(found);
     });
     return () => {
       current = false;
     };
-  }, [duty?.mapFolder]);
+  }, [kaartMap]);
 
   // Slepen levert een stroom wijzigingen op; pas als de muis stilligt naar schijf.
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);

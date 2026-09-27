@@ -28,6 +28,7 @@ import {
   zorgVoorDienstgegevens,
   PHOTO_EXTENSIONS
 } from '../core/profiles'
+import { haltesVan } from '../core/haltes'
 import {
   dutyFromTour,
   examTrip,
@@ -1353,16 +1354,21 @@ function captureBaseline(live = freshLive()): void {
 /** Per kaart een tracker: hij onthoudt welke as het noorden is en hoe de bus rijdt. */
 const vehicleTrackers = new Map<string, VehicleTracker>()
 
-/** Waar de bus van de speler op de kaart van de dienst staat, als OMSI dat laat lezen. */
+/**
+ * Waar de bus van de speler op de kaart staat, als OMSI dat laat lezen. De kaart
+ * is die van de dienst, of bij een vrije rit zonder omloop die van de rit: de
+ * navigatie hoort dan al te werken, alleen nog zonder opgelichte route.
+ */
 function vehicleOnMap(live: ReturnType<typeof readLive>, duty: Duty | undefined): VehiclePosition | undefined {
-  if (!live?.alive || live.mem?.ok !== 1 || !duty) return undefined
+  const kaart = duty?.mapFolder ?? (career?.activeDuty ? undefined : vrijeRit?.mapFolder)
+  if (!live?.alive || live.mem?.ok !== 1 || !kaart) return undefined
   try {
-    let tracker = vehicleTrackers.get(duty.mapFolder)
+    let tracker = vehicleTrackers.get(kaart)
     if (!tracker) {
-      tracker = new VehicleTracker(map(duty.mapFolder).path)
-      vehicleTrackers.set(duty.mapFolder, tracker)
+      tracker = new VehicleTracker(map(kaart).path)
+      vehicleTrackers.set(kaart, tracker)
     }
-    const network = laneNetwork(duty.mapFolder)
+    const network = laneNetwork(kaart)
     return tracker.update(live.mem, (x, y) => network.distanceToLane(x, y))
   } catch {
     return undefined
@@ -2350,7 +2356,10 @@ function pushFrame(): void {
     duty,
     ibis: overlayIbis,
     /* Een vrije rit: dan zegt de overlay hoe je in OMSI een omloop kiest, zolang er geen is. */
-    vrij: vrijeRit && !career?.activeDuty ? { kaart: vrijeRit.mapName } : undefined,
+    vrij:
+      vrijeRit && !career?.activeDuty
+        ? { kaart: vrijeRit.mapName, mapFolder: vrijeRit.mapFolder }
+        : undefined,
     /*
      * De kaartjes van deze kaart gaan mee in het beeld. Ze veranderen niet
      * tijdens een dienst, maar de overlay heeft geen eigen brug naar het
@@ -2876,7 +2885,8 @@ function apparaatBronnen(): ApparaatBronnen {
       return { taal: instellingen.language, animaties: instellingen.animaties, versie: __APP_VERSION__ }
     },
     geometrie: async () => {
-      const kaart = currentDuty()?.mapFolder
+      // Bij een vrije rit zonder omloop de kaart van de rit: de navigatie werkt dan al.
+      const kaart = currentDuty()?.mapFolder ?? (career?.activeDuty ? undefined : vrijeRit?.mapFolder)
       return kaart ? geometrieVoor(kaart) : undefined
     },
     schermvorm: (id) => schermvormOp(id),
@@ -3922,7 +3932,8 @@ function registerHandlers(): void {
               trailer: aanhangerVan(request.vehiclePath, request.kleurstelling)
             }
           : undefined,
-        spawn: request.vehiclePath ? spawnFor(request.mapFolder, request.stopId) : undefined
+        spawn: request.vehiclePath ? spawnFor(request.mapFolder, request.stopId) : undefined,
+        weather: request.weather
       })
       presetStartup(omsi(), request.mapFolder, result.file)
       klaargezet = { mapFolder: request.mapFolder, file: result.file }
@@ -3941,6 +3952,9 @@ function registerHandlers(): void {
   handle('free:stop', () => {
     stopVrijeRit()
   })
+
+  /* Per halte welke lijnen er stoppen en of ritten er beginnen; zie core/haltes.ts. */
+  handle('map:haltes', (_event, folder: string) => haltesVan(map(String(folder))))
 
   /**
    * De chauffeur neemt een dienst aan. Vanaf nu staat hij in het profiel en

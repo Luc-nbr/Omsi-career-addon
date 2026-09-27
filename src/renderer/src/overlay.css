@@ -118,6 +118,26 @@
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
 }
 
+/*
+ * Vrij rijden zonder omloop: op de plek van de balk met de volgende halte staat
+ * hoe je er in OMSI een kiest. Dezelfde plek en hetzelfde glas, zodat de kaart
+ * eronder niet verspringt als de omloop er komt.
+ */
+.nav-vrij {
+  position: absolute;
+  z-index: 2;
+  top: 7px;
+  left: 7px;
+  right: 7px;
+  padding: 10px 13px;
+  border-radius: var(--radius-klein);
+  background: var(--vel-overlay);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
 .navbar-arrow {
   width: 30px;
   height: 30px;

@@ -43,7 +43,7 @@ export interface NavFrame {
    * Een vrije rit: geen dienst vooraf. Zolang er in OMSI geen omloop gekozen is,
    * zegt de overlay hoe dat gaat; daarna volgt hij die omloop.
    */
-  vrij?: { kaart: string };
+  vrij?: { kaart: string; mapFolder: string };
   /** De kaartsoorten van deze kaart, met hun prijzen; zie core/kaartjes.ts. */
   kaartjes?: Kaartset;
   /**
@@ -404,27 +404,57 @@ export function NavKaart({
 }): JSX.Element {
   const { status } = frame;
   const { leg, passed, readable, ibisLoaded, started, upcoming, bus } = rit;
-  if (!duty && frame.vrij) {
-    return (
-      <div className="empty">
-        {t(language, "ovl.freePickTour", { kaart: frame.vrij.kaart })}
-      </div>
-    );
-  }
-  if (!duty || !geometry) {
+  /*
+   * VRIJ RIJDEN: DE KAART WERKT AL VOOR ER EEN OMLOOP IS
+   *
+   * Luc: "de navigatie moet het wel altijd doen, nu doet hij het pas na het
+   * kiezen van een dienst, maar dit moet al werken voordat de dienst is
+   * gekozen, en wanneer de dienst is gekozen komt er pas een opgelichte lijn".
+   * Zonder omloop tekent de kaart het net met de bus erop -- een dienst zonder
+   * ritten is daar genoeg voor -- en staat bovenin hoe je in OMSI een omloop
+   * kiest. Zodra die er is, licht zijn route meteen op: in OMSI is hij al
+   * gekozen, er valt niets meer te wachten.
+   */
+  const zonderOmloop: Duty | undefined =
+    !duty && frame.vrij
+      ? {
+          mapFolder: frame.vrij.mapFolder,
+          mapName: frame.vrij.kaart,
+          lineFile: "",
+          tourNumber: "",
+          depot: "",
+          legs: [],
+          signOn: 0,
+          start: 0,
+          end: 0,
+          durationMinutes: 0,
+          totalStops: 0,
+          lineNumbers: [],
+          days: 0,
+          period: 0,
+        }
+      : undefined;
+  const kaartDienst = duty ?? zonderOmloop;
+  if (!kaartDienst || !geometry) {
     return <div className="empty">{t(language, "ovl.mapLoading")}</div>;
   }
   return (
     <div className="nav-wrap">
-      <NavBar
-        status={status}
-        leg={leg}
-        passed={passed}
-        manoeuvre={manoeuvre}
-        language={language}
-      />
+      {zonderOmloop ? (
+        <div className="nav-vrij">
+          {t(language, "ovl.freePickTour", { kaart: zonderOmloop.mapName })}
+        </div>
+      ) : (
+        <NavBar
+          status={status}
+          leg={leg}
+          passed={passed}
+          manoeuvre={manoeuvre}
+          language={language}
+        />
+      )}
       <RouteMap
-        duty={duty}
+        duty={kaartDienst}
         geometry={geometry}
         nextStopId={
           leg && passed !== undefined
@@ -433,7 +463,13 @@ export function NavKaart({
         }
         activeLeg={status?.legIndex}
         pixelScale={pixelScale}
-        routeMode={ibisLoaded && started ? "active" : "none"}
+        routeMode={
+          frame.vrij && duty
+            ? "active"
+            : ibisLoaded && started
+              ? "active"
+              : "none"
+        }
         bus={bus}
         vehicle={
           frame.vehicle && status

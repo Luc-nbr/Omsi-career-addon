@@ -494,7 +494,7 @@ function DienstApp({
   language,
 }: {
   duty?: Duty;
-  vrij?: { kaart: string };
+  vrij?: { kaart: string; mapFolder: string };
   status?: LiveStatus;
   language: Language;
 }): JSX.Element {

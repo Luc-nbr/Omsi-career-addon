@@ -772,6 +772,20 @@ aangevinkte lijnen een dienst samenstelde, is daarmee vervangen.)
   datum uit het tijdvak van de kaart en de tijd van de klok van de pc, en start
   OMSI. Draait OMSI al, dan wordt er niets klaargezet en gaat de overlay meteen
   open.
+- **Beginpunt, datum, tijd en weer** (later op 27-09): Luc miste de tijd-, datum-
+  en weerkeuze, en wilde bij een halte zien welke lijnen er zijn en of het een
+  beginpunt of een tussenstop is, gecategoriseerd. `haltesVan` (core/haltes.ts,
+  `map:haltes`) telt per halte de lijnen en de ritten die er beginnen of langs
+  komen, over de kiesbare omlopen; de stap toont "Beginpunten" of
+  "Tussenhaltes" (chips), met datum (tijdvak van de kaart), tijd (08:00) en weer
+  erboven. Proef: `scripts/probe-haltes.ts` over alle kaarten -- op Wenen vindt
+  de kaartlezer geen enkele halte, dus valt daar niets te kiezen (ook al zo voor
+  deze wijziging).
+- **Navigatie zonder omloop** (Luc: "de navigatie moet het wel altijd doen ...
+  en wanneer de dienst is gekozen komt er pas een opgelichte lijn"): bij een
+  vrije rit krijgt de overlay en de tablet de kaart van de rit (`frame.vrij`,
+  `geometrie`, `vehicleOnMap`), met het net, de bus en bovenin hoe je een
+  omloop kiest (`.nav-vrij`). Is er een omloop, dan licht zijn route meteen op.
 - **De vrije rit** staat alleen in het hoofdproces (`vrijeRit`), niet in het
   profiel. Een dienst aannemen of `free:stop` ("Vrij rijden stoppen" op het
   rijscherm van vrij rijden) sluit hem af, met de overlay.

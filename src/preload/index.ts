@@ -110,6 +110,7 @@ const api: CareerApi = {
   dienstpasGezien: () => ipcRenderer.invoke('career:pas:gezien'),
   startFree: (request) => ipcRenderer.invoke('free:start', request),
   stopFree: () => ipcRenderer.invoke('free:stop'),
+  haltes: (mapFolder) => ipcRenderer.invoke('map:haltes', mapFolder),
   onVrijGevolgd: (handler) => {
     const heen = (_event: unknown, gevolgd: Parameters<typeof handler>[0]) => handler(gevolgd)
     ipcRenderer.on('vrij:gevolgd', heen)

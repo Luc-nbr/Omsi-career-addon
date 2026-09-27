@@ -310,6 +310,12 @@ interface Props {
    * dezelfde wereld eromheen: hetzelfde vel, dezelfde balk, dezelfde letters.
    */
   inhoud?: ReactNode;
+  /**
+   * Eigen kolommen voor de rijen, als CSS grid-template-columns. Voor een lijst
+   * waar de standaardverdeling niet past: de haltes bij vrij rijden hebben een
+   * lange naam, een lijstje lijnen en een klein getal.
+   */
+  kolommen?: string;
 }
 
 /**
@@ -501,6 +507,7 @@ export function Setup({
   stapnamen,
   rechtsInBalk,
   inhoud,
+  kolommen,
   tegels,
   kruimels,
   stappen,
@@ -762,9 +769,14 @@ export function Setup({
          * met dezelfde naam niet te zien welke welke was.
          */
         data-kolommen={
-          rijen.length > 0 && rijen.every((rij) => !rij.cellen[1] && !rij.cellen[2])
-            ? "1"
-            : "3"
+          kolommen
+            ? "eigen"
+            : rijen.length > 0 && rijen.every((rij) => !rij.cellen[1] && !rij.cellen[2])
+              ? "1"
+              : "3"
+        }
+        style={
+          kolommen ? ({ "--kolommen": kolommen } as CSSProperties) : undefined
         }
       >
         <div className="velkop">

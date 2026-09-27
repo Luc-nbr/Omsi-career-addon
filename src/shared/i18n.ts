@@ -178,10 +178,10 @@ const TEXT = {
     nl: 'Beginpunt'
   },
   'setup.startIntro': {
-    en: 'Pick the stop where your bus will stand. You do not pick a duty here: choose a line and tour in OMSI’s timetable menu later, and the overlay follows.',
-    de: 'Wähle die Haltestelle, an der dein Bus steht. Einen Dienst wählst du hier nicht: Linie und Umlauf wählst du später im Fahrplanmenü von OMSI, und das Overlay folgt.',
-    fr: 'Choisissez l’arrêt où votre bus sera placé. Pas de service ici : choisissez plus tard une ligne et un service dans le menu horaires d’OMSI, la surimpression suit.',
-    nl: 'Kies de halte waar je bus komt te staan. Een dienst kies je hier niet: lijn en omloop kies je straks in het dienstregelingsmenu van OMSI, en de overlay gaat mee.'
+    en: 'Where and when your bus stands. Trips begin at a starting point; buses only pass an intermediate stop. The tour you pick later in OMSI.',
+    de: 'Wo und wann dein Bus steht. An einem Startpunkt beginnen Fahrten; an einem Zwischenhalt kommen Busse nur vorbei. Den Umlauf wählst du später in OMSI.',
+    fr: 'Où et quand votre bus est placé. Les trajets commencent aux points de départ ; les bus ne font que passer aux arrêts intermédiaires. Le service se choisit ensuite dans OMSI.',
+    nl: 'Waar en wanneer je bus staat. Bij een beginpunt beginnen ritten; bij een tussenhalte komen bussen alleen langs. De omloop kies je straks in OMSI.'
   },
   'setup.colStop': {
     en: 'Stop',
@@ -190,11 +190,29 @@ const TEXT = {
     nl: 'Halte'
   },
   'setup.startFoot': {
-    en: '{map} · the bus will stand at {stop}',
-    de: '{map} · der Bus steht an {stop}',
-    fr: '{map} · le bus sera à {stop}',
-    nl: '{map} · de bus komt bij {stop} te staan'
+    en: '{map} · the bus will stand at {stop} at {time}',
+    de: '{map} · der Bus steht um {time} an {stop}',
+    fr: '{map} · le bus sera à {stop} à {time}',
+    nl: '{map} · de bus staat om {time} bij {stop}'
   },
+  'setup.colLines': { en: 'Lines', de: 'Linien', fr: 'Lignes', nl: 'Lijnen' },
+  'setup.colStarts': { en: 'Departures', de: 'Abfahrten', fr: 'Départs', nl: 'Vertrekken' },
+  'setup.colPasses': { en: 'Trips', de: 'Fahrten', fr: 'Trajets', nl: 'Ritten langs' },
+  'free.stopKind': { en: 'Kind of stop', de: 'Art der Haltestelle', fr: 'Type d’arrêt', nl: 'Soort halte' },
+  'free.kindStart': {
+    en: 'Starting points ({n})',
+    de: 'Startpunkte ({n})',
+    fr: 'Points de départ ({n})',
+    nl: 'Beginpunten ({n})'
+  },
+  'free.kindVia': {
+    en: 'Intermediate stops ({n})',
+    de: 'Zwischenhalte ({n})',
+    fr: 'Arrêts intermédiaires ({n})',
+    nl: 'Tussenhaltes ({n})'
+  },
+  'free.date': { en: 'Date', de: 'Datum', fr: 'Date', nl: 'Datum' },
+  'free.time': { en: 'Time', de: 'Uhrzeit', fr: 'Heure', nl: 'Tijd' },
   'free.startPick': {
     en: 'Pick a stop as your starting point first.',
     de: 'Wähle zuerst eine Haltestelle als Startpunkt.',

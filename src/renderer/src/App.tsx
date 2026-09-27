@@ -16,6 +16,8 @@ import { EXAM_LIMITS } from "../../core/exam";
 import type { IbisPlan } from "../../core/ibis";
 import type { PluginStatus } from "../../core/pluginInstall";
 import type { Vehicle } from "../../core/vehicles";
+import type { HalteInfo } from "../../core/haltes";
+import { WEATHER_KINDS, type WeatherKind } from "../../shared/weather";
 import {
   TIME_WINDOWS,
   type Assignment,
@@ -134,6 +136,25 @@ function busvorm(tekst: string): Busvorm {
   if (/doppeldeck|double ?deck/.test(laag)) return "dubbel";
   if (/midi|10c|o530k|kurz/.test(laag)) return "midi";
   return "solo";
+}
+
+/*
+ * OMSI telt de dag van het jaar, een datumveld wil een jaartal-maand-dag. Twee
+ * kleine omrekeningen, hier bij elkaar omdat ze elkaars omgekeerde zijn.
+ */
+function isoVanDag(year: number, dayOfYear: number): string {
+  const datum = new Date(Date.UTC(year, 0, 1));
+  datum.setUTCDate(dayOfYear);
+  return datum.toISOString().slice(0, 10);
+}
+
+function dagVanIso(iso: string): { year: number; dayOfYear: number } {
+  const datum = new Date(`${iso}T00:00:00Z`);
+  const begin = Date.UTC(datum.getUTCFullYear(), 0, 1);
+  return {
+    year: datum.getUTCFullYear(),
+    dayOfYear: Math.round((datum.getTime() - begin) / 86400000) + 1,
+  };
 }
 
 /** Dienstlengtes die je kunt kiezen, in minuten. Korter dan een half uur niet. */
@@ -518,6 +539,24 @@ export function App(): JSX.Element {
   >([]);
   /** De bus die de app bij deze kaart voorstelt; bij vrij rijden is er geen dienst. */
   const [vrijeTip, setVrijeTip] = useState<Vehicle>();
+  /*
+   * Datum, tijd en weer: die kies je er zelf bij. De datum begint in het
+   * tijdvak van de kaart -- 1988 in Spandau, 2016 in HafenCity -- want een bus
+   * uit het verkeerde decennium is geen vrije keuze maar een vergissing.
+   */
+  const [vrijeDatum, setVrijeDatum] = useState("");
+  const [vrijeTijd, setVrijeTijd] = useState("08:00");
+  const [vrijWeer, setVrijWeer] = useState<WeatherKind>("clear");
+  /*
+   * Per halte welke lijnen er stoppen en of ritten er beginnen, en welke soort
+   * haltes de lijst toont. Luc: "het zou fijn zijn om te kunnen zien bij het
+   * beginpunt welke lijnen er zijn vanaf die halte en of het een beginpunt is
+   * of een tussenstop. Dat moet gecategoriseerd worden."
+   */
+  const [halteInfo, setHalteInfo] = useState<Map<string, HalteInfo>>(
+    new Map(),
+  );
+  const [halteSoort, setHalteSoort] = useState<"begin" | "tussen">("begin");
   /** Er loopt een vrije rit; het rijscherm van vrij rijden staat. */
   const [vrijBezig, setVrijBezig] = useState(false);
   /** De omloop die in OMSI gekozen is, zodra die er is. */
@@ -704,6 +743,12 @@ export function App(): JSX.Element {
     () => maps.find((m) => m.folder === mapFolder),
     [maps, mapFolder],
   );
+
+  /* De datum begint in het tijdvak van de kaart; zie vrijeDatum. */
+  useEffect(() => {
+    if (mode !== "free" || !selectedMap) return;
+    setVrijeDatum(isoVanDag(selectedMap.year, selectedMap.dayOfYear || 180));
+  }, [mode, selectedMap?.folder]);
   const assignment = selected !== undefined ? duties[selected] : undefined;
   const duty = assignment?.duty;
 
@@ -854,12 +899,22 @@ export function App(): JSX.Element {
    */
   useEffect(() => {
     setVrijeHalte("");
+    setHalteSoort("begin");
     if (mode !== "free" || !mapFolder) {
       setVrijeHaltes([]);
       setVrijeTip(undefined);
+      setHalteInfo(new Map());
       return;
     }
     let geldig = true;
+    void window.career
+      .haltes(mapFolder)
+      .then((lijst) => {
+        if (geldig) setHalteInfo(new Map(lijst.map((info) => [info.id, info])));
+      })
+      .catch(() => {
+        // Zonder dienstregeling staan de haltes er gewoon, zonder lijnen.
+      });
     void window.career.geometry(mapFolder).then((gevonden) => {
       if (!geldig) return;
       /*
@@ -1472,16 +1527,20 @@ export function App(): JSX.Element {
     setError(undefined);
     setNote(t(language, "start.preparing"));
     try {
-      const nu = new Date();
+      const [uren, minuten] = vrijeTijd.split(":").map(Number);
+      const wanneer = vrijeDatum
+        ? dagVanIso(vrijeDatum)
+        : { year: selectedMap.year, dayOfYear: selectedMap.dayOfYear || 180 };
       const result = await window.career.startFree({
         mapFolder,
         vehiclePath: bus,
         kleurstelling:
           busKleur && busKleur.pad === bus ? busKleur.naam : undefined,
         stopId: vrijeHalte,
-        year: selectedMap.year,
-        dayOfYear: selectedMap.dayOfYear || 180,
-        minutes: nu.getHours() * 60 + nu.getMinutes(),
+        year: wanneer.year,
+        dayOfYear: wanneer.dayOfYear,
+        minutes: (uren || 0) * 60 + (minuten || 0),
+        weather: vrijWeer,
       });
       setVrijGevolgd(undefined);
       setVrijBezig(true);
@@ -1505,6 +1564,9 @@ export function App(): JSX.Element {
     vehicleOverride,
     vrijeTip,
     vrijeHalte,
+    vrijeDatum,
+    vrijeTijd,
+    vrijWeer,
     mapFolder,
     busKleur,
     language,
@@ -3235,6 +3297,8 @@ export function App(): JSX.Element {
       vullend?: boolean;
       keuzeloos?: boolean;
       regelaars?: ReactNode;
+      /** Eigen kolommen voor de rijen, als CSS grid-template-columns. */
+      kolommen?: string;
       /** Een formulier in plaats van een lijst; alleen de ritstap van vrij rijden. */
       vrij?: ReactNode;
     } => {
@@ -4210,28 +4274,114 @@ export function App(): JSX.Element {
        */
       if (mode === "free") {
         const halte = vrijeHaltes.find((item) => item.id === vrijeHalte);
+        /*
+         * Twee soorten, elk met een eigen lijst: beginpunten -- daar beginnen
+         * ritten, en kun je in OMSI meteen een omloop oppakken -- en
+         * tussenhaltes, waar de bus alleen langs komt. Per halte de lijnen die
+         * er stoppen en hoeveel ritten er beginnen of langs komen.
+         */
+        const isBegin = (id: string): boolean =>
+          (halteInfo.get(id)?.begint ?? 0) > 0;
+        const beginpunten = vrijeHaltes.filter((item) => isBegin(item.id));
+        const tussenhaltes = vrijeHaltes.filter((item) => !isBegin(item.id));
+        const getoond = halteSoort === "begin" ? beginpunten : tussenhaltes;
         return {
           stap: "duty" as Stap,
           titel: t(language, "setup.startTitle"),
           onderschrift: t(language, "setup.startIntro"),
-          koppen: [t(language, "setup.colStop"), "", ""] as [
-            string,
-            string,
-            string,
+          koppen: [
+            t(language, "setup.colStop"),
+            t(language, "setup.colLines"),
+            t(
+              language,
+              halteSoort === "begin" ? "setup.colStarts" : "setup.colPasses",
+            ),
           ],
-          rijen: vrijeHaltes.map((item) => ({
-            id: item.id,
-            cellen: [item.name, "", ""] as [string, string, string],
-          })),
-          index: vrijeHaltes.findIndex((item) => item.id === vrijeHalte),
+          rijen: getoond.map((item) => {
+            const info = halteInfo.get(item.id);
+            return {
+              id: item.id,
+              cellen: [
+                item.name,
+                info?.lijnen.join(", ") || "—",
+                String(
+                  (halteSoort === "begin" ? info?.begint : info?.stopt) ?? 0,
+                ),
+              ] as [string, string, string],
+            };
+          }),
+          /* Naam breed, lijnen daarnaast, en het aantal ritten smal achteraan. */
+          kolommen: "26px 1.7fr 1fr 0.45fr auto",
+          index: getoond.findIndex((item) => item.id === vrijeHalte),
           kies: (index) => {
-            setVrijeHalte(vrijeHaltes[index]?.id ?? "");
+            setVrijeHalte(getoond[index]?.id ?? "");
             setError(undefined);
           },
+          regelaars: (
+            <>
+              <div className="regelaar">
+                <div className="regelaar-kop">
+                  <label>{t(language, "free.stopKind")}</label>
+                </div>
+                <div className="regelaar-chips">
+                  <button
+                    type="button"
+                    aria-pressed={halteSoort === "begin"}
+                    onClick={() => setHalteSoort("begin")}
+                  >
+                    {t(language, "free.kindStart", { n: beginpunten.length })}
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={halteSoort === "tussen"}
+                    onClick={() => setHalteSoort("tussen")}
+                  >
+                    {t(language, "free.kindVia", { n: tussenhaltes.length })}
+                  </button>
+                </div>
+              </div>
+              <div className="vrijpaar">
+                <label className="vrijveld">
+                  <span>{t(language, "free.date")}</span>
+                  <input
+                    type="date"
+                    value={vrijeDatum}
+                    onChange={(event) => setVrijeDatum(event.target.value)}
+                  />
+                </label>
+                <label className="vrijveld">
+                  <span>{t(language, "free.time")}</span>
+                  <input
+                    type="time"
+                    value={vrijeTijd}
+                    onChange={(event) => setVrijeTijd(event.target.value)}
+                  />
+                </label>
+              </div>
+              <div className="regelaar">
+                <div className="regelaar-kop">
+                  <label>{t(language, "free.weather")}</label>
+                </div>
+                <div className="regelaar-chips">
+                  {WEATHER_KINDS.map((soort) => (
+                    <button
+                      key={soort}
+                      type="button"
+                      aria-pressed={vrijWeer === soort}
+                      onClick={() => setVrijWeer(soort)}
+                    >
+                      {t(language, `weather.${soort}` as const)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          ),
           voet: halte
             ? t(language, "setup.startFoot", {
                 stop: halte.name,
                 map: selectedMap?.name ?? "",
+                time: vrijeTijd,
               })
             : t(language, "free.startPick"),
           verder: () => {
@@ -4401,6 +4551,7 @@ export function App(): JSX.Element {
           vullend={vel.vullend}
           keuzeloos={vel.keuzeloos}
           regelaars={vel.regelaars}
+          kolommen={vel.kolommen}
           /*
            * Twee dingen die je moet weten voordat je op START drukt, en dus op
            * de busstap: dat OMSI op volledig scherm stond -- dan ligt de

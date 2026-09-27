@@ -146,7 +146,8 @@ function Apparaat(): JSX.Element {
    */
   const [geo, setGeo] = useState<{ kaart: string; geometrie: MapGeometry }>();
   const [poging, setPoging] = useState(0);
-  const kaart = duty?.mapFolder;
+  // Bij een vrije rit zonder omloop de kaart van de rit; zie Navigatie.
+  const kaart = duty?.mapFolder ?? frame.vrij?.mapFolder;
   /*
    * De kaart van de dienst ophalen. Dat is een paar megabyte over de wifi van
    * een telefoon, en dat gaat weleens mis -- of het hoofdproces is de kaart op

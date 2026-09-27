@@ -8,6 +8,8 @@ import type { KeyBinding } from '../core/omsiKeys'
 import type { ProfileSummary } from '../core/profiles'
 import type { MapGeometry } from '../core/geo'
 import type { IbisPlan } from '../core/ibis'
+import type { HalteInfo } from '../core/haltes'
+import type { WeatherKind } from './weather'
 import type { TripRoute } from '../core/routing'
 import type { PluginStatus } from '../core/pluginInstall'
 import type { AanmeldUitslag } from './telefoon'
@@ -166,10 +168,11 @@ export interface FreeRequest {
   kleurstelling?: string
   /** De halte waar de bus komt te staan. */
   stopId?: string
-  /** Het tijdvak van de kaart, en de tijd van de klok van de pc. */
+  /** De datum en de tijd die de chauffeur koos. */
   year: number
   dayOfYear: number
   minutes: number
+  weather?: WeatherKind
 }
 
 export interface FreeResult {
@@ -727,6 +730,8 @@ export interface CareerApi {
   startFree(request: FreeRequest): Promise<FreeResult>
   /** De vrije rit afsluiten: de overlay gaat dicht. */
   stopFree(): Promise<void>
+  /** Per halte van een kaart: welke lijnen er stoppen, en of ritten er beginnen. */
+  haltes(mapFolder: string): Promise<HalteInfo[]>
   /**
    * Vrij rijden: in OMSI een omloop gekozen, en de overlay volgt hem. Met de
    * omloop als dienst en zijn IBIS-codes.

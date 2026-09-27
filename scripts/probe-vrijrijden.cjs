@@ -300,14 +300,27 @@ app.whenReady().then(async () => {
 
   /* ---- 2. Het beginpunt ---- */
   const haltes = await wachtOp(`(() => { const r = [...document.querySelectorAll('.dienstrij')]; return /Beginpunt|Starting point/.test(document.body.innerText) && r.length > 5 ? r.length : 0 })()`, 80)
-  const geenDiensten = await js(hoofd, `document.querySelectorAll('.regelaar').length === 0`)
+  /* Geen dienst om te kiezen: geen schuif voor de dienstlengte (de soort, datum en weer horen er wel). */
+  const geenDiensten = await js(hoofd, `!document.querySelector('#dienstlengte')`)
   /* De stappenbalk zelf: de uitleg op het vel noemt de lijn wel, de balk niet. */
   const balkTekst = (await js(hoofd, `document.querySelector('.stappen')?.innerText ?? ''`)).toUpperCase()
   const zonderLijnstap = !/\bLIJN\b/.test(balkTekst) && /BEGINPUNT/.test(balkTekst)
-  await js(hoofd, `(() => { const r = [...document.querySelectorAll('.dienstrij')]; (r.find((x) => /Hauptbahnhof|Markt|Rathaus/.test(x.textContent)) ?? r[3]).click(); return true })()`)
+  /* De soorten: beginpunten en tussenhaltes, elk met hun lijnen; datum en tijd erbij. */
+  const soorten = await js(hoofd, `[...document.querySelectorAll('.regelaar-chips button')].map((b) => b.textContent).filter((t) => /Beginpunten|Tussenhaltes/.test(t))`)
+  const beginRijen = await js(hoofd, `document.querySelectorAll('.dienstrij').length`)
+  const metLijnen = await js(hoofd, `[...document.querySelectorAll('.dienstrij')].filter((r) => /[0-9A-Z]/.test(r.querySelectorAll('span')[2]?.textContent ?? '')).length`)
+  await js(hoofd, `[...document.querySelectorAll('.regelaar-chips button')].find((b) => /Tussenhaltes/.test(b.textContent))?.click()`)
+  await wacht(400)
+  const tussenRijen = await js(hoofd, `document.querySelectorAll('.dienstrij').length`)
+  await js(hoofd, `[...document.querySelectorAll('.regelaar-chips button')].find((b) => /Beginpunten/.test(b.textContent))?.click()`)
+  await wacht(400)
+  const datumTijd = await js(hoofd, `[document.querySelector('input[type=date]')?.value ?? '', document.querySelector('input[type=time]')?.value ?? '']`)
+  const weerKeuze = await js(hoofd, `[...document.querySelectorAll('.regelaar-chips button')].some((b) => /Regen|Rain/.test(b.textContent))`)
+  console.log(`soorten: ${soorten.join(' | ')}; beginpunten ${beginRijen} (${metLijnen} met lijnen), tussenhaltes ${tussenRijen}; datum ${datumTijd[0]}, tijd ${datumTijd[1]}, weer: ${weerKeuze}`)
+  await js(hoofd, `(() => { const r = [...document.querySelectorAll('.dienstrij')]; (r.find((x) => /Hauptbahnhof|Markt|Rathaus/.test(x.textContent)) ?? r[0]).click(); return true })()`)
   await wacht(300)
   const gekozenHalte = await js(hoofd, `document.querySelector('.dienstrij[aria-pressed=true] .dienstnaam')?.textContent ?? ''`)
-  console.log(`beginpunt: ${haltes} haltes, gekozen "${gekozenHalte}"; geen dienstregelaars: ${geenDiensten}; balk zonder lijnstap: ${zonderLijnstap}`)
+  console.log(`beginpunt: ${haltes} haltes, gekozen "${gekozenHalte}"; geen dienstlengte: ${geenDiensten}; balk zonder lijnstap: ${zonderLijnstap}`)
   await wacht(1500)
   await beeld('vrij-beginpunt.png')
   await js(hoofd, `document.querySelector('.startknop')?.click()`)
@@ -336,7 +349,9 @@ app.whenReady().then(async () => {
   await wacht(1500)
   const zonderOmloop = await overlayTekst()
   const zegtHoe = /dienstregelingsmenu|timetable menu/i.test(zonderOmloop)
-  console.log(`overlay open: ${Boolean(overlay())}; zegt hoe je een omloop kiest: ${zegtHoe}`)
+  /* De kaart werkt al zonder omloop: het net staat er, met bovenin hoe je er een kiest. */
+  const kaartZonder = overlay() ? await js(overlay(), `({ kaart: Boolean(document.querySelector('.nav-wrap canvas, .nav-wrap svg')), hint: Boolean(document.querySelector('.nav-vrij')), balk: Boolean(document.querySelector('.navbar')) })`) : {}
+  console.log(`overlay open: ${Boolean(overlay())}; zegt hoe je een omloop kiest: ${zegtHoe}; kaart zonder omloop: ${JSON.stringify(kaartZonder)}`)
   await beeld('vrij-zonder-omloop.png')
 
   /* ---- 5. OMSI: een omloop gekozen ---- */
@@ -346,6 +361,8 @@ app.whenReady().then(async () => {
   /* Het aantal tijden in het overzicht: elke rit heeft er een, met een dubbele punt. */
   const rijenEerst = await js(hoofd, `(document.querySelector('.vrij-omloop')?.innerText ?? '').split(':').length - 1`)
   const aangemeld1 = overlay() ? await js(overlay(), `!document.querySelector('.aanmelden') && !document.querySelector('.opdracht')`) : false
+  const kaartMet = overlay() ? await js(overlay(), `({ kaart: Boolean(document.querySelector('.nav-wrap canvas, .nav-wrap svg')), hint: Boolean(document.querySelector('.nav-vrij')), balk: Boolean(document.querySelector('.navbar')) })`) : {}
+  console.log(`  kaart met omloop: ${JSON.stringify(kaartMet)}`)
   console.log(
     `omloop ${eersteOmloop.lineFile}/${eersteOmloop.tourNumber} vanaf ${eersteOmloop.tripFile}: ` +
       `rijscherm ${Boolean(eerste)}, ${rijenEerst} tijden in het overzicht; aangemeld zonder opdracht: ${aangemeld1}`
@@ -376,6 +393,16 @@ app.whenReady().then(async () => {
 
   const goed =
     haltes > 5 &&
+    soorten.length === 2 &&
+    beginRijen > 0 &&
+    metLijnen === beginRijen &&
+    tussenRijen > 0 &&
+    tussenRijen !== beginRijen &&
+    datumTijd[0].length === 10 && datumTijd[0].split('-').length === 3 &&
+    datumTijd[1] === '08:00' &&
+    weerKeuze &&
+    kaartZonder.kaart && kaartZonder.hint && !kaartZonder.balk &&
+    kaartMet.kaart && !kaartMet.hint && kaartMet.balk &&
     Boolean(gekozenHalte) &&
     geenDiensten &&
     zonderLijnstap &&

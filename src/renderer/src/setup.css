@@ -831,6 +831,12 @@
   display: none;
 }
 
+/* Eigen kolommen, van het scherm zelf; zie de prop `kolommen` in Setup.tsx. */
+.dienstenvel[data-kolommen='eigen'] .dienstrij,
+.dienstenvel[data-kolommen='eigen'] .kolomkoppen {
+  grid-template-columns: var(--kolommen);
+}
+
 /* Er valt hier niets te kiezen, dus ook niets op te lichten. */
 .dienstenvel[data-keuze='nee'] .dienstrij {
   cursor: default;
