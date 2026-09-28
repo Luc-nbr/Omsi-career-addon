@@ -150,18 +150,6 @@ export interface Kaartlaag {
   kaartenMetLijn(lijn: string): LijnPlek[]
 }
 
-/*
- * De volgorde waarin OMSI de lijnen van een kaart in zijn lijst zet
- * (`mem.line` is de plek daarin): die van de map op NTFS, dat de namen in
- * hoofdletters vergelijkt. Bij Luc was dat op alle 14 kaarten gelijk aan de
- * volgorde van readdir.
- */
-function ntfsVolgorde(a: string, b: string): number {
-  const x = a.toUpperCase()
-  const y = b.toUpperCase()
-  return x < y ? -1 : x > y ? 1 : 0
-}
-
 function diepBevroren<T>(x: T): T {
   if (x && typeof x === 'object' && !Object.isFrozen(x)) {
     Object.freeze(x)
@@ -640,7 +628,8 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
       } catch {
         // Zonder maps/ geen kaarten; de lege index hieronder zegt dat al.
       }
-      const nu = Date.now()
+      // Niet Date.now(): wie de klok van de pc terugzet, zou het vernieuwen uitstellen.
+      const nu = performance.now()
       if (!lijnIndex || lijnIndex.mapsTijd !== mapsTijd || nu - lijnIndex.gebouwd > 5 * 60_000) {
         // Eerst helemaal opbouwen, dan pas vastleggen: een fout halverwege
         // liet anders de hele sessie een lege of halve index achter.
@@ -652,12 +641,19 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
           } catch {
             continue
           }
-          const ttl = namen.filter((n) => /\.ttl$/i.test(n)).sort(ntfsVolgorde)
+          /*
+           * In de volgorde van readdir, niet gesorteerd: OMSI sorteert ook niet
+           * maar neemt die van FindFirstFile (de lader op 0072D434), en libuv
+           * vraagt dezelfde lijst aan Windows. Op NTFS is dat alfabetisch in
+           * hoofdletters, op exFAT of een netwerkschijf niet per se.
+           */
+          const ttl = namen.filter((n) => /\.ttl$/i.test(n))
           ttl.forEach((naam, plek) => {
             const sleutel = lijnSleutel(naam)
             const al = lijnen.get(sleutel) ?? []
-            // "Lead.ttl" en " Lead.ttl" op één kaart zijn voor de klok één lijn.
-            if (!al.some((p) => p.folder === folder)) lijnen.set(sleutel, [...al, { folder, plek }])
+            // "Lead.ttl" en " Lead.ttl" op één kaart zijn voor de klok één lijn;
+            // in OMSI's lijst staan ze wel allebei, dus `lijnen` telt ze allebei.
+            if (!al.some((p) => p.folder === folder)) lijnen.set(sleutel, [...al, { folder, plek, lijnen: ttl.length }])
           })
         }
         lijnIndex = { lijnen, mapsTijd, gebouwd: nu }

@@ -5,7 +5,7 @@
  *
  * De gevallen komen uit de lokale meting op Lucs installatie (28-09-2026).
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { bedrijfsklok, lijnSleutel, type KlokLive, type LijnPlek } from '../src/core/bedrijfsklok'
@@ -18,13 +18,19 @@ function klopt(wat: string, ja: boolean): void {
 }
 
 // Op welke kaarten staat welke lijn (zoals kaartenMetLijn het teruggeeft).
+// HafenCity heeft 52 lijnen, HamburgLi20 49 (gemeten bij Luc).
+const hc = (plek: number): LijnPlek => ({ folder: 'HafenCity', plek, lijnen: 52 })
+const li20 = (plek: number): LijnPlek => ({ folder: 'HamburgLi20', plek, lijnen: 49 })
 const INDEX: Record<string, LijnPlek[]> = {
-  'addon tag und nacht li. 109': [{ folder: 'HafenCity', plek: 44 }, { folder: 'HamburgLi20', plek: 41 }],
-  // Op beide kaarten op dezelfde plek: de plek helpt dan niet.
-  '1': [{ folder: 'HafenCity', plek: 0 }, { folder: 'HamburgLi20', plek: 0 }],
-  alleenhier: [{ folder: 'HafenCity', plek: 3 }],
-  nachtnetz: [{ folder: 'Krefrath', plek: 7 }],
-  freitag: [{ folder: 'HafenCity', plek: 9 }]
+  'addon tag und nacht li. 109': [hc(44), li20(41)],
+  // Op beide kaarten op dezelfde plek: de plek helpt dan niet, de lengte wel.
+  '1': [hc(0), li20(0)],
+  // Tijdens de Dom schuift een chrono op HafenCity alles één op: 112 komt dan
+  // op 11, precies de plek van 112 op Li20.
+  '112': [hc(10), li20(11)],
+  alleenhier: [hc(3)],
+  nachtnetz: [{ folder: 'Krefrath', plek: 7, lijnen: 20 }],
+  freitag: [hc(9)]
 }
 const kaarten = (lijn: string): LijnPlek[] => INDEX[lijnSleutel(lijn)] ?? []
 const live = (lineName?: string, extra: Partial<KlokLive> = {}): KlokLive => ({
@@ -36,7 +42,8 @@ const live = (lineName?: string, extra: Partial<KlokLive> = {}): KlokLive => ({
   ...extra
 })
 const stand = (l: KlokLive | undefined, rit?: string, folder = 'HafenCity') => bedrijfsklok(l, folder, rit, kaarten)
-const opPlek = (lineName: string, line: number): KlokLive => live(lineName, { mem: { ok: 1, lineName, line } })
+const opPlek = (lineName: string, line: number, lines?: number): KlokLive =>
+  live(lineName, { mem: { ok: 1, lineName, line, ...(lines === undefined ? {} : { lines }) } })
 const is = (x: ReturnType<typeof stand>, klopt: boolean | 'geen'): boolean =>
   klopt === 'geen' ? x.bron === 'geen' : x.bron === 'omsi' && x.kaartKlopt === klopt
 
@@ -71,6 +78,15 @@ klopt('109 op plek 44 (HafenCity) met een Li20-rit: klopt', is(stand(opPlek('Add
 klopt('109 op plek 44 zonder rit: klopt', is(stand(opPlek('Addon Tag und Nacht Li. 109', 44)), true))
 klopt('109 op een plek die nergens past: de oude regels', is(stand(opPlek('Addon Tag und Nacht Li. 109', 12)), 'geen'))
 klopt('lijn 1 op dezelfde plek op beide: de rit beslist', is(stand(opPlek('1', 0), 'HafenCity'), true) && is(stand(opPlek('1', 0)), 'geen'))
+// De lengte van OMSI's lijst (plugin 14).
+klopt('lijn 1 op plek 0 met 49 lijnen: Li20, ook met een oude HafenCity-rit', is(stand(opPlek('1', 0, 49), 'HafenCity'), false))
+klopt('lijn 1 op plek 0 met 52 lijnen: HafenCity', is(stand(opPlek('1', 0, 52)), true))
+klopt('109 op 44 met 52 lijnen: HafenCity', is(stand(opPlek('Addon Tag und Nacht Li. 109', 44, 52), 'HamburgLi20'), true))
+klopt('Dom: 112 op 11 met 53 lijnen, HafenCity-rit: klopt (was false)', is(stand(opPlek('112', 11, 53), 'HafenCity'), true))
+klopt('Dom zonder rit: geen, geen valse false', is(stand(opPlek('112', 11, 53)), 'geen'))
+klopt('112 op 11 met 49 lijnen: echt Li20', is(stand(opPlek('112', 11, 49), 'HafenCity'), false))
+klopt('oude plugin zonder lengte: de plek telt zoals voorheen', is(stand(opPlek('112', 11), 'HafenCity'), false))
+klopt('lengte 0 telt als geen lengte', is(stand(opPlek('1', 0, 0)), 'geen'))
 // B: kaartnamen zonder hoofdletters.
 klopt('hafencity in kleine letters: klopt', is(stand(live('Alleenhier'), undefined, 'hafencity'), true))
 klopt('rit in andere schrijfwijze telt ook', is(stand(live(''), 'HAFENCITY'), true))
@@ -88,9 +104,12 @@ klopt('lege kaartnaam: geen', is(stand(live('Alleenhier'), 'HafenCity', ''), 'ge
   }
   kaart('A', ['b.ttl', 'A.ttl', '_x.ttl', 'Lead.ttl', ' Lead.ttl', 'notitie.txt', 'Z .TTL'])
   const laag = maakKaartlaag(omsi, join(omsi, 'data'))
+  // De plek volgt readdir, zoals OMSI FindFirstFile volgt; hier (Linux) is dat een willekeurige volgorde.
+  const volgorde = readdirSync(join(omsi, 'maps', 'A', 'TTData')).filter((n) => /\.ttl$/i.test(n))
   const a = laag.kaartenMetLijn('A')
-  klopt('lijn gevonden, plek in NTFS-volgorde ( Lead, A, b, Lead, Z , _x)', a.length === 1 && a[0].folder === 'A' && a[0].plek === 1)
-  klopt('_ komt na de letters, zoals NTFS het in hoofdletters sorteert', laag.kaartenMetLijn('_x')[0]?.plek === 5)
+  klopt('lijn gevonden, plek in de volgorde van readdir', a.length === 1 && a[0].folder === 'A' && a[0].plek === volgorde.indexOf('A.ttl'))
+  klopt('ook voor _x', laag.kaartenMetLijn('_x')[0]?.plek === volgorde.indexOf('_x.ttl'))
+  klopt('het aantal lijnen telt beide Leads mee (6 .ttl)', a[0].lijnen === 6)
   klopt('dezelfde sleutel twee keer op één kaart: één keer in de index', laag.kaartenMetLijn('lead').length === 1)
   klopt('.TTL met spatie ervoor telt mee', laag.kaartenMetLijn('z').length === 1)
   klopt('een .txt telt niet', laag.kaartenMetLijn('notitie').length === 0)

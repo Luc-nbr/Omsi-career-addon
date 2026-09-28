@@ -22,7 +22,18 @@ export function isOmsiInstall(path: string): boolean {
 export function hasMaps(path: string): boolean {
   try {
     const maps = join(path, 'maps')
-    return existsSync(maps) && readdirSync(maps).some((naam) => statSync(join(maps, naam)).isDirectory())
+    // Per kaart een eigen vangnet: een kapotte junction vooraan maakte er anders
+    // "geen kaarten" van.
+    return (
+      existsSync(maps) &&
+      readdirSync(maps).some((naam) => {
+        try {
+          return statSync(join(maps, naam)).isDirectory()
+        } catch {
+          return false
+        }
+      })
+    )
   } catch {
     return false
   }

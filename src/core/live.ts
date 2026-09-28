@@ -176,6 +176,8 @@ export interface MemoryData {
   /** Wat het dienstregelingsmenu van OMSI op de bus zette. */
   schedActive: number
   line: number
+  /** Hoe lang OMSI's lijnlijst is; pas sinds plugin 14, dus bij een oudere niet. */
+  lines?: number
   tour: number
   tourEntry: number
   trip: number

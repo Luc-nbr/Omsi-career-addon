@@ -5282,7 +5282,10 @@ function registerHandlers(): void {
     const dienst = (career?.activeDuty?.assignment as Assignment | undefined)?.duty
     return bedrijfsklok(freshLive(), String(mapFolder ?? ''), dienst?.mapFolder ?? vrijeRit?.mapFolder, (lijn) => {
       try {
-        return laag().kaartenMetLijn(lijn)
+        const plekken = laag().kaartenMetLijn(lijn)
+        // Lukt het weer, dan mag een volgende fout ook weer gemeld worden.
+        lijnIndexFoutGemeld = false
+        return plekken
       } catch (fout) {
         // Eén keer melden: de vlootkaart vraagt elke twee tellen.
         if (!lijnIndexFoutGemeld) logFout('lijnindex', fout)

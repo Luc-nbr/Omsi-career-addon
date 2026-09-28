@@ -135,8 +135,10 @@ enum {
  * 11 geen opdracht van de vorige sessie meer uitvoeren bij het opstarten
  * 12 honderdzestig namen in plaats van vierenzestig, en geen NaN in het bericht
  * 13 de getalvariabelen en per mesh wat OMSI toont, rechtstreeks uit het geheugen
+ * 14 de lengte van OMSI's lijnlijst ("lines"), zodat de app de plek van een lijn
+ *    alleen gelooft als de lijst niet door een chrono verschoven is
  */
-#define PLUGIN_VERSIE 13
+#define PLUGIN_VERSIE 14
 
 /*
  * Drempels voor hard remmen en optrekken, in meter per seconde kwadraat.
@@ -407,6 +409,13 @@ typedef struct {
   float pos[3];
   float rot[4];
   int schedLine, schedTour, schedTourEntry, schedTrip, schedNextIndex, schedDelay;
+  /*
+   * Hoeveel lijnen OMSI's dienstregeling heeft; 0 als de lijst niet te lezen is.
+   * Actieve chrono's laadt OMSI eerst, dus hun lijnen schuiven de rest op: de
+   * plek (`schedLine`) past alleen bij de TTData van de kaart als de lengte ook
+   * past.
+   */
+  int schedLines;
   /* De kaartverkoop: -1 in `koper` betekent dat er niemand staat te betalen. */
   int koper, ticketSoort, ticketIndex, ticketSlecht, ticketKlaar;
   /** Hoeveel mensen OMSI in de wereld heeft; nul betekent: lijst niet gevonden. */
@@ -954,7 +963,12 @@ static void read_memory(void) {
           /* Namen van lijn, omloop en rit uit de dienstregeling van de kaart. */
           const DWORD tt = *(DWORD *)(ULONG_PTR)mem_addr(MEM_TIMETABLE_MAN);
           if (plausible_ptr(tt)) {
-            const DWORD line = dyn_item(*(DWORD *)(ULONG_PTR)(tt + OFS_TT_LINES), next.schedLine, SIZE_TT_LINE);
+            const DWORD lijnen = *(DWORD *)(ULONG_PTR)(tt + OFS_TT_LINES);
+            if (plausible_ptr(lijnen)) {
+              const int lengte = *(int *)(ULONG_PTR)(lijnen - 4);
+              next.schedLines = lengte > 0 && lengte <= 100000 ? lengte : 0;
+            }
+            const DWORD line = dyn_item(lijnen, next.schedLine, SIZE_TT_LINE);
             if (line) {
               copy_text(next.lineName, sizeof(next.lineName), *(void **)(ULONG_PTR)line);
               const DWORD tour = dyn_item(*(DWORD *)(ULONG_PTR)(line + 0x8), next.schedTour, SIZE_TT_TOUR);
@@ -2022,7 +2036,7 @@ static void flush_state(int alive) {
       mem, sizeof(mem), _TRUNCATE,
       ",\"exeVersion\":\"%s\",\"mem\":{\"ok\":%d,\"tile\":%d,\"x\":%.3f,\"y\":%.3f,\"z\":%.3f,"
       "\"qx\":%.5f,\"qy\":%.5f,\"qz\":%.5f,\"qw\":%.5f,"
-      "\"schedActive\":%.2f,\"line\":%d,\"tour\":%d,\"tourEntry\":%d,\"trip\":%d,"
+      "\"schedActive\":%.2f,\"line\":%d,\"lines\":%d,\"tour\":%d,\"tourEntry\":%d,\"trip\":%d,"
       "\"nextIndex\":%d,\"nextDist\":%.1f,\"delay\":%d,"
       "\"opdracht\":%d,\"opdrachtFout\":%d,"
       "\"koper\":%d,\"ticketSoort\":%d,\"ticketIndex\":%d,"
@@ -2032,7 +2046,7 @@ static void flush_state(int alive) {
       g_exeVersion, g_mem.ok, g_mem.kachel, veilig(g_mem.pos[0]), veilig(g_mem.pos[1]),
       veilig(g_mem.pos[2]),
       veilig(g_mem.rot[0]), veilig(g_mem.rot[1]), veilig(g_mem.rot[2]), veilig(g_mem.rot[3]),
-      veilig(g_mem.schedActive), g_mem.schedLine, g_mem.schedTour, g_mem.schedTourEntry,
+      veilig(g_mem.schedActive), g_mem.schedLine, g_mem.schedLines, g_mem.schedTour, g_mem.schedTourEntry,
       g_mem.schedTrip, g_mem.schedNextIndex, veilig(g_mem.schedNextDist), g_mem.schedDelay,
       g_opdrachtNr, g_opdrachtFout,
       g_mem.koper, g_mem.ticketSoort, g_mem.ticketIndex,

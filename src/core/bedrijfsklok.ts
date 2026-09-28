@@ -31,6 +31,8 @@ export function lijnSleutel(naam: string): string {
 export interface LijnPlek {
   folder: string
   plek: number
+  /** Hoeveel .ttl deze kaart heeft: de lengte van OMSI's lijst zonder chrono. */
+  lijnen: number
 }
 
 export interface KlokLive {
@@ -38,7 +40,7 @@ export interface KlokLive {
   year: number
   month: number
   day: number
-  mem?: { ok: number; lineName?: string; line?: number }
+  mem?: { ok: number; lineName?: string; line?: number; lines?: number }
 }
 
 export function bedrijfsklok(
@@ -60,11 +62,21 @@ export function bedrijfsklok(
   /*
    * De plek van de lijn in OMSI's lijst (`mem.line`; de plugin haalt de naam
    * daar ook uit) onderscheidt de meeste gedeelde lijnen: lijn 109 staat op
-   * HafenCity op plek 44, op HamburgLi20 op 41. Staat hij op die plek op geen
-   * enkele kaart (een chrono kan de lijst verschuiven), dan gelden alle kaarten
-   * met die naam.
+   * HafenCity op plek 44, op HamburgLi20 op 41 (nagemeten).
+   *
+   * Maar OMSI laadt de lijnen van actieve chrono's eerst, en die schuiven de
+   * rest op: tijdens de Hamburger Dom staat 109 op 45 en 42, en voor dertien
+   * lijnen valt de verschoven plek precies op die van dezelfde lijn op een
+   * andere kaart. Daarom telt de plek alleen op een kaart waar ook de lengte
+   * van de lijst past (`mem.lines`, sinds plugin 14). Een oudere plugin geeft
+   * geen lengte; dan telt de plek zoals voorheen. Past niets, dan gelden alle
+   * kaarten met die naam en beslissen de regels hieronder.
    */
-  const opPlek = typeof mem?.line === 'number' && mem.line >= 0 ? plekken.filter((p) => p.plek === mem.line) : []
+  const lengte = typeof mem?.lines === 'number' && mem.lines > 0 ? mem.lines : undefined
+  const opPlek =
+    typeof mem?.line === 'number' && Number.isInteger(mem.line) && mem.line >= 0
+      ? plekken.filter((p) => p.plek === mem.line && (lengte === undefined || p.lijnen === lengte))
+      : []
   if (opPlek.length > 0) plekken = opPlek
   const kaarten = plekken.map((p) => p.folder.toLowerCase())
   let klopt: boolean | undefined

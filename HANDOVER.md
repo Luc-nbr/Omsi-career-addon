@@ -723,13 +723,18 @@ een warme 0,3-1,4 ms. De tien fouten uit die meting zijn gerepareerd:
   lijnnaam telt alleen als bewijs voor een kaart als hij daar staat, en
   `kaartKlopt: false` bestaat nu echt (OMSI rijdt aantoonbaar een andere
   kaart). Geen crash zonder lijnnaam, geen datum van nullen;
-- tweede ronde (na dfb9636): de klok kijkt eerst naar de plek van de lijn
-  in OMSI's lijst (`mem.line`, NTFS-volgorde van TTData), en pas dan naar de
-  rit in de app; die kan na een crash oud zijn. Zes gedeelde lijnen van
-  HafenCity staan op Li20 op dezelfde plek (1, 109 ki, 112, 2, 23, 25); daar
-  beslist nog de rit. Kaartherkenning uit de vrije modus kan dat later
-  afmaken. De lijnindex bouwt opnieuw op als maps/ verandert of na vijf
-  minuten. Lijnen die alleen in Chrono/*/TTData staan, zitten er niet in;
+- tweede en derde ronde (na dfb9636 en a78cc19): de klok kijkt eerst naar de
+  plek van de lijn in OMSI's lijst (`mem.line`, de volgorde van readdir, die
+  OMSI ook gebruikt), en pas dan naar de rit in de app; die kan na een crash
+  oud zijn. Actieve chrono's laadt OMSI eerst en die schuiven de lijst op
+  (Hamburger Dom: 109 op 45 in plaats van 44). Daarom schrijft **plugin 14**
+  ook de lengte van de lijst (`mem.lines`), en telt de plek alleen op een
+  kaart met evenveel .ttl. Dat scheidt ook de twaalf lijnen die op meer
+  kaarten op dezelfde plek staan ("1"@0, "109"@1, "112"@2, 118/120/124@4-6,
+  179/183@7-8). Met een oudere plugin telt de plek zonder die controle. De
+  lijnindex bouwt opnieuw op als maps/ verandert of na vijf minuten. Lijnen
+  die alleen in Chrono/*/TTData staan, zitten er niet in (bij Luc geen
+  gevolgen: geen ervan heeft de naam van een basislijn elders);
 - de boekingen noemen de kaart bij naam, en het lijnplan de goede datum;
 - voor deel E staat in het ontwerp (§8.1) nu ook de avond ervoor (−15) in
   `klokUitOmsi`, en dat de klok doorloopt als OMSI pauzeert.
