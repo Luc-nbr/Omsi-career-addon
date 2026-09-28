@@ -2949,6 +2949,11 @@ export function App(): JSX.Element {
             {t(language, "omsi.herstartUitleg")}
           </p>
         )}
+        {omsiMelding.afgesloten && (
+          <p className="omsimelding-klein" role="status">
+            {t(language, omsiMelding.afgesloten === "al-dicht" ? "omsi.alDicht" : "omsi.nietGesloten")}
+          </p>
+        )}
         <div className="omsimelding-knoppen">
           {omsiMelding.soort === "crash" && (
             <button
@@ -2974,13 +2979,20 @@ export function App(): JSX.Element {
               {t(language, "omsi.herstart")}
             </button>
           )}
-          {omsiMelding.soort === "vast" && omsiMelding.pid !== undefined && (
+          {omsiMelding.soort === "vast" && omsiMelding.pid !== undefined && omsiMelding.afgesloten !== "al-dicht" && (
             <button
               type="button"
               className="btn"
-              onClick={() =>
-                void window.career.sluitOmsi(omsiMelding.pid as number)
-              }
+              onClick={() => {
+                /*
+                 * Het hoofdproces sluit alleen af als onder dat pid nog
+                 * hetzelfde OMSI draait. Zo niet, dan zegt de melding dat.
+                 */
+                const melding = omsiMelding;
+                void window.career.sluitOmsi(melding.pid as number).then((uit) => {
+                  if (uit !== "gesloten") setOmsiMelding((nu) => (nu === melding ? { ...melding, afgesloten: uit } : nu));
+                });
+              }}
             >
               {t(language, "omsi.afsluiten")}
             </button>

@@ -27,17 +27,31 @@ import { basename, dirname, extname, join, resolve } from 'node:path'
  * bestand even open heeft (EPERM, EBUSY, EACCES). Dat duurt milliseconden, dus
  * een paar nieuwe pogingen lossen het op; lukt het dan nog niet, dan gaat de fout
  * door naar de aanroeper, zoals vroeger.
+ *
+ * Sinds 28-09 wordt het tijdelijke bestand eerst teruggelezen: pas als daar
+ * byte voor byte staat wat er moest staan, gaat het naar de echte plek. En een
+ * bestand dat niet leeg was, wordt niet door een leeg vervangen, tenzij de
+ * aanroeper dat met `leegMag` zegt -- een lege keyboard.cfg of profiel is altijd
+ * een fout ergens eerder, nooit wat iemand bedoelde.
  */
 export function schrijfVeilig(
   pad: string,
   inhoud: string | Buffer,
-  codering: BufferEncoding = 'utf8'
+  codering: BufferEncoding = 'utf8',
+  opties: { leegMag?: boolean } = {}
 ): void {
+  const bytes = typeof inhoud === 'string' ? Buffer.from(inhoud, codering) : inhoud
+  if (bytes.length === 0 && !opties.leegMag && grootteVan(pad) > 0) {
+    throw new Error(`Niet geschreven: ${basename(pad)} zou leeg worden.`)
+  }
   mkdirSync(dirname(pad), { recursive: true })
   const tijdelijk = `${pad}.${process.pid}.bezig`
-  if (typeof inhoud === 'string') writeFileSync(tijdelijk, inhoud, codering)
-  else writeFileSync(tijdelijk, inhoud)
   try {
+    writeFileSync(tijdelijk, bytes)
+    const terug = readFileSync(tijdelijk)
+    if (!terug.equals(bytes)) {
+      throw new Error(`Niet geschreven: ${basename(pad)} kwam anders terug dan hij geschreven werd.`)
+    }
     metNieuwePogingen(() => renameSync(tijdelijk, pad))
   } catch (fout) {
     try {
@@ -47,6 +61,73 @@ export function schrijfVeilig(
     }
     throw fout
   }
+  naOpslaan?.(pad)
+}
+
+function grootteVan(pad: string): number {
+  try {
+    return statSync(pad).size
+  } catch {
+    return 0
+  }
+}
+
+/*
+ * Wie wil weten dat er iets opgeslagen is. Het hoofdproces noteert zo welke
+ * versie van de app het laatst in de gebruikersmap schreef (zie
+ * core/versiewacht.ts); zonder aanroeper (een proef) gebeurt er niets.
+ */
+let naOpslaan: ((pad: string) => void) | undefined
+
+export function zetNaOpslaan(doe: ((pad: string) => void) | undefined): void {
+  naOpslaan = doe
+}
+
+/* ---- de bestanden van OMSI ---- */
+
+/**
+ * Hoe een tekstbestand van OMSI op schijf staat. OMSI schrijft zijn cfg's in
+ * de Windows-codering (1252), maar er zijn er ook in UTF-16 met een BOM -- van
+ * een editor, of van een add-on. De app las `keyboard.cfg` altijd als losse
+ * bytes; een UTF-16-bestand leek dan leeg (de regeleinden zijn daar `\r\0\n\0`),
+ * en terugschrijven had het vervangen door alleen wat de app ervan begreep.
+ */
+export type CfgCodering = 'latin1' | 'utf16le'
+
+/** De codering van een bestand aan zijn eerste bytes; zonder BOM Windows-1252. */
+export function cfgCodering(bytes: Buffer): { codering: CfgCodering; bom: boolean } {
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) return { codering: 'utf16le', bom: true }
+  // UTF-16 zonder BOM: tekst van gewone letters heeft om de andere byte een nul.
+  if (bytes.length >= 4 && bytes[0] !== 0 && bytes[1] === 0 && bytes[2] !== 0 && bytes[3] === 0) {
+    return { codering: 'utf16le', bom: false }
+  }
+  return { codering: 'latin1', bom: false }
+}
+
+/**
+ * Een cfg van OMSI als tekst. `latin1` en niet `win1252`: zo komt elke byte
+ * heen en terug als dezelfde byte, ook de paar die 1252 anders leest -- en
+ * dat is wat de app belooft (probe-gamecfg: byte-identiek heen en weer).
+ */
+export function leesCfg(pad: string): string {
+  const bytes = readFileSync(pad)
+  const { codering, bom } = cfgCodering(bytes)
+  return bytes.subarray(bom ? 2 : 0).toString(codering)
+}
+
+/**
+ * Een cfg van OMSI terugschrijven in de codering die hij had, via
+ * `schrijfVeilig`. Een nieuw bestand wordt Windows-1252, zoals OMSI het doet.
+ */
+export function schrijfCfg(pad: string, tekst: string, opties: { leegMag?: boolean } = {}): void {
+  let codering: CfgCodering = 'latin1'
+  let bom = false
+  if (existsSync(pad)) ({ codering, bom } = cfgCodering(readFileSync(pad)))
+  if (!opties.leegMag && tekst.trim() === '' && grootteVan(pad) > 0) {
+    throw new Error(`Niet geschreven: ${basename(pad)} zou leeg worden.`)
+  }
+  const lijf = Buffer.from(tekst, codering)
+  schrijfVeilig(pad, bom ? Buffer.concat([Buffer.from([0xff, 0xfe]), lijf]) : lijf, 'utf8', opties)
 }
 
 /**

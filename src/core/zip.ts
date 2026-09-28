@@ -22,7 +22,10 @@ import iconv from 'iconv-lite'
  */
 
 export interface ZipBestand {
-  /** Het pad in de zip, met schuine strepen naar rechts. */
+  /**
+   * Het pad in de zip, met schuine strepen naar rechts -- zoals het er staat,
+   * dus mogelijk met `..` of een stationsletter. Zie `veiligPad`.
+   */
   naam: string
   grootte: number
   gepakt: number
@@ -62,9 +65,55 @@ function leesStuk(fd: number, positie: number, lengte: number): Buffer {
  * Namen zonder de UTF-8-vlag staan in codepagina 437, de oude DOS-tekenset.
  * Duitse add-ons hebben umlauten in hun mapnamen, en die kwamen als rommel
  * uit een gewone latin-1-lezing.
+ *
+ * Let op: dit is de naam zoals hij in de zip staat, niet een pad dat je zo mag
+ * gebruiken. Een zip mag `../../x` of `C:\x` als naam hebben; wie een naam op
+ * schijf gebruikt, haalt hem eerst door `veiligPad`.
  */
 function naamVan(ruw: Buffer, utf8: boolean): string {
   return (utf8 ? ruw.toString('utf8') : iconv.decode(ruw, 'cp437')).replace(/\\/g, '/')
+}
+
+/*
+ * Namen die Windows als apparaat leest, ook met een extensie erachter: wie
+ * `CON.txt` opent, schrijft naar de console. Met `COM¹` en dergelijke erbij,
+ * die Windows ook zo behandelt.
+ */
+const APPARAAT = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³]|conin\$|conout\$)$/i
+
+/**
+ * Een naam uit een zip (of een map) als gewoon relatief pad met schuine
+ * strepen naar rechts, of `undefined` als hij ergens anders uit zou kunnen
+ * komen dan in de map waarin hij uitgepakt wordt.
+ *
+ * WAAROM
+ * De zip-lezer gaf namen door zoals ze in de zip stonden, en de add-on-manager
+ * plakte ze met `join` aan de OMSI-map: `Vehicles/../../BUITEN.txt` kwam
+ * daarmee naast de OMSI-map terecht ("zip slip"). Een zip mag zulke namen
+ * gewoon bevatten; het is aan wie uitpakt om ze te weigeren. Geweigerd wordt:
+ * - een absoluut pad (`/x`, `\\server\x`) en een stationsletter (`C:x`);
+ * - elke `:`, ook midden in een naam: op NTFS is `a.txt:b` een verborgen
+ *   tweede stroom in `a.txt`;
+ * - `..` als deel van het pad, en een deel dat op een punt of spatie eindigt
+ *   (Windows knipt die weg, dus `Vehicles.` is `Vehicles`);
+ * - apparaatnamen (`CON`, `NUL`, `COM1`, ... ook als `nul.txt`);
+ * - tekens die Windows in een naam niet toelaat, en stuurtekens.
+ * Lege delen en `.` vallen weg: `a//./b` is `a/b`.
+ */
+export function veiligPad(naam: string): string | undefined {
+  const pad = naam.replace(/\\/g, '/')
+  if (pad.startsWith('/')) return undefined
+  const delen: string[] = []
+  for (const deel of pad.split('/')) {
+    if (deel === '' || deel === '.') continue
+    if (deel === '..') return undefined
+    // eslint-disable-next-line no-control-regex
+    if (/[\u0000-\u001f<>:"|?*]/.test(deel)) return undefined
+    if (/[. ]$/.test(deel)) return undefined
+    if (APPARAAT.test(deel.split('.')[0].trimEnd())) return undefined
+    delen.push(deel)
+  }
+  return delen.length > 0 ? delen.join('/') : undefined
 }
 
 const CRC_TABEL = (() => {

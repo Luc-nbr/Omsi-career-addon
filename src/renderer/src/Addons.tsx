@@ -33,9 +33,11 @@ function useFoutTekst(): (f: AddonFout) => string {
   return (f) => (f.fout === 'fout' && f.melding ? f.melding : tr(`ad.err.${f.fout}` as TextKey))
 }
 
-function grootte(bytes: number): string {
-  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`
-  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)} MB`
+/** Met de komma of punt van de taal: "3,4 GB" in het Nederlands. */
+function grootte(bytes: number, taal?: string): string {
+  const een = (n: number): string => n.toLocaleString(taal, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+  if (bytes >= 1e9) return `${een(bytes / 1e9)} GB`
+  if (bytes >= 1e6) return `${een(bytes / 1e6)} MB`
   return `${Math.max(1, Math.round(bytes / 1e3))} kB`
 }
 
@@ -96,7 +98,7 @@ type Stap =
   | { soort: 'plannen'; pad: string }
   | { soort: 'plan'; pad: string; plan: AddonPlan }
   | { soort: 'installeren'; pad: string; plan: AddonPlan }
-  | { soort: 'klaar'; plan: AddonPlan; geschreven: number; overschreven: number; controles: Controle[] }
+  | { soort: 'klaar'; plan: AddonPlan; geschreven: number; overschreven: number; code: number; controles: Controle[] }
 
 function Installeren({
   voortgang,
@@ -111,10 +113,13 @@ function Installeren({
   const [fout, setFout] = useState<string>()
   const [naam, setNaam] = useState('')
   const [boven, setBoven] = useState(false)
+  // Plugins gaan alleen mee als de speler de maker vertrouwt; elke nieuwe add-on begint uit.
+  const [metCode, setMetCode] = useState(false)
 
   const bekijk = async (pad: string | undefined): Promise<void> => {
     if (!pad) return
     setFout(undefined)
+    setMetCode(false)
     setStap({ soort: 'plannen', pad })
     const uit = await window.career.addonPlan(pad)
     if (isFout(uit)) {
@@ -130,7 +135,7 @@ function Installeren({
     if (stap.soort !== 'plan') return
     setFout(undefined)
     setStap({ soort: 'installeren', pad: stap.pad, plan: stap.plan })
-    const uit = await window.career.addonInstalleer(stap.pad, naam)
+    const uit = await window.career.addonInstalleer(stap.pad, naam, metCode)
     if (isFout(uit)) {
       setFout(foutTekst(uit))
       setStap({ soort: 'plan', pad: stap.pad, plan: stap.plan })
@@ -146,7 +151,7 @@ function Installeren({
       const c = await window.career.addonControleer('kaart', kaart)
       if (!isFout(c)) controles.push(c)
     }
-    setStap({ soort: 'klaar', plan: stap.plan, geschreven: uit.geschreven, overschreven: uit.overschreven, controles })
+    setStap({ soort: 'klaar', plan: stap.plan, geschreven: uit.geschreven, overschreven: uit.overschreven, code: uit.code, controles })
   }
 
   const losgelaten = (e: DragEvent): void => {
@@ -199,6 +204,8 @@ function Installeren({
           plan={stap.plan}
           naam={naam}
           onNaam={setNaam}
+          metCode={metCode}
+          onMetCode={setMetCode}
           bezig={stap.soort === 'installeren'}
           voortgang={stap.soort === 'installeren' && voortgang?.fase === 'installeer' ? voortgang.n : undefined}
           onInstalleer={() => void installeer()}
@@ -214,6 +221,7 @@ function Installeren({
           <p>
             {tr('ad.doneText', { n: stap.geschreven })}
             {stap.overschreven > 0 && ` ${tr('ad.doneBackup', { n: stap.overschreven })}`}
+            {stap.code > 0 && ` ${tr('ad.codeDone', { n: stap.code })}`}
           </p>
           {stap.controles.length > 0 ? (
             stap.controles.map((c) => <ControleVak key={`${c.soort}|${c.naam}`} controle={c} />)
@@ -235,6 +243,8 @@ function PlanVak({
   plan,
   naam,
   onNaam,
+  metCode,
+  onMetCode,
   bezig,
   voortgang,
   onInstalleer,
@@ -243,14 +253,24 @@ function PlanVak({
   plan: AddonPlan
   naam: string
   onNaam: (naam: string) => void
+  metCode: boolean
+  onMetCode: (aan: boolean) => void
   bezig: boolean
   voortgang?: number
   onInstalleer: () => void
   onAnnuleer: () => void
 }): JSX.Element {
   const tr = useT()
-  const niets = plan.nieuw + plan.andersAantal === 0
-  const totaal = plan.nieuw + plan.andersAantal
+  const taal = useLanguage()
+  const codeTeSchrijven = metCode ? plan.code.filter((c) => c.staat !== 'gelijk').length : 0
+  const totaal = plan.nieuw + plan.andersAantal + codeTeSchrijven
+  const niets = totaal === 0
+  const ruimte = metCode ? plan.ruimteMetCode : plan.ruimte
+  const schijfTekst = (s: AddonPlan['ruimte']['schijven'][number]): string =>
+    `${tr('ad.space', { nodig: grootte(s.bytes, taal), vrij: s.vrij === undefined ? '?' : grootte(s.vrij, taal) })} ${tr(
+      s.wat === 'omsi' ? 'ad.spaceOmsi' : s.wat === 'reserve' ? 'ad.spaceBackup' : 'ad.spaceBoth',
+      { schijf: s.schijf }
+    )}`
   return (
     <>
       <section className="bd-paneel">
@@ -278,8 +298,14 @@ function PlanVak({
             <b>{plan.overigAantal}</b>
             <span>{tr('ad.notPlaced')}</span>
           </div>
+          {plan.geweigerdAantal > 0 && (
+            <div className="let-op">
+              <b>{plan.geweigerdAantal}</b>
+              <span>{tr('ad.refused')}</span>
+            </div>
+          )}
           <div>
-            <b>{grootte(plan.bytes)}</b>
+            <b>{grootte(plan.bytes, taal)}</b>
             <span>{tr('ad.size')}</span>
           </div>
         </div>
@@ -290,11 +316,21 @@ function PlanVak({
             {plan.kaarten.length > 0 && tr('ad.foundMaps', { lijst: plan.kaarten.join(', ') })}
           </p>
         )}
+        {!niets &&
+          ruimte.schijven
+            .filter((s) => s.nodig > 0)
+            .map((s) => (
+              <p key={s.wat} className={s.past ? 'bd-rustig bd-klein' : 'ad-slecht'}>
+                {schijfTekst(s)}
+              </p>
+            ))}
+        {!niets && !ruimte.past && <p className="bd-melding">{tr('ad.spaceShort')}</p>}
+        {plan.rommel > 0 && <p className="bd-rustig bd-klein">{tr('ad.junk', { n: plan.rommel })}</p>}
         {niets ? (
           <p className="bd-melding">{plan.gelijk > 0 ? tr('ad.allThere') : tr('ad.nothing')}</p>
         ) : (
           <div className="ad-knoppen">
-            <button type="button" className="bd-knop hoofd" disabled={bezig} onClick={onInstalleer}>
+            <button type="button" className="bd-knop hoofd" disabled={bezig || !ruimte.past} onClick={onInstalleer}>
               {bezig ? tr('ad.installing', { n: voortgang ?? 0, total: totaal }) : tr('ad.install')}
             </button>
             <button type="button" className="bd-knop" disabled={bezig} onClick={onAnnuleer}>
@@ -303,6 +339,59 @@ function PlanVak({
           </div>
         )}
       </section>
+
+      {(plan.code.length > 0 || plan.nooit.length > 0) && (
+        <section className="bd-paneel">
+          <div className="bd-paneelkop">
+            <h2>{tr('ad.codeTitle')}</h2>
+          </div>
+          {plan.code.length > 0 && (
+            <>
+              <p className="bd-rustig">{tr('ad.codeText')}</p>
+              <ul className="ad-lijst">
+                {plan.code.map((c) => (
+                  <li key={c.doel}>
+                    <span className="ad-pad">{c.doel}</span>
+                  </li>
+                ))}
+              </ul>
+              <label className="ad-vinkje">
+                <input type="checkbox" checked={metCode} disabled={bezig} onChange={(e) => onMetCode(e.target.checked)} />
+                <span>{tr('ad.codeTrust')}</span>
+              </label>
+            </>
+          )}
+          {plan.nooit.length > 0 && (
+            <>
+              <p className="ad-slecht">{tr('ad.codeNever', { n: plan.nooit.length })}</p>
+              <ul className="ad-lijst">
+                {plan.nooit.map((o) => (
+                  <li key={o}>
+                    <span className="ad-pad">{o}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
+      )}
+
+      {plan.geweigerdAantal > 0 && (
+        <details className="bd-paneel ad-overig" open>
+          <summary>{tr('ad.refusedTitle', { n: plan.geweigerdAantal })}</summary>
+          <p className="bd-rustig">{tr('ad.refusedText')}</p>
+          <ul className="ad-lijst">
+            {plan.geweigerd.map((o) => (
+              <li key={o}>
+                <span className="ad-pad">{o}</span>
+              </li>
+            ))}
+            {plan.geweigerdAantal > plan.geweigerd.length && (
+              <li className="bd-rustig">{tr('ad.more', { n: plan.geweigerdAantal - plan.geweigerd.length })}</li>
+            )}
+          </ul>
+        </details>
+      )}
 
       <section className="bd-paneel">
         <div className="bd-paneelkop">

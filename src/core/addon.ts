@@ -6,14 +6,16 @@ import {
   readdirSync,
   readFileSync,
   rmdirSync,
+  rmSync,
+  statfsSync,
   statSync,
   unlinkSync,
   writeFileSync,
   type Dirent
 } from 'node:fs'
-import { basename, dirname, join, relative, sep } from 'node:path'
+import { basename, dirname, join, parse, relative, resolve, sep } from 'node:path'
 import { schrijfVeilig } from './veilig'
-import { openZip, type Zip } from './zip'
+import { openZip, veiligPad, type Zip } from './zip'
 
 /*
  * De add-on-manager: add-ons installeren, bijhouden en weer weghalen.
@@ -52,15 +54,59 @@ export interface BronBestand {
 export interface Bron {
   naam: string
   soort: 'zip' | 'map'
+  /** Alleen wat bruikbaar is: veilige namen, zonder rommel. */
   bestanden: BronBestand[]
+  /**
+   * Namen die buiten de map zouden uitkomen of op Windows niet mogen (zie
+   * `veiligPad`), zoals ze in de bron staan. Die komen nergens in een plan.
+   */
+  geweigerd: string[]
+  /** Hoeveel bestanden rommel waren (`__MACOSX`, `Thumbs.db`, ...). */
+  rommel: number
   lees(bestand: BronBestand): Buffer
   /** Kopieer naar een pad op schijf; bij een map zonder het in het geheugen te laden. */
   kopieer(bestand: BronBestand, naar: string): void
   sluit(): void
 }
 
-function allesIn(map: string): BronBestand[] {
-  const uit: BronBestand[] = []
+/**
+ * Wat een ander systeem of de verkenner in een map achterlaat, en wat nooit in
+ * OMSI hoort: de metadata van een Mac (`__MACOSX/`, `._naam`, `.DS_Store`) en
+ * de plaatjescache en mapinstellingen van Windows (`Thumbs.db`, `desktop.ini`).
+ * Een `desktop.ini` in een map van OMSI verandert hoe de verkenner die map
+ * toont; een `._`-bestand naast een textuur is geen textuur.
+ */
+export function isRommel(pad: string): boolean {
+  return pad.split('/').some((deel) => {
+    const klein = deel.toLowerCase()
+    return (
+      klein === '__macosx' ||
+      klein === '.ds_store' ||
+      klein === 'thumbs.db' ||
+      klein === 'desktop.ini' ||
+      deel.startsWith('._')
+    )
+  })
+}
+
+/** De bestanden van een bron gesplitst in bruikbaar, geweigerd en rommel. */
+function schift(
+  ruw: Array<{ naam: string; grootte: number }>
+): { bestanden: Array<BronBestand & { naam: string }>; geweigerd: string[]; rommel: number } {
+  const bestanden: Array<BronBestand & { naam: string }> = []
+  const geweigerd: string[] = []
+  let rommel = 0
+  for (const b of ruw) {
+    const pad = veiligPad(b.naam)
+    if (!pad) geweigerd.push(b.naam)
+    else if (isRommel(pad)) rommel += 1
+    else bestanden.push({ pad, grootte: b.grootte, naam: b.naam })
+  }
+  return { bestanden, geweigerd, rommel }
+}
+
+function allesIn(map: string): Array<{ naam: string; grootte: number }> {
+  const uit: Array<{ naam: string; grootte: number }> = []
   const loop = (hier: string): void => {
     let inhoud: Dirent[]
     try {
@@ -72,7 +118,7 @@ function allesIn(map: string): BronBestand[] {
       const vol = join(hier, item.name)
       if (item.isDirectory()) loop(vol)
       else if (item.isFile()) {
-        uit.push({ pad: relative(map, vol).split(sep).join('/'), grootte: statSync(vol).size })
+        uit.push({ naam: relative(map, vol).split(sep).join('/'), grootte: statSync(vol).size })
       }
     }
   }
@@ -82,23 +128,33 @@ function allesIn(map: string): BronBestand[] {
 
 export function openBron(pad: string): Bron {
   if (statSync(pad).isDirectory()) {
+    const { bestanden, geweigerd, rommel } = schift(allesIn(pad))
+    const opNaam = new Map(bestanden.map((b) => [b.pad, b.naam]))
+    const vol = (b: BronBestand): string => join(pad, ...(opNaam.get(b.pad) ?? b.pad).split('/'))
     return {
       naam: basename(pad),
       soort: 'map',
-      bestanden: allesIn(pad),
-      lees: (b) => readFileSync(join(pad, ...b.pad.split('/'))),
-      kopieer: (b, naar) => copyFileSync(join(pad, ...b.pad.split('/')), naar),
+      bestanden: bestanden.map((b) => ({ pad: b.pad, grootte: b.grootte })),
+      geweigerd,
+      rommel,
+      lees: (b) => readFileSync(vol(b)),
+      kopieer: (b, naar) => copyFileSync(vol(b), naar),
       sluit: () => undefined
     }
   }
   const zip: Zip = openZip(pad)
+  const { bestanden, geweigerd, rommel } = schift(zip.bestanden)
+  // Op het veilige pad, want dat is wat het plan kent; de zip kent de ruwe naam.
   const perNaam = new Map(zip.bestanden.map((b) => [b.naam, b]))
+  const perPad = new Map(bestanden.map((b) => [b.pad, perNaam.get(b.naam)!]))
   return {
     naam: basename(pad).replace(/\.zip$/i, ''),
     soort: 'zip',
-    bestanden: zip.bestanden.map((b) => ({ pad: b.naam, grootte: b.grootte })),
-    lees: (b) => zip.lees(perNaam.get(b.pad)!),
-    kopieer: (b, naar) => writeFileSync(naar, zip.lees(perNaam.get(b.pad)!)),
+    bestanden: bestanden.map((b) => ({ pad: b.pad, grootte: b.grootte })),
+    geweigerd,
+    rommel,
+    lees: (b) => zip.lees(perPad.get(b.pad)!),
+    kopieer: (b, naar) => writeFileSync(naar, zip.lees(perPad.get(b.pad)!)),
     sluit: () => zip.sluit()
   }
 }
@@ -123,55 +179,158 @@ export const OMSI_MAPPEN = [
   'Money',
   'plugins',
   'Gras',
-  'Weather'
+  'Weather',
+  'Trains',
+  'Situations'
 ] as const
 
-const MAP_OP_NAAM = new Map(OMSI_MAPPEN.map((m) => [m.toLowerCase(), m]))
+const MAP_OP_NAAM = new Map<string, string>(OMSI_MAPPEN.map((m) => [m.toLowerCase(), m]))
+/** De OMSI-mappen die nooit ín een bus, kaart of object liggen (anders dan `Texture` en `Fonts`). */
+const PAKKET = new Set(OMSI_MAPPEN.filter((m) => m !== 'Texture' && m !== 'Fonts').map((m) => m.toLowerCase()))
+
+/*
+ * Welke map een map is, aan de bestanden die er direct in staan.
+ *
+ * De volgorde telt: een map met een `global.cfg` is een kaart, ook als er
+ * objecten naast liggen; een map met een `.bus` is een bus, ook met een
+ * `.sco` erin. Daarna wat er het meest los verspreid wordt: objecten,
+ * splines, mensen, kaartsets, en de soorten die OMSI plat in één map zet.
+ *
+ * `plat` is afgelezen aan een echte OMSI-map (Lucs Steam-installatie, 28-09,
+ * alleen gelezen): `Weather`, `Fonts`, `Drivers`, `Trains` en `Situations`
+ * hebben geen submappen maar alleen losse bestanden -- 709 `.oft` in Fonts,
+ * 9 `.owt` in Weather, 60 `.zug` in Trains. Een weerbestand in
+ * `Weather\MijnWeer\` ziet OMSI niet. `Sceneryobjects`, `Splines`,
+ * `Humans`, `TicketPacks` en `Money` hebben er wel een map per pakket.
+ * Bij de platte soorten gaan alleen de bestanden die erbij horen mee (`mee`);
+ * een leesmij naast een `.owt` komt niet in `Weather`.
+ */
+const SOORTEN: Array<{ ext: RegExp; map: string; plat?: boolean; mee?: RegExp }> = [
+  { ext: /^global\.cfg$/i, map: 'maps' },
+  { ext: /\.(bus|ovh)$/i, map: 'Vehicles' },
+  { ext: /\.sco$/i, map: 'Sceneryobjects' },
+  { ext: /\.sli$/i, map: 'Splines' },
+  { ext: /\.hum$/i, map: 'Humans' },
+  { ext: /\.otp$/i, map: 'TicketPacks' },
+  { ext: /\.zug$/i, map: 'Trains', plat: true, mee: /\.zug$/i },
+  { ext: /\.osn$/i, map: 'Situations', plat: true, mee: /\.(osn|owt|dsc|dds|jpg)$/i },
+  { ext: /\.owt$/i, map: 'Weather', plat: true, mee: /\.(owt|dsc)$/i },
+  { ext: /\.oft$/i, map: 'Fonts', plat: true, mee: /\.(oft|bmp|tga|png|dds)$/i },
+  { ext: /\.odr$/i, map: 'Drivers', plat: true, mee: /\.(odr|bmp|jpg|png)$/i },
+  // Een plugin: de .opl zegt dat het er een is; een losse .dll kan van alles zijn.
+  { ext: /\.opl$/i, map: 'plugins', plat: true, mee: /\.(dll|opl|ini|cfg)$/i }
+]
 
 /**
  * Waar elk bestand van de bron in de OMSI-map komt, of `undefined` als het er
  * niet in hoort (een leesmij, plaatjes van de maker).
  *
  * In deze volgorde:
- * 1. Staat er een bekende OMSI-map in het pad -- `OMSI 2/Vehicles/...`,
+ * 1. Een map met een bestand dat zegt wat hij is (`SOORTEN`): een `.bus` of
+ *    `.ovh` maakt een busmap, en die hoort in `Vehicles`; een `global.cfg`
+ *    maakt een kaart voor `maps`; een `.sco` een objectenpakket voor
+ *    `Sceneryobjects`, enzovoort. Veel add-ons komen zo, als alleen hun
+ *    eigen map -- of zelfs als losse bestanden zonder map; dan krijgt het
+ *    pakket de naam van de add-on (`naam`).
+ * 2. Anders: staat er een bekende OMSI-map in het pad -- `OMSI 2/Vehicles/...`,
  *    `Mijn bus v2/Vehicles/...` -- dan begint het daar.
- * 2. Anders: een map met een `.bus` of `.ovh` erin is een busmap, en die hoort
- *    in `Vehicles`; een map met een `global.cfg` is een kaart en hoort in
- *    `maps`. Veel bussen worden zo verspreid, als alleen hun eigen map.
  *
- * De tweede regel gaat vóór de eerste als hij dieper zou knippen: de map
- * `Texture` IN een busmap is de textuurmap van die bus, niet die van OMSI.
+ * De eerste regel geldt alleen voor mappen die niet al onder een bekende
+ * OMSI-map staan, en gaat voor als hij dieper zou knippen: de map `Texture`
+ * IN een busmap is de textuurmap van die bus, niet die van OMSI. Van twee
+ * zulke mappen in elkaar wint de buitenste: een map `objects` met een `.sco`
+ * in een busmap hoort bij de bus.
+ *
+ * Tot 28-09 kende de eerste regel alleen bussen en kaarten, en kwam een zip
+ * met alleen objecten, splines, weer of lettertypen als "niet geplaatst" uit.
  */
-export function plaatsVan(paden: string[]): Map<string, string> {
+export function plaatsVan(paden: string[], naam = 'Add-on'): Map<string, string> {
   const uit = new Map<string, string>()
   const delen = paden.map((p) => p.split('/').filter(Boolean))
 
-  // Mappen die een bus of kaart zijn, en die niet al onder een bekende OMSI-map staan.
-  const eigen = new Map<string, 'Vehicles' | 'maps'>()
+  // Per map de sterkste soort die er direct in staat, en welke submappen hij heeft.
+  const soortVan = new Map<string, number>()
+  const submappen = new Map<string, Set<string>>()
   for (const d of delen) {
-    const naam = d[d.length - 1].toLowerCase()
-    const soort = /\.(bus|ovh)$/.test(naam) ? 'Vehicles' : naam === 'global.cfg' ? 'maps' : undefined
-    if (!soort || d.length < 2) continue
+    for (let n = 0; n < d.length - 1; n++) {
+      const k = d.slice(0, n).join('/')
+      if (!submappen.has(k)) submappen.set(k, new Set())
+      submappen.get(k)!.add(d[n].toLowerCase())
+    }
+    const bestand = d[d.length - 1]
+    const soort = SOORTEN.findIndex((s) => s.ext.test(bestand))
+    if (soort < 0) continue
     const boven = d.slice(0, -1)
     if (boven.some((s) => MAP_OP_NAAM.has(s.toLowerCase()))) continue
-    // Een bus kan zijn .bus-bestanden in een submap hebben; de kortste map met zo'n bestand wint.
     const sleutel = boven.join('/')
-    if (![...eigen.keys()].some((k) => sleutel.startsWith(`${k}/`))) eigen.set(sleutel, soort)
+    const had = soortVan.get(sleutel)
+    if (had === undefined || soort < had) soortVan.set(sleutel, soort)
   }
+  /*
+   * Een map met naast zijn `.sco` ook een map `Vehicles` of `Splines` is geen
+   * objectenpakket maar een verzameling: dan geldt regel 2 voor wat eronder
+   * staat (zo doet openOMSI het ook). `Texture` en `Fonts` tellen niet mee:
+   * die heeft een bus of een object ook. Een kaart blijft een kaart.
+   */
+  const verzameling = (k: string, soort: number): boolean =>
+    SOORTEN[soort].map !== 'maps' && [...(submappen.get(k) ?? [])].some((s) => PAKKET.has(s))
+  for (const [k, soort] of soortVan) if (verzameling(k, soort)) soortVan.delete(k)
+  // Alleen de buitenste; de lege sleutel is de bron zelf en ligt om alles heen.
+  const binnen = (k: string, om: string): boolean => (om === '' ? k !== '' : k.startsWith(`${om}/`))
+  const eigen = [...soortVan.entries()].filter(([k]) => ![...soortVan.keys()].some((om) => binnen(k, om)))
 
   paden.forEach((pad, i) => {
     const d = delen[i]
-    const onder = [...eigen.entries()].find(([k]) => pad.startsWith(`${k}/`))
+    const onder = eigen.find(([k]) => k === '' || pad.startsWith(`${k}/`))
     if (onder) {
-      const [k, soort] = onder
-      const map = k.split('/')
-      uit.set(pad, [soort, map[map.length - 1], ...d.slice(map.length)].join('/'))
+      const [k, nr] = onder
+      const soort = SOORTEN[nr]
+      const map = k === '' ? [] : k.split('/')
+      const rest = d.slice(map.length)
+      if (soort.plat) {
+        // Plat: alleen wat er direct in staat en erbij hoort.
+        if (rest.length === 1 && soort.mee!.test(rest[0])) uit.set(pad, [soort.map, rest[0]].join('/'))
+        return
+      }
+      uit.set(pad, [soort.map, map[map.length - 1] ?? naam, ...rest].join('/'))
       return
     }
     const at = d.findIndex((s, n) => n < d.length - 1 && MAP_OP_NAAM.has(s.toLowerCase()))
     if (at >= 0) uit.set(pad, [MAP_OP_NAAM.get(d[at].toLowerCase())!, ...d.slice(at + 1)].join('/'))
   })
   return uit
+}
+
+/*
+ * PROGRAMMACODE
+ *
+ * Een plugin (`.dll` met zijn `.opl`) is programmacode die OMSI bij het
+ * starten zelf laadt, met alle rechten van het spel. Die komt er alleen bij
+ * als de speler zegt dat hij de maker vertrouwt; tot 28-09 ging hij stil mee
+ * naar `plugins`. Programma's en scripts die je zou kunnen dubbelklikken
+ * horen nergens in OMSI thuis en worden nooit neergezet -- ook niet met het
+ * vinkje. (Idee uit openOMSI, dat plugins uit een download apart zet.)
+ */
+export const IS_CODE = /\.(dll|opl)$/i
+export const NOOIT = /\.(exe|com|bat|cmd|ps1|psm1|vbs|vbe|js|jse|wsf|wsh|hta|scr|pif|cpl|msi|msp|reg|lnk)$/i
+
+/**
+ * Mag er op dit pad in de OMSI-map geschreven worden?
+ *
+ * Een laatste controle vlak voor het schrijven, wat het plan ook zegt: een
+ * gewoon pad (`veiligPad`), in een van de OMSI-mappen en niet in de hoofdmap
+ * van OMSI zelf, waar `Omsi.exe` en `options.cfg` staan. Het plan maakt zulke
+ * paden niet, maar een plan kan uit een ouder register of een fout komen.
+ */
+export function magSchrijven(doel: string): boolean {
+  return inOmsiMap(doel) && !NOOIT.test(doel)
+}
+
+/** Een gewoon pad onder een van de OMSI-mappen; ook voor wat een oudere versie neerzette. */
+function inOmsiMap(doel: string): boolean {
+  if (veiligPad(doel) !== doel) return false
+  const d = doel.split('/')
+  return d.length >= 2 && MAP_OP_NAAM.has(d[0].toLowerCase())
 }
 
 /* ---- het register ---- */
@@ -252,6 +411,29 @@ export function opSchijf(omsi: string, pad: string): string {
   return hier
 }
 
+/**
+ * Hetzelfde, voor een pad waar geschreven of gewist gaat worden.
+ *
+ * `opSchijf` is ook de opzoeker van de foutcontrole, die paden uit de
+ * bestanden van OMSI zelf volgt -- met `..` erin, en dat mag daar: lezen. Voor
+ * schrijven niet: `join` haalt `..` gewoon weg, en `Vehicles/../../x` ligt
+ * dan naast de OMSI-map. Wat hier binnenkomt is al door `veiligPad` gegaan,
+ * maar dit is de plek waar het pad echt een pad wordt, dus hier nog eens.
+ */
+export function schrijfpad(omsi: string, pad: string): string {
+  if (veiligPad(pad) !== pad) throw new Error(`Geen gewoon pad in de OMSI-map: ${pad}`)
+  const hier = opSchijf(omsi, pad)
+  if (!binnen(omsi, hier)) throw new Error(`Buiten de OMSI-map: ${pad}`)
+  return hier
+}
+
+/** Ligt `pad` in `map` (en is het niet `map` zelf)? Op tekst, na `resolve`. */
+export function binnen(map: string, pad: string): boolean {
+  const basis = resolve(map).toLowerCase()
+  const vol = resolve(pad).toLowerCase()
+  return vol.startsWith(basis.endsWith(sep) ? basis : basis + sep)
+}
+
 export interface PlanRegel {
   bron: string
   doel: string
@@ -259,13 +441,24 @@ export interface PlanRegel {
   staat: 'nieuw' | 'gelijk' | 'anders'
   /** Bij `anders`: van welke add-on het bestand komt dat er nu staat, als we dat weten. */
   van?: string
+  /** Bij `anders`: hoe groot wat er nu staat is; zo groot wordt de reservekopie. */
+  grootteNu?: number
 }
 
 export interface Plan {
   naam: string
+  /** Wat er neergezet wordt, zonder de programmacode. */
   regels: PlanRegel[]
+  /** Plugins (`.dll`, `.opl`): alleen als de speler de maker vertrouwt. */
+  code: PlanRegel[]
+  /** Programma's en scripts (`.exe`, `.bat`, ...): nooit neergezet. */
+  nooit: string[]
   /** Wat niet in de OMSI-map hoort: leesmij, plaatjes, onbekende mappen. */
   overig: string[]
+  /** Namen die buiten de OMSI-map uitkwamen of op Windows niet mogen. */
+  geweigerd: string[]
+  /** Hoeveel rommelbestanden (`__MACOSX`, `Thumbs.db`, ...) er overgeslagen zijn. */
+  rommel: number
   /** Samenvatting per plek: `Vehicles/MAN_NL202` met het aantal bestanden. */
   plekken: Array<{ plek: string; bestanden: number; bytes: number }>
   bussen: string[]
@@ -284,26 +477,44 @@ function plekVan(doel: string): string {
  * bestanden doet, roept dit via `planStappen` aan zodat het in stukken kan.
  */
 export function* planStappen(bron: Bron, omsi: string, register: Register): Generator<number, Plan> {
-  const plaats = plaatsVan(bron.bestanden.map((b) => b.pad))
+  const nooit = bron.bestanden.filter((b) => NOOIT.test(b.pad)).map((b) => b.pad)
+  const bruikbaar = bron.bestanden.filter((b) => !NOOIT.test(b.pad))
+  const plaats = plaatsVan(bruikbaar.map((b) => b.pad), bron.naam)
   const eigenaar = new Map<string, string>()
   for (const a of register.addons) for (const b of a.bestanden) eigenaar.set(b.pad.toLowerCase(), a.naam)
 
   const regels: PlanRegel[] = []
+  const code: PlanRegel[] = []
   const overig: string[] = []
+  const geweigerd = [...bron.geweigerd]
   let n = 0
-  for (const b of bron.bestanden) {
+  for (const b of bruikbaar) {
     const doel = plaats.get(b.pad)
     if (!doel) {
       overig.push(b.pad)
       continue
     }
-    const opPad = opSchijf(omsi, doel)
+    if (!magSchrijven(doel)) {
+      geweigerd.push(b.pad)
+      continue
+    }
+    const opPad = schrijfpad(omsi, doel)
     let staat: PlanRegel['staat'] = 'nieuw'
+    let grootteNu: number | undefined
     if (existsSync(opPad)) {
       const bestaand = statSync(opPad)
       staat = bestaand.size === b.grootte && sha1(readFileSync(opPad)) === sha1(bron.lees(b)) ? 'gelijk' : 'anders'
+      if (staat === 'anders') grootteNu = bestaand.size
     }
-    regels.push({ bron: b.pad, doel, grootte: b.grootte, staat, van: staat === 'anders' ? eigenaar.get(doel.toLowerCase()) : undefined })
+    const regel: PlanRegel = {
+      bron: b.pad,
+      doel,
+      grootte: b.grootte,
+      staat,
+      van: staat === 'anders' ? eigenaar.get(doel.toLowerCase()) : undefined,
+      grootteNu
+    }
+    ;(IS_CODE.test(doel) ? code : regels).push(regel)
     if (++n % 50 === 0) yield n
   }
 
@@ -324,11 +535,89 @@ export function* planStappen(bron: Bron, omsi: string, register: Register): Gene
   return {
     naam: bron.naam,
     regels,
+    code,
+    nooit,
     overig,
+    geweigerd,
+    rommel: bron.rommel,
     plekken: [...plekken.entries()].map(([plek, v]) => ({ plek, ...v })).sort((a, b) => b.bytes - a.bytes),
     bussen: mappen('Vehicles', /\.(bus|ovh)$/i),
     kaarten: mappen('maps', /\/global\.cfg$/i)
   }
+}
+
+/* ---- ruimte ---- */
+
+/**
+ * Hoeveel er vrij is op de schijf waar `pad` op staat, in bytes; `undefined`
+ * als dat niet te zeggen is. Een map die er nog niet is, telt voor de eerste
+ * map erboven die er wel is.
+ */
+export function vrijeRuimte(pad: string): number | undefined {
+  let hier = resolve(pad)
+  while (!existsSync(hier)) {
+    const boven = dirname(hier)
+    if (boven === hier) return undefined
+    hier = boven
+  }
+  try {
+    const s = statfsSync(hier)
+    return s.bavail * s.bsize
+  } catch {
+    return undefined
+  }
+}
+
+/*
+ * Zoveel blijft er na een installatie minstens vrij: een twintigste van wat er
+ * bij komt, en nooit minder dan een kwart gigabyte. OMSI schrijft zelf ook
+ * (logfile.txt, options.cfg), en Windows loopt slecht op een volle schijf.
+ * (openOMSI houdt een halve gigabyte aan; daar gaat het om hele kaarten.)
+ */
+const MARGE_MIN = 256 * 1024 * 1024
+const marge = (bytes: number): number => Math.max(Math.round(bytes / 20), MARGE_MIN)
+
+export interface Schijfruimte {
+  /** Waar het om gaat: de OMSI-map, of de reservekopie (of allebei op één schijf). */
+  wat: 'omsi' | 'reserve' | 'samen'
+  /** De schijf, zoals `D:\`. */
+  schijf: string
+  /** Wat er bij komt; dit toont het venster als "nodig". */
+  bytes: number
+  /** Met de marge erbij; hieraan wordt `vrij` getoetst. */
+  nodig: number
+  vrij?: number
+  past: boolean
+}
+
+/**
+ * Past deze installatie? Nodig op de schijf van OMSI is wat er geschreven
+ * wordt (nieuw en overschreven); op de schijf van de gebruikersgegevens wat
+ * er nu staat en overschreven wordt, want dat gaat eerst naar de reserve.
+ * Staan ze op dezelfde schijf, dan telt het samen. `vrij` is er om de proef
+ * een volle schijf te kunnen laten zien.
+ */
+export function ruimteVoor(
+  plan: Plan,
+  omsi: string,
+  userData: string,
+  metCode = false,
+  vrij: (pad: string) => number | undefined = vrijeRuimte
+): { schijven: Schijfruimte[]; past: boolean } {
+  const alles = metCode ? [...plan.regels, ...plan.code] : plan.regels
+  const schrijven = alles.filter((r) => r.staat !== 'gelijk').reduce((som, r) => som + r.grootte, 0)
+  const reserve = alles.filter((r) => r.staat === 'anders').reduce((som, r) => som + (r.grootteNu ?? r.grootte), 0)
+  const schijfVan = (pad: string): string => parse(resolve(pad)).root.toUpperCase()
+  const maak = (wat: Schijfruimte['wat'], pad: string, bytes: number): Schijfruimte => {
+    const nodig = bytes > 0 ? bytes + marge(bytes) : 0
+    const v = nodig > 0 ? vrij(pad) : undefined
+    return { wat, schijf: schijfVan(pad), bytes, nodig, vrij: v, past: nodig === 0 || v === undefined || nodig <= v }
+  }
+  const schijven =
+    schijfVan(omsi) === schijfVan(userData)
+      ? [maak(reserve > 0 ? 'samen' : 'omsi', omsi, schrijven + reserve)]
+      : [maak('omsi', omsi, schrijven), maak('reserve', userData, reserve)].filter((s) => s.nodig > 0 || s.wat === 'omsi')
+  return { schijven, past: schijven.every((s) => s.past) }
 }
 
 /** Een generator helemaal aflopen, voor wie niet in stukken hoeft (de proef). */
@@ -345,46 +634,87 @@ export interface Installatie {
   addon: Addon
   geschreven: number
   overschreven: number
+  /** Hoeveel plugins (`.dll`/`.opl`) er met de rest mee gingen. */
+  code: number
+}
+
+/**
+ * Een installatie die niet af kon, en die daarom helemaal teruggedraaid is.
+ * `ruimte`: de schijf liep vol (ENOSPC). `teruggedraaid` is false als het
+ * terugzetten zelf ook niet lukte; dan staat de reserve er nog.
+ */
+export class InstallatieFout extends Error {
+  constructor(
+    readonly soort: 'ruimte' | 'fout',
+    melding: string,
+    readonly teruggedraaid: boolean
+  ) {
+    super(melding)
+  }
 }
 
 /**
  * Installeren volgens een plan. Wat anders was, gaat eerst naar de reserve van
  * deze add-on; daarna pas wordt het overschreven. Het register wordt aan het
  * eind in één keer geschreven, door de aanroeper.
+ *
+ * Plugins gaan alleen mee met `metCode` (de speler vertrouwt de maker).
+ *
+ * Gaat er halverwege iets mis -- een volle schijf, een bestand dat vastzit --
+ * dan wordt alles wat deze installatie al deed teruggedraaid: nieuwe bestanden
+ * weg, overschreven bestanden terug uit de reserve, lege mappen weg. Tot 28-09
+ * bleef er dan een halve add-on staan zonder dat het register hem kende, en
+ * was er niets meer om te verwijderen.
  */
 export function* installeerStappen(
   bron: Bron,
   plan: Plan,
   omsi: string,
   userData: string,
-  nu = new Date()
+  nu = new Date(),
+  opties: { metCode?: boolean } = {}
 ): Generator<number, Installatie> {
   const id = `${nu.getTime().toString(36)}-${sha1(Buffer.from(plan.naam)).slice(0, 6)}`
   const perPad = new Map(bron.bestanden.map((b) => [b.pad, b]))
   const bestanden: AddonBestand[] = []
+  const regels = opties.metCode ? [...plan.regels, ...plan.code] : plan.regels
+  // Wat al gedaan is, om terug te kunnen: het pad op schijf, en of er een reserve van is.
+  const gedaan: Array<{ doel: string; reserve?: string }> = []
   let geschreven = 0
   let overschreven = 0
-  for (const regel of plan.regels) {
-    const b = perPad.get(regel.bron)
-    if (!b) continue
-    const doel = opSchijf(omsi, regel.doel)
-    if (regel.staat === 'gelijk') {
-      bestanden.push({ pad: regel.doel, sha1: sha1(readFileSync(doel)), was: 'gelijk' })
-      continue
+  let code = 0
+  try {
+    for (const regel of regels) {
+      const b = perPad.get(regel.bron)
+      if (!b || !magSchrijven(regel.doel)) continue
+      const doel = schrijfpad(omsi, regel.doel)
+      if (regel.staat === 'gelijk') {
+        bestanden.push({ pad: regel.doel, sha1: sha1(readFileSync(doel)), was: 'gelijk' })
+        continue
+      }
+      let was: Herkomst = 'nieuw'
+      let reserve: string | undefined
+      if (existsSync(doel)) {
+        reserve = join(reserveMap(userData, id), ...regel.doel.split('/'))
+        mkdirSync(dirname(reserve), { recursive: true })
+        copyFileSync(doel, reserve)
+        was = 'overschreven'
+        overschreven += 1
+      }
+      // Eerst noteren, dan schrijven: een half geschreven bestand moet ook terug.
+      gedaan.push({ doel, reserve })
+      mkdirSync(dirname(doel), { recursive: true })
+      bron.kopieer(b, doel)
+      bestanden.push({ pad: regel.doel, sha1: sha1(readFileSync(doel)), was })
+      geschreven += 1
+      if (IS_CODE.test(regel.doel)) code += 1
+      if (geschreven % 25 === 0) yield geschreven
     }
-    let was: Herkomst = 'nieuw'
-    if (existsSync(doel)) {
-      const reserve = join(reserveMap(userData, id), ...regel.doel.split('/'))
-      mkdirSync(dirname(reserve), { recursive: true })
-      copyFileSync(doel, reserve)
-      was = 'overschreven'
-      overschreven += 1
-    }
-    mkdirSync(dirname(doel), { recursive: true })
-    bron.kopieer(b, doel)
-    bestanden.push({ pad: regel.doel, sha1: sha1(readFileSync(doel)), was })
-    geschreven += 1
-    if (geschreven % 25 === 0) yield geschreven
+  } catch (fout) {
+    const teruggedraaid = draaiTerug(omsi, gedaan)
+    if (teruggedraaid) rmSync(reserveMap(userData, id), { recursive: true, force: true })
+    const vol = (fout as NodeJS.ErrnoException).code === 'ENOSPC'
+    throw new InstallatieFout(vol ? 'ruimte' : 'fout', fout instanceof Error ? fout.message : String(fout), teruggedraaid)
   }
   return {
     addon: {
@@ -397,7 +727,48 @@ export function* installeerStappen(
       kaarten: plan.kaarten
     },
     geschreven,
-    overschreven
+    overschreven,
+    code
+  }
+}
+
+/**
+ * Een halve installatie ongedaan maken, van achter naar voren: wat nieuw was
+ * weg, wat overschreven was terug uit de reserve. Geeft terug of alles lukte.
+ * Op een volle schijf lukt terugzetten meestal wel: het bestand dat half
+ * geschreven werd, gaf zijn ruimte net terug.
+ */
+function draaiTerug(omsi: string, gedaan: Array<{ doel: string; reserve?: string }>): boolean {
+  let gelukt = true
+  const mappen = new Set<string>()
+  for (const { doel, reserve } of [...gedaan].reverse()) {
+    try {
+      if (reserve) copyFileSync(reserve, doel)
+      else if (existsSync(doel)) {
+        unlinkSync(doel)
+        mappen.add(dirname(doel))
+      }
+    } catch {
+      gelukt = false
+    }
+  }
+  ruimLegeMappenOp(omsi, mappen)
+  return gelukt
+}
+
+/** Lege mappen opruimen, van diep naar ondiep, tot aan de OMSI-mappen. */
+function ruimLegeMappenOp(omsi: string, mappen: Set<string>): void {
+  const grens = new Set([omsi, ...OMSI_MAPPEN.map((m) => opSchijf(omsi, m))].map((p) => p.toLowerCase()))
+  const alle = new Set<string>()
+  for (const m of mappen) {
+    for (let hier = m; binnen(omsi, hier) && !grens.has(hier.toLowerCase()); hier = dirname(hier)) alle.add(hier)
+  }
+  for (const map of [...alle].sort((a, b) => b.length - a.length)) {
+    try {
+      if (readdirSync(map).length === 0) rmdirSync(map)
+    } catch {
+      // Niet leeg of al weg.
+    }
   }
 }
 
@@ -434,8 +805,10 @@ export function* verwijderStappen(
   const mappen = new Set<string>()
   let n = 0
   for (const b of addon.bestanden) {
-    const pad = opSchijf(omsi, b.pad)
     if (++n % 50 === 0) yield n
+    // Een register uit een oudere versie kende de controle op paden nog niet.
+    if (!inOmsiMap(b.pad)) continue
+    const pad = schrijfpad(omsi, b.pad)
     if (!existsSync(pad)) continue
     if (sha1(readFileSync(pad)) !== b.sha1) {
       uit.gewijzigd.push(b.pad)
@@ -458,18 +831,6 @@ export function* verwijderStappen(
     mappen.add(dirname(pad))
   }
 
-  // Lege mappen opruimen, van diep naar ondiep, tot aan de OMSI-mappen.
-  const grens = new Set([omsi, ...OMSI_MAPPEN.map((m) => opSchijf(omsi, m))].map((p) => p.toLowerCase()))
-  const alle = new Set<string>()
-  for (const m of mappen) {
-    for (let hier = m; hier.startsWith(omsi) && !grens.has(hier.toLowerCase()); hier = dirname(hier)) alle.add(hier)
-  }
-  for (const map of [...alle].sort((a, b) => b.length - a.length)) {
-    try {
-      if (readdirSync(map).length === 0) rmdirSync(map)
-    } catch {
-      // Niet leeg of al weg.
-    }
-  }
+  ruimLegeMappenOp(omsi, mappen)
   return uit
 }
