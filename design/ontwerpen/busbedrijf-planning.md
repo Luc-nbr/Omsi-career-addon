@@ -1822,7 +1822,7 @@ E bezit:
   - `schrijfIn` 995; `boekEigenDienst` 1048-1097; `eigenBusMetPad` 1131; `sluitDagAf` 1166-1323 (werkplaats-bericht 1241, xp 1293); `ritVoorBedrijf` 1353
 - **Overige core:**
   - core/career.ts 96-151
-  - core/duty.ts: `toDuty` 158-214; `dutyFromTour` 363-409; `listLines` 431-464
+  - core/duty.ts: `toDuty` 162-213; `dutyVanRitten` 349-375; `listLines` 398-426 (`dutyFromTour` is weg sinds de merge met Vrij rijden, 2e7794f)
   - core/network.ts 5, 20, 28, 31-47, 88-120
   - core/calendar.ts 64-122
   - core/timetable.ts 173, 217

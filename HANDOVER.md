@@ -936,9 +936,31 @@ beginpunt (haltekeuze), die weer de versie met aangevinkte lijnen verving.
   klok raden) is weg: dat was de "falsche Linien Route". Namen worden
   vergeleken via `vouw` (zonder pad, kleine letters, alles buiten ASCII als
   '?'; "TTData 853_..." met de spatie van `copy_text` telt ook). De plek
-  `line` telt alleen als terugval (OMSI gaf geen bruikbare lijnnaam), en
-  sinds plugin 14 alleen als OMSI's lijnlijst even lang is als de `.ttl` van
-  de kaart (`mem.lines`): een actieve chrono schuift de lijst op (zie 5.00).
+  `line` telt alleen als terugval: als OMSI geen lijnnaam gaf die op deze
+  kaart staat (geen bruikbare naam, of een lijn van een andere kaart of van
+  een chrono). Sinds plugin 14 telt hij bovendien alleen als OMSI's lijnlijst
+  even lang is als de `.ttl` van de kaart (`mem.lines`): een actieve chrono
+  schuift de lijst op (zie 5.00). Zonder die toets koppelde HafenCity tijdens
+  de Dom zonder bruikbare namen 179 van de 436 keuzes op nummer aan een
+  andere lijn; `probe-koppelen.ts` ("chrono vooraan", "lengte past") en
+  `probe-vrijrijden.cjs` (stap 7b, `lines` via main) lopen het na.
+  **Chrono's zelf leest de app niet** (nr. 19 in
+  design/ontwerpen/openomsi-voorstellen.md); `mem.lines` dekt alleen de
+  verschoven plek af. Wat daardoor nog misgaat, ook met goede namen:
+  - een chrono die een lijn vervangt: de app koppelt op nummer aan de omloop
+    uit het basisbestand, met andere ritten of tijden. Spandau 15-06-1988,
+    0100_Neuer13N vervangt 13N: 18 van de 19 keuzes een andere eerste rit of
+    vertrektijd (7 op nummer, zoals BF_HOFS-UASP om 0:49 in plaats van 0:59).
+    De lengte van de lijst ziet het niet: die blijft 23;
+  - een chrono die een lijn toevoegt: alleen een losse rit, zonder vervolg
+    (Ahlheim 04-09-2026, "Vorlesungszeit Wintersemester 2025": 68 keer `rit`,
+    6 met een ander vertrek);
+  - `elders` (een andere kaart zoeken, core/kaartlaag.ts) eist dat het
+    ritnummer klopt (`ritIndexKlopt`). Of OMSI ook de ritlijst chrono-eerst
+    vult, is niet gemeten; zo ja, dan wijst `trip` tijdens de Dom één plek te
+    ver (HafenCity: dan 0 van de 436 keer waar) en wisselt Vrij rijden vanaf
+    een andere Hamburgse kaart niet vanzelf naar HafenCity. Na te meten in
+    OMSI: HafenCity op 01-04-2016, `mem.trip` naast de plek van `tripName`.
 - **Elke volgende rit op nummer:** `legVolgensOmsi` (core/live.ts) wijst bij een
   op nummer gekoppelde dienst (`Duty.omsi`) de rit aan met `tourEntry`, en toetst
   lijn, omloop en rit. Klopt de rit niet, dan koppelt het volgen opnieuw met de

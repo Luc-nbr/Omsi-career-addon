@@ -28,7 +28,11 @@
  * - een tweede vrije rit op Hamburg109_2, omloop 66093: bij rit 6 kloppen beide
  *   volgordes (de app kiest die van het bestand, onzeker); bij rit 7 telt OMSI
  *   op vertrektijd, en dan draait het volgen de volgorde om: 109_UAL_ZAL om
- *   10:23, niet de leegrit van 12:44 die in het bestand op plek 7 staat.
+ *   10:23, niet de leegrit van 12:44 die in het bestand op plek 7 staat;
+ * - een actieve chrono zonder bruikbare namen: de plugin (14) geeft `line` één
+ *   verder en `lines` één langer dan het aantal .ttl; dan koppelt de app niet
+ *   op die plek aan een andere lijn, maar op de rit (`lines` gaat van live.json
+ *   via main naar de koppeling).
  *
  * Wat hier NIET nagelopen wordt: starten terwijl OMSI dicht is. Dan zet de app
  * het startscherm van OMSI klaar en start hij het spel, en dat hoort een proef
@@ -86,7 +90,8 @@ require('esbuild').buildSync({
   stdin: {
     contents:
       "export { loadMap } from './src/core/timetable'; export { leesInzetpunten } from './src/core/beginplek'; " +
-      "export { monsterKlopt } from './src/core/kaartherkenning'",
+      "export { monsterKlopt } from './src/core/kaartherkenning'; export { koppelOmsiKeuze } from './src/core/omloopvolgen'; " +
+      "export { readCalendar } from './src/core/calendar'",
     resolveDir: join(__dirname, '..'),
     loader: 'ts'
   },
@@ -109,10 +114,11 @@ const namen = (m, soort) =>
     .map((n) => n.slice(0, -soort.length))
 const ttl = namen(kaart, '.ttl')
 const ttp = namen(kaart, '.ttp')
-/** Wat OMSI in zijn geheugen zet voor een rit van een omloop, op nummer. */
+/** Wat OMSI in zijn geheugen zet voor een rit van een omloop, op nummer; `lines` sinds plugin 14. */
 const keuzeVan = (m, ttlNamen, ttpNamen, tour, entry) => ({
   schedActive: 1,
   line: ttlNamen.indexOf(tour.lineFile),
+  lines: ttlNamen.length,
   tour: tour.index,
   tourEntry: entry.entry,
   trip: ttpNamen.findIndex((n) => n.toLowerCase() === entry.tripFile.toLowerCase()),
@@ -277,7 +283,7 @@ app.on('browser-window-created', (_e, w) => {
 
 /* ---- de plugin: een live.json die de proef zelf schrijft ---- */
 let mem = {
-  ok: 1, tile: 0, x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1, schedActive: 0, line: -1, tour: -1,
+  ok: 1, tile: 0, x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1, schedActive: 0, line: -1, lines: 0, tour: -1,
   tourEntry: -1, trip: -1, nextIndex: 0, nextDist: 0, delay: 0, lineName: '', tourName: '', tripName: '', nextStop: ''
 }
 let klok = 7 * 3600
@@ -286,7 +292,7 @@ const schrijfLive = () =>
   writeFileSync(
     join(live, 'live.json'),
     JSON.stringify({
-      alive: true, seen: 8388607, seenSys: 63, seenStr: 63, strKind: 1, plugin: 13,
+      alive: true, seen: 8388607, seenSys: 63, seenStr: 63, strKind: 1, plugin: 14,
       time: klok, day: datum.day, month: datum.month, year: datum.year, velocity: 0, passengers: 3,
       scheduleActive: 1, targetIndex: 0, tankPercent: 0.7, km: 0, metres: 0,
       busstopIndex: 0, busstop: '', line: '', terminus: '',
@@ -524,6 +530,65 @@ app.whenReady().then(async () => {
   console.log(`andere omloop ${andereOmloop.lineFile}/${andereOmloop.number}: ${Boolean(tweedeOmloop)}; aangemeld ${aangemeld}; gevolgd ${gevolgdRegels.length} keer`)
   for (const regel of gevolgdRegels) console.log(`  ${regel.slice(24, 330)}`)
 
+  /*
+   * ---- 7b. Een actieve chrono, zonder bruikbare namen ----
+   * OMSI zet de lijnen van een actieve chrono vooraan in zijn lijst (1380dc3):
+   * `line` schuift op, en plugin 14 schrijft de lengte van die lijst (`lines`).
+   * Is die langer dan het aantal .ttl, dan hoort de app niet op de plek te
+   * koppelen -- main geeft `lines` door aan de koppeling. Zonder die regel
+   * koppelde deze keuze op nummer aan een andere lijn (tegenlezing merge
+   * 2e7794f). Het geval wordt hier uitgerekend: de eerste rit na zevenen die
+   * zonder `lines` op een andere lijn uitkomt, en met `lines` op de eigen.
+   */
+  let chrono = true
+  {
+    const dag = new Date(Date.UTC(datum.year, datum.month - 1, datum.day))
+    const kalender = kern.readCalendar(kaart.path)
+    const koppel = (keuze) => kern.koppelOmsiKeuze(kaart, keuze, { kalender, ttlNamen: ttl, ttpNamen: ttp, datum: dag })
+    const gevolgdePlek = ttl.indexOf(andereOmloop.lineFile)
+    let geval
+    for (const tour of kaart.tours) {
+      if (geval) break
+      const plek = ttl.indexOf(tour.lineFile)
+      for (const entry of tour.trips) {
+        if (entry.departure <= 7 * 60 || !kaart.trips.has(entry.tripFile.toLowerCase())) continue
+        // Niet de plek van de omloop die de app nu volgt: dan kijkt legVolgensOmsi niet verder.
+        if (plek + 1 === gevolgdePlek && tour.index === andereOmloop.index) continue
+        const keuze = {
+          lineName: '', tourName: '', tripName: '', line: plek + 1, tour: tour.index, tourEntry: entry.entry,
+          trip: ttp.findIndex((n) => n.toLowerCase() === entry.tripFile.toLowerCase()), klok: entry.departure % 1440
+        }
+        const oud = koppel(keuze)
+        const nieuw = koppel({ ...keuze, lines: ttl.length + 1 })
+        if (oud.soort === 'index' && oud.lineFile !== tour.lineFile && nieuw.duty && nieuw.lineFile === tour.lineFile) {
+          geval = { tour, entry, keuze, oud, nieuw }
+          break
+        }
+      }
+    }
+    if (geval) {
+      const voor = koppelRegels().length
+      const { klok: _klok, ...inGeheugen } = geval.keuze
+      kies({ schedActive: 1, ...inGeheugen, lines: ttl.length + 1 }, geval.entry.departure)
+      let regel = ''
+      for (let i = 0; i < 60 && !regel; i++) {
+        await wacht(250)
+        regel = koppelRegels().slice(voor)[0] ?? ''
+      }
+      const rit = geval.nieuw.duty.legs[0].tripFile
+      chrono =
+        regel.includes(`koppeling ${geval.nieuw.soort},`) &&
+        regel.includes(`lijnbestand ${geval.nieuw.lineFile},`) &&
+        !regel.includes(`lijnbestand ${geval.oud.lineFile},`) &&
+        regel.includes(rit)
+      console.log(
+        `chrono vooraan: ${geval.tour.lineFile}/${geval.tour.number} rit #${geval.entry.entry} ${geval.entry.tripFile} op plek ${geval.keuze.line} van ${ttl.length + 1}; ` +
+          `zonder lines ${geval.oud.soort} ${geval.oud.lineFile}, verwacht ${geval.nieuw.soort} ${geval.nieuw.lineFile}: ${chrono}`
+      )
+      console.log(`  ${regel.slice(24, 330)}`)
+    } else console.log('geen chrono-geval op deze kaart; overgeslagen')
+  }
+
   /* ---- 8. Stoppen ---- */
   await js(hoofd, `document.querySelector('.startknop')?.click()`)
   const hub = await wachtOp(`document.querySelectorAll('.hub-tegel').length > 0`, 40)
@@ -595,6 +660,7 @@ app.whenReady().then(async () => {
     zonderOpnieuw,
     verloren,
     andereOmloop: Boolean(tweedeOmloop) && aangemeld && gevolgdRegels.length >= 2 && gevolgdRegels.every((r) => /IBIS lijn/.test(r)),
+    chrono,
     gestopt: Boolean(hub) && Boolean(melding),
     gesorteerd,
     geboekt: !profiel().activeDuty && (profiel().entries?.length ?? 0) === logboekVoor,

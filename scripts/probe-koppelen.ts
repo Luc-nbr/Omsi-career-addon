@@ -22,6 +22,9 @@
  * - OMSI telt alleen de omlopen die vandaag rijden -> de goede dagvariant;
  * - een andere lijn met hetzelfde omloopnummer -> geen match in readSchedule;
  * - een teken buiten ASCII vervangen door een ander teken -> nog steeds index;
+ * - een actieve chrono zonder bruikbare namen: `line` één verder en `lines`
+ *   (plugin 14) één langer dan het aantal .ttl -> nooit een andere rit; met
+ *   `lines` gelijk aan het aantal .ttl hetzelfde als zonder `lines`;
  * - het monster van 21-09 -> 853_ERN-HOB4 om 19:44;
  * - de reproducties uit het onderzoek (Hohenkirchen B_HBT-ERN, Ahlheim B_E-HBF
  *   en B_BOW-KUR), waar de oude weg een andere rit toonde;
@@ -240,6 +243,43 @@ for (const folder of listMaps(omsi)) {
         const ander = (tekst: string): string => tekst.replace(/[^\x00-\x7e]/g, 'Ø')
         const k = koppel({ ...basis, tripName: ander(entry.tripFile), tourName: ander(tour.number), lineName: ander(tour.lineFile) }, datum)
         variant('ander teken', k.soort === 'index' && gelijk(gekregen(k.duty), verwachtB), () => k.soort)
+      }
+
+      /*
+       * Een actieve chrono (tegenlezing merge 2e7794f). OMSI zet de lijnen van
+       * een chrono vooraan in zijn lijst (1380dc3): `line` schuift op, en
+       * `lines` (plugin 14) is langer dan het aantal .ttl. Zonder bruikbare
+       * namen koppelde de plek dan op nummer aan een andere lijn (HafenCity
+       * tijdens de Dom: 179 van de 436 keuzes). Met `lines` mag dat nooit, en
+       * met `lines` gelijk aan het aantal .ttl telt de plek zoals zonder.
+       */
+      {
+        const naamloos: OmsiKeuze = { ...basis, lineName: '', tourName: '', tripName: '' }
+        const k = koppel({ ...naamloos, line: line + 1, lines: ttlNamen.length + 1 }, datum)
+        const g = gekregen(k.duty)
+        /*
+         * Een losse rit weet alleen de rit en de klok: 109_RAM_UAL om 0:05 kan
+         * ook die van 24:05 in een omloop van de dag ervoor zijn (Hamburg109_2).
+         * Dezelfde rit op dezelfde kloktijd is dus goed.
+         */
+        const zelfdeRit = (a: string, b: string | undefined): boolean => {
+          const [ritA, vertrekA] = a.split('@')
+          const [ritB, vertrekB] = (b ?? '').split('@')
+          const verschil = (((Number(vertrekA) - Number(vertrekB)) % 1440) + 1440) % 1440
+          return ritA === ritB && (verschil < 0.01 || verschil > 1439.99)
+        }
+        const goed =
+          (g.length === 0 || zelfdeRit(g[0], verwachtB[0])) &&
+          (k.soort === 'rit' || k.soort === 'niets' || gelijk(g, verwachtB))
+        variant('chrono vooraan', goed, () => `${k.soort} ${k.lineFile ?? '-'}: ${g.slice(0, 2).join(' ')} i.p.v. ${verwachtB.slice(0, 2).join(' ')}`)
+
+        const zonder = koppel(naamloos, datum)
+        const met = koppel({ ...naamloos, lines: ttlNamen.length }, datum)
+        variant(
+          'lengte past',
+          met.soort === zonder.soort && met.lineFile === zonder.lineFile && gelijk(gekregen(met.duty), gekregen(zonder.duty)),
+          () => `met lines ${met.soort} ${met.lineFile ?? '-'}, zonder ${zonder.soort} ${zonder.lineFile ?? '-'}`
+        )
       }
 
       /* OMSI sorteert: tourEntry telt op vertrektijd. */
