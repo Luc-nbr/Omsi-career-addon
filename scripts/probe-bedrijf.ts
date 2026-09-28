@@ -20,6 +20,13 @@ import {
   vormVanNaam,
   waardeVan,
   type MarktBus,
+  aanHetWerk,
+  geefOpslag,
+  marktloon,
+  neemAan,
+  onderhoudskosten,
+  ontsla,
+  sollicitanten,
   dagresultaat,
   richtBedrijfOp,
   schrijfIn,
@@ -145,6 +152,67 @@ const waarde = waardeVan(w.bussen![0])
 w = verkoop(w, 101)
 klopt('verkopen levert 85 % van de waarde', w.kas - kasVoorVerkoop === Math.round(waarde * REGELS.verkoopFactor) && w.bussen!.length === 1)
 klopt('alles blijft hele centen', Number.isInteger(w.kas) && w.boekingen.every((x) => Number.isInteger(x.bedrag)))
+
+// ---- personeel ----
+console.log('')
+let p = richtBedrijfOp('Personeel')
+const pin = schrijfIn(p, kaart, lijn)
+if ('bedrijf' in pin) p = pin.bedrijf
+const leeg = dagprognose(p)
+klopt('40 uur is vijf diensten van acht uur, allemaal open', leeg.diensten === 5 && leeg.openDiensten === 5 && leeg.lonen === 0)
+const s1 = sollicitanten(p)
+klopt('drie sollicitanten, dezelfde bij opnieuw vragen', s1.length === 3 && JSON.stringify(s1) === JSON.stringify(sollicitanten(p)))
+// Neem net zo lang aan tot er twee chauffeurs zijn (over een paar dagen als het moet).
+let pogingen = 0
+while (aanHetWerk(p, 'chauffeur').length < 2 && pogingen++ < 20) {
+  const c = sollicitanten(p).find((x) => x.rol === 'chauffeur')
+  if (c) {
+    const u = neemAan(p, c.nr)
+    if ('bedrijf' in u) p = u.bedrijf
+  } else p = sluitDagAf(p)
+}
+klopt('twee chauffeurs aangenomen', aanHetWerk(p, 'chauffeur').length === 2)
+klopt('een aangenomen sollicitant is weg van de lijst', sollicitanten(p).length < 3 || p.sollicitantWeg!.length === 0)
+const met2 = dagprognose(p)
+klopt('twee chauffeurs rijden twee diensten, drie blijven open', met2.eigenDiensten === 2 && met2.openDiensten === 3)
+klopt('eigen chauffeur bespaart 8 u inhuur per dienst', met2.personeelBesparing === 16 * REGELS.inhuurChauffeurPerUur)
+klopt('lonen tellen mee in de kosten', met2.kosten === Math.round(40 * REGELS.inhuurPerUur) - met2.personeelBesparing + met2.lonen)
+klopt('een chauffeur tegen marktloon verdient zich terug', REGELS.urenPerDienst * REGELS.inhuurChauffeurPerUur > marktloon('chauffeur', 50))
+
+// Invallen: een eigen dienst van 2 × 60 min op lijn 35 dekt een open dienst.
+const inval = { mapFolder: 'Rheinhausen', legs: [{ lineFile: 'Linie_35', lineNumber: '35', minutes: 60 }, { lineFile: 'Linie_35', lineNumber: '35', minutes: 60 }] } as unknown as Duty
+const pz = boekEigenDienst(p, inval, undefined)
+klopt('zelf invallen zonder rittenstaat telt als gereden: 2 uur', pz.zelfUren === 2 && dagprognose(pz).zelfDiensten === 1 && dagprognose(pz).openDiensten === 2)
+
+const ervaringVoor = aanHetWerk(p, 'chauffeur')[0].ervaring
+const kasVoorDag = p.kas
+const verwacht = dagprognose(p)
+p = sluitDagAf(p)
+klopt('dag afsluiten boekt precies de prognose', p.kas - kasVoorDag === verwacht.vergoeding - verwacht.kosten)
+klopt('wie werkte kreeg ervaring', (p.personeel!.find((m) => m.rol === 'chauffeur')?.ervaring ?? 0) >= ervaringVoor)
+klopt('invaluren staan de volgende dag weer op nul', p.zelfUren === 0)
+
+const eerste = p.personeel![0]
+const hoger = geefOpslag(p, eerste.id).personeel![0]
+klopt('opslag: 10 % meer loon en blijer', hoger.loon === Math.round((eerste.loon * 1.1) / 100) * 100 && hoger.tevredenheid > eerste.tevredenheid)
+const voorOntslag = p.kas
+const na = ontsla(p, eerste.id)
+klopt('ontslag kost vijf dagen loon en de collega is minder blij', voorOntslag - na.kas === eerste.loon * 5 && na.personeel!.length === p.personeel!.length - 1)
+
+// Monteurs: goedkoper onderhoud.
+const bus = { nummer: 1, relativePath: '', naam: '', vorm: 'solo', aankoop: 0, gekochtOp: 1, km: 0, staat: 40, schade: 0 } as const
+klopt('twee monteurs: 30 % goedkoper onderhoud, met een plafond', onderhoudskosten(bus, 2) === Math.round(onderhoudskosten(bus) * 0.7) && onderhoudskosten(bus, 10) === Math.round(onderhoudskosten(bus) * 0.55))
+
+// Honderd dagen: het personeel blijft binnen de grenzen, en dezelfde dagen geven dezelfde uitkomst.
+let lang = p
+let tweede = p
+for (let i = 0; i < 100; i++) {
+  lang = sluitDagAf(lang)
+  tweede = sluitDagAf(tweede)
+}
+klopt('100 dagen: tevredenheid en ervaring tussen 0 en 100', lang.personeel!.every((m) => m.tevredenheid >= 0 && m.tevredenheid <= 100 && m.ervaring <= 100))
+klopt('100 dagen: twee keer dezelfde uitkomst (geen echt toeval)', JSON.stringify(lang) === JSON.stringify(tweede))
+klopt('100 dagen: hele centen', Number.isInteger(lang.kas))
 
 console.log(fouten ? `\n${fouten} fout(en)` : '\nalles klopt')
 process.exit(fouten ? 1 : 0)

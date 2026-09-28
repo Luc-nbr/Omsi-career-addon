@@ -60,6 +60,10 @@ export type BoekingSoort =
   | 'onderhoud'
   | 'reparatie'
   | 'eigen-materieel'
+  | 'eigen-personeel'
+  | 'loon'
+  | 'ontslag'
+  | 'vertrek'
 
 /** Eén regel in de boeken. */
 export interface Boeking {
@@ -111,6 +115,34 @@ export interface Aanbod {
   prijs: number
 }
 
+export type Rol = 'chauffeur' | 'monteur'
+
+/** Iemand in dienst van het bedrijf. */
+export interface Medewerker {
+  id: number
+  naam: string
+  rol: Rol
+  /** 0 tot 100; groeit met elke gewerkte dag. */
+  ervaring: number
+  /** Dagloon in centen. */
+  loon: number
+  /** 0 tot 100. Onder 25 kan hij vertrekken. */
+  tevredenheid: number
+  /** Bedrijfsdag van indiensttreding. */
+  sinds: number
+  /** Ziek tot en met deze bedrijfsdag. */
+  ziekTot?: number
+}
+
+/** Iemand die vandaag solliciteert. */
+export interface Sollicitant {
+  nr: number
+  naam: string
+  rol: Rol
+  ervaring: number
+  loon: number
+}
+
 /** Hoe een dag afliep; voor de grafieken op het dashboard. */
 export interface DagStaat {
   dag: number
@@ -128,6 +160,9 @@ export interface DagStaat {
   inzetbaar: number
   /** Aandeel van de benodigde omlopen dat met eigen bussen gereden werd, 0 tot 1. */
   dekking: number
+  /** Mensen in dienst, en diensten die ingehuurd moesten worden. */
+  personeel?: number
+  openDiensten?: number
 }
 
 export interface Bedrijf {
@@ -148,6 +183,12 @@ export interface Bedrijf {
   aanbodWeg?: number[]
   /** Per afgesloten dag de stand; de oudste valt eraf na een jaar. */
   historie?: DagStaat[]
+  /** Het personeel. Ontbreekt bij een bedrijf van voor stap 3. */
+  personeel?: Medewerker[]
+  /** Welke sollicitanten van vandaag al aangenomen zijn. */
+  sollicitantWeg?: number[]
+  /** Uren die je vandaag zelf op een concessielijn reed; dekken open diensten. */
+  zelfUren?: number
 }
 
 /** Wat de regels van het bedrijf zijn. Eén plek, zodat een balans niet over de code verspreid raakt. */
@@ -170,6 +211,29 @@ export const REGELS = {
    * chauffeur blijft ingehuurd tot er eigen personeel is (stap 3).
    */
   inhuurMaterieelPerUur: 48_00,
+  /** Het deel van de inhuur dat de chauffeur is; een eigen chauffeur bespaart dit. */
+  inhuurChauffeurPerUur: 38_00,
+  /** Een chauffeursdienst: zoveel dienstregelingsuren rijdt één chauffeur per dag. */
+  urenPerDienst: 8,
+  /** Dagloon: een basis plus per ervaringspunt. */
+  loon: {
+    chauffeur: { basis: 190_00, perPunt: 80 },
+    monteur: { basis: 210_00, perPunt: 90 }
+  } as Record<Rol, { basis: number; perPunt: number }>,
+  sollicitantenPerDag: 3,
+  /** Ontslag kost zoveel dagen loon, en de collega's worden er niet vrolijker van. */
+  ontslagDagen: 5,
+  ontslagTevredenheid: 3,
+  opslagFactor: 1.1,
+  ziekteKans: 0.02,
+  /** Kans per dag dat iemand onder 25 tevredenheid vertrekt. */
+  vertrekKans: 0.1,
+  vertrekOnder: 25,
+  /** Per monteur: zoveel goedkoper onderhoud en trager slijten, tot het plafond. */
+  monteurOnderhoud: 0.15,
+  monteurOnderhoudMax: 0.45,
+  monteurSlijtage: 0.1,
+  monteurSlijtageMax: 0.4,
   eigenBusPerUur: 10_00,
   /** Hoeveel km een bus per dienstregelingsuur rijdt, en hoeveel staat dat kost. */
   kmPerUur: 22,
@@ -235,8 +299,9 @@ export function isInzetbaar(bus: EigenBus, dag: number): boolean {
   )
 }
 
-export function onderhoudskosten(bus: EigenBus): number {
-  return REGELS.onderhoudVast + Math.round((100 - bus.staat) * REGELS.onderhoudPerPunt)
+export function onderhoudskosten(bus: EigenBus, monteurs = 0): number {
+  const korting = Math.min(REGELS.monteurOnderhoudMax, monteurs * REGELS.monteurOnderhoud)
+  return Math.round((REGELS.onderhoudVast + (100 - bus.staat) * REGELS.onderhoudPerPunt) * (1 - korting))
 }
 
 export function reparatiekosten(bus: EigenBus): number {
@@ -345,7 +410,7 @@ export function verkoop(bedrijf: Bedrijf, nummer: number): Bedrijf {
 export function naarWerkplaats(bedrijf: Bedrijf, nummer: number, wat: 'onderhoud' | 'reparatie'): Kooputslag {
   const bus = (bedrijf.bussen ?? []).find((b) => b.nummer === nummer)
   if (!bus) return { fout: 'weg' }
-  const kosten = wat === 'onderhoud' ? onderhoudskosten(bus) : reparatiekosten(bus)
+  const kosten = wat === 'onderhoud' ? onderhoudskosten(bus, aanHetWerk(bedrijf, 'monteur').length) : reparatiekosten(bus)
   if (bedrijf.kas < kosten) return { fout: 'kas' }
   const klaar: EigenBus = {
     ...bus,
@@ -357,29 +422,225 @@ export function naarWerkplaats(bedrijf: Bedrijf, nummer: number, wat: 'onderhoud
   return { bedrijf: boek(met, { soort: wat, bedrag: -kosten, wat: `${bus.nummer} · ${bus.naam}`, gemeten: false }) }
 }
 
+/** Wat een dag oplevert en kost, en hoe hij gereden wordt. */
+export interface Prognose {
+  vergoeding: number
+  /** Alle kosten van de dag, netto: inhuur min wat eigen bussen en mensen besparen, plus de lonen. */
+  kosten: number
+  /** Dienstregelingsuren van alle concessies samen. */
+  uren: number
+  /** Omlopen die tegelijk rijden, en hoeveel eigen bussen er inzetbaar zijn. */
+  benodigd: number
+  inzetbaar: number
+  /** Deel van de uren met eigen bussen, 0 tot 1. */
+  dekking: number
+  /** Chauffeursdiensten die de dag vraagt, en wie ze rijdt. */
+  diensten: number
+  eigenDiensten: number
+  zelfDiensten: number
+  openDiensten: number
+  /** Uren met eigen chauffeurs (en jijzelf). */
+  chauffeurUren: number
+  materieelBesparing: number
+  personeelBesparing: number
+  lonen: number
+}
+
+/** Wie er vandaag werkt: in dienst en niet ziek. */
+export function aanHetWerk(bedrijf: Bedrijf, rol: Rol): Medewerker[] {
+  return (bedrijf.personeel ?? []).filter(
+    (m) => m.rol === rol && (m.ziekTot === undefined || m.ziekTot < bedrijf.dag)
+  )
+}
+
 /**
- * Wat een dag zou opleveren met het wagenpark van nu: per concessie, en hoeveel
- * omlopen er met eigen bussen gereden worden.
+ * Wat een dag zou opleveren met het wagenpark en het personeel van nu. Het
+ * rooster is automatisch: de uren van alle concessies worden in diensten van
+ * acht uur geknipt, eigen chauffeurs rijden er zoveel als er werken, jijzelf
+ * dekt wat je vandaag reed, en de rest is open en wordt ingehuurd.
  *
  * Het wagenpark is één poel voor alle concessies: een bus rijdt waar hij nodig
  * is. Welke bus welke omloop rijdt (geleed of solo) telt nog niet mee.
  */
-export function dagprognose(bedrijf: Bedrijf): {
-  vergoeding: number
-  kosten: number
-  benodigd: number
-  inzetbaar: number
-  dekking: number
-  uren: number
-} {
+export function dagprognose(bedrijf: Bedrijf): Prognose {
   const benodigd = bedrijf.concessies.reduce((som, c) => som + c.omlopen, 0)
   const inzetbaar = (bedrijf.bussen ?? []).filter((b) => isInzetbaar(b, bedrijf.dag)).length
   const dekking = benodigd === 0 ? 0 : Math.min(1, inzetbaar / benodigd)
   const uren = bedrijf.concessies.reduce((som, c) => som + c.urenPerDag, 0)
   const vergoeding = bedrijf.concessies.reduce((som, c) => som + dagresultaat(c, bedrijf.reputatie).vergoeding, 0)
-  const besparing = Math.round(uren * dekking * (REGELS.inhuurMaterieelPerUur - REGELS.eigenBusPerUur))
-  const kosten = Math.round(uren * REGELS.inhuurPerUur) - besparing
-  return { vergoeding, kosten, benodigd, inzetbaar, dekking, uren }
+
+  const chauffeurs = aanHetWerk(bedrijf, 'chauffeur').length
+  const zelfUren = Math.min(uren, bedrijf.zelfUren ?? 0)
+  const diensten = Math.ceil(uren / REGELS.urenPerDienst)
+  const zelfDiensten = Math.min(diensten, Math.ceil(zelfUren / REGELS.urenPerDienst))
+  const eigenDiensten = Math.min(diensten - zelfDiensten, chauffeurs)
+  const openDiensten = Math.max(0, diensten - zelfDiensten - eigenDiensten)
+  const chauffeurUren = Math.min(uren, zelfUren + eigenDiensten * REGELS.urenPerDienst)
+
+  const materieelBesparing = Math.round(uren * dekking * (REGELS.inhuurMaterieelPerUur - REGELS.eigenBusPerUur))
+  const personeelBesparing = Math.round(chauffeurUren * REGELS.inhuurChauffeurPerUur)
+  const lonen = (bedrijf.personeel ?? []).reduce((som, m) => som + m.loon, 0)
+  const kosten = Math.round(uren * REGELS.inhuurPerUur) - materieelBesparing - personeelBesparing + lonen
+  return {
+    vergoeding,
+    kosten,
+    uren,
+    benodigd,
+    inzetbaar,
+    dekking,
+    diensten,
+    eigenDiensten,
+    zelfDiensten,
+    openDiensten,
+    chauffeurUren,
+    materieelBesparing,
+    personeelBesparing,
+    lonen
+  }
+}
+
+/* ---- personeel ---- */
+
+const VOORNAMEN = [
+  'Anna', 'Ben', 'Carla', 'Dennis', 'Elif', 'Frank', 'Greta', 'Hakan', 'Ines', 'Jan', 'Klaus', 'Lena',
+  'Mehmet', 'Nina', 'Olaf', 'Petra', 'Rainer', 'Sanne', 'Tobias', 'Ute', 'Volker', 'Wiebke', 'Yusuf', 'Zoë',
+  'Bram', 'Daan', 'Emma', 'Fleur', 'Joost', 'Marieke', 'Pieter', 'Sophie'
+]
+const ACHTERNAMEN = [
+  'Becker', 'de Vries', 'Fischer', 'Hoffmann', 'Jansen', 'Kaya', 'Krüger', 'Meijer', 'Müller', 'Peters',
+  'Richter', 'Schmidt', 'Schulz', 'van Dijk', 'Vogel', 'Wagner', 'Weber', 'Wolf', 'Yilmaz', 'Zimmermann',
+  'Bakker', 'Visser', 'Smit', 'Mulder'
+]
+
+/** Wat de markt voor deze rol en ervaring betaalt, per dag. */
+export function marktloon(rol: Rol, ervaring: number): number {
+  const l = REGELS.loon[rol]
+  return Math.round(l.basis + ervaring * l.perPunt)
+}
+
+/**
+ * De sollicitanten van vandaag: een paar per bedrijfsdag, steeds dezelfde voor
+ * dezelfde dag. Meer beginners dan ervaren krachten, zoals op de echte markt.
+ */
+export function sollicitanten(bedrijf: Bedrijf): Sollicitant[] {
+  const kans = reeks(bedrijf.dag * 104_729 + bedrijf.naam.length * 31 + 7)
+  const weg = new Set(bedrijf.sollicitantWeg ?? [])
+  const uit: Sollicitant[] = []
+  for (let nr = 0; nr < REGELS.sollicitantenPerDag; nr++) {
+    const naam = `${VOORNAMEN[Math.floor(kans() * VOORNAMEN.length)]} ${ACHTERNAMEN[Math.floor(kans() * ACHTERNAMEN.length)]}`
+    const rol: Rol = kans() < 0.7 ? 'chauffeur' : 'monteur'
+    const ervaring = Math.round(Math.pow(kans(), 1.5) * 90) + 5
+    const loon = Math.round((marktloon(rol, ervaring) * (0.92 + kans() * 0.2)) / 100) * 100
+    if (!weg.has(nr)) uit.push({ nr, naam, rol, ervaring, loon })
+  }
+  return uit
+}
+
+export function neemAan(bedrijf: Bedrijf, nr: number): { bedrijf: Bedrijf } | { fout: 'weg' } {
+  const s = sollicitanten(bedrijf).find((x) => x.nr === nr)
+  if (!s) return { fout: 'weg' }
+  const id = Math.max(0, ...(bedrijf.personeel ?? []).map((m) => m.id)) + 1
+  const nieuw: Medewerker = {
+    id,
+    naam: s.naam,
+    rol: s.rol,
+    ervaring: s.ervaring,
+    loon: s.loon,
+    // Wie meer krijgt dan de markt biedt, begint wat blijer.
+    tevredenheid: doelTevredenheid(s.loon, marktloon(s.rol, s.ervaring), false),
+    sinds: bedrijf.dag
+  }
+  return {
+    bedrijf: {
+      ...bedrijf,
+      personeel: [...(bedrijf.personeel ?? []), nieuw],
+      sollicitantWeg: [...(bedrijf.sollicitantWeg ?? []), nr]
+    }
+  }
+}
+
+/** Ontslaan kost een paar dagen loon, en de rest van het personeel voelt het. */
+export function ontsla(bedrijf: Bedrijf, id: number): Bedrijf {
+  const m = (bedrijf.personeel ?? []).find((x) => x.id === id)
+  if (!m) return bedrijf
+  const rest = (bedrijf.personeel ?? [])
+    .filter((x) => x.id !== id)
+    .map((x) => ({ ...x, tevredenheid: Math.max(0, x.tevredenheid - REGELS.ontslagTevredenheid) }))
+  return boek(
+    { ...bedrijf, personeel: rest },
+    { soort: 'ontslag', bedrag: -m.loon * REGELS.ontslagDagen, wat: m.naam, gemeten: false }
+  )
+}
+
+/** Tien procent opslag, op hele euro's; het maakt meteen wat goed. */
+export function geefOpslag(bedrijf: Bedrijf, id: number): Bedrijf {
+  return {
+    ...bedrijf,
+    personeel: (bedrijf.personeel ?? []).map((m) =>
+      m.id === id
+        ? {
+            ...m,
+            loon: Math.round((m.loon * REGELS.opslagFactor) / 100) * 100,
+            tevredenheid: Math.min(100, m.tevredenheid + 8)
+          }
+        : m
+    )
+  }
+}
+
+/**
+ * Waar de tevredenheid naartoe beweegt: 60 bij marktloon, hoger bij meer
+ * betalen, lager als chauffeurs het werk niet rond krijgen (open diensten).
+ */
+function doelTevredenheid(loon: number, markt: number, onderbezet: boolean): number {
+  const doel = 60 + 150 * (loon / markt - 1) - (onderbezet ? 8 : 0)
+  return Math.round(Math.max(0, Math.min(100, doel)))
+}
+
+/**
+ * Het personeel na een werkdag: ervaring erbij voor wie werkte, tevredenheid
+ * die naar zijn doel beweegt, ziekte, en wie te ontevreden is kan vertrekken.
+ * Steeds dezelfde uitkomst voor dezelfde dag, ook na een herstart.
+ */
+function personeelNaDag(bedrijf: Bedrijf, prognose: Prognose): { personeel: Medewerker[]; vertrokken: Medewerker[]; reputatie: number } {
+  const dag = bedrijf.dag
+  const werkend = new Set(
+    aanHetWerk(bedrijf, 'chauffeur')
+      .slice(0, prognose.eigenDiensten)
+      .map((m) => m.id)
+  )
+  for (const m of aanHetWerk(bedrijf, 'monteur')) werkend.add(m.id)
+  const onderbezet = prognose.openDiensten > 0
+
+  const personeel: Medewerker[] = []
+  const vertrokken: Medewerker[] = []
+  for (const m of bedrijf.personeel ?? []) {
+    const kans = reeks(dag * 7907 + m.id * 131)
+    let volgende: Medewerker = { ...m }
+    if (werkend.has(m.id)) volgende.ervaring = Math.min(100, Math.round((m.ervaring + (m.rol === 'chauffeur' ? 0.4 : 0.3)) * 10) / 10)
+    const doel = doelTevredenheid(m.loon, marktloon(m.rol, m.ervaring), onderbezet && m.rol === 'chauffeur')
+    volgende.tevredenheid = Math.round((m.tevredenheid + (doel - m.tevredenheid) * 0.15) * 10) / 10
+    const ziek = m.ziekTot !== undefined && m.ziekTot >= dag
+    if (!ziek && kans() < REGELS.ziekteKans) volgende.ziekTot = dag + 1 + Math.floor(kans() * 3)
+    else if (m.ziekTot !== undefined && m.ziekTot <= dag) volgende = { ...volgende, ziekTot: undefined }
+    if (volgende.tevredenheid < REGELS.vertrekOnder && kans() < REGELS.vertrekKans) vertrokken.push(volgende)
+    else personeel.push(volgende)
+  }
+
+  /*
+   * Ervaren chauffeurs maken je naam, beginners kosten hem een beetje -- naar
+   * rato van hoeveel van de uren je eigen mensen reden. Eén punt tegelijk, met
+   * een kans, zodat de reputatie niet elke dag vanzelf oploopt.
+   */
+  let reputatie = bedrijf.reputatie
+  const rijders = (bedrijf.personeel ?? []).filter((m) => werkend.has(m.id) && m.rol === 'chauffeur')
+  if (rijders.length > 0 && prognose.uren > 0) {
+    const gemiddeld = rijders.reduce((som, m) => som + m.ervaring, 0) / rijders.length
+    const aandeel = Math.min(1, (rijders.length * REGELS.urenPerDienst) / prognose.uren)
+    const x = ((gemiddeld - 50) / 50) * aandeel
+    if (reeks(dag * 613 + 17)() < Math.abs(x) * 0.3) reputatie = Math.max(0, Math.min(100, reputatie + Math.sign(x)))
+  }
+  return { personeel, vertrokken, reputatie }
 }
 
 export function richtBedrijfOp(naam: string, nu = new Date()): Bedrijf {
@@ -393,7 +654,10 @@ export function richtBedrijfOp(naam: string, nu = new Date()): Bedrijf {
     boekingen: [],
     bussen: [],
     aanbodWeg: [],
-    historie: []
+    historie: [],
+    personeel: [],
+    sollicitantWeg: [],
+    zelfUren: 0
   }
   return boek(bedrijf, { soort: 'oprichting', bedrag: REGELS.startkapitaal, wat: 'Startkapitaal', gemeten: false })
 }
@@ -492,6 +756,15 @@ export function boekEigenDienst(
   /** De bus waarmee gereden is; is dat een eigen bus, dan krijgt die de schade. */
   busPad?: string
 ): Bedrijf {
+  /*
+   * Invallen: wat je zelf op een concessielijn reed, dekt vandaag een open
+   * dienst -- ook zonder rittenstaat, want gereden is gereden. Alleen het
+   * oordeel over stiptheid vraagt een meting.
+   */
+  const zelf = duty.legs
+    .filter((leg) => heeftConcessie(bedrijf, duty.mapFolder, leg.lineFile))
+    .reduce((som, leg) => som + leg.minutes / 60, 0)
+  if (zelf > 0) bedrijf = { ...bedrijf, zelfUren: Math.round(((bedrijf.zelfUren ?? 0) + zelf) * 10) / 10 }
   if (!staat) return bedrijf
   bedrijf = schadeVanDienst(bedrijf, staat, busPad)
   let opTijd = 0
@@ -563,24 +836,47 @@ export function sluitDagAf(bedrijf: Bedrijf): Bedrijf {
   }
   // Wat eigen bussen besparen op de inhuur, en wat ze zelf kosten.
   const eigenUren = prognose.uren * prognose.dekking
-  if (eigenUren > 0) {
+  if (prognose.materieelBesparing > 0) {
     uit = boek(uit, {
       soort: 'eigen-materieel',
-      bedrag: Math.round(eigenUren * (REGELS.inhuurMaterieelPerUur - REGELS.eigenBusPerUur)),
+      bedrag: prognose.materieelBesparing,
       wat: `${prognose.inzetbaar} bussen · ${Math.round(eigenUren)} u`,
       gemeten: false
     })
   }
+  // Wat eigen chauffeurs (en jij) besparen, en wat het personeel kost.
+  if (prognose.personeelBesparing > 0) {
+    uit = boek(uit, {
+      soort: 'eigen-personeel',
+      bedrag: prognose.personeelBesparing,
+      wat: `${prognose.eigenDiensten + prognose.zelfDiensten} diensten · ${Math.round(prognose.chauffeurUren)} u`,
+      gemeten: false
+    })
+  }
+  if (prognose.lonen > 0) {
+    uit = boek(uit, {
+      soort: 'loon',
+      bedrag: -prognose.lonen,
+      wat: `${(uit.personeel ?? []).length} medewerkers`,
+      gemeten: false
+    })
+  }
+  const naDag = personeelNaDag(uit, prognose)
+  for (const m of naDag.vertrokken) {
+    uit = boek(uit, { soort: 'vertrek', bedrag: 0, wat: m.naam, gemeten: false })
+  }
+  uit = { ...uit, personeel: naDag.personeel, reputatie: naDag.reputatie }
 
-  // Slijtage: de inzetbare bussen delen de uren die ze reden.
+  // Slijtage: de inzetbare bussen delen de uren die ze reden; monteurs remmen het af.
   const inzet = (uit.bussen ?? []).filter((b) => isInzetbaar(b, uit.dag))
   const urenPerBus = inzet.length > 0 ? Math.min(eigenUren / inzet.length, 20) : 0
+  const remming = Math.min(REGELS.monteurSlijtageMax, aanHetWerk(bedrijf, 'monteur').length * REGELS.monteurSlijtage)
   const bussen = (uit.bussen ?? []).map((b) =>
     inzet.includes(b)
       ? {
           ...b,
           km: b.km + Math.round(urenPerBus * REGELS.kmPerUur),
-          staat: Math.max(0, Math.round((b.staat - urenPerBus * REGELS.slijtagePerUur) * 10) / 10)
+          staat: Math.max(0, Math.round((b.staat - urenPerBus * REGELS.slijtagePerUur * (1 - remming)) * 10) / 10)
         }
       : b
   )
@@ -616,13 +912,17 @@ export function sluitDagAf(bedrijf: Bedrijf): Bedrijf {
     reputatie: uit.reputatie,
     bussen: bussen.length,
     inzetbaar: prognose.inzetbaar,
-    dekking: prognose.dekking
+    dekking: prognose.dekking,
+    personeel: naDag.personeel.length,
+    openDiensten: prognose.openDiensten
   }
   return {
     ...uit,
     concessies: blijven,
     dag: uit.dag + 1,
     aanbodWeg: [],
+    sollicitantWeg: [],
+    zelfUren: 0,
     historie: [...(uit.historie ?? []), dagstaat].slice(-REGELS.historieBewaard)
   }
 }

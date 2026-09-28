@@ -102,7 +102,10 @@ import {
 import { runsOn } from '../core/calendar'
 import {
   boekEigenDienst,
+  geefOpslag,
   koopNieuw,
+  neemAan,
+  ontsla,
   koopTweedehands,
   naarWerkplaats,
   richtBedrijfOp,
@@ -4582,6 +4585,21 @@ function registerHandlers(): void {
     const uit = naarWerkplaats(career.bedrijf, Number(nummer), wat === 'reparatie' ? 'reparatie' : 'onderhoud')
     if ('fout' in uit) return { payload: careerPayload(), fout: uit.fout }
     return { payload: persist({ ...career, bedrijf: uit.bedrijf }) }
+  })
+  /* Personeel: de sollicitanten van vandaag rekent core/bedrijf.ts, hier en in het venster hetzelfde. */
+  handle('bedrijf:aannemen', (_event, nr: number) => {
+    if (!career?.bedrijf) return { payload: careerPayload(), fout: 'geen' }
+    const uit = neemAan(career.bedrijf, Number(nr))
+    if ('fout' in uit) return { payload: careerPayload(), fout: uit.fout }
+    return { payload: persist({ ...career, bedrijf: uit.bedrijf }) }
+  })
+  handle('bedrijf:ontslaan', (_event, id: number) => {
+    if (!career?.bedrijf) return careerPayload()
+    return persist({ ...career, bedrijf: ontsla(career.bedrijf, Number(id)) })
+  })
+  handle('bedrijf:opslag', (_event, id: number) => {
+    if (!career?.bedrijf) return careerPayload()
+    return persist({ ...career, bedrijf: geefOpslag(career.bedrijf, Number(id)) })
   })
   handle('bedrijf:dagAf', () => {
     if (!career?.bedrijf) return careerPayload()

@@ -539,6 +539,116 @@
   background: var(--bd-let);
 }
 
+/* ---- personeel ---- */
+
+/*
+ * Het rooster als één balk: eigen chauffeurs, jijzelf, open. Drie rollen, dus
+ * drie vaste tinten in vaste volgorde, met een smalle kier ertussen; de
+ * cijfers eronder zeggen hetzelfde in woorden, zodat kleur nooit het enige is.
+ */
+.bd-rooster {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+  margin-bottom: 12px;
+}
+
+.bd-rooster i,
+.bd-roostercijfers i {
+  display: block;
+  border-radius: 4px;
+}
+
+.bd-rooster i.eigen,
+.bd-roostercijfers i.eigen {
+  background: var(--route);
+}
+
+.bd-rooster i.zelf,
+.bd-roostercijfers i.zelf {
+  background: #8b5cf6;
+}
+
+.bd-rooster i.open,
+.bd-roostercijfers i.open {
+  background: color-mix(in srgb, var(--vel-zacht) 45%, transparent);
+}
+
+.bd-roostercijfers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 22px;
+  font-size: 13px;
+}
+
+.bd-roostercijfers span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--vel-zacht);
+}
+
+.bd-roostercijfers b {
+  color: var(--vel-ink);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.bd-roostercijfers i {
+  width: 10px;
+  height: 10px;
+}
+
+.bd-klein {
+  margin-top: 10px !important;
+  font-size: 12.5px;
+}
+
+.bd-mensen {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bd-mensen li {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 130px 130px 110px 120px 250px;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--vel-lijn);
+  font-size: 13.5px;
+}
+
+.bd-mensen li:last-child {
+  border-bottom: 0;
+}
+
+.bd-mensen .bd-staat {
+  min-width: 0;
+}
+
+.bd-avatar {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--route) 18%, transparent);
+  color: var(--route);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.bd-bedrag small,
+.bd-prijs small {
+  color: var(--vel-zacht);
+  font-size: 11px;
+  font-weight: 500;
+}
+
 /* ---- tweedehandsmarkt: kaarten ---- */
 
 .bd-aanbod {
@@ -809,6 +919,10 @@
   .bd-rij,
   .bd-rij:has(.bd-paneel.breed) {
     grid-template-columns: 1fr;
+  }
+
+  .bd-mensen li {
+    grid-template-columns: 40px minmax(0, 1fr) 120px 120px;
   }
 }
 

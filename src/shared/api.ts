@@ -784,6 +784,9 @@ export interface CareerApi {
     wat: string | number
   ): Promise<{ payload: CareerPayload; fout?: 'kas' | 'weg' | 'geen' }>
   bedrijfVerkoop(nummer: number): Promise<CareerPayload>
+  bedrijfAannemen(nr: number): Promise<{ payload: CareerPayload; fout?: 'weg' | 'geen' }>
+  bedrijfOntslaan(id: number): Promise<CareerPayload>
+  bedrijfOpslag(id: number): Promise<CareerPayload>
   bedrijfWerkplaats(
     nummer: number,
     wat: 'onderhoud' | 'reparatie'

@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState, type JSX, type ReactNode } from 'react'
 import {
   REGELS,
+  aanHetWerk,
   dagprognose,
+  marktloon,
+  sollicitanten,
   dagresultaat,
   heeftConcessie,
   inschrijfkosten,
@@ -14,7 +17,8 @@ import {
   type Aanbod,
   type Bedrijf as BedrijfStaat,
   type EigenBus,
-  type MarktBus
+  type MarktBus,
+  type Medewerker
 } from '../../core/bedrijf'
 import type { LineSummary } from '../../core/duty'
 import type { CareerPayload, MapSummary } from '../../shared/api'
@@ -39,13 +43,14 @@ import './bedrijf.css'
  * donker en licht volgen vanzelf.
  */
 
-type Tab = 'dashboard' | 'concessies' | 'wagenpark' | 'markt' | 'boeken'
+type Tab = 'dashboard' | 'concessies' | 'wagenpark' | 'markt' | 'personeel' | 'boeken'
 
 const TABS: Array<{ tab: Tab; icoon: Icoonnaam; tekst: TextKey }> = [
   { tab: 'dashboard', icoon: 'record', tekst: 'bd.nav.dashboard' },
   { tab: 'concessies', icoon: 'line', tekst: 'bd.nav.concessions' },
   { tab: 'wagenpark', icoon: 'bus', tekst: 'bd.nav.fleet' },
   { tab: 'markt', icoon: 'kaartje', tekst: 'bd.nav.market' },
+  { tab: 'personeel', icoon: 'profile', tekst: 'bd.nav.staff' },
   { tab: 'boeken', icoon: 'logboek', tekst: 'bd.nav.books' }
 ]
 
@@ -138,6 +143,7 @@ export function BedrijfApp({ bedrijf, onCareer, onTerug }: Props): JSX.Element {
         {tab === 'concessies' && <Concessies bedrijf={bedrijf} handel={handel} />}
         {tab === 'wagenpark' && <Wagenpark bedrijf={bedrijf} handel={handel} />}
         {tab === 'markt' && <Markt bedrijf={bedrijf} handel={handel} />}
+        {tab === 'personeel' && <Personeel bedrijf={bedrijf} handel={handel} />}
         {tab === 'boeken' && <Boeken bedrijf={bedrijf} alle />}
       </main>
     </div>
@@ -216,6 +222,18 @@ function Dashboard({ bedrijf, naar }: { bedrijf: BedrijfStaat; naar: (tab: Tab) 
         tekst: tr('bd.alert.coverage', { need: prognose.benodigd - prognose.inzetbaar }),
         tab: 'markt'
       })
+    if (prognose.openDiensten > 0)
+      lijst.push({
+        soort: 'let',
+        tekst: tr('bd.alert.openShifts', { n: prognose.openDiensten }),
+        tab: 'personeel'
+      })
+    for (const m of bedrijf.personeel ?? []) {
+      if (m.ziekTot !== undefined && m.ziekTot >= bedrijf.dag)
+        lijst.push({ soort: 'let', tekst: tr('bd.alert.sick', { name: m.naam, day: m.ziekTot }), tab: 'personeel' })
+      else if (m.tevredenheid < REGELS.vertrekOnder + 10)
+        lijst.push({ soort: 'laat', tekst: tr('bd.alert.unhappy', { name: m.naam }), tab: 'personeel' })
+    }
     return lijst
   }, [bedrijf])
 
@@ -252,15 +270,30 @@ function Dashboard({ bedrijf, naar }: { bedrijf: BedrijfStaat; naar: (tab: Tab) 
         <Tegel
           titel={tr('bd.nav.fleet')}
           waarde={`${inzetbaar} / ${bussen.length}`}
-          sub={tr('bd.fleetValue', { money: geld(vlootwaarde) })}
-        />
-        <Tegel
-          titel={tr('bd.coverage')}
-          waarde={prognose.benodigd ? `${Math.round(prognose.dekking * 100)}%` : '—'}
-          sub={tr('bd.coverageSub')}
+          sub={tr('bd.fleetSub', {
+            share: prognose.benodigd ? Math.round(prognose.dekking * 100) : 0,
+            money: geld(vlootwaarde)
+          })}
         >
           <span className="bd-meter">
             <i style={{ width: `${Math.round(prognose.dekking * 100)}%` }} />
+          </span>
+        </Tegel>
+        <Tegel
+          titel={tr('bd.nav.staff')}
+          waarde={`${prognose.eigenDiensten + prognose.zelfDiensten} / ${prognose.diensten}`}
+          sub={tr('bd.staffSub', {
+            open: prognose.openDiensten,
+            people: (bedrijf.personeel ?? []).length
+          })}
+          toon={prognose.diensten > 0 && prognose.openDiensten === 0 ? 'goed' : undefined}
+        >
+          <span className="bd-meter">
+            <i
+              style={{
+                width: `${prognose.diensten ? Math.round(((prognose.eigenDiensten + prognose.zelfDiensten) / prognose.diensten) * 100) : 0}%`
+              }}
+            />
           </span>
         </Tegel>
       </div>
@@ -565,7 +598,16 @@ function Wagenpark({ bedrijf, handel }: { bedrijf: BedrijfStaat; handel: Handel 
     <Paneel titel={tr('bd.fleetCount', { n: bussen.length })}>
       <ul className="bd-vloot">
         {bussen.map((b) => (
-          <BusRij key={b.nummer} bus={b} dag={bedrijf.dag} geld={geld} handel={handel} kas={bedrijf.kas} tr={tr} />
+          <BusRij
+            key={b.nummer}
+            bus={b}
+            dag={bedrijf.dag}
+            geld={geld}
+            handel={handel}
+            kas={bedrijf.kas}
+            monteurs={aanHetWerk(bedrijf, 'monteur').length}
+            tr={tr}
+          />
         ))}
       </ul>
     </Paneel>
@@ -576,12 +618,14 @@ function BusRij({
   bus,
   dag,
   kas,
+  monteurs,
   geld,
   handel,
   tr
 }: {
   bus: EigenBus
   dag: number
+  monteurs: number
   kas: number
   geld: (c: number, t?: boolean) => string
   handel: Handel
@@ -590,7 +634,7 @@ function BusRij({
   const taal = useLanguage()
   const werkplaats = bus.werkplaatsTot !== undefined && bus.werkplaatsTot >= dag
   const inzet = isInzetbaar(bus, dag)
-  const onderhoud = onderhoudskosten(bus)
+  const onderhoud = onderhoudskosten(bus, monteurs)
   const reparatie = reparatiekosten(bus)
   return (
     <li>
@@ -729,6 +773,178 @@ function Markt({ bedrijf, handel }: { bedrijf: BedrijfStaat; handel: Handel }): 
         {nieuw.length > 60 && <p className="bd-rustig">{tr('bd.moreBuses', { n: nieuw.length - 60 })}</p>}
       </section>
     </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Personeel                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Het rooster van vandaag, de mensen in dienst en de sollicitanten. Het rooster
+ * maakt de app zelf (zie `dagprognose`): hier zie je hoe het uitvalt, en wat je
+ * eraan doet is mensen aannemen -- of zelf invallen.
+ */
+function Personeel({ bedrijf, handel }: { bedrijf: BedrijfStaat; handel: Handel }): JSX.Element {
+  const tr = useT()
+  const geld = useGeld()
+  const prognose = dagprognose(bedrijf)
+  const mensen = bedrijf.personeel ?? []
+  const vandaag = sollicitanten(bedrijf)
+  const monteurs = aanHetWerk(bedrijf, 'monteur').length
+  const deel = (n: number): string => `${prognose.diensten ? (n / prognose.diensten) * 100 : 0}%`
+  return (
+    <div className="bd-kolom">
+      <Paneel titel={tr('bd.rosterToday', { day: bedrijf.dag })}>
+        {prognose.diensten === 0 ? (
+          <p className="bd-rustig">{tr('bd.rosterEmpty')}</p>
+        ) : (
+          <>
+            <div className="bd-rooster" aria-hidden="true">
+              {/* Alleen wat er is: een leeg stuk zou toch een kier achterlaten. */}
+              {prognose.eigenDiensten > 0 && <i className="eigen" style={{ width: deel(prognose.eigenDiensten) }} />}
+              {prognose.zelfDiensten > 0 && <i className="zelf" style={{ width: deel(prognose.zelfDiensten) }} />}
+              {prognose.openDiensten > 0 && <i className="open" style={{ width: deel(prognose.openDiensten) }} />}
+            </div>
+            <div className="bd-roostercijfers">
+              <span>
+                <b>{prognose.diensten}</b>
+                {tr('bd.shiftsNeeded', { hours: Math.round(prognose.uren) })}
+              </span>
+              <span>
+                <i className="eigen" />
+                <b>{prognose.eigenDiensten}</b>
+                {tr('bd.shiftsOwn')}
+              </span>
+              <span>
+                <i className="zelf" />
+                <b>{prognose.zelfDiensten}</b>
+                {tr('bd.shiftsYou')}
+              </span>
+              <span>
+                <i className="open" />
+                <b>{prognose.openDiensten}</b>
+                {tr('bd.shiftsOpen')}
+              </span>
+            </div>
+            <p className="bd-rustig bd-klein">{tr('bd.rosterNote')}</p>
+          </>
+        )}
+      </Paneel>
+
+      <Paneel titel={tr('bd.staffCount', { n: mensen.length, money: geld(prognose.lonen) })}>
+        {mensen.length === 0 ? (
+          <p className="bd-rustig">{tr('bd.noStaff')}</p>
+        ) : (
+          <ul className="bd-mensen">
+            {mensen.map((m) => (
+              <MedewerkerRij key={m.id} m={m} dag={bedrijf.dag} handel={handel} />
+            ))}
+          </ul>
+        )}
+        {monteurs > 0 && (
+          <p className="bd-rustig bd-klein">
+            {tr('bd.mechanicsEffect', {
+              service: Math.round(Math.min(REGELS.monteurOnderhoudMax, monteurs * REGELS.monteurOnderhoud) * 100),
+              wear: Math.round(Math.min(REGELS.monteurSlijtageMax, monteurs * REGELS.monteurSlijtage) * 100)
+            })}
+          </p>
+        )}
+      </Paneel>
+
+      <Paneel titel={tr('bd.applicants', { day: bedrijf.dag })}>
+        {vandaag.length === 0 ? (
+          <p className="bd-rustig">{tr('bd.noApplicants')}</p>
+        ) : (
+          <div className="bd-aanbod">
+            {vandaag.map((s) => {
+              const markt = marktloon(s.rol, s.ervaring)
+              return (
+                <article key={s.nr} className="bd-kaart">
+                  <span className="bd-vorm">{tr(s.rol === 'chauffeur' ? 'bd.role.driver' : 'bd.role.mechanic')}</span>
+                  <b>{s.naam}</b>
+                  <Meter waarde={s.ervaring} tekst={tr('bd.experience', { n: Math.round(s.ervaring) })} />
+                  <span className="bd-prijs">
+                    {geld(s.loon)}
+                    <small> {tr('bd.perDayShort')}</small>
+                  </span>
+                  <small className={s.loon > markt ? 'let' : ''}>
+                    {tr(s.loon > markt ? 'bd.aboveMarket' : 'bd.atMarket', { money: geld(markt) })}
+                  </small>
+                  <button
+                    type="button"
+                    className="bd-knop hoofd"
+                    onClick={() => void handel(window.career.bedrijfAannemen(s.nr))}
+                  >
+                    {tr('bd.hire')}
+                  </button>
+                </article>
+              )
+            })}
+          </div>
+        )}
+      </Paneel>
+    </div>
+  )
+}
+
+function MedewerkerRij({ m, dag, handel }: { m: Medewerker; dag: number; handel: Handel }): JSX.Element {
+  const tr = useT()
+  const geld = useGeld()
+  const ziek = m.ziekTot !== undefined && m.ziekTot >= dag
+  return (
+    <li>
+      <span className="bd-avatar" aria-hidden="true">
+        {/* Voornaam en het laatste deel van de achternaam: "Frank de Vries" is FV, niet Fd. */}
+        {`${m.naam.split(' ')[0]?.[0] ?? ''}${m.naam.split(' ').slice(-1)[0]?.[0] ?? ''}`.toUpperCase()}
+      </span>
+      <span className="bd-wat">
+        <b>{m.naam}</b>
+        <small>
+          {tr(m.rol === 'chauffeur' ? 'bd.role.driver' : 'bd.role.mechanic')} ·{' '}
+          {tr('bd.since', { day: m.sinds })}
+        </small>
+      </span>
+      <Meter waarde={m.ervaring} tekst={tr('bd.experience', { n: Math.round(m.ervaring) })} />
+      <Meter
+        waarde={m.tevredenheid}
+        tekst={tr('bd.satisfaction', { n: Math.round(m.tevredenheid) })}
+        toon={m.tevredenheid < REGELS.vertrekOnder + 10 ? 'laat' : m.tevredenheid < 50 ? 'let' : 'goed'}
+      />
+      <span className="bd-bedrag">
+        {geld(m.loon)}
+        <small> {tr('bd.perDayShort')}</small>
+      </span>
+      <span className={`bd-status ${ziek ? 'let' : 'optijd'}`}>
+        {ziek ? tr('bd.sickUntil', { day: m.ziekTot ?? dag }) : tr('bd.working')}
+      </span>
+      <span className="bd-acties">
+        <button type="button" className="bd-knop" onClick={() => void handel(window.career.bedrijfOpslag(m.id))}>
+          {tr('bd.raise', { money: geld(Math.round((m.loon * REGELS.opslagFactor) / 100) * 100 - m.loon) })}
+        </button>
+        <button
+          type="button"
+          className="bd-knop zacht"
+          onClick={() => {
+            if (!window.confirm(tr('bd.fireAsk', { name: m.naam, money: geld(m.loon * REGELS.ontslagDagen) }))) return
+            void handel(window.career.bedrijfOntslaan(m.id))
+          }}
+        >
+          {tr('bd.fire')}
+        </button>
+      </span>
+    </li>
+  )
+}
+
+function Meter({ waarde, tekst, toon }: { waarde: number; tekst: string; toon?: 'goed' | 'let' | 'laat' }): JSX.Element {
+  return (
+    <span className="bd-staat">
+      <span className={`bd-meter ${toon ?? ''}`}>
+        <i style={{ width: `${Math.max(0, Math.min(100, waarde))}%` }} />
+      </span>
+      <small>{tekst}</small>
+    </span>
   )
 }
 

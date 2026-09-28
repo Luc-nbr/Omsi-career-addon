@@ -1424,6 +1424,28 @@ Luc: "het busbedrijf moet zijn eigen UI krijgen en een uitgebreid dashboard".
   bus waarmee je reed (op pad van de bus, `boekEigenDienst(…, busPad)`).
 - Startkapitaal 150.000; alle bedragen blijven in `REGELS`.
 
+**Stap 3: personeel** (28-09-2026). Tabblad Personeel en een tegel op het
+dashboard.
+- **Rooster** (`dagprognose`): de dienstregelingsuren van alle concessies in
+  diensten van 8 uur; eigen chauffeurs die werken (niet ziek) rijden er zoveel
+  als er zijn, wat je zelf reed dekt er ook (`Bedrijf.zelfUren`, opgehoogd in
+  `boekEigenDienst` -- ook zonder rittenstaat, want gereden is gereden), de rest
+  is open en wordt ingehuurd. `dagprognose` is nu de enige plek waar de dag
+  wordt uitgerekend; `sluitDagAf` boekt precies wat die zegt (proef).
+- **Geld**: de inhuur (86/u) is materieel 48 + chauffeur 38. Een eigen chauffeur
+  bespaart 8 × 38 per dienst tegen een dagloon van 190 + 0,80 per
+  ervaringspunt; een monteur kost 210 + 0,90 per punt en maakt onderhoud 15 %
+  goedkoper en slijtage 10 % trager per monteur (tot 45 % en 40 %).
+- **Mensen** (`Medewerker`): ervaring groeit met gewerkte dagen, tevredenheid
+  beweegt naar een doel (60 bij marktloon, hoger bij meer betalen, lager als
+  chauffeurs het werk niet rond krijgen), 2 % kans per dag op ziekte van 1-3
+  dagen, onder 25 tevredenheid 10 % kans per dag op vertrek. Ervaren chauffeurs
+  duwen de reputatie met een kans omhoog, beginners omlaag. Alle toeval komt uit
+  een vaste reeks per dag: dezelfde dag geeft dezelfde uitkomst.
+- **Sollicitanten**: drie per dag, meer beginners dan ervaren; het venster en het
+  hoofdproces rekenen ze allebei met `sollicitanten()`. Ontslag kost vijf
+  dagen loon en drie punten tevredenheid bij de rest; opslag is 10 %.
+
 Proef in het spel die de open vragen beantwoordt: OMSI 2.3.004, dienstregeling
 via het menu, drie haltes: A 60 s voor de plantijd weg, B 30 s na, C
 doorrijden. Daarna het spoor in de map `ritten` naast de rittenstaat leggen.
