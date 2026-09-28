@@ -20,6 +20,16 @@ import {
   vormVanNaam,
   waardeVan,
   type MarktBus,
+  NIVEAUS,
+  OPLEIDINGEN,
+  bedrijfsfactoren,
+  inschrijfkosten,
+  niveauVan,
+  opleidingKlaar,
+  stuurOpBijscholing,
+  volgOpleiding,
+  zelfOnderhoud,
+  zelfRepareren,
   aanHetWerk,
   geefOpslag,
   marktloon,
@@ -229,6 +239,59 @@ for (let i = 0; i < 100; i++) {
 klopt('100 dagen: tevredenheid en ervaring tussen 0 en 100', lang.personeel!.every((m) => m.tevredenheid >= 0 && m.tevredenheid <= 100 && m.ervaring <= 100))
 klopt('100 dagen: twee keer dezelfde uitkomst (geen echt toeval)', JSON.stringify(lang) === JSON.stringify(tweede))
 klopt('100 dagen: hele centen', Number.isInteger(lang.kas))
+
+// ---- niveaus en opleidingen ----
+console.log('')
+let o4 = richtBedrijfOp('Opleiding')
+const o4in = schrijfIn(o4, kaart, lijn)
+if ('bedrijf' in o4in) o4 = o4in.bedrijf
+klopt('een nieuw bedrijf is niveau 1 zonder voordelen', niveauVan(o4) === 1 && bedrijfsfactoren(o4).vergoeding === 1 && bedrijfsfactoren(o4).sollicitanten === 3)
+klopt('schadeherstel vraagt niveau 2', 'fout' in volgOpleiding(o4, 'schadeherstel') && (volgOpleiding(o4, 'schadeherstel') as { fout: string }).fout === 'niveau')
+const wp = volgOpleiding(o4, 'werkplaats')
+klopt('werkplaatsopleiding: betaald', 'bedrijf' in wp && wp.bedrijf.kas === o4.kas - OPLEIDINGEN.werkplaats.kosten)
+if ('bedrijf' in wp) o4 = wp.bedrijf
+klopt('dezelfde opleiding twee keer kan niet', 'fout' in volgOpleiding(o4, 'werkplaats'))
+klopt('nog niet klaar: zelf onderhoud kan nog niet', !opleidingKlaar(o4, 'werkplaats'))
+const xpVoor = o4.xp ?? 0
+for (let i = 0; i < OPLEIDINGEN.werkplaats.dagen; i++) o4 = sluitDagAf(o4)
+klopt('na drie dagen klaar, gemeld, en 100 punten erbij', opleidingKlaar(o4, 'werkplaats') && o4.opleidingen![0].gemeld === true && (o4.xp ?? 0) - xpVoor >= 100)
+klopt('elke dag geeft punten voor de gereden uren', (o4.xp ?? 0) - xpVoor >= 100 + 3 * 20)
+
+const kb = koopNieuw({ ...o4, kas: 1_000_000_00 }, markt[0])
+if ('bedrijf' in kb) o4 = kb.bedrijf
+o4 = { ...o4, bussen: o4.bussen!.map((b) => ({ ...b, staat: 40, schade: 30 })) }
+const duur = onderhoudskosten(o4.bussen![0], 0, o4)
+const zo = zelfOnderhoud(o4, o4.bussen![0].nummer, 1)
+klopt('zelf onderhoud met score 1: staat 100 voor 30 % van de prijs', 'bedrijf' in zo && zo.bedrijf.bussen![0].staat === 100 && o4.kas - zo.bedrijf.kas === Math.round(duur * 0.3))
+const zh = zelfOnderhoud(o4, o4.bussen![0].nummer, 0)
+klopt('zelf onderhoud met score 0 helpt nog wat (40 %)', 'bedrijf' in zh && zh.bedrijf.bussen![0].staat === 64)
+klopt('een score buiten 0-1 wordt begrensd', 'bedrijf' in zelfOnderhoud(o4, o4.bussen![0].nummer, 7) && (zelfOnderhoud(o4, o4.bussen![0].nummer, 7) as { bedrijf: Bedrijf }).bedrijf.bussen![0].staat === 100)
+klopt('zelf repareren zonder opleiding kan niet', 'fout' in zelfRepareren(o4, o4.bussen![0].nummer, 1))
+
+// Niveau 2 en verder: extra sollicitant, en een opleiding die dan open gaat.
+const n2: Bedrijf = { ...o4, xp: NIVEAUS[1].xp }
+klopt('niveau 2: een sollicitant extra', niveauVan(n2) === 2 && sollicitanten(n2).length === 4)
+klopt('niveau 3: twee tweedehands extra', tweedehandsAanbod({ ...n2, xp: NIVEAUS[2].xp }, markt).length === REGELS.tweedehandsPerDag + 2)
+klopt('niveau 4: inschrijven 10 % goedkoper', inschrijfkosten(lijn, { ...n2, xp: NIVEAUS[3].xp }) === Math.round(inschrijfkosten(lijn) * 0.9))
+const n5: Bedrijf = { ...n2, xp: NIVEAUS[4].xp }
+klopt('niveau 5: 3 % meer vergoeding, en dag afsluiten boekt nog steeds de prognose', (() => {
+  const v = dagprognose(n5)
+  const na = sluitDagAf(n5)
+  return v.vergoeding === Math.round(dagprognose(n2).vergoeding * 1.03) && na.kas - n5.kas === v.vergoeding - v.kosten
+})())
+
+// Bijscholing: een dag weg, ervaring erbij.
+let b4 = richtBedrijfOp('Bijscholing')
+const b4in = schrijfIn(b4, kaart, lijn)
+if ('bedrijf' in b4in) b4 = b4in.bedrijf
+const eerste4 = sollicitanten(b4)[0]
+const na4 = neemAan(b4, eerste4.nr)
+if ('bedrijf' in na4) b4 = na4.bedrijf
+const id4 = b4.personeel![0].id
+const bs = stuurOpBijscholing(b4, id4)
+klopt('bijscholing: ervaring erbij en vandaag niet aan het werk', 'bedrijf' in bs && bs.bedrijf.personeel![0].ervaring === Math.min(100, eerste4.ervaring + 12) && aanHetWerk(bs.bedrijf, eerste4.rol).length === 0)
+if ('bedrijf' in bs) b4 = sluitDagAf(bs.bedrijf)
+klopt('de dag erna weer aan het werk', aanHetWerk(b4, eerste4.rol).length === 1)
 
 console.log(fouten ? `\n${fouten} fout(en)` : '\nalles klopt')
 process.exit(fouten ? 1 : 0)

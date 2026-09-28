@@ -103,6 +103,11 @@ import { runsOn } from '../core/calendar'
 import {
   boekEigenDienst,
   geefOpslag,
+  stuurOpBijscholing,
+  volgOpleiding,
+  zelfOnderhoud,
+  zelfRepareren,
+  type OpleidingId,
   koopNieuw,
   neemAan,
   ontsla,
@@ -4611,6 +4616,26 @@ function registerHandlers(): void {
   handle('bedrijf:opslag', (_event, id: number) => {
     if (!career?.bedrijf) return careerPayload()
     return persist({ ...career, bedrijf: geefOpslag(career.bedrijf, Number(id)) })
+  })
+  /*
+   * Opleidingen en de werkplaats zelf. De score van een minigame komt uit het
+   * venster; core/bedrijf.ts begrenst hem op 0 tot 1. Het is je eigen spel:
+   * wie hem vervalst, bedriegt alleen zichzelf.
+   */
+  const metUitslag = (
+    uit: { bedrijf: NonNullable<CareerState['bedrijf']> } | { fout: string }
+  ): { payload: ReturnType<typeof careerPayload>; fout?: string } =>
+    'fout' in uit || !career ? { payload: careerPayload(), fout: 'fout' in uit ? uit.fout : 'geen' } : { payload: persist({ ...career, bedrijf: uit.bedrijf }) }
+  handle('bedrijf:opleiding', (_event, id: OpleidingId) =>
+    career?.bedrijf ? metUitslag(volgOpleiding(career.bedrijf, id)) : { payload: careerPayload(), fout: 'geen' }
+  )
+  handle('bedrijf:bijscholing', (_event, id: number) =>
+    career?.bedrijf ? metUitslag(stuurOpBijscholing(career.bedrijf, Number(id))) : { payload: careerPayload(), fout: 'geen' }
+  )
+  handle('bedrijf:zelf', (_event, nummer: number, wat: 'onderhoud' | 'reparatie', score: number) => {
+    if (!career?.bedrijf) return { payload: careerPayload(), fout: 'geen' }
+    const doen = wat === 'reparatie' ? zelfRepareren : zelfOnderhoud
+    return metUitslag(doen(career.bedrijf, Number(nummer), Number(score)))
   })
   handle('bedrijf:dagAf', () => {
     if (!career?.bedrijf) return careerPayload()

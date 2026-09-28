@@ -64,6 +64,9 @@ export type BoekingSoort =
   | 'loon'
   | 'ontslag'
   | 'vertrek'
+  | 'opleiding'
+  | 'bijscholing'
+  | 'niveau'
 
 /** Eén regel in de boeken. */
 export interface Boeking {
@@ -132,6 +135,8 @@ export interface Medewerker {
   sinds: number
   /** Ziek tot en met deze bedrijfsdag. */
   ziekTot?: number
+  /** Op bijscholing tot en met deze bedrijfsdag; dan werkt hij niet. */
+  cursusTot?: number
 }
 
 /** Iemand die vandaag solliciteert. */
@@ -189,7 +194,101 @@ export interface Bedrijf {
   sollicitantWeg?: number[]
   /** Uren die je vandaag zelf op een concessielijn reed; dekken open diensten. */
   zelfUren?: number
+  /** Ervaringspunten van het bedrijf; bepalen het niveau. */
+  xp?: number
+  /** De opleidingen die de eigenaar volgt of volgde. */
+  opleidingen?: Array<{ id: OpleidingId; klaarOp: number; gemeld?: boolean }>
 }
+
+/* ---- niveaus en opleidingen ---- */
+
+/**
+ * Wat een niveau oplevert. Het bedrijf groeit door te rijden en te verdienen;
+ * elk niveau maakt het een beetje makkelijker, zoals in de Bus Company
+ * Simulator ("level up and unlock new benefits").
+ */
+export type Voordeel =
+  | 'extraSollicitant'
+  | 'extraTweedehands'
+  | 'goedkoperInschrijven'
+  | 'hogereVergoeding'
+  | 'goedkoperOnderhoud'
+  | 'nogHogereVergoeding'
+
+export const NIVEAUS: Array<{ xp: number; voordeel?: Voordeel }> = [
+  { xp: 0 },
+  { xp: 300, voordeel: 'extraSollicitant' },
+  { xp: 800, voordeel: 'extraTweedehands' },
+  { xp: 1600, voordeel: 'goedkoperInschrijven' },
+  { xp: 3000, voordeel: 'hogereVergoeding' },
+  { xp: 5000, voordeel: 'goedkoperOnderhoud' },
+  { xp: 8000, voordeel: 'nogHogereVergoeding' }
+]
+
+export function niveauVan(bedrijf: Pick<Bedrijf, 'xp'>): number {
+  const xp = bedrijf.xp ?? 0
+  let niveau = 1
+  NIVEAUS.forEach((n, i) => {
+    if (xp >= n.xp) niveau = i + 1
+  })
+  return niveau
+}
+
+export function heeftVoordeel(bedrijf: Pick<Bedrijf, 'xp'>, voordeel: Voordeel): boolean {
+  const i = NIVEAUS.findIndex((n) => n.voordeel === voordeel)
+  return i >= 0 && niveauVan(bedrijf) >= i + 1
+}
+
+/**
+ * De opleidingen van de eigenaar. Elk kost geld en een paar bedrijfsdagen, en
+ * geeft een taak of een voordeel. Werkplaats en schadeherstel laten je zelf
+ * aan de bussen werken, met een minigame -- wie het goed doet, betaalt alleen
+ * de onderdelen.
+ */
+export type OpleidingId = 'werkplaats' | 'schadeherstel' | 'planner' | 'instructeur' | 'onderhandelen'
+
+export const OPLEIDINGEN: Record<OpleidingId, { kosten: number; dagen: number; niveau: number }> = {
+  werkplaats: { kosten: 4_000_00, dagen: 3, niveau: 1 },
+  schadeherstel: { kosten: 6_000_00, dagen: 4, niveau: 2 },
+  planner: { kosten: 8_000_00, dagen: 5, niveau: 3 },
+  instructeur: { kosten: 10_000_00, dagen: 5, niveau: 4 },
+  onderhandelen: { kosten: 15_000_00, dagen: 6, niveau: 5 }
+}
+
+export function opleidingKlaar(bedrijf: Pick<Bedrijf, 'opleidingen' | 'dag'>, id: OpleidingId): boolean {
+  return (bedrijf.opleidingen ?? []).some((o) => o.id === id && o.klaarOp <= bedrijf.dag)
+}
+
+export function opleidingBezig(bedrijf: Pick<Bedrijf, 'opleidingen' | 'dag'>, id: OpleidingId): number | undefined {
+  return (bedrijf.opleidingen ?? []).find((o) => o.id === id && o.klaarOp > bedrijf.dag)?.klaarOp
+}
+
+/** Alles wat niveau en opleidingen samen aan de rekenregels veranderen. */
+export function bedrijfsfactoren(bedrijf: Bedrijf): {
+  vergoeding: number
+  inhuur: number
+  inschrijving: number
+  onderhoud: number
+  ervaring: number
+  sollicitanten: number
+  tweedehands: number
+} {
+  return {
+    vergoeding:
+      1 +
+      (heeftVoordeel(bedrijf, 'hogereVergoeding') ? 0.03 : 0) +
+      (heeftVoordeel(bedrijf, 'nogHogereVergoeding') ? 0.03 : 0) +
+      (opleidingKlaar(bedrijf, 'onderhandelen') ? 0.02 : 0),
+    inhuur: opleidingKlaar(bedrijf, 'planner') ? 0.97 : 1,
+    inschrijving: heeftVoordeel(bedrijf, 'goedkoperInschrijven') ? 0.9 : 1,
+    onderhoud: heeftVoordeel(bedrijf, 'goedkoperOnderhoud') ? 0.9 : 1,
+    ervaring: opleidingKlaar(bedrijf, 'instructeur') ? 1.5 : 1,
+    sollicitanten: REGELS.sollicitantenPerDag + (heeftVoordeel(bedrijf, 'extraSollicitant') ? 1 : 0),
+    tweedehands: REGELS.tweedehandsPerDag + (heeftVoordeel(bedrijf, 'extraTweedehands') ? 2 : 0)
+  }
+}
+
+
 
 /** Wat de regels van het bedrijf zijn. Eén plek, zodat een balans niet over de code verspreid raakt. */
 export const REGELS = {
@@ -234,6 +333,17 @@ export const REGELS = {
   monteurOnderhoudMax: 0.45,
   monteurSlijtage: 0.1,
   monteurSlijtageMax: 0.4,
+  /** Bijscholing voor een medewerker. */
+  bijscholingKosten: 500_00,
+  bijscholingErvaring: 12,
+  /** Zelf in de werkplaats: je betaalt alleen dit deel, de onderdelen. */
+  zelfOnderdelen: 0.3,
+  /** Ervaringspunten van het bedrijf. */
+  xpPerTweeUur: 1,
+  xpWinstdag: 10,
+  xpEigenDienst: 5,
+  xpPerHalteOpTijd: 1,
+  xpOpleiding: 100,
   eigenBusPerUur: 10_00,
   /** Hoeveel km een bus per dienstregelingsuur rijdt, en hoeveel staat dat kost. */
   kmPerUur: 22,
@@ -299,9 +409,10 @@ export function isInzetbaar(bus: EigenBus, dag: number): boolean {
   )
 }
 
-export function onderhoudskosten(bus: EigenBus, monteurs = 0): number {
+export function onderhoudskosten(bus: EigenBus, monteurs = 0, bedrijf?: Bedrijf): number {
   const korting = Math.min(REGELS.monteurOnderhoudMax, monteurs * REGELS.monteurOnderhoud)
-  return Math.round((REGELS.onderhoudVast + (100 - bus.staat) * REGELS.onderhoudPerPunt) * (1 - korting))
+  const niveau = bedrijf ? bedrijfsfactoren(bedrijf).onderhoud : 1
+  return Math.round((REGELS.onderhoudVast + (100 - bus.staat) * REGELS.onderhoudPerPunt) * (1 - korting) * niveau)
 }
 
 export function reparatiekosten(bus: EigenBus): number {
@@ -332,7 +443,7 @@ export function tweedehandsAanbod(bedrijf: Bedrijf, markt: MarktBus[]): Aanbod[]
   const kans = reeks(bedrijf.dag * 7919 + bedrijf.naam.length)
   const weg = new Set(bedrijf.aanbodWeg ?? [])
   const uit: Aanbod[] = []
-  for (let nr = 0; nr < REGELS.tweedehandsPerDag; nr++) {
+  for (let nr = 0; nr < bedrijfsfactoren(bedrijf).tweedehands; nr++) {
     const bus = markt[Math.floor(kans() * markt.length)]
     const km = Math.round((120_000 + kans() * 560_000) / 1000) * 1000
     const staat = Math.round(40 + kans() * 50)
@@ -410,7 +521,8 @@ export function verkoop(bedrijf: Bedrijf, nummer: number): Bedrijf {
 export function naarWerkplaats(bedrijf: Bedrijf, nummer: number, wat: 'onderhoud' | 'reparatie'): Kooputslag {
   const bus = (bedrijf.bussen ?? []).find((b) => b.nummer === nummer)
   if (!bus) return { fout: 'weg' }
-  const kosten = wat === 'onderhoud' ? onderhoudskosten(bus, aanHetWerk(bedrijf, 'monteur').length) : reparatiekosten(bus)
+  const kosten =
+    wat === 'onderhoud' ? onderhoudskosten(bus, aanHetWerk(bedrijf, 'monteur').length, bedrijf) : reparatiekosten(bus)
   if (bedrijf.kas < kosten) return { fout: 'kas' }
   const klaar: EigenBus = {
     ...bus,
@@ -451,7 +563,10 @@ export interface Prognose {
 /** Wie er vandaag werkt: in dienst en niet ziek. */
 export function aanHetWerk(bedrijf: Bedrijf, rol: Rol): Medewerker[] {
   return (bedrijf.personeel ?? []).filter(
-    (m) => m.rol === rol && (m.ziekTot === undefined || m.ziekTot < bedrijf.dag)
+    (m) =>
+      m.rol === rol &&
+      (m.ziekTot === undefined || m.ziekTot < bedrijf.dag) &&
+      (m.cursusTot === undefined || m.cursusTot < bedrijf.dag)
   )
 }
 
@@ -474,7 +589,8 @@ export function dagprognose(bedrijf: Bedrijf): Prognose {
    * vullen was -- met "onderbezet" en dalende tevredenheid als gevolg.
    */
   const uren = Math.round(bedrijf.concessies.reduce((som, c) => som + c.urenPerDag, 0) * 10) / 10
-  const vergoeding = bedrijf.concessies.reduce((som, c) => som + dagresultaat(c, bedrijf.reputatie).vergoeding, 0)
+  const f = bedrijfsfactoren(bedrijf)
+  const vergoeding = bedrijf.concessies.reduce((som, c) => som + dagresultaat(c, bedrijf.reputatie, f).vergoeding, 0)
 
   /*
    * Het rooster in uren: eerst de eigen chauffeurs, dan wat jij zelf reed, en
@@ -491,10 +607,11 @@ export function dagprognose(bedrijf: Bedrijf): Prognose {
   const openDiensten = Math.ceil(Math.round((uren - chauffeurUren) * 10) / 10 / REGELS.urenPerDienst)
   const zelfDiensten = Math.max(0, diensten - eigenDiensten - openDiensten)
 
-  const materieelBesparing = Math.round(uren * dekking * (REGELS.inhuurMaterieelPerUur - REGELS.eigenBusPerUur))
-  const personeelBesparing = Math.round(chauffeurUren * REGELS.inhuurChauffeurPerUur)
+  const materieelBesparing = Math.round(uren * dekking * (REGELS.inhuurMaterieelPerUur * f.inhuur - REGELS.eigenBusPerUur))
+  const personeelBesparing = Math.round(chauffeurUren * REGELS.inhuurChauffeurPerUur * f.inhuur)
   const lonen = (bedrijf.personeel ?? []).reduce((som, m) => som + m.loon, 0)
-  const kosten = Math.round(uren * REGELS.inhuurPerUur) - materieelBesparing - personeelBesparing + lonen
+  const inhuur = bedrijf.concessies.reduce((som, c) => som + dagresultaat(c, bedrijf.reputatie, f).kosten, 0)
+  const kosten = inhuur - materieelBesparing - personeelBesparing + lonen
   return {
     vergoeding,
     kosten,
@@ -541,7 +658,7 @@ export function sollicitanten(bedrijf: Bedrijf): Sollicitant[] {
   const kans = reeks(bedrijf.dag * 104_729 + bedrijf.naam.length * 31 + 7)
   const weg = new Set(bedrijf.sollicitantWeg ?? [])
   const uit: Sollicitant[] = []
-  for (let nr = 0; nr < REGELS.sollicitantenPerDag; nr++) {
+  for (let nr = 0; nr < bedrijfsfactoren(bedrijf).sollicitanten; nr++) {
     const naam = `${VOORNAMEN[Math.floor(kans() * VOORNAMEN.length)]} ${ACHTERNAMEN[Math.floor(kans() * ACHTERNAMEN.length)]}`
     const rol: Rol = kans() < 0.7 ? 'chauffeur' : 'monteur'
     const ervaring = Math.round(Math.pow(kans(), 1.5) * 90) + 5
@@ -603,6 +720,84 @@ export function geefOpslag(bedrijf: Bedrijf, id: number): Bedrijf {
   }
 }
 
+/** Een opleiding beginnen: betalen, en na een paar bedrijfsdagen is hij klaar. */
+export function volgOpleiding(
+  bedrijf: Bedrijf,
+  id: OpleidingId
+): { bedrijf: Bedrijf } | { fout: 'kas' | 'niveau' | 'al' } {
+  const o = OPLEIDINGEN[id]
+  if (!o) return { fout: 'al' }
+  if ((bedrijf.opleidingen ?? []).some((x) => x.id === id)) return { fout: 'al' }
+  if (niveauVan(bedrijf) < o.niveau) return { fout: 'niveau' }
+  if (bedrijf.kas < o.kosten) return { fout: 'kas' }
+  const met = { ...bedrijf, opleidingen: [...(bedrijf.opleidingen ?? []), { id, klaarOp: bedrijf.dag + o.dagen }] }
+  return { bedrijf: boek(met, { soort: 'opleiding', bedrag: -o.kosten, wat: id, gemeten: false }) }
+}
+
+/**
+ * Bijscholing voor een medewerker: een dag weg, en daarna meer ervaring. Wie
+ * op cursus is, telt vandaag niet mee in het rooster of de werkplaats.
+ */
+export function stuurOpBijscholing(bedrijf: Bedrijf, id: number): { bedrijf: Bedrijf } | { fout: 'kas' | 'weg' } {
+  const m = (bedrijf.personeel ?? []).find((x) => x.id === id)
+  if (!m || (m.cursusTot !== undefined && m.cursusTot >= bedrijf.dag) || m.ervaring >= 100) return { fout: 'weg' }
+  if (bedrijf.kas < REGELS.bijscholingKosten) return { fout: 'kas' }
+  const met = {
+    ...bedrijf,
+    personeel: (bedrijf.personeel ?? []).map((x) =>
+      x.id === id
+        ? {
+            ...x,
+            cursusTot: bedrijf.dag,
+            ervaring: Math.min(100, x.ervaring + REGELS.bijscholingErvaring),
+            tevredenheid: Math.min(100, x.tevredenheid + 3)
+          }
+        : x
+    )
+  }
+  return { bedrijf: boek(met, { soort: 'bijscholing', bedrag: -REGELS.bijscholingKosten, wat: m.naam, gemeten: false }) }
+}
+
+/**
+ * Zelf onderhoud doen, na de werkplaatsopleiding. De minigame geeft een score
+ * van 0 tot 1: helemaal goed is de bus weer als nieuw, half goed brengt hem
+ * een eind op weg. Je betaalt alleen de onderdelen, en de bus staat een dag.
+ */
+export function zelfOnderhoud(bedrijf: Bedrijf, nummer: number, score: number): Kooputslag {
+  if (!opleidingKlaar(bedrijf, 'werkplaats')) return { fout: 'weg' }
+  const bus = (bedrijf.bussen ?? []).find((b) => b.nummer === nummer)
+  if (!bus || (bus.werkplaatsTot !== undefined && bus.werkplaatsTot >= bedrijf.dag)) return { fout: 'weg' }
+  const s = Math.max(0, Math.min(1, Number.isFinite(score) ? score : 0))
+  const kosten = Math.round(onderhoudskosten(bus, 0, bedrijf) * REGELS.zelfOnderdelen)
+  if (bedrijf.kas < kosten) return { fout: 'kas' }
+  const staat = Math.max(bus.staat, Math.round(bus.staat + (100 - bus.staat) * (0.4 + 0.6 * s)))
+  const met = {
+    ...bedrijf,
+    bussen: (bedrijf.bussen ?? []).map((b) => (b.nummer === nummer ? { ...b, staat, werkplaatsTot: bedrijf.dag } : b))
+  }
+  return {
+    bedrijf: boek(met, { soort: 'onderhoud', bedrag: -kosten, wat: `${bus.nummer} · zelf (${Math.round(s * 100)}%)`, gemeten: false })
+  }
+}
+
+/** Zelf schade herstellen, na de opleiding schadeherstel; zoals `zelfOnderhoud`. */
+export function zelfRepareren(bedrijf: Bedrijf, nummer: number, score: number): Kooputslag {
+  if (!opleidingKlaar(bedrijf, 'schadeherstel')) return { fout: 'weg' }
+  const bus = (bedrijf.bussen ?? []).find((b) => b.nummer === nummer)
+  if (!bus || bus.schade <= 0 || (bus.werkplaatsTot !== undefined && bus.werkplaatsTot >= bedrijf.dag)) return { fout: 'weg' }
+  const s = Math.max(0, Math.min(1, Number.isFinite(score) ? score : 0))
+  const kosten = Math.round(reparatiekosten(bus) * REGELS.zelfOnderdelen)
+  if (bedrijf.kas < kosten) return { fout: 'kas' }
+  const schade = Math.round(bus.schade * (1 - (0.3 + 0.7 * s)))
+  const met = {
+    ...bedrijf,
+    bussen: (bedrijf.bussen ?? []).map((b) => (b.nummer === nummer ? { ...b, schade, werkplaatsTot: bedrijf.dag } : b))
+  }
+  return {
+    bedrijf: boek(met, { soort: 'reparatie', bedrag: -kosten, wat: `${bus.nummer} · zelf (${Math.round(s * 100)}%)`, gemeten: false })
+  }
+}
+
 /**
  * Waar de tevredenheid naartoe beweegt: 60 bij marktloon, hoger bij meer
  * betalen, lager als chauffeurs het werk niet rond krijgen (open diensten).
@@ -632,7 +827,8 @@ function personeelNaDag(bedrijf: Bedrijf, prognose: Prognose): { personeel: Mede
   for (const m of bedrijf.personeel ?? []) {
     const kans = reeks(dag * 7907 + m.id * 131)
     let volgende: Medewerker = { ...m }
-    if (werkend.has(m.id)) volgende.ervaring = Math.min(100, Math.round((m.ervaring + (m.rol === 'chauffeur' ? 0.4 : 0.3)) * 10) / 10)
+    const groei = (m.rol === 'chauffeur' ? 0.4 : 0.3) * bedrijfsfactoren(bedrijf).ervaring
+    if (werkend.has(m.id)) volgende.ervaring = Math.min(100, Math.round((m.ervaring + groei) * 10) / 10)
     const doel = doelTevredenheid(m.loon, marktloon(m.rol, m.ervaring), onderbezet && m.rol === 'chauffeur')
     volgende.tevredenheid = Math.round((m.tevredenheid + (doel - m.tevredenheid) * 0.15) * 10) / 10
     const ziek = m.ziekTot !== undefined && m.ziekTot >= dag
@@ -682,8 +878,9 @@ export function urenVanLijn(lijn: LineSummary): number {
   return Math.round(((lijn.trips * lijn.averageMinutes) / 60) * 10) / 10
 }
 
-export function inschrijfkosten(lijn: Pick<LineSummary, 'tours'>): number {
-  return REGELS.inschrijvingVast + lijn.tours * REGELS.inschrijvingPerOmloop
+export function inschrijfkosten(lijn: Pick<LineSummary, 'tours'>, bedrijf?: Bedrijf): number {
+  const factor = bedrijf ? bedrijfsfactoren(bedrijf).inschrijving : 1
+  return Math.round((REGELS.inschrijvingVast + lijn.tours * REGELS.inschrijvingPerOmloop) * factor)
 }
 
 /** Vergoeding per uur bij deze reputatie: van −10 % bij 0 tot +10 % bij 100. */
@@ -693,10 +890,15 @@ export function vergoedingPerUur(reputatie: number): number {
 }
 
 /** Wat een concessie per dag oplevert en kost, volgens het rekenmodel. */
-export function dagresultaat(concessie: Pick<Concessie, 'urenPerDag'>, reputatie: number): { vergoeding: number; kosten: number } {
+export function dagresultaat(
+  concessie: Pick<Concessie, 'urenPerDag'>,
+  reputatie: number,
+  /** Niveau en opleidingen; zie `bedrijfsfactoren`. Zonder: de gewone regels. */
+  factoren: { vergoeding: number; inhuur: number } = { vergoeding: 1, inhuur: 1 }
+): { vergoeding: number; kosten: number } {
   return {
-    vergoeding: Math.round(concessie.urenPerDag * vergoedingPerUur(reputatie)),
-    kosten: Math.round(concessie.urenPerDag * REGELS.inhuurPerUur)
+    vergoeding: Math.round(concessie.urenPerDag * vergoedingPerUur(reputatie) * factoren.vergoeding),
+    kosten: Math.round(concessie.urenPerDag * REGELS.inhuurPerUur * factoren.inhuur)
   }
 }
 
@@ -717,7 +919,7 @@ export function schrijfIn(
   lijn: LineSummary
 ): Inschrijfuitslag {
   if (heeftConcessie(bedrijf, kaart.folder, lijn.lineFile)) return { fout: 'al' }
-  const kosten = inschrijfkosten(lijn)
+  const kosten = inschrijfkosten(lijn, bedrijf)
   if (bedrijf.kas < kosten) return { fout: 'kas' }
   const concessie: Concessie = {
     mapFolder: kaart.folder,
@@ -817,7 +1019,11 @@ export function boekEigenDienst(
     wat: `${lijnen.join('/')} · ${opTijd} op tijd, ${vroeg} te vroeg, ${laat} te laat`,
     gemeten: true
   })
-  return { ...geboekt, reputatie: Math.max(0, Math.min(100, geboekt.reputatie + stap)) }
+  return {
+    ...geboekt,
+    reputatie: Math.max(0, Math.min(100, geboekt.reputatie + stap)),
+    xp: (geboekt.xp ?? 0) + REGELS.xpEigenDienst + opTijd * REGELS.xpPerHalteOpTijd
+  }
 }
 
 /**
@@ -852,8 +1058,9 @@ function schadeVanDienst(bedrijf: Bedrijf, staat: Rittenstaat, busPad?: string):
 export function sluitDagAf(bedrijf: Bedrijf): Bedrijf {
   const prognose = dagprognose(bedrijf)
   let uit = bedrijf
+  const factoren = bedrijfsfactoren(bedrijf)
   for (const c of bedrijf.concessies) {
-    const { vergoeding, kosten } = dagresultaat(c, bedrijf.reputatie)
+    const { vergoeding, kosten } = dagresultaat(c, bedrijf.reputatie, factoren)
     const naam = `${lijnnaam(c)} · ${c.mapName}`
     uit = boek(uit, { soort: 'vergoeding', bedrag: vergoeding, wat: naam, gemeten: false })
     uit = boek(uit, { soort: 'exploitatie', bedrag: -kosten, wat: naam, gemeten: false })
@@ -940,8 +1147,30 @@ export function sluitDagAf(bedrijf: Bedrijf): Bedrijf {
     personeel: naDag.personeel.length,
     openDiensten: prognose.openDiensten
   }
+  /*
+   * Ervaringspunten voor de dag: voor elke twee dienstregelingsuren één, en
+   * tien extra voor een dag met winst. Opleidingen die morgen klaar zijn,
+   * worden gemeld en geven hun punten; een nieuw niveau komt in de boeken.
+   */
+  const niveauVoor = niveauVan(uit)
+  let xp = (uit.xp ?? 0) + Math.floor(prognose.uren / 2) * REGELS.xpPerTweeUur + (resultaat > 0 ? REGELS.xpWinstdag : 0)
+  const opleidingen = (uit.opleidingen ?? []).map((o) => {
+    if (o.gemeld || o.klaarOp > uit.dag + 1) return o
+    xp += REGELS.xpOpleiding
+    uit = boek(uit, { soort: 'opleiding', bedrag: 0, wat: `${o.id} ✓`, gemeten: false })
+    return { ...o, gemeld: true }
+  })
+  const niveauNa = niveauVan({ xp })
+  if (niveauNa > niveauVoor) uit = boek(uit, { soort: 'niveau', bedrag: 0, wat: `${niveauNa}`, gemeten: false })
+  const personeelNa = (uit.personeel ?? []).map((m) =>
+    m.cursusTot !== undefined && m.cursusTot <= uit.dag ? { ...m, cursusTot: undefined } : m
+  )
+
   return {
     ...uit,
+    xp,
+    opleidingen,
+    personeel: personeelNa,
     concessies: blijven,
     dag: uit.dag + 1,
     aanbodWeg: [],

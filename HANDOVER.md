@@ -1450,6 +1450,33 @@ dashboard.
   hoofdproces rekenen ze allebei met `sollicitanten()`. Ontslag kost vijf
   dagen loon en drie punten tevredenheid bij de rest; opslag is 10 %.
 
+**Stap 4: niveaus, opleidingen en de werkplaats zelf** (28-09-2026). Tabblad
+Opleidingen; niveau en XP-balk in de zijbalk.
+- **Niveaus** (`NIVEAUS`, `niveauVan`, `heeftVoordeel`): XP voor elke twee
+  dienstregelingsuren, 10 voor een dag met winst, 5 + 1 per halte op tijd voor
+  een eigen dienst, 100 voor een afgeronde opleiding. Zeven niveaus (0, 300,
+  800, 1600, 3000, 5000, 8000 XP), elk met een voordeel: sollicitant erbij,
+  twee tweedehands bussen erbij, inschrijven 10 % goedkoper, vergoeding +3 %,
+  werkplaats 10 % goedkoper, vergoeding nog eens +3 %. Een niveau erbij staat
+  als boeking van nul euro in de boeken, zodat je ziet wanneer het kwam.
+- **Opleidingen voor de eigenaar** (`OPLEIDINGEN`, `volgOpleiding`): werkplaats,
+  schadeherstel, planner (inhuur 3 % goedkoper), instructeur (personeel 50 %
+  sneller ervaring), onderhandelen (vergoeding +2 %). Elk kost geld en dagen en
+  vraagt een niveau; `sluitDagAf` meldt ze af. Alle kortingen en toeslagen komen
+  uit één plek, `bedrijfsfactoren()`, en `dagprognose` rekent ermee, zodat de
+  prognose en de afsluiting gelijk blijven (proef, ook op niveau 5).
+- **Bijscholing** (`stuurOpBijscholing`): 500, de medewerker is een dag weg
+  (`cursusTot`, telt niet in het rooster) en krijgt +12 ervaring en +3
+  tevredenheid.
+- **Zelf onderhouden en repareren** (`zelfOnderhoud`, `zelfRepareren`): na de
+  opleiding werkplaats of schadeherstel. Je betaalt 30 % (alleen de onderdelen)
+  en speelt een spelletje (`WerkplaatsSpel` in `BedrijfOpleiding.tsx`):
+  inspectie (12 onderdelen, 3-5 versleten, 25 s, elk goed onderdeel dat je
+  openmaakt kost 5 %) of een stappenplan in de goede volgorde (elke fout 20 %).
+  De score (0-1) bepaalt hoeveel beter de bus wordt: onderhoud 40-100 % van wat
+  er aan staat ontbreekt, reparatie 30-100 % van de schade. Het hoofdproces
+  klemt de score, dus een vreemde waarde uit het venster doet niets geks.
+
 Proef in het spel die de open vragen beantwoordt: OMSI 2.3.004, dienstregeling
 via het menu, drie haltes: A 60 s voor de plantijd weg, B 30 s na, C
 doorrijden. Daarna het spoor in de map `ritten` naast de rittenstaat leggen.
@@ -1531,7 +1558,8 @@ Er staan probes in `scripts/`:
   vertrek of OMSI de halte nu bij aankomst, bij vertrek of bij de paal laat
   verspringen; doorrijden, tellers die teruglopen, geschatte tijden zonder oordeel.
 - `probe-bedrijf.ts` — de regels van het busbedrijf: inschrijven, dag
-  afsluiten, eigen dienst, verlengen en vervallen, hele centen.
+  afsluiten, eigen dienst, verlengen en vervallen, hele centen; bussen,
+  personeel, niveaus, opleidingen, bijscholing en zelf onderhouden.
 - `probe-kaartmogelijkheden.ts` — proef 0 voor een busbedrijf-modus, alleen
   lezen: per kaart de soort ritten (.ttr / typ2 / oud), `StnLinks.cfg` ruw,
   haltes met meer dan één opvolger, KI-groepen per lijn, de wagenparklijsten

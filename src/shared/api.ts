@@ -1,6 +1,6 @@
 import type { Schermvorm } from './scherm'
 import type { Busanalyse, Busmap } from '../core/busklaar'
-import type { Aanbod, MarktBus } from '../core/bedrijf'
+import type { Aanbod, MarktBus, OpleidingId } from '../core/bedrijf'
 import type { ActiveDuty, CareerState, CareerSummary, GameMode } from '../core/career'
 import type { LineSummary } from '../core/duty'
 import type { ExamMeasurement } from '../core/exam'
@@ -787,6 +787,10 @@ export interface CareerApi {
   bedrijfAannemen(nr: number): Promise<{ payload: CareerPayload; fout?: 'weg' | 'geen' }>
   bedrijfOntslaan(id: number): Promise<CareerPayload>
   bedrijfOpslag(id: number): Promise<CareerPayload>
+  bedrijfOpleiding(id: OpleidingId): Promise<{ payload: CareerPayload; fout?: string }>
+  bedrijfBijscholing(id: number): Promise<{ payload: CareerPayload; fout?: string }>
+  /** Zelf in de werkplaats, met de score van de minigame (0 tot 1). */
+  bedrijfZelf(nummer: number, wat: 'onderhoud' | 'reparatie', score: number): Promise<{ payload: CareerPayload; fout?: string }>
   bedrijfWerkplaats(
     nummer: number,
     wat: 'onderhoud' | 'reparatie'

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type JSX, type ReactNode } from 'react'
 import {
   REGELS,
   aanHetWerk,
+  opleidingKlaar,
   dagprognose,
   marktloon,
   sollicitanten,
@@ -27,6 +28,7 @@ import { loose, type TextKey } from '../../shared/i18n'
 import { Icoon, type Icoonnaam } from './Icoon'
 import { useLanguage, useT } from './language'
 import { Grafiek } from './BedrijfGrafiek'
+import { Opleidingen, WerkplaatsSpel, niveauVoortgang } from './BedrijfOpleiding'
 import './bedrijf.css'
 
 /*
@@ -43,7 +45,7 @@ import './bedrijf.css'
  * donker en licht volgen vanzelf.
  */
 
-type Tab = 'dashboard' | 'concessies' | 'wagenpark' | 'markt' | 'personeel' | 'boeken'
+type Tab = 'dashboard' | 'concessies' | 'wagenpark' | 'markt' | 'personeel' | 'opleidingen' | 'boeken'
 
 const TABS: Array<{ tab: Tab; icoon: Icoonnaam; tekst: TextKey }> = [
   { tab: 'dashboard', icoon: 'record', tekst: 'bd.nav.dashboard' },
@@ -51,6 +53,7 @@ const TABS: Array<{ tab: Tab; icoon: Icoonnaam; tekst: TextKey }> = [
   { tab: 'wagenpark', icoon: 'bus', tekst: 'bd.nav.fleet' },
   { tab: 'markt', icoon: 'kaartje', tekst: 'bd.nav.market' },
   { tab: 'personeel', icoon: 'profile', tekst: 'bd.nav.staff' },
+  { tab: 'opleidingen', icoon: 'licence', tekst: 'bd.nav.training' },
   { tab: 'boeken', icoon: 'logboek', tekst: 'bd.nav.books' }
 ]
 
@@ -98,7 +101,12 @@ export function BedrijfApp({ bedrijf, onCareer, onTerug }: Props): JSX.Element {
           </span>
           <span>
             <b>{bedrijf.naam}</b>
-            <small>{tr('bd.dayN', { day: bedrijf.dag })}</small>
+            <small>
+              {tr('bd.levelN', { n: niveauVoortgang(bedrijf).niveau })} · {tr('bd.dayN', { day: bedrijf.dag })}
+            </small>
+            <span className="bd-meter dun" title={tr('bd.nav.training')}>
+              <i style={{ width: `${Math.round(niveauVoortgang(bedrijf).deel * 100)}%` }} />
+            </span>
           </span>
         </div>
         <nav>
@@ -144,6 +152,7 @@ export function BedrijfApp({ bedrijf, onCareer, onTerug }: Props): JSX.Element {
         {tab === 'wagenpark' && <Wagenpark bedrijf={bedrijf} handel={handel} />}
         {tab === 'markt' && <Markt bedrijf={bedrijf} handel={handel} />}
         {tab === 'personeel' && <Personeel bedrijf={bedrijf} handel={handel} />}
+        {tab === 'opleidingen' && <Opleidingen bedrijf={bedrijf} handel={handel} />}
         {tab === 'boeken' && <Boeken bedrijf={bedrijf} alle />}
       </main>
     </div>
@@ -587,6 +596,8 @@ function Wagenpark({ bedrijf, handel }: { bedrijf: BedrijfStaat; handel: Handel 
   const tr = useT()
   const geld = useGeld()
   const bussen = bedrijf.bussen ?? []
+  /** De minigame die openstaat: zelf onderhoud of zelf repareren, aan welke bus. */
+  const [spel, setSpel] = useState<{ bus: EigenBus; soort: 'onderhoud' | 'reparatie' }>()
   if (bussen.length === 0) {
     return (
       <Paneel titel={tr('bd.nav.fleet')}>
@@ -606,10 +617,25 @@ function Wagenpark({ bedrijf, handel }: { bedrijf: BedrijfStaat; handel: Handel 
             handel={handel}
             kas={bedrijf.kas}
             monteurs={aanHetWerk(bedrijf, 'monteur').length}
+            bedrijf={bedrijf}
+            onSpel={(soort) => setSpel({ bus: b, soort })}
             tr={tr}
           />
         ))}
       </ul>
+      {spel && (
+        <WerkplaatsSpel
+          soort={spel.soort}
+          busNummer={spel.bus.nummer}
+          staat={spel.bus.staat}
+          onAnnuleer={() => setSpel(undefined)}
+          onKlaar={(score) => {
+            const wat = spel
+            setSpel(undefined)
+            void handel(window.career.bedrijfZelf(wat.bus.nummer, wat.soort, score))
+          }}
+        />
+      )}
     </Paneel>
   )
 }
@@ -619,6 +645,8 @@ function BusRij({
   dag,
   kas,
   monteurs,
+  bedrijf,
+  onSpel,
   geld,
   handel,
   tr
@@ -626,6 +654,9 @@ function BusRij({
   bus: EigenBus
   dag: number
   monteurs: number
+  bedrijf: BedrijfStaat
+  /** Zelf aan de slag, na de opleiding: opent de minigame. */
+  onSpel: (soort: 'onderhoud' | 'reparatie') => void
   kas: number
   geld: (c: number, t?: boolean) => string
   handel: Handel
@@ -634,8 +665,10 @@ function BusRij({
   const taal = useLanguage()
   const werkplaats = bus.werkplaatsTot !== undefined && bus.werkplaatsTot >= dag
   const inzet = isInzetbaar(bus, dag)
-  const onderhoud = onderhoudskosten(bus, monteurs)
+  const onderhoud = onderhoudskosten(bus, monteurs, bedrijf)
   const reparatie = reparatiekosten(bus)
+  const zelfOnderhoud = Math.round(onderhoudskosten(bus, 0, bedrijf) * REGELS.zelfOnderdelen)
+  const zelfReparatie = Math.round(reparatie * REGELS.zelfOnderdelen)
   return (
     <li>
       <span className="bd-nummer groot">{bus.nummer}</span>
@@ -659,6 +692,16 @@ function BusRij({
         >
           {tr('bd.service', { money: geld(onderhoud) })}
         </button>
+        {opleidingKlaar(bedrijf, 'werkplaats') && (
+          <button
+            type="button"
+            className="bd-knop zelf"
+            disabled={werkplaats || bus.staat >= 99 || kas < zelfOnderhoud}
+            onClick={() => onSpel('onderhoud')}
+          >
+            {tr('bd.selfService', { money: geld(zelfOnderhoud) })}
+          </button>
+        )}
         {bus.schade > 0 && (
           <button
             type="button"
@@ -667,6 +710,16 @@ function BusRij({
             onClick={() => void handel(window.career.bedrijfWerkplaats(bus.nummer, 'reparatie'))}
           >
             {tr('bd.repair', { money: geld(reparatie) })}
+          </button>
+        )}
+        {bus.schade > 0 && opleidingKlaar(bedrijf, 'schadeherstel') && (
+          <button
+            type="button"
+            className="bd-knop zelf"
+            disabled={werkplaats || kas < zelfReparatie}
+            onClick={() => onSpel('reparatie')}
+          >
+            {tr('bd.selfRepair', { money: geld(zelfReparatie) })}
           </button>
         )}
         <button
@@ -913,6 +966,7 @@ function MedewerkerRij({
   const tr = useT()
   const geld = useGeld()
   const ziek = m.ziekTot !== undefined && m.ziekTot >= dag
+  const cursus = m.cursusTot !== undefined && m.cursusTot >= dag
   return (
     <li>
       <span className="bd-avatar" aria-hidden="true">
@@ -936,10 +990,19 @@ function MedewerkerRij({
         {geld(m.loon)}
         <small> {tr('bd.perDayShort')}</small>
       </span>
-      <span className={`bd-status ${ziek ? 'let' : 'optijd'}`}>
-        {ziek ? tr('bd.sickUntil', { day: m.ziekTot ?? dag }) : tr('bd.working')}
+      <span className={`bd-status ${ziek || cursus ? 'let' : 'optijd'}`}>
+        {ziek ? tr('bd.sickUntil', { day: m.ziekTot ?? dag }) : cursus ? tr('bd.onCourse') : tr('bd.working')}
       </span>
       <span className="bd-acties">
+        <button
+          type="button"
+          className="bd-knop"
+          disabled={bezig || cursus || ziek || m.ervaring >= 100}
+          title={tr('bd.trainingTitle', { n: REGELS.bijscholingErvaring })}
+          onClick={() => doe(window.career.bedrijfBijscholing(m.id))}
+        >
+          {tr('bd.training', { money: geld(REGELS.bijscholingKosten) })}
+        </button>
         <button type="button" className="bd-knop" disabled={bezig} onClick={() => doe(window.career.bedrijfOpslag(m.id))}>
           {tr('bd.raise', { money: geld(Math.round((m.loon * REGELS.opslagFactor) / 100) * 100 - m.loon) })}
         </button>
