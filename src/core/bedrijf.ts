@@ -128,6 +128,14 @@ export interface EigenBus {
   schade: number
   /** Tot en met deze bedrijfsdag in de werkplaats. */
   werkplaatsTot?: number
+  /**
+   * De nieuwprijs waar de waarde van afgeschreven wordt, vastgelegd bij de
+   * aankoop. Zonder dit veranderde de waarde mee met de vorm: toen de vorm
+   * voortaan uit OMSI kwam, zou een SG292 die als solo gekocht was ineens van
+   * een geleed-prijs afgeschreven worden (+42 %). Oude bussen krijgen hem bij
+   * de migratie (bedrijfsdag.ts), nog met de oude vorm.
+   */
+  nieuwwaarde?: number
 }
 
 /** Een tweedehands aanbieding op de markt van vandaag. */
@@ -552,11 +560,11 @@ export function vormVanNaam(tekst: string): Busvorm {
 }
 
 /** Wat een bus nu waard is: nieuwprijs, afgeschreven op km, met staat en schade erbij. */
-export function waardeVan(bus: Pick<EigenBus, 'vorm' | 'km' | 'staat' | 'schade'>): number {
+export function waardeVan(bus: Pick<EigenBus, 'vorm' | 'km' | 'staat' | 'schade' | 'nieuwwaarde'>): number {
   const km = Math.max(REGELS.restwaarde, 1 - bus.km / REGELS.afschrijvingKm)
   const staat = 0.6 + 0.4 * (bus.staat / 100)
   const schade = 1 - bus.schade / 200
-  return Math.round(REGELS.nieuwprijs[bus.vorm] * km * staat * schade)
+  return Math.round((bus.nieuwwaarde ?? REGELS.nieuwprijs[bus.vorm]) * km * staat * schade)
 }
 
 export function isInzetbaar(bus: EigenBus, dag: number): boolean {
@@ -617,7 +625,36 @@ export function tweedehandsAanbod(bedrijf: Bedrijf, markt: MarktBus[]): Aanbod[]
  * nummers hangt) een nieuwe bus op de omloop van de oude zetten.
  */
 function volgendNummer(bedrijf: Bedrijf): number {
-  return Math.max(100, bedrijf.busTeller ?? Math.max(0, ...(bedrijf.bussen ?? []).map((b) => b.nummer))) + 1
+  return Math.max(100, busTellerVan(bedrijf)) + 1
+}
+
+/**
+ * Het hoogste busnummer dat ooit gebruikt is. Uit de teller, de bussen van nu,
+ * en de koop- en verkoopboekingen (`wat` begint met het nummer): een profiel
+ * van voor de teller dat zijn hoogste bus al verkocht had, gaf dat nummer
+ * anders nog één keer uit.
+ */
+export function busTellerVan(bedrijf: Bedrijf): number {
+  const uitBoeken = bedrijf.boekingen
+    .filter((b) => b.soort === 'bus-koop' || b.soort === 'bus-verkoop')
+    .map((b) => Number(/^(\d+)/.exec(b.wat)?.[1] ?? 0))
+  return Math.max(0, bedrijf.busTeller ?? 0, ...(bedrijf.bussen ?? []).map((b) => b.nummer), ...uitBoeken)
+}
+
+/**
+ * Een bus weg uit het bedrijf: uit het wagenpark, het rooster en de invulling
+ * van vandaag, met de teller vastgelegd voor het nummer verdwijnt. Voor
+ * verkoop, inruil en een afgelopen lease- of huurcontract.
+ */
+export function verwijderBus(bedrijf: Bedrijf, nummer: number): Bedrijf {
+  return zonderBus(
+    {
+      ...bedrijf,
+      busTeller: busTellerVan(bedrijf),
+      bussen: (bedrijf.bussen ?? []).filter((b) => b.nummer !== nummer)
+    },
+    nummer
+  )
 }
 
 /** Een bus weg uit het rooster en uit de invulling van vandaag. */
@@ -666,6 +703,7 @@ export function koopNieuw(bedrijf: Bedrijf, bus: MarktBus): Kooputslag {
     relativePath: bus.relativePath,
     naam: bus.naam,
     vorm: bus.vorm,
+    nieuwwaarde: prijs,
     aankoop: prijs,
     gekochtOp: bedrijf.dag,
     km: 0,
@@ -684,6 +722,7 @@ export function koopTweedehands(bedrijf: Bedrijf, aanbod: Aanbod): Kooputslag {
     relativePath: aanbod.bus.relativePath,
     naam: aanbod.bus.naam,
     vorm: aanbod.bus.vorm,
+    nieuwwaarde: REGELS.nieuwprijs[aanbod.bus.vorm],
     aankoop: aanbod.prijs,
     gekochtOp: bedrijf.dag,
     km: aanbod.km,
@@ -710,15 +749,7 @@ export function verkoop(bedrijf: Bedrijf, nummer: number): Bedrijf {
   const bus = (bedrijf.bussen ?? []).find((b) => b.nummer === nummer)
   if (!bus) return bedrijf
   const opbrengst = Math.round(waardeVan(bus) * REGELS.verkoopFactor)
-  // De teller vastleggen vóór het nummer verdwijnt, anders komt het terug.
-  const zonder = zonderBus(
-    {
-      ...bedrijf,
-      busTeller: Math.max(bedrijf.busTeller ?? 0, ...(bedrijf.bussen ?? []).map((b) => b.nummer)),
-      bussen: (bedrijf.bussen ?? []).filter((b) => b.nummer !== nummer)
-    },
-    nummer
-  )
+  const zonder = verwijderBus(bedrijf, nummer)
   return boek(zonder, { soort: 'bus-verkoop', bedrag: opbrengst, wat: `${bus.nummer} · ${bus.naam}`, gemeten: false })
 }
 

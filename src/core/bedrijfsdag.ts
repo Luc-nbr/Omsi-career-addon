@@ -1,4 +1,4 @@
-import { heeftConcessie, meldBericht, opleidingKlaar, type Bedrijf } from './bedrijf'
+import { busTellerVan, heeftConcessie, meldBericht, opleidingKlaar, REGELS, type Bedrijf } from './bedrijf'
 import type { Dagrooster, LijnWeek } from './planTypen'
 import { vulAan } from './rooster'
 import { legeVandaag, meldUitval, uitvalVoorDag } from './uitval'
@@ -46,14 +46,16 @@ export function migreer(
           }
         : c
     }),
-    busTeller: Math.max(b.busTeller ?? 0, 100, ...(b.bussen ?? []).map((x) => x.nummer)),
+    busTeller: Math.max(100, busTellerVan(b)),
     personeelTeller: Math.max(b.personeelTeller ?? 0, ...(b.personeel ?? []).map((m) => m.id)),
     // Een `vandaag` van een andere dag geldt niet.
     vandaag: b.vandaag?.dag === b.dag ? b.vandaag : undefined
   }
 
   // De vorm van elke eigen bus, zoals OMSI hem kent (een aanhanger is geleed).
-  const bussen = (uit.bussen ?? []).map((bus) => {
+  const bussen = (uit.bussen ?? []).map((oud) => {
+    // Eerst de nieuwprijs vastleggen met de oude vorm, zodat de waarde niet meeverandert.
+    const bus = { ...oud, nieuwwaarde: oud.nieuwwaarde ?? REGELS.nieuwprijs[oud.vorm] }
     const v = voertuigen.find((x) => x.relativePath.toLowerCase() === bus.relativePath.toLowerCase())
     if (!v) return bus
     const vorm = vormVanVoertuig({ naam: `${v.manufacturer} ${v.type}`, relativePath: v.relativePath, aanhanger: v.aanhanger })

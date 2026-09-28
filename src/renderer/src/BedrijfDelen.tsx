@@ -1,5 +1,5 @@
 import type { JSX, ReactNode } from 'react'
-import { REGELS, type Bedrijf as BedrijfStaat } from '../../core/bedrijf'
+import { REGELS, type Bedrijf as BedrijfStaat, type Busvorm } from '../../core/bedrijf'
 import type { DienstSleutel, OmloopSleutel } from '../../core/planTypen'
 import type { CareerPayload } from '../../shared/api'
 import { formatMoney } from '../../shared/format'
@@ -32,6 +32,8 @@ export interface Focus {
   dienst?: DienstSleutel
   medewerker?: number
   bus?: number
+  /** Voor de markt en het wagenpark: bussen van deze vorm (ontwerp wagenpark §F11). */
+  vorm?: Busvorm
 }
 
 /** Naar een andere tab, zo nodig met iets in beeld. */

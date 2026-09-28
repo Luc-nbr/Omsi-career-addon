@@ -49,6 +49,10 @@ import {
 import type { LineSummary } from '../src/core/duty'
 import type { PlanCijfers } from '../src/core/planTypen'
 import { fixtureBedrijf } from './fixtures/planfixture'
+import { migreer } from '../src/core/bedrijfsdag'
+import { legeVandaag } from '../src/core/uitval'
+import { busTellerVan, verwijderBus } from '../src/core/bedrijf'
+import type { Vehicle } from '../src/core/vehicles'
 import type { Rittenstaat } from '../src/core/rittenstaat'
 import type { Duty } from '../src/core/types'
 
@@ -428,6 +432,46 @@ console.log('')
     }
   }
   klopt('ziekSinds is de dag na de afsluiting, en gaat samen met ziekTot weg', gezien && gewist)
+}
+
+/* Verzoeken uit het wagenparkontwerp (§F11) die nog in deel 0 horen. */
+{
+  // (a) De waarde verandert niet mee als de migratie de vorm uit OMSI haalt.
+  const fb = fixtureBedrijf()
+  const alsSolo = { ...fb, bussen: fb.bussen!.map((x) => (x.nummer === 101 ? { ...x, vorm: 'solo' as const } : x)) }
+  const voor = waardeVan(alsSolo.bussen!.find((x) => x.nummer === 101)!)
+  const sg = { relativePath: 'Vehicles\\SG292\\SG292.bus', manufacturer: 'MAN', type: 'SG292', aanhanger: 'x.bus' } as unknown as Vehicle
+  const na = migreer(alsSolo, [], {}, [sg]).bedrijf
+  const b101 = na.bussen!.find((x) => x.nummer === 101)!
+  klopt('migratie zet de vorm van de SG292 op geleed', b101.vorm === 'geleed')
+  klopt('en legt de nieuwprijs vast met de oude vorm', b101.nieuwwaarde === REGELS.nieuwprijs.solo)
+  klopt('dus de waarde blijft gelijk', waardeVan(b101) === voor)
+  const nieuw = koopNieuw({ ...richtBedrijfOp('Waarde'), kas: 10_000_000_00 }, { relativePath: 'a.bus', naam: 'A', vorm: 'solo' })
+  klopt('een nieuwe bus krijgt zijn nieuwprijs mee', 'bedrijf' in nieuw && nieuw.bedrijf.bussen![0].nieuwwaarde === REGELS.nieuwprijs.solo)
+
+  // (b) Een oud profiel zonder teller dat zijn hoogste bus al verkocht had.
+  let oud: Bedrijf = { ...richtBedrijfOp('Teller'), kas: 10_000_000_00 }
+  for (const n of ['A', 'B']) {
+    const k = koopNieuw(oud, { relativePath: `${n}.bus`, naam: n, vorm: 'solo' })
+    if ('bedrijf' in k) oud = k.bedrijf
+  }
+  oud = verkoop(oud, 102)
+  oud = { ...oud, busTeller: undefined }
+  klopt('de teller komt ook uit de boekingen', busTellerVan(oud) === 102)
+  const weer = koopNieuw(oud, { relativePath: 'C.bus', naam: 'C', vorm: 'solo' })
+  klopt('een verkocht nummer komt niet terug, ook zonder teller', 'bedrijf' in weer && weer.bedrijf.bussen!.at(-1)!.nummer === 103)
+
+  // (c) verwijderBus ruimt ook rooster en invulling op.
+  const met: Bedrijf = {
+    ...fb,
+    rooster: { bussen: { a: 101, b: 102 }, chauffeurs: {} },
+    vandaag: { ...legeVandaag(fb.dag), busInvulling: { c: { soort: 'eigen', nummer: 101 } } }
+  }
+  const zonder = verwijderBus(met, 101)
+  klopt('verwijderBus haalt de bus weg', !zonder.bussen!.some((x) => x.nummer === 101))
+  klopt('en uit het rooster', !Object.values(zonder.rooster!.bussen).includes(101) && zonder.rooster!.bussen.b === 102)
+  klopt('en uit de invulling van vandaag', Object.keys(zonder.vandaag!.busInvulling).length === 0)
+  klopt('en legt de teller vast', (zonder.busTeller ?? 0) >= 103)
 }
 
 console.log(fouten ? `\n${fouten} fout(en)` : '\nalles klopt')
