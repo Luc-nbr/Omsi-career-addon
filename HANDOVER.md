@@ -1590,6 +1590,37 @@ gedownload hebt (Luc koos optie 1; veel makers verbieden verspreiden).
   add-on van een paar gigabyte, en de foutcontrole op een echte kaart --
   vooral of objecten hun `model/` en `texture/` echt zo vinden.
 
+**Navigatie: doorzichtig, vaste zoom, en haltenamen die niet meer wegvallen**
+(28-09-2026). Drie vragen van gebruikers, via Luc.
+- **Achtergrond uit** (`PanelState.glas`, knop met een vierkantje in de
+  titelbalk van de navigatie): het paneel, het waas, de rand en de
+  kaartondergrond verdwijnen; de route, de borden en de namen blijven vol, met
+  een dikkere donkere rand om de namen. Wat je leest -- manoeuvrebalk,
+  snelheid, voetregel, knoppen, het balkje onderin, de schermen van de apps --
+  krijgt een eigen vaste ondergrond. De schuif regelt in die stand alleen het
+  wegennet. Alleen bij de navigatie; het dienstpaneel is tekst. Let op: de
+  schuif doet in de gewone stand nog steeds alleen `.panel-body`; de
+  `--glas-overlay`-kleuren in theme.css rekenen met `--fade` op `.overlay-body`,
+  waar hij niet gezet is, dus het glas zelf vervaagt niet (was al zo).
+- **Zoom automatisch of vast** (`PanelState.zoomVast`, `NavZoom` in RouteMap,
+  knop "A" / blok bij de plus en min): automatisch is zoals het was
+  (`liveZoom`, verder uit naarmate je harder rijdt); vast houdt de stand, en
+  plus, min, het wieltje en knijpen verzetten dan de vaste stand in plaats van
+  na zes tellen terug te veren (bewaard een halve tel nadat je stopt). De
+  overlay bewaart het in de indeling, de tablet in zijn eigen localStorage.
+- **Haltenamen**: de namen werden in dienstvolgorde over alle ritten geplaatst,
+  alleen rechts van het bord; een gehad perron of een halte van de rit terug
+  aan de overkant won het van de halte waar je heen rijdt ("ik mis soms
+  haltes"). Nu eerst de volgende halte, dan de rest van deze rit, dan het
+  begin, dan de rest; rechts, links, boven, onder; en als het niet past zonder
+  de plaatsnaam ("Ortsm M P1"). Waar de balk, de snelheid, de schaalbalk en de
+  knoppen over de kaart liggen (`bezetOpDeKaart` in navigatie.tsx) komt geen
+  naam. Een halte die niet op de kaart gevonden wordt, krijgt nog steeds geen
+  bord, maar staat nu één keer per dienst in het logboek ("navigatie: ...
+  niet op de kaart gevonden"); dan is `probe-stopobjects.ts` de volgende stap.
+- Nagekeken in een proefopstelling met een nagebouwd perroncluster; niet in
+  OMSI. `screenshotNav.cjs` en `probe-zoom.cjs`: de laatste draait en klopt.
+
 Proef in het spel die de open vragen beantwoordt: OMSI 2.3.004, dienstregeling
 via het menu, drie haltes: A 60 s voor de plantijd weg, B 30 s na, C
 doorrijden. Daarna het spoor in de map `ritten` naast de rittenstaat leggen.

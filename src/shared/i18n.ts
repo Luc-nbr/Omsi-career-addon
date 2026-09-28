@@ -2186,6 +2186,8 @@ const TEXT = {
   },
   'map.legRoute': { en: 'route {route}', de: 'Route {route}', fr: 'route {route}', nl: 'route {route}' },
   'map.zoomIn': { en: 'Zoom in', de: 'Heranzoomen', fr: 'Zoom avant', nl: 'Inzoomen' },
+  'map.zoomAuto': { en: 'Zoom follows speed (click to keep this zoom)', de: 'Zoom folgt der Geschwindigkeit (klicken für festen Zoom)', fr: 'Le zoom suit la vitesse (cliquer pour le figer)', nl: 'Zoom gaat mee met de snelheid (klik om deze stand vast te houden)' },
+  'map.zoomFixed': { en: 'Fixed zoom: + and − change it (click for automatic)', de: 'Fester Zoom: + und − ändern ihn (klicken für automatisch)', fr: 'Zoom fixe : + et − le changent (cliquer pour automatique)', nl: 'Vaste zoom: + en − verzetten hem (klik voor automatisch)' },
   'map.zoomOut': { en: 'Zoom out', de: 'Herauszoomen', fr: 'Zoom arrière', nl: 'Uitzoomen' },
   'map.fit': {
     en: 'Whole route in view',
@@ -4376,6 +4378,8 @@ const TEXT = {
   'setup.themeDark': { en: 'Dark', de: 'Dunkel', fr: 'Sombre', nl: 'Donker' },
   'setup.themeLight': { en: 'Light', de: 'Hell', fr: 'Clair', nl: 'Licht' },
   'tb.reputation': { en: 'Reputation', de: 'Ruf', fr: 'Réputation', nl: 'Reputatie' },
+  'ovl.glassOff': { en: 'Background off: only map and buttons', de: 'Hintergrund aus: nur Karte und Knöpfe', fr: 'Fond désactivé : seulement carte et boutons', nl: 'Achtergrond uit: alleen kaart en knoppen' },
+  'ovl.glassOn': { en: 'Background on', de: 'Hintergrund an', fr: 'Fond activé', nl: 'Achtergrond aan' },
   'ad.title': { en: 'Add-ons', de: 'Add-ons', fr: 'Add-ons', nl: 'Add-ons' },
   'ad.subtitle': { en: 'Install and check', de: 'Installieren und prüfen', fr: 'Installer et vérifier', nl: 'Installeren en nakijken' },
   'ad.nav.install': { en: 'Install', de: 'Installieren', fr: 'Installer', nl: 'Installeren' },

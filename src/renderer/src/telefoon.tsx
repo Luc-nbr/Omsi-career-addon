@@ -25,7 +25,7 @@ import { NavKaart, stopName, type NavFrame, type RitStand } from "./navigatie";
 import { Apparaatscherm } from "./apparaatscherm";
 import type { Schermvorm } from "../../shared/scherm";
 import type { Profielknop } from "../../core/busprofiel";
-import type { Manoeuvre } from "./RouteMap";
+import type { Manoeuvre, NavZoom } from "./RouteMap";
 import type { BedrijfRit } from "../../core/bedrijf";
 import { BedrijfKaart } from "./telefoonBedrijf";
 import type { OnderwegBeeld } from "../../core/onderweg";
@@ -134,6 +134,7 @@ export function Telefoon({
   language,
   extra,
   tablet,
+  zoom,
 }: {
   frame: TelefoonFrame;
   duty?: Duty;
@@ -149,6 +150,8 @@ export function Telefoon({
    * een touchscreen het hele scherm; zie IbisApp.
    */
   tablet?: boolean;
+  /** Automatisch of vast zoomen; zie `NavZoom`. De overlay bewaart het in de indeling, de tablet zelf. */
+  zoom?: NavZoom;
 }): JSX.Element {
   const [app, setApp] = useState<TelefoonApp>("kaart");
   /*
@@ -280,6 +283,7 @@ export function Telefoon({
           onManoeuvre={setManoeuvre}
           limit={limit}
           onSpeedLimit={setLimit}
+          zoom={zoom}
         />
       )}
 

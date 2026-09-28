@@ -8,7 +8,7 @@ import type { Kaartset } from "../../shared/kaartjes";
 import { formatTime } from "../../shared/format";
 import { punctuality } from "../../shared/status";
 import { t, type Language } from "../../shared/i18n";
-import { RouteMap, type Manoeuvre } from "./RouteMap";
+import { RouteMap, type Manoeuvre, type NavZoom } from "./RouteMap";
 
 /*
  * De navigatie, los van het venster waarin hij staat.
@@ -374,6 +374,22 @@ export function NavFoot({
  * haalt de kaart weg zodra je een andere app opent, en het bord dat je net
  * voorbij reed hoort er nog te staan als je terugkomt.
  */
+/**
+ * Wat de navigatie over de kaart legt, in punten van de kaart: de balk met de
+ * manoeuvre bovenin, de snelheid en de schaalbalk linksonder, en de knoppen
+ * rechtsonder. Zie overlay.css (`.navbar`, `.nav-speed`,
+ * `.nav-wrap .map-tools`); daar komen geen haltenamen, zie `labels` in RouteMap.
+ */
+function bezetOpDeKaart(w: number, h: number): Array<{ x: number; y: number; w: number; h: number }> {
+  return [
+    { x: 0, y: 0, w, h: 86 },
+    { x: 0, y: h - 100, w: 112, h: 70 },
+    // De schaalbalk met zijn getal; tot zo'n 150 punten breed, plus "250 m".
+    { x: 0, y: h - 30, w: 230, h: 30 },
+    { x: w - 52, y: h - 172, w: 52, h: 172 },
+  ];
+}
+
 export function NavKaart({
   frame,
   duty,
@@ -385,6 +401,7 @@ export function NavKaart({
   onManoeuvre,
   limit,
   onSpeedLimit,
+  zoom,
 }: {
   frame: NavFrame;
   duty?: Duty;
@@ -396,6 +413,7 @@ export function NavKaart({
   onManoeuvre(manoeuvre: Manoeuvre | undefined): void;
   limit?: number;
   onSpeedLimit(kmh: number | undefined): void;
+  zoom?: NavZoom;
 }): JSX.Element {
   const { status } = frame;
   const { leg, passed, readable, ibisLoaded, started, upcoming, bus } = rit;
@@ -457,6 +475,8 @@ export function NavKaart({
         variant="panel"
         onManoeuvre={onManoeuvre}
         onSpeedLimit={onSpeedLimit}
+        zoom={zoom}
+        bezet={bezetOpDeKaart}
       />
       {status && (
         <div className="nav-speed">

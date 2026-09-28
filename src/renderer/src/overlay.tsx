@@ -507,6 +507,10 @@ function Overlay(): JSX.Element | null {
             acties={acties}
             pixelScale={layout.navigatie.scale}
             language={language}
+            zoom={{
+              vast: layout.navigatie.zoomVast,
+              kies: (mpp) => move("navigatie", { zoomVast: mpp }),
+            }}
             /*
              * De QR-code staat alleen in de overlay: op het toestel zelf heb je
              * er niets aan. Het stipje zegt dat er gedeeld wordt.
@@ -687,6 +691,7 @@ function Panel({
       ref={hold}
       className={`panel panel-${info.id}`}
       data-balk={state.y < BALK_RUIMTE * state.scale ? "binnen" : undefined}
+      data-glas={state.glas === false ? "uit" : undefined}
       data-sleept={sleept ? "ja" : undefined}
       style={
         {
@@ -755,6 +760,26 @@ function Panel({
           in de balk waaraan je sleept; `startDrag` laat invoervelden met rust,
           en stopPropagation houdt de sleep bij de schuif.
         */}
+        {/*
+          De achtergrond aan of uit, alleen bij de navigatie: daar ligt de kaart
+          over de weg, en de knoppen en namen hebben een eigen ondergrond. Het
+          dienstpaneel is tekst, en tekst zonder ondergrond valt weg tegen het
+          spel.
+        */}
+        {info.id === "navigatie" && (
+          <button
+            type="button"
+            className="panel-glas"
+            aria-pressed={state.glas !== false}
+            title={t(language, state.glas === false ? "ovl.glassOn" : "ovl.glassOff")}
+            aria-label={t(language, state.glas === false ? "ovl.glassOn" : "ovl.glassOff")}
+            onClick={() => onChange({ glas: state.glas === false })}
+          >
+            <svg viewBox="0 0 12 12" aria-hidden="true">
+              <rect x="1.5" y="2" width="9" height="8" rx="1.5" />
+            </svg>
+          </button>
+        )}
         <label
           className="panel-dicht"
           title={`${t(language, "ovl.opacity")} ${Math.round(state.opacity * 100)}%`}

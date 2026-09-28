@@ -349,3 +349,17 @@
     animation: none;
   }
 }
+
+/*
+ * Automatisch of vast zoomen. "A" als de kaart met de snelheid meegaat; bij
+ * een vaste stand een blok met de blauwe rand, zodat je ziet dat hij vastligt.
+ */
+.map-tools .map-zoomstand {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.map-tools .map-zoomstand[aria-pressed='false'] {
+  border-color: var(--route, #2a75f7);
+  color: #cfe0ff;
+}
