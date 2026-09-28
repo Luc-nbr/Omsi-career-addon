@@ -1,8 +1,10 @@
+import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { dateForMask, dayKind, readCalendar, type Calendar } from './calendar'
 import { generateDuties, buildNetwork, dutyVanRitten, type Network } from './duty'
 import { kaartDag, lijnWeek } from './bedrijfsplan'
 import { bouwLijnplan } from './lijnplan'
+import { lijnSleutel } from './bedrijfsklok'
 import type { KaartDag, LijnPlan, LijnWeek } from './planTypen'
 import {
   buildFleetIndex,
@@ -139,6 +141,21 @@ export interface Kaartlaag {
   dienstDuty(folder: string, deel: { lineFile: string; tourNumber: string; days: number; ritten: string[] }): Duty | undefined
   /** Het lijnplan voor de vlootkaart; zie lijnplan.ts. */
   lijnplan(folder: string, lineFiles: string[], anker: string, dag: number): LijnPlan
+  /**
+   * Op welke geïnstalleerde kaarten een lijn (de naam van het .ttl-bestand,
+   * zonder .ttl, zoals OMSI hem in `mem.lineName` zet) voorkomt. Gemeten bij
+   * Luc: 48 van de 52 lijnnamen van HafenCity staan ook op een andere kaart,
+   * dus een lijnnaam alleen wijst zelden één kaart aan.
+   */
+  kaartenMetLijn(lijn: string): string[]
+}
+
+function diepBevroren<T>(x: T): T {
+  if (x && typeof x === 'object' && !Object.isFrozen(x)) {
+    Object.freeze(x)
+    for (const v of Object.values(x)) diepBevroren(v)
+  }
+  return x
 }
 
 export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
@@ -159,6 +176,8 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
 
   const aanbodCache = new Map<string, BusHofState[]>()
   const kaartDagCache = new Map<string, KaartDag>()
+  const lijnWeekCache = new Map<string, Record<string, LijnWeek>>()
+  let lijnIndex: Map<string, string[]> | undefined
 
   const kaartPad = (folder: string): string => join(omsiPath, 'maps', folder)
 
@@ -571,15 +590,48 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
       const sleutel = `${folder}|${[...lineFiles].sort().join(',')}|${anker}|${dag}`
       const bewaard = kaartDagCache.get(sleutel)
       if (bewaard) return bewaard
-      const uit = kaartDag(laag.map(folder), laag.kalender(folder), lineFiles, anker, dag)
+      // Bevroren: het geheugen deelt hetzelfde object met elke vraag, en wie het
+      // aanpast (deel A of B) zou de dag van alle volgende vragen veranderen.
+      const uit = diepBevroren(kaartDag(laag.map(folder), laag.kalender(folder), lineFiles, anker, dag))
       kaartDagCache.set(sleutel, uit)
       // De oudste eruit: een Map houdt de volgorde van toevoegen aan.
       if (kaartDagCache.size > 64) kaartDagCache.delete(kaartDagCache.keys().next().value!)
       return uit
     },
 
+    /*
+     * Ook bewaard: dagAf en de migratie vragen hem elke keer, en een concessie
+     * waarvan de lijn niet in de dienstregeling staat, krijgt nooit een week en
+     * vroeg hem dus bij elke afsluiting opnieuw (7-14 ms per kaart bij Luc).
+     */
     lijnWeek(folder, anker, vanDag) {
-      return lijnWeek(laag.map(folder), laag.kalender(folder), anker, vanDag)
+      const sleutel = `${folder}|${anker}|${vanDag}`
+      const bewaard = lijnWeekCache.get(sleutel)
+      if (bewaard) return bewaard
+      const uit = diepBevroren(lijnWeek(laag.map(folder), laag.kalender(folder), anker, vanDag))
+      lijnWeekCache.set(sleutel, uit)
+      if (lijnWeekCache.size > 16) lijnWeekCache.delete(lijnWeekCache.keys().next().value!)
+      return uit
+    },
+
+    kaartenMetLijn(lijn) {
+      if (!lijnIndex) {
+        lijnIndex = new Map()
+        for (const folder of listMaps(omsiPath)) {
+          let namen: string[] = []
+          try {
+            namen = readdirSync(join(kaartPad(folder), 'TTData'))
+          } catch {
+            continue
+          }
+          for (const naam of namen) {
+            if (!/\.ttl$/i.test(naam)) continue
+            const sleutel = lijnSleutel(naam)
+            lijnIndex.set(sleutel, [...(lijnIndex.get(sleutel) ?? []), folder])
+          }
+        }
+      }
+      return lijnIndex.get(lijnSleutel(lijn)) ?? []
     },
 
     dienstDuty(folder, deel) {

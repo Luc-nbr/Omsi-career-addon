@@ -148,6 +148,7 @@ import type {
   RoosterFout
 } from '../core/planTypen'
 import type { BedrijfKlokStand } from '../shared/bedrijfApi'
+import { bedrijfsklok } from '../core/bedrijfsklok'
 import {
   bouwRittenstaat,
   leesSpoor,
@@ -4961,7 +4962,8 @@ function registerHandlers(): void {
   }
   /*
    * De dagroosters van dag `van` tot en met `tot` voor alle kaarten met een
-   * concessie. Warm kost een kaartdag een paar ms, dus in main; na elke kaart
+   * concessie. `weken`: waar vraagt ze voor elke kaart, onwaar nooit, en
+   * zonder alleen voor kaarten met een concessie die nog geen week heeft. Warm kost een kaartdag een paar ms, dus in main; na elke kaart
    * even ruimte voor de rest. Een kaart die niet te lezen is (weg, kapot),
    * krijgt `fout: 'kaart'` en haalt de andere niet onderuit.
    */
@@ -4981,10 +4983,15 @@ function registerHandlers(): void {
       const lineFiles = b.concessies.filter((c) => c.mapFolder === folder).map((c) => c.lineFile)
       try {
         const anker = b.ankers?.[folder] ?? ankerVoor(era(folder))
-        ankers[folder] = anker
-        for (const d of dagen) d.kaarten.push(laag().kaartDag(folder, lineFiles, anker, d.dag))
+        // Eerst alle dagen lezen, dan pas iets toevoegen: een kaart die niet te
+        // lezen is, krijgt geen anker. Anders legde het profiel het jaar van de
+        // pc vast (era valt daarop terug), en rekende de kaart daar voorgoed mee.
+        const gelezen = dagen.map((d) => laag().kaartDag(folder, lineFiles, anker, d.dag))
         const zonderWeek = b.concessies.some((c) => c.mapFolder === folder && !c.week)
-        if (opties.weken || zonderWeek) weken[folder] = laag().lijnWeek(folder, anker, b.dag)
+        const week = (opties.weken ?? zonderWeek) ? laag().lijnWeek(folder, anker, b.dag) : undefined
+        dagen.forEach((d, i) => d.kaarten.push(gelezen[i]))
+        ankers[folder] = anker
+        if (week) weken[folder] = week
       } catch (fout) {
         logFout(`dagrooster van ${folder}`, fout)
         for (const d of dagen)
@@ -5206,7 +5213,8 @@ function registerHandlers(): void {
     if (!career?.bedrijf) return []
     const a = Math.max(1, Math.floor(Number(van) || 1))
     const z = Math.min(a + 9, Math.max(a, Math.floor(Number(tot) || a)))
-    return (await dagroostersVoor(career.bedrijf, a, z)).dagen
+    // Alleen lezen: geen weken, die gaan niet mee terug naar het venster.
+    return (await dagroostersVoor(career.bedrijf, a, z, { weken: false })).dagen
   })
   handle('bedrijf:rooster', (_event, actie: RoosterActie) =>
     inSlot(async () => {
@@ -5270,26 +5278,14 @@ function registerHandlers(): void {
    * dicht is en zegt dus niets over nu.
    */
   handle('bedrijf:klok', (_event, mapFolder: string): BedrijfKlokStand => {
-    const live = freshLive()
-    if (!live) return { bron: 'geen' }
-    const folder = String(mapFolder ?? '')
     const dienst = (career?.activeDuty?.assignment as Assignment | undefined)?.duty
-    const lijn = live.mem?.ok === 1 ? live.mem.lineName.trim().toLowerCase() : ''
-    const kaartKlopt =
-      dienst?.mapFolder === folder ||
-      vrijeRit?.mapFolder === folder ||
-      (lijn !== '' &&
-        (career?.bedrijf?.concessies ?? []).some(
-          (c) => c.mapFolder === folder && c.lineFile.replace(/\.ttl$/i, '').toLowerCase() === lijn.replace(/\.ttl$/i, '')
-        ))
-    if (!kaartKlopt) return { bron: 'geen' }
-    const twee = (n: number): string => String(Math.floor(n)).padStart(2, '0')
-    return {
-      bron: 'omsi',
-      minuten: live.time / 60,
-      datum: `${live.year}-${twee(live.month)}-${twee(live.day)}`,
-      kaartKlopt
-    }
+    return bedrijfsklok(freshLive(), String(mapFolder ?? ''), dienst?.mapFolder ?? vrijeRit?.mapFolder, (lijn) => {
+      try {
+        return laag().kaartenMetLijn(lijn)
+      } catch {
+        return []
+      }
+    })
   })
   handle('bedrijf:lijnWeek', (_event, mapFolder: string) => {
     const folder = String(mapFolder ?? '')

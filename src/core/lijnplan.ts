@@ -1,3 +1,4 @@
+import { bedrijfsdatum } from './bedrijfsplan'
 import type { Calendar } from './calendar'
 import type { LijnPlan } from './planTypen'
 import type { TripRoute } from './routing'
@@ -18,5 +19,5 @@ export function bouwLijnplan(
   anker: string,
   dag: number
 ): LijnPlan {
-  return { mapFolder: map.folder, mapName: map.name, dag, datum: anker, van: 0, tot: 1440, omlopen: [], routes: {}, haltes: [] }
+  return { mapFolder: map.folder, mapName: map.name, dag, datum: bedrijfsdatum(anker, dag).toISOString().slice(0, 10), van: 0, tot: 1440, omlopen: [], routes: {}, haltes: [] }
 }

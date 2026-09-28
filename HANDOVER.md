@@ -708,9 +708,24 @@ Wat er staat:
 - **Proeven:** `probe-planfixture.ts` (Proefstad, zonder OMSI),
   `probe-bedrijf.ts` (met de nieuwe gevallen), `probe-teksten.ts`.
 
-Lokaal nog na te kijken (niet vanuit de cloud te meten): de dagroosters en
-`lijnWeek` op een echte kaart (HafenCity), hoe lang een warme `kaartDag` duurt,
-en `bedrijf:klok` met OMSI aan.
+Lokaal nagemeten op 28-09-2026 (HafenCity, lijn 109): de dagroosters, de week,
+de migratie en de klok kloppen; een koude kaartdag kost 43-165 ms per kaart,
+een warme 0,3-1,4 ms. De tien fouten uit die meting zijn gerepareerd:
+
+- een kaart die niet te lezen is, krijgt geen anker meer (het werd het jaar
+  van de pc, en de kaart rekende daar voorgoed mee);
+- `lijnWeek` staat in het geheugen van de kaartlaag, en `bedrijf:dagen`
+  rekent geen weken meer;
+- **`kaartDag` en `lijnWeek` uit de kaartlaag zijn bevroren** (Object.freeze,
+  diep): ze worden per verwijzing gedeeld. Deel A en B maken een kopie als ze
+  iets willen veranderen;
+- de klok (`core/bedrijfsklok.ts`, proef `probe-bedrijfsklok.ts`): een
+  lijnnaam telt alleen als bewijs voor een kaart als hij daar staat, en
+  `kaartKlopt: false` bestaat nu echt (OMSI rijdt aantoonbaar een andere
+  kaart). Geen crash zonder lijnnaam, geen datum van nullen;
+- de boekingen noemen de kaart bij naam, en het lijnplan de goede datum;
+- voor deel E staat in het ontwerp (§8.1) nu ook de avond ervoor (−15) in
+  `klokUitOmsi`, en dat de klok doorloopt als OMSI pauzeert.
 
 ### 5.0 Waar het nu staat (26-09-2026)
 

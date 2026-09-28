@@ -114,10 +114,10 @@ export function afrekening(b: Bedrijf, plan: DagPlan): PlanCijfers {
   const perConcessie: ConcessieCijfers[] = []
   let gereden = 0
   let uitbesteedRituren = 0
-  for (const { omlopen } of plan.kaarten) {
+  for (const { kaart, omlopen } of plan.kaarten) {
     for (const po of omlopen) {
       const o = po.omloop
-      const naam = `${lijnnaam(b.concessies.find((c) => c.mapFolder === o.mapFolder && c.lineFile.toLowerCase() === o.lineFile.toLowerCase()) ?? { lineNumbers: [], lineFile: o.lineFile })} · ${o.mapFolder}`
+      const naam = `${lijnnaam(b.concessies.find((c) => c.mapFolder === o.mapFolder && c.lineFile.toLowerCase() === o.lineFile.toLowerCase()) ?? { lineNumbers: [], lineFile: o.lineFile })} · ${kaart.mapName}`
       let c = perConcessie.find((x) => x.mapFolder === o.mapFolder && x.lineFile === o.lineFile)
       if (!c) {
         c = { mapFolder: o.mapFolder, lineFile: o.lineFile, naam, bron: 'plan', rituren: 0, uitgevallen: 0, vergoeding: 0, onderaannemer: 0 }
