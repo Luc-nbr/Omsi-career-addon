@@ -10,6 +10,13 @@
  * ontbreekt. Waar een waarde in de zin valt staat een naam tussen accolades.
  */
 
+import { TEKST_BEDRIJFSRIT } from './tekst/bedrijfsrit'
+import { TEKST_FUNDAMENT } from './tekst/fundament'
+import { TEKST_INVULLEN } from './tekst/invullen'
+import { TEKST_PLANNING } from './tekst/planning'
+import { TEKST_UITVAL } from './tekst/uitval'
+import { TEKST_VLOOTKAART } from './tekst/vlootkaart'
+
 export const LANGUAGES = [
   { code: 'en', native: 'English' },
   { code: 'de', native: 'Deutsch' },
@@ -25,7 +32,7 @@ export function isLanguage(value: unknown): value is Language {
   return LANGUAGES.some((language) => language.code === value)
 }
 
-const TEXT = {
+const BASIS = {
   // ---------- welkomsscherm ----------
   'welcome.title': {
     en: 'Welcome to OMSI Enhancer',
@@ -4609,6 +4616,34 @@ const TEXT = {
   'tb.msg.slijtage.b': { en: 'Condition is down to {staat}. Below 25 it no longer goes out.', de: 'Der Zustand liegt bei {staat}. Unter 25 fährt er nicht mehr aus.', fr: 'L’état est tombé à {staat}. En dessous de 25, il ne sort plus.', nl: 'De staat is gezakt naar {staat}. Onder 25 rijdt hij niet meer uit.' },
   'tb.msg.kas.t': { en: 'You are in the red', de: 'Du bist im Minus', fr: 'Vous êtes à découvert', nl: 'Je staat rood' },
   'tb.msg.kas.b': { en: 'Cash is at {kas}. Cut costs or sell a bus before it gets worse.', de: 'Die Kasse steht bei {kas}. Senke die Kosten oder verkaufe einen Bus, bevor es schlimmer wird.', fr: 'La caisse est à {kas}. Réduisez les coûts ou vendez un bus avant que cela empire.', nl: 'De kas staat op {kas}. Snijd in de kosten of verkoop een bus voordat het erger wordt.' }
+} as const
+
+/*
+ * De teksten van de planning van het busbedrijf staan per deel in een eigen
+ * bestand (shared/tekst/), zodat de delen tegelijk gebouwd kunnen worden
+ * zonder elkaar in dit bestand te raken. Een sleutel mag maar in één bron
+ * staan; scripts/probe-teksten.ts kijkt dat na, en of elke taal dezelfde
+ * {plaatshouders} heeft.
+ */
+const TEXT = {
+  ...BASIS,
+  ...TEKST_FUNDAMENT,
+  ...TEKST_PLANNING,
+  ...TEKST_UITVAL,
+  ...TEKST_INVULLEN,
+  ...TEKST_BEDRIJFSRIT,
+  ...TEKST_VLOOTKAART
+} as const
+
+/** Voor de proef: elke bron apart. */
+export const TEKSTBRONNEN = {
+  BASIS,
+  TEKST_FUNDAMENT,
+  TEKST_PLANNING,
+  TEKST_UITVAL,
+  TEKST_INVULLEN,
+  TEKST_BEDRIJFSRIT,
+  TEKST_VLOOTKAART
 } as const
 
 export type TextKey = keyof typeof TEXT

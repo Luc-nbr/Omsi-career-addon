@@ -1,6 +1,9 @@
 import { join } from 'node:path'
 import { dateForMask, dayKind, readCalendar, type Calendar } from './calendar'
-import { generateDuties, buildNetwork, type Network } from './duty'
+import { generateDuties, buildNetwork, dutyVanRitten, type Network } from './duty'
+import { kaartDag, lijnWeek } from './bedrijfsplan'
+import { bouwLijnplan } from './lijnplan'
+import type { KaartDag, LijnPlan, LijnWeek } from './planTypen'
 import {
   buildFleetIndex,
   maakBusGeheugen,
@@ -28,7 +31,7 @@ import {
   type HofFile
 } from './hofTool'
 import type { Hof } from './hof'
-import type { OmsiMap } from './types'
+import type { Duty, OmsiMap } from './types'
 import {
   TIME_WINDOWS,
   type Assignment,
@@ -125,6 +128,17 @@ export interface Kaartlaag {
   bustekening(busPad: string, kleurstelling?: string): BusTekeningMetPlaten | undefined
   /** De kleurstellingen van een bus, zonder de texturen; zie kleurstelling.ts. */
   kleurstellingen(busPad: string): BusKleurstellingen | undefined
+  /*
+   * De planning van het busbedrijf (bedrijfsplan.ts). `kaartDag` blijft in het
+   * geheugen (hoogstens 64): het venster vraagt bij elke actie een paar dagen
+   * op, en warm kost het een paar ms.
+   */
+  kaartDag(folder: string, lineFiles: string[], anker: string, dag: number): KaartDag
+  lijnWeek(folder: string, anker: string, vanDag: number): Record<string, LijnWeek>
+  /** De dienst voor OMSI bij een stuk van een omloop uit het plan; zie `dutyVanRitten`. */
+  dienstDuty(folder: string, deel: { lineFile: string; tourNumber: string; days: number; ritten: string[] }): Duty | undefined
+  /** Het lijnplan voor de vlootkaart; zie lijnplan.ts. */
+  lijnplan(folder: string, lineFiles: string[], anker: string, dag: number): LijnPlan
 }
 
 export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
@@ -144,6 +158,7 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
   let hofBestanden: HofFile[] | undefined
 
   const aanbodCache = new Map<string, BusHofState[]>()
+  const kaartDagCache = new Map<string, KaartDag>()
 
   const kaartPad = (folder: string): string => join(omsiPath, 'maps', folder)
 
@@ -550,6 +565,29 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
         variabele: info.variabele,
         lijst: info.lijst.map(({ index, naam, setvars }) => ({ index, naam, setvars }))
       }
+    },
+
+    kaartDag(folder, lineFiles, anker, dag) {
+      const sleutel = `${folder}|${[...lineFiles].sort().join(',')}|${anker}|${dag}`
+      const bewaard = kaartDagCache.get(sleutel)
+      if (bewaard) return bewaard
+      const uit = kaartDag(laag.map(folder), laag.kalender(folder), lineFiles, anker, dag)
+      kaartDagCache.set(sleutel, uit)
+      // De oudste eruit: een Map houdt de volgorde van toevoegen aan.
+      if (kaartDagCache.size > 64) kaartDagCache.delete(kaartDagCache.keys().next().value!)
+      return uit
+    },
+
+    lijnWeek(folder, anker, vanDag) {
+      return lijnWeek(laag.map(folder), laag.kalender(folder), anker, vanDag)
+    },
+
+    dienstDuty(folder, deel) {
+      return dutyVanRitten(laag.map(folder), laag.net(folder), deel)
+    },
+
+    lijnplan(folder, lineFiles, anker, dag) {
+      return bouwLijnplan(laag.map(folder), (legs) => laag.routes(folder, legs), lineFiles, laag.kalender(folder), anker, dag)
     },
 
     routes(folder, legs) {

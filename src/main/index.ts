@@ -132,6 +132,22 @@ import {
   type BedrijfRit,
   type MarktBus
 } from '../core/bedrijf'
+import { ankerVoor } from '../core/bedrijfsplan'
+import { beginDag, migreer } from '../core/bedrijfsdag'
+import { zetInvulling } from '../core/invulling'
+import { afrekening, dagplan, pasRoosterToe, PLAN_ACTIEF } from '../core/rooster'
+import type {
+  BusKeuze,
+  Dagrooster,
+  InvulDoel,
+  InvulFout,
+  InvulKeuze,
+  LijnPlan,
+  LijnWeek,
+  RoosterActie,
+  RoosterFout
+} from '../core/planTypen'
+import type { BedrijfKlokStand } from '../shared/bedrijfApi'
 import {
   bouwRittenstaat,
   leesSpoor,
@@ -4927,6 +4943,99 @@ function registerHandlers(): void {
   })
 
   /*
+   * Het slot voor alles wat `career.bedrijf` schrijft (ontwerp §3.2): de
+   * volgende schrijfactie wacht tot de vorige klaar is, ook als die faalde.
+   */
+  let bedrijfSlot: Promise<unknown> = Promise.resolve()
+  function inSlot<T>(doen: () => Promise<T>): Promise<T> {
+    const v = bedrijfSlot.then(doen, doen)
+    bedrijfSlot = v.catch(() => undefined)
+    return v
+  }
+  const alleVoertuigen = async (): Promise<Vehicle[]> => {
+    try {
+      return await werkerVraag<Vehicle[]>({ soort: 'voertuigen' })
+    } catch {
+      return laag().voertuigen()
+    }
+  }
+  /*
+   * De dagroosters van dag `van` tot en met `tot` voor alle kaarten met een
+   * concessie. Warm kost een kaartdag een paar ms, dus in main; na elke kaart
+   * even ruimte voor de rest. Een kaart die niet te lezen is (weg, kapot),
+   * krijgt `fout: 'kaart'` en haalt de andere niet onderuit.
+   */
+  async function dagroostersVoor(
+    b: NonNullable<CareerState['bedrijf']>,
+    van: number,
+    tot: number,
+    opties: { weken?: boolean } = {}
+  ): Promise<{ dagen: Dagrooster[]; ankers: Record<string, string>; weken: Record<string, Record<string, LijnWeek>> }> {
+    const eerste = Math.max(1, van)
+    const dagen: Dagrooster[] = []
+    for (let dag = eerste; dag <= tot; dag++) dagen.push({ dag, kaarten: [] })
+    const ankers: Record<string, string> = {}
+    const weken: Record<string, Record<string, LijnWeek>> = {}
+    const kaarten = [...new Set(b.concessies.map((c) => c.mapFolder))]
+    for (const folder of kaarten) {
+      const lineFiles = b.concessies.filter((c) => c.mapFolder === folder).map((c) => c.lineFile)
+      try {
+        const anker = b.ankers?.[folder] ?? ankerVoor(era(folder))
+        ankers[folder] = anker
+        for (const d of dagen) d.kaarten.push(laag().kaartDag(folder, lineFiles, anker, d.dag))
+        const zonderWeek = b.concessies.some((c) => c.mapFolder === folder && !c.week)
+        if (opties.weken || zonderWeek) weken[folder] = laag().lijnWeek(folder, anker, b.dag)
+      } catch (fout) {
+        logFout(`dagrooster van ${folder}`, fout)
+        for (const d of dagen)
+          d.kaarten.push({
+            mapFolder: folder,
+            mapName: folder,
+            lineFiles,
+            dag: d.dag,
+            datum: '',
+            weekdag: 0,
+            soort: 'school',
+            omlopen: [],
+            fout: 'kaart'
+          })
+      }
+      await new Promise((klaar) => setImmediate(klaar))
+    }
+    return { dagen, ankers, weken }
+  }
+  /* De ankers vastleggen en concessies zonder week er een geven; verder niets. */
+  function metAnkersEnWeken(
+    b: NonNullable<CareerState['bedrijf']>,
+    ankers: Record<string, string>,
+    weken: Record<string, Record<string, LijnWeek>>
+  ): NonNullable<CareerState['bedrijf']> {
+    const nieuwAnker = Object.entries(ankers).some(([k, v]) => b.ankers?.[k] !== v)
+    const zonderWeek = b.concessies.some((c) => !c.week && weken[c.mapFolder]?.[c.lineFile])
+    if (!nieuwAnker && !zonderWeek) return b
+    return {
+      ...b,
+      ankers: { ...b.ankers, ...ankers },
+      concessies: b.concessies.map((c) => {
+        const w = c.week ? undefined : weken[c.mapFolder]?.[c.lineFile]
+        return w
+          ? {
+              ...c,
+              week: {
+                gemRituren: w.gemRituren,
+                gemWerkuren: w.gemWerkuren,
+                gemDiensten: w.gemDiensten,
+                gemOmlopen: w.gemOmlopen,
+                piekOmlopen: w.piekOmlopen,
+                berekendOp: b.dag
+              }
+            }
+          : c
+      })
+    }
+  }
+
+  /*
    * Het busbedrijf; de regels staan in core/bedrijf.ts. Een lijn komt hier
    * niet als object uit het venster maar wordt opnieuw uit de kaart gelezen:
    * wat je betaalt en wat de concessie waard is, rekent het hoofdproces.
@@ -4936,15 +5045,32 @@ function registerHandlers(): void {
     log(`Busbedrijf opgericht: ${String(naam).slice(0, 60)}`)
     return persist({ ...career, bedrijf: richtBedrijfOp(String(naam ?? '').slice(0, 60)) })
   })
-  handle('bedrijf:inschrijven', (_event, mapFolder: string, lineFile: string) => {
-    if (!career?.bedrijf) return { payload: careerPayload(), fout: 'geen' }
-    const kaart = map(mapFolder)
-    const lijn = listLines(kaart, network(mapFolder)).find((l) => l.lineFile === lineFile)
-    if (!lijn) return { payload: careerPayload(), fout: 'lijn' }
-    const uit = schrijfIn(career.bedrijf, { folder: kaart.folder, name: kaart.name }, lijn)
-    if ('fout' in uit) return { payload: careerPayload(), fout: uit.fout }
-    return { payload: persist({ ...career, bedrijf: uit.bedrijf }) }
-  })
+  handle('bedrijf:inschrijven', (_event, mapFolder: string, lineFile: string) =>
+    inSlot(async () => {
+      if (!career?.bedrijf) return { payload: careerPayload(), fout: 'geen' }
+      const kaart = map(mapFolder)
+      const lijn = listLines(kaart, network(mapFolder)).find((l) => l.lineFile === lineFile)
+      if (!lijn) return { payload: careerPayload(), fout: 'lijn' }
+      /*
+       * De week van de lijn uit de dienstregeling, en het anker van de kaart
+       * vastgelegd. Zolang de planning uit staat, rekent de inschrijving nog
+       * zoals voorheen: de week gaat dan niet mee.
+       */
+      const anker = career.bedrijf.ankers?.[kaart.folder] ?? ankerVoor(era(kaart.folder))
+      let week: LijnWeek | undefined
+      if (PLAN_ACTIEF) {
+        try {
+          week = laag().lijnWeek(kaart.folder, anker, career.bedrijf.dag)[lijn.lineFile]
+        } catch (fout) {
+          logFout(`week van ${kaart.folder}/${lijn.lineFile}`, fout)
+        }
+      }
+      const uit = schrijfIn(career.bedrijf, { folder: kaart.folder, name: kaart.name }, lijn, week)
+      if ('fout' in uit) return { payload: careerPayload(), fout: uit.fout }
+      const bedrijf = PLAN_ACTIEF ? { ...uit.bedrijf, ankers: { ...uit.bedrijf.ankers, [kaart.folder]: anker } } : uit.bedrijf
+      return { payload: persist({ ...career, bedrijf }) }
+    })
+  )
   handle('bedrijf:opzeggen', (_event, mapFolder: string, lineFile: string) => {
     if (!career?.bedrijf) return careerPayload()
     return persist({ ...career, bedrijf: zegOp(career.bedrijf, mapFolder, lineFile) })
@@ -4974,7 +5100,7 @@ function registerHandlers(): void {
     const nieuw = await marktbussen()
     return { nieuw, tweedehands: career?.bedrijf ? tweedehandsAanbod(career.bedrijf, nieuw) : [] }
   })
-  handle('bedrijf:koop', async (_event, soort: 'nieuw' | 'tweedehands', wat: string | number) => {
+  handle('bedrijf:koop', (_event, soort: 'nieuw' | 'tweedehands', wat: string | number) => inSlot(async () => {
     if (!career?.bedrijf) return { payload: careerPayload(), fout: 'geen' }
     const markt = await marktbussen()
     const uit =
@@ -4989,7 +5115,7 @@ function registerHandlers(): void {
           })()
     if ('fout' in uit) return { payload: careerPayload(), fout: uit.fout }
     return { payload: persist({ ...career, bedrijf: uit.bedrijf }) }
-  })
+  }))
   handle('bedrijf:verkoop', (_event, nummer: number) => {
     if (!career?.bedrijf) return careerPayload()
     return persist({ ...career, bedrijf: verkoop(career.bedrijf, Number(nummer)) })
@@ -5044,9 +5170,136 @@ function registerHandlers(): void {
     const bedrijf = leesPost(career.bedrijf, nr)
     return bedrijf === career.bedrijf ? careerPayload() : persist({ ...career, bedrijf })
   })
-  handle('bedrijf:dagAf', () => {
-    if (!career?.bedrijf) return careerPayload()
-    return persist({ ...career, bedrijf: sluitDagAf(career.bedrijf) })
+  /*
+   * Een dag afsluiten. Zolang de planning uit staat (PLAN_ACTIEF in
+   * core/rooster.ts), rekent de dag zoals voorheen en wordt er niets
+   * gemigreerd. Daarna: de dagroosters lezen, het profiel opnieuw bekijken
+   * (er kan intussen iets veranderd zijn), en vanaf daar zonder await door.
+   */
+  handle('bedrijf:dagAf', () =>
+    inSlot(async () => {
+      if (!career?.bedrijf) return careerPayload()
+      if (career.activeDuty?.bedrijf) return { payload: careerPayload(), fout: 'rit' }
+      if (!PLAN_ACTIEF) return persist({ ...career, bedrijf: sluitDagAf(career.bedrijf) })
+      const d0 = career.bedrijf.dag
+      const { dagen, ankers, weken } = await dagroostersVoor(career.bedrijf, d0 - 1, d0 + 8, { weken: true })
+      const voertuigen = await alleVoertuigen()
+      // ---- vanaf hier geen await meer ----
+      if (!career?.bedrijf) return careerPayload()
+      if (career.activeDuty?.bedrijf) return { payload: careerPayload(), fout: 'rit' }
+      let b = metAnkersEnWeken(career.bedrijf, ankers, weken)
+      if (!b.rooster) b = migreer(b, dagen, weken, voertuigen).bedrijf
+      const cijfers = afrekening(b, dagplan(b, dagen, b.dag))
+      const na = beginDag(sluitDagAf(b, cijfers), dagen, weken, voertuigen)
+      return persist({ ...career, bedrijf: na })
+    })
+  )
+
+  /*
+   * DE PLANNING VAN HET BUSBEDRIJF (ontwerp busbedrijf-planning §3.2). Het
+   * venster vraagt, main leest de dienstregeling en rekent. Alles wat
+   * `career.bedrijf` schrijft, gaat door één slot: tussen het lezen van de
+   * kaarten (await) en het wegschrijven mag geen andere schrijfactie vallen,
+   * anders gaat een van de twee stil verloren.
+   */
+  handle('bedrijf:dagen', async (_event, van: number, tot: number) => {
+    if (!career?.bedrijf) return []
+    const a = Math.max(1, Math.floor(Number(van) || 1))
+    const z = Math.min(a + 9, Math.max(a, Math.floor(Number(tot) || a)))
+    return (await dagroostersVoor(career.bedrijf, a, z)).dagen
+  })
+  handle('bedrijf:rooster', (_event, actie: RoosterActie) =>
+    inSlot(async () => {
+      if (!career?.bedrijf) return { payload: careerPayload(), fout: 'geen' as RoosterFout }
+      const dag = actie.soort === 'vulAan' || actie.soort === 'busOpLijn' ? actie.dag : career.bedrijf.dag
+      const week = actie.soort === 'vulAan' && actie.bereik === 'week'
+      const eerste = PLAN_ACTIEF && actie.soort === 'vulAan' && actie.eerste === true && !career.bedrijf.rooster
+      const { dagen, ankers, weken } = await dagroostersVoor(career.bedrijf, dag - 1, dag + (week ? 7 : 1), {
+        weken: eerste
+      })
+      const voertuigen = eerste ? await alleVoertuigen() : []
+      if (!career?.bedrijf) return { payload: careerPayload(), fout: 'geen' as RoosterFout }
+      const b = metAnkersEnWeken(career.bedrijf, ankers, weken)
+      if (eerste && !b.rooster) {
+        const uit = migreer(b, dagen, weken, voertuigen)
+        return { payload: persist({ ...career, bedrijf: uit.bedrijf }), melding: uit.melding }
+      }
+      const uit = pasRoosterToe(b, dagen, actie, career.activeDuty?.bedrijf)
+      if ('fout' in uit) return { payload: careerPayload(), fout: uit.fout }
+      return { payload: persist({ ...career, bedrijf: uit.bedrijf }), ...(uit.melding ? { melding: uit.melding } : {}) }
+    })
+  )
+  handle('bedrijf:invullen', (_event, doel: InvulDoel, keuze: InvulKeuze | BusKeuze | null) =>
+    inSlot(async () => {
+      if (!career?.bedrijf) return { payload: careerPayload(), fout: 'geen' as InvulFout }
+      const d0 = career.bedrijf.dag
+      const { dagen, ankers } = await dagroostersVoor(career.bedrijf, d0 - 1, d0 + 1)
+      if (!career?.bedrijf) return { payload: careerPayload(), fout: 'geen' as InvulFout }
+      const lopend = career.activeDuty?.bedrijf
+      const b = metAnkersEnWeken(career.bedrijf, ankers, {})
+      const uit = zetInvulling(b, dagplan(b, dagen, b.dag, lopend), doel, keuze ?? null, lopend)
+      if ('fout' in uit) return { payload: careerPayload(), fout: uit.fout }
+      return { payload: persist({ ...career, bedrijf: uit.bedrijf }) }
+    })
+  )
+  // Zelf een dienst rijden komt in deel C; tot dan gebeurt er niets (en geen fout).
+  handle('bedrijf:rit', () => ({ payload: careerPayload() }))
+  handle('bedrijf:ritBus', () => ({ payload: careerPayload() }))
+  handle('bedrijf:kaart', async (_event, mapFolder: string, dag?: number) => {
+    const b = career?.bedrijf
+    if (!b) return { fout: 'geen' as const }
+    const folder = String(mapFolder ?? '')
+    const lineFiles = b.concessies.filter((c) => c.mapFolder === folder).map((c) => c.lineFile)
+    if (lineFiles.length === 0) return { fout: 'geen' as const }
+    const d = Math.max(1, Math.floor(Number(dag) || b.dag))
+    try {
+      const anker = b.ankers?.[folder] ?? ankerVoor(era(folder))
+      try {
+        return await werkerVraag<LijnPlan>({ soort: 'lijnplan', folder, lineFiles, anker, dag: d })
+      } catch {
+        return laag().lijnplan(folder, lineFiles, anker, d)
+      }
+    } catch (fout) {
+      logFout(`lijnplan van ${folder}`, fout)
+      return { fout: 'kaart' as const }
+    }
+  })
+  /*
+   * De klok voor de vlootkaart. Alleen die van OMSI, en alleen als OMSI deze
+   * kaart rijdt: de laatst geladen kaart (readLastMap) is pas bekend als OMSI
+   * dicht is en zegt dus niets over nu.
+   */
+  handle('bedrijf:klok', (_event, mapFolder: string): BedrijfKlokStand => {
+    const live = freshLive()
+    if (!live) return { bron: 'geen' }
+    const folder = String(mapFolder ?? '')
+    const dienst = (career?.activeDuty?.assignment as Assignment | undefined)?.duty
+    const lijn = live.mem?.ok === 1 ? live.mem.lineName.trim().toLowerCase() : ''
+    const kaartKlopt =
+      dienst?.mapFolder === folder ||
+      vrijeRit?.mapFolder === folder ||
+      (lijn !== '' &&
+        (career?.bedrijf?.concessies ?? []).some(
+          (c) => c.mapFolder === folder && c.lineFile.replace(/\.ttl$/i, '').toLowerCase() === lijn.replace(/\.ttl$/i, '')
+        ))
+    if (!kaartKlopt) return { bron: 'geen' }
+    const twee = (n: number): string => String(Math.floor(n)).padStart(2, '0')
+    return {
+      bron: 'omsi',
+      minuten: live.time / 60,
+      datum: `${live.year}-${twee(live.month)}-${twee(live.day)}`,
+      kaartKlopt
+    }
+  })
+  handle('bedrijf:lijnWeek', (_event, mapFolder: string) => {
+    const folder = String(mapFolder ?? '')
+    try {
+      const anker = career?.bedrijf?.ankers?.[folder] ?? ankerVoor(era(folder))
+      return laag().lijnWeek(folder, anker, career?.bedrijf?.dag ?? 1)
+    } catch (fout) {
+      logFout(`week van ${folder}`, fout)
+      return { fout: 'kaart' as const }
+    }
   })
 
   /*

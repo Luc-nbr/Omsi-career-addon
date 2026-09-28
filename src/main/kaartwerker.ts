@@ -40,6 +40,9 @@ type Opdracht =
   | { id: number; soort: 'busmappen' }
   | { id: number; soort: 'busanalyse'; sleutel: string }
   | { id: number; soort: 'busacties'; sleutel: string; ids: string[] }
+  // De planning van het busbedrijf: de dienst voor OMSI en het lijnplan voor de vlootkaart.
+  | { id: number; soort: 'dienstduty'; folder: string; deel: { lineFile: string; tourNumber: string; days: number; ritten: string[] } }
+  | { id: number; soort: 'lijnplan'; folder: string; lineFiles: string[]; anker: string; dag: number }
 
 interface Antwoord {
   id: number
@@ -112,7 +115,12 @@ parentPort?.on('message', (opdracht: Opdracht) => {
     } else if (opdracht.soort === 'busacties') {
       const cfgs = modelcfgsVan(omsiPath, laag.voertuigen(), opdracht.sleutel)
       uitkomst = actiesPerVariant(omsiPath, cfgs, opdracht.ids)
-    } else uitkomst = laag.routes(opdracht.folder, opdracht.legs)
+    } else if (opdracht.soort === 'dienstduty') uitkomst = laag.dienstDuty(opdracht.folder, opdracht.deel)
+    else if (opdracht.soort === 'lijnplan')
+      uitkomst = laag.lijnplan(opdracht.folder, opdracht.lineFiles, opdracht.anker, opdracht.dag)
+    else if (opdracht.soort === 'routes') uitkomst = laag.routes(opdracht.folder, opdracht.legs)
+    // Een opdracht die hier niet staat, is een fout en geen stille route-aanvraag.
+    else throw new Error(`onbekende opdracht: ${(opdracht as { soort: string }).soort}`)
 
     const antwoord: Antwoord = { id: opdracht.id, ok: true, ms: Date.now() - begin, uitkomst, detail }
     parentPort?.postMessage(antwoord)

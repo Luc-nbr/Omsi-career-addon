@@ -664,6 +664,54 @@ hoort niet onder je handen opnieuw op te komen (`probe-beweging.cjs`,
 
 ## 5. Openstaand werk
 
+### 5.00 De planning van het busbedrijf — deel 0 staat (28-09-2026)
+
+Ontwerp: `design/ontwerpen/busbedrijf-planning.md`. Deel 0 is het fundament
+waar de delen A-E op bouwen; **aan het spel verandert er nog niets**. De
+schakelaar is `PLAN_ACTIEF` in `src/core/rooster.ts` (onwaar):
+
+- zolang hij uit staat, sluit `bedrijf:dagAf` de dag af met de oude rekensom,
+  wordt er niet gemigreerd, gaat de week van een lijn niet mee bij het
+  inschrijven, en staan Planning en Kaart niet in de zijbalk;
+- deel A vult `dagplan`, `afrekening`, `vulAan` en `pasRoosterToe` echt in en
+  zet hem aan. Met de stubs van nu zou elke eigen bus en chauffeur niets meer
+  opleveren (alles "uitbesteed").
+
+Wat er staat:
+
+- **Pure kern, af:** `planTypen.ts` (letterlijk uit het ontwerp §3.1),
+  `bedrijfsplan.ts` (dagrooster uit de dienstregeling, knippen in diensten),
+  `planregels.ts`, `plantarief.ts`, `voertuigvorm.ts` (heet zo omdat
+  `busvorm.ts` al bestond), `bedrijfsdag.ts` (migreer, beginDag).
+- **Stubs met de vaste signatuur:** `rooster.ts`, `uitval.ts`, `invulling.ts`,
+  `bedrijfsrit.ts`, `lijnplan.ts`.
+- **Getallen om aan te draaien** staan bij elkaar in `REGELS.planning`
+  (`core/bedrijf.ts`): vergoeding per rituur, spoedtoeslag, werktijdgrenzen,
+  dienstlengte, knippauze.
+- **Main:** de kanalen `bedrijf:dagen`, `:rooster`, `:invullen`, `:rit`,
+  `:ritBus` (stub), `:kaart`, `:klok`, `:lijnWeek`. Alles wat het bedrijf
+  schrijft, ook `:koop` en `:inschrijven`, gaat door één slot (`inSlot`): een
+  handler met een await leest `career.bedrijf` pas na die await opnieuw.
+  `dagroostersVoor` leest per kaart; een kaart die niet te lezen is, krijgt
+  `fout: 'kaart'` en haalt de rest niet onderuit.
+- **Teksten:** `src/shared/tekst/` met een bestand per deel; `bd.fout.*` staat
+  alleen in `fundament.ts`. `scripts/probe-teksten.ts` bewaakt dubbele
+  sleutels, plaatshouders en de fouten.
+- **Venster:** `Bedrijf.tsx` is de schil; Dashboard, Concessies, Wagenpark
+  (met Markt) en Personeel staan in eigen bestanden, de bouwstenen in
+  `BedrijfDelen.tsx` (ook `Boeken`, anders ging het dashboard in een kring
+  naar de schil). Tab en melding wonen in App. `useDagplan.ts` haalt de
+  dagroosters op en rekent het plan (pas als PLAN_ACTIEF aan staat: anders
+  zou het openen van de app een kaart in main laden voor niets). De
+  schermafdrukken van voor en na de
+  splitsing zijn byte voor byte gelijk.
+- **Proeven:** `probe-planfixture.ts` (Proefstad, zonder OMSI),
+  `probe-bedrijf.ts` (met de nieuwe gevallen), `probe-teksten.ts`.
+
+Lokaal nog na te kijken (niet vanuit de cloud te meten): de dagroosters en
+`lijnWeek` op een echte kaart (HafenCity), hoe lang een warme `kaartDag` duurt,
+en `bedrijf:klok` met OMSI aan.
+
 ### 5.0 Waar het nu staat (26-09-2026)
 
 **Het scherm van een apparaat staat nagebouwd in de overlay en op de tablet**
