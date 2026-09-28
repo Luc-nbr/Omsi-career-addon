@@ -546,6 +546,8 @@ export interface CareerApi {
   telefoonToets(actie: string): Promise<boolean>
   /** De knoppen van de apparaten in de bus bijschrijven; zie core/bustoetsen.ts. */
   telefoonKnoppen(): Promise<{ toegevoegd: number; geenPlek: number } | undefined>
+  /** Een bericht in het postvak van het bedrijf gelezen; zonder id het hele postvak. */
+  telefoonPost(id?: number): Promise<void>
   /** Een apparaat uit deze bus in de telefoon zetten of eruit halen. */
   telefoonModule(id: string, aan: boolean): Promise<void>
   /**

@@ -38,6 +38,9 @@ import {
   ontsla,
   sollicitanten,
   dagresultaat,
+  bedrijfBeeld,
+  leesPost,
+  ongelezen,
   richtBedrijfOp,
   schrijfIn,
   sluitDagAf,
@@ -292,6 +295,48 @@ const bs = stuurOpBijscholing(b4, id4)
 klopt('bijscholing: ervaring erbij en vandaag niet aan het werk', 'bedrijf' in bs && bs.bedrijf.personeel![0].ervaring === Math.min(100, eerste4.ervaring + 12) && aanHetWerk(bs.bedrijf, eerste4.rol).length === 0)
 if ('bedrijf' in bs) b4 = sluitDagAf(bs.bedrijf)
 klopt('de dag erna weer aan het werk', aanHetWerk(b4, eerste4.rol).length === 1)
+
+// ---- het postvak ----
+console.log('')
+let p5 = richtBedrijfOp('Post')
+klopt('een nieuw bedrijf krijgt een welkomstbericht', p5.post?.length === 1 && p5.post[0].soort === 'welkom' && ongelezen(p5) === 1)
+const p5in = schrijfIn(p5, kaart, lijn)
+if ('bedrijf' in p5in) p5 = p5in.bedrijf
+p5 = sluitDagAf(p5)
+klopt('na een dag: een dagrapport bovenaan met het resultaat', p5.post![0].soort === 'dagrapport' && p5.post![0].v?.resultaat === p5.historie!.at(-1)!.resultaat)
+const ids = p5.post!.map((b) => b.id)
+klopt('ids zijn uniek', new Set(ids).size === ids.length)
+klopt('één bericht lezen', ongelezen(leesPost(p5, p5.post![0].id)) === ongelezen(p5) - 1)
+klopt('alles lezen', ongelezen(leesPost(p5)) === 0)
+{ const leeg = leesPost(p5); klopt('lezen zonder iets ongelezens geeft hetzelfde bedrijf terug', leesPost(leeg) === leeg) }
+// Een concessie die over drie dagen afloopt, en een die vandaag afloopt.
+let p6: Bedrijf = { ...p5, concessies: p5.concessies.map((c) => ({ ...c, tot: p5.dag + 3 })) }
+p6 = sluitDagAf(p6)
+// Na het afsluiten loopt hij nog drie dagen (tot en met dag + 3): dan komt het bericht.
+klopt('drie dagen voor het einde komt er bericht, met de verlenging erbij', p6.post!.some((b) => b.soort === 'afloop' && b.v?.dagen === 3 && b.v?.verlengt === 1))
+p6 = sluitDagAf(p6)
+klopt('... en de dag erna niet nog eens', p6.post!.filter((b) => b.soort === 'afloop').length === 1)
+const p7 = sluitDagAf({ ...p5, reputatie: 10, concessies: p5.concessies.map((c) => ({ ...c, tot: p5.dag })) })
+klopt('vervallen staat in de post', p7.post!.some((b) => b.soort === 'vervallen'))
+const p8 = sluitDagAf({ ...p5, kas: -5_000_00 })
+klopt('rood staan: een bericht van de boekhouding', p8.post![0].soort === 'kas')
+// Een bus die onder de grens van slijtage zakt, en een die uit de werkplaats komt.
+const kb5 = koopNieuw({ ...p5, kas: 1_000_000_00 }, markt[0])
+if ('bedrijf' in kb5) {
+  const q = { ...kb5.bedrijf, bussen: kb5.bedrijf.bussen!.map((b) => ({ ...b, staat: REGELS.slijtageMelding + 0.1 })) }
+  klopt('slijtage onder de grens wordt gemeld', sluitDagAf(q).post!.some((b) => b.soort === 'slijtage'))
+  const w = naarWerkplaats(q, q.bussen![0].nummer, 'onderhoud')
+  klopt('uit de werkplaats wordt gemeld', 'bedrijf' in w && sluitDagAf(w.bedrijf).post!.some((b) => b.soort === 'werkplaats' && b.v?.nummer === q.bussen![0].nummer))
+}
+// Honderd dagen: het postvak blijft binnen de grens, en de ziekmeldingen komen erin.
+let p9 = lang
+klopt('100 dagen: postvak begrensd', (p9.post ?? []).length <= REGELS.postBewaard)
+p9 = sluitDagAf(p9)
+const beeld = bedrijfBeeld(p9)
+klopt('het beeld voor de telefoon: resultaat is vergoeding min kosten', beeld.vandaag.resultaat === dagprognose(p9).vergoeding - dagprognose(p9).kosten)
+klopt('het beeld: hoogstens zeven dagen en dertig berichten', beeld.week.length <= 7 && beeld.post.length <= 30)
+klopt('het beeld is klein genoeg om elke tik mee te sturen (< 12 kB)', JSON.stringify(beeld).length < 12_000)
+console.log(`   (beeld ${JSON.stringify(beeld).length} tekens, ${beeld.ongelezen} ongelezen)`)
 
 console.log(fouten ? `\n${fouten} fout(en)` : '\nalles klopt')
 process.exit(fouten ? 1 : 0)

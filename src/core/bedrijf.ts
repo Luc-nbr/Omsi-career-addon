@@ -198,6 +198,53 @@ export interface Bedrijf {
   xp?: number
   /** De opleidingen die de eigenaar volgt of volgde. */
   opleidingen?: Array<{ id: OpleidingId; klaarOp: number; gemeld?: boolean }>
+  /** Het postvak, nieuwste eerst; zie `Bericht`. */
+  post?: Bericht[]
+  /** Het nummer van het laatste bericht, zodat een id nooit terugkomt. */
+  postTeller?: number
+}
+
+/* ---- het postvak ---- */
+
+/**
+ * Waar een bericht over gaat. De tekst staat niet in het bedrijf maar in de
+ * vertalingen: het profiel blijft hetzelfde als je van taal wisselt, en een
+ * bericht is een soort met een paar waarden (`v`), zoals een boeking.
+ */
+export type BerichtSoort =
+  | 'welkom'
+  | 'dagrapport'
+  | 'rit'
+  | 'opleiding'
+  | 'niveau'
+  | 'ziek'
+  | 'vertrek'
+  | 'ontevreden'
+  | 'verlengd'
+  | 'vervallen'
+  | 'afloop'
+  | 'werkplaats'
+  | 'slijtage'
+  | 'kas'
+
+/**
+ * Een bericht in het postvak op de telefoon.
+ *
+ * WAAROM ER EEN POSTVAK IS
+ * Wat er 's nachts gebeurt -- iemand meldt zich ziek, een concessie loopt bijna
+ * af, een bus komt terug uit de werkplaats -- stond alleen als regel van nul
+ * euro in de boeken, en daar zoekt niemand. In de Bus Company Simulator komt
+ * dat als mail op je telefoon; hier ook, en die telefoon heb je in de bus toch
+ * al voor je neus.
+ */
+export interface Bericht {
+  id: number
+  /** De bedrijfsdag waarop het binnenkwam. */
+  dag: number
+  soort: BerichtSoort
+  /** Namen, bedragen in centen en getallen die in de tekst komen. */
+  v?: Record<string, string | number>
+  gelezen?: boolean
 }
 
 /* ---- niveaus en opleidingen ---- */
@@ -373,8 +420,36 @@ export const REGELS = {
   malusTeVroeg: 5_00,
   malusTeLaat: 3_00,
   /** Hoeveel boekingen er bewaard blijven. */
-  boekingenBewaard: 200
+  boekingenBewaard: 200,
+  /** Hoeveel berichten er in het postvak blijven. */
+  postBewaard: 60,
+  /** Onder deze tevredenheid komt er een waarschuwing; onder `vertrekOnder` kan hij weg. */
+  ontevredenOnder: 35,
+  /** Onder deze staat meldt de werkplaats dat een bus onderhoud nodig heeft. */
+  slijtageMelding: 40,
+  /** Zoveel dagen voor het einde van een concessie komt er bericht. */
+  afloopMelding: 3
 } as const
+
+/** Een bericht in het postvak, op de dag die nu loopt. */
+function meld(bedrijf: Bedrijf, soort: BerichtSoort, v?: Bericht['v']): Bedrijf {
+  const id = (bedrijf.postTeller ?? 0) + 1
+  const bericht: Bericht = v ? { id, dag: bedrijf.dag, soort, v } : { id, dag: bedrijf.dag, soort }
+  return { ...bedrijf, postTeller: id, post: [bericht, ...(bedrijf.post ?? [])].slice(0, REGELS.postBewaard) }
+}
+
+/** Een bericht gelezen, of zonder id het hele postvak. */
+export function leesPost(bedrijf: Bedrijf, id?: number): Bedrijf {
+  if (!bedrijf.post?.some((b) => !b.gelezen && (id === undefined || b.id === id))) return bedrijf
+  return {
+    ...bedrijf,
+    post: bedrijf.post.map((b) => (id === undefined || b.id === id ? { ...b, gelezen: true } : b))
+  }
+}
+
+export function ongelezen(bedrijf: Pick<Bedrijf, 'post'>): number {
+  return (bedrijf.post ?? []).filter((b) => !b.gelezen).length
+}
 
 function boek(bedrijf: Bedrijf, boeking: Omit<Boeking, 'dag'>): Bedrijf {
   return {
@@ -870,7 +945,11 @@ export function richtBedrijfOp(naam: string, nu = new Date()): Bedrijf {
     sollicitantWeg: [],
     zelfUren: 0
   }
-  return boek(bedrijf, { soort: 'oprichting', bedrag: REGELS.startkapitaal, wat: 'Startkapitaal', gemeten: false })
+  return meld(
+    boek(bedrijf, { soort: 'oprichting', bedrag: REGELS.startkapitaal, wat: 'Startkapitaal', gemeten: false }),
+    'welkom',
+    { kas: REGELS.startkapitaal }
+  )
 }
 
 /** Dienstregelingsuren per dag van een lijn: elk ritvertrek maal de gemiddelde rittijd. */
@@ -1013,12 +1092,16 @@ export function boekEigenDienst(
   const aandeel = opTijd / beoordeeld
   const stap = aandeel >= 0.9 ? 2 : aandeel >= 0.7 ? 1 : aandeel >= 0.5 ? 0 : aandeel >= 0.3 ? -2 : -4
   const lijnen = [...new Set(duty.legs.filter((l) => heeftConcessie(bedrijf, duty.mapFolder, l.lineFile)).map((l) => l.lineNumber))]
-  const geboekt = boek(bedrijf, {
-    soort: 'eigen-dienst',
-    bedrag,
-    wat: `${lijnen.join('/')} · ${opTijd} op tijd, ${vroeg} te vroeg, ${laat} te laat`,
-    gemeten: true
-  })
+  const geboekt = meld(
+    boek(bedrijf, {
+      soort: 'eigen-dienst',
+      bedrag,
+      wat: `${lijnen.join('/')} · ${opTijd} op tijd, ${vroeg} te vroeg, ${laat} te laat`,
+      gemeten: true
+    }),
+    'rit',
+    { lijn: lijnen.join('/'), bedrag, opTijd, vroeg, laat, stap }
+  )
   return {
     ...geboekt,
     reputatie: Math.max(0, Math.min(100, geboekt.reputatie + stap)),
@@ -1094,7 +1177,20 @@ export function sluitDagAf(bedrijf: Bedrijf): Bedrijf {
   }
   const naDag = personeelNaDag(uit, prognose)
   for (const m of naDag.vertrokken) {
-    uit = boek(uit, { soort: 'vertrek', bedrag: 0, wat: m.naam, gemeten: false })
+    uit = meld(boek(uit, { soort: 'vertrek', bedrag: 0, wat: m.naam, gemeten: false }), 'vertrek', { naam: m.naam })
+  }
+  /*
+   * Wie vannacht ziek werd, en wie onder de grens van ontevreden zakte: dat
+   * laatste is de waarschuwing voordat hij kan vertrekken, dus alleen op het
+   * moment dat hij eronder komt en niet elke dag opnieuw.
+   */
+  for (const m of naDag.personeel) {
+    const was = (uit.personeel ?? []).find((o) => o.id === m.id)
+    if (!was) continue
+    if (m.ziekTot !== undefined && m.ziekTot !== was.ziekTot) uit = meld(uit, 'ziek', { naam: m.naam, tot: m.ziekTot })
+    if (m.tevredenheid < REGELS.ontevredenOnder && was.tevredenheid >= REGELS.ontevredenOnder) {
+      uit = meld(uit, 'ontevreden', { naam: m.naam, tevredenheid: Math.round(m.tevredenheid) })
+    }
   }
   uit = { ...uit, personeel: naDag.personeel, reputatie: naDag.reputatie }
 
@@ -1111,17 +1207,33 @@ export function sluitDagAf(bedrijf: Bedrijf): Bedrijf {
         }
       : b
   )
+  for (const b of bussen) {
+    const was = (uit.bussen ?? []).find((o) => o.nummer === b.nummer)
+    if (was && b.staat < REGELS.slijtageMelding && was.staat >= REGELS.slijtageMelding) {
+      uit = meld(uit, 'slijtage', { nummer: b.nummer, staat: Math.round(b.staat) })
+    }
+    // Vandaag de laatste dag in de werkplaats: morgen rijdt hij weer.
+    if (b.werkplaatsTot === uit.dag) uit = meld(uit, 'werkplaats', { nummer: b.nummer })
+  }
   uit = { ...uit, bussen }
 
   const blijven: Concessie[] = []
   for (const c of uit.concessies) {
+    const lijn = `${lijnnaam(c)} · ${c.mapName}`
     if (c.tot > uit.dag) {
       blijven.push(c)
+      /*
+       * Een paar dagen van tevoren, met of hij bij de reputatie van nu verlengd
+       * wordt: dan is er nog tijd om er iets aan te doen.
+       */
+      if (c.tot - uit.dag === REGELS.afloopMelding) {
+        uit = meld(uit, 'afloop', { lijn, dagen: REGELS.afloopMelding, verlengt: uit.reputatie >= REGELS.verlengVanaf ? 1 : 0 })
+      }
     } else if (uit.reputatie >= REGELS.verlengVanaf) {
       blijven.push({ ...c, tot: c.tot + REGELS.looptijdDagen })
-      uit = boek(uit, { soort: 'verlenging', bedrag: 0, wat: `${lijnnaam(c)} · ${c.mapName}`, gemeten: false })
+      uit = meld(boek(uit, { soort: 'verlenging', bedrag: 0, wat: lijn, gemeten: false }), 'verlengd', { lijn })
     } else {
-      uit = boek(uit, { soort: 'vervallen', bedrag: 0, wat: `${lijnnaam(c)} · ${c.mapName}`, gemeten: false })
+      uit = meld(boek(uit, { soort: 'vervallen', bedrag: 0, wat: lijn, gemeten: false }), 'vervallen', { lijn })
     }
   }
   const inkomsten = uit.boekingen
@@ -1157,11 +1269,16 @@ export function sluitDagAf(bedrijf: Bedrijf): Bedrijf {
   const opleidingen = (uit.opleidingen ?? []).map((o) => {
     if (o.gemeld || o.klaarOp > uit.dag + 1) return o
     xp += REGELS.xpOpleiding
-    uit = boek(uit, { soort: 'opleiding', bedrag: 0, wat: `${o.id} ✓`, gemeten: false })
+    uit = meld(boek(uit, { soort: 'opleiding', bedrag: 0, wat: `${o.id} ✓`, gemeten: false }), 'opleiding', { id: o.id })
     return { ...o, gemeld: true }
   })
   const niveauNa = niveauVan({ xp })
-  if (niveauNa > niveauVoor) uit = boek(uit, { soort: 'niveau', bedrag: 0, wat: `${niveauNa}`, gemeten: false })
+  if (niveauNa > niveauVoor) {
+    uit = meld(boek(uit, { soort: 'niveau', bedrag: 0, wat: `${niveauNa}`, gemeten: false }), 'niveau', { niveau: niveauNa })
+  }
+  // Het dagrapport als laatste, zodat het bovenaan het postvak staat.
+  uit = meld(uit, 'dagrapport', { resultaat, kas: uit.kas, uren: prognose.uren, open: prognose.openDiensten })
+  if (uit.kas < 0) uit = meld(uit, 'kas', { kas: uit.kas })
   const personeelNa = (uit.personeel ?? []).map((m) =>
     m.cursusTot !== undefined && m.cursusTot <= uit.dag ? { ...m, cursusTot: undefined } : m
   )
@@ -1177,5 +1294,92 @@ export function sluitDagAf(bedrijf: Bedrijf): Bedrijf {
     sollicitantWeg: [],
     zelfUren: 0,
     historie: [...(uit.historie ?? []), dagstaat].slice(-REGELS.historieBewaard)
+  }
+}
+
+/* ---- de telefoon ---- */
+
+/**
+ * Wat de telefoon van het bedrijf te zien krijgt.
+ *
+ * Een samenvatting en niet het hele bedrijf: dit gaat elke tik mee in het beeld
+ * voor de overlay en over het netwerk naar een tablet, en daar hoort geen jaar
+ * historie en tweehonderd boekingen bij. Alle sommen gebeuren hier, zodat de
+ * telefoon dezelfde getallen toont als het eigen scherm van het bedrijf.
+ */
+export interface BedrijfBeeld {
+  naam: string
+  dag: number
+  kas: number
+  reputatie: number
+  niveau: number
+  xp: number
+  /** Hoever het volgende niveau is, 0 tot 1; 1 op het hoogste niveau. */
+  xpDeel: number
+  vandaag: {
+    vergoeding: number
+    kosten: number
+    resultaat: number
+    uren: number
+    diensten: number
+    openDiensten: number
+    dekking: number
+  }
+  concessies: Array<{ lijn: string; kaart: string; dagenOver: number }>
+  bussen: { totaal: number; inzetbaar: number; werkplaats: number; aandacht: number }
+  personeel: { chauffeurs: number; monteurs: number; ziek: number; cursus: number }
+  /** Het resultaat van de laatste zeven afgesloten dagen, oudste eerst. */
+  week: Array<{ dag: number; resultaat: number }>
+  boekingen: Boeking[]
+  post: Bericht[]
+  ongelezen: number
+}
+
+export function bedrijfBeeld(bedrijf: Bedrijf): BedrijfBeeld {
+  const p = dagprognose(bedrijf)
+  const niveau = niveauVan(bedrijf)
+  const xp = bedrijf.xp ?? 0
+  const huidig = NIVEAUS[niveau - 1]?.xp ?? 0
+  const volgend = NIVEAUS[niveau]?.xp
+  const bussen = bedrijf.bussen ?? []
+  const personeel = bedrijf.personeel ?? []
+  return {
+    naam: bedrijf.naam,
+    dag: bedrijf.dag,
+    kas: bedrijf.kas,
+    reputatie: bedrijf.reputatie,
+    niveau,
+    xp,
+    xpDeel: volgend === undefined ? 1 : Math.max(0, Math.min(1, (xp - huidig) / (volgend - huidig))),
+    vandaag: {
+      vergoeding: p.vergoeding,
+      kosten: p.kosten,
+      resultaat: p.vergoeding - p.kosten,
+      uren: p.uren,
+      diensten: p.diensten,
+      openDiensten: p.openDiensten,
+      dekking: p.dekking
+    },
+    concessies: bedrijf.concessies.map((c) => ({
+      lijn: lijnnaam(c),
+      kaart: c.mapName,
+      dagenOver: c.tot - bedrijf.dag
+    })),
+    bussen: {
+      totaal: bussen.length,
+      inzetbaar: bussen.filter((b) => isInzetbaar(b, bedrijf.dag)).length,
+      werkplaats: bussen.filter((b) => b.werkplaatsTot !== undefined && b.werkplaatsTot >= bedrijf.dag).length,
+      aandacht: bussen.filter((b) => b.staat < REGELS.slijtageMelding || b.schade > 0).length
+    },
+    personeel: {
+      chauffeurs: personeel.filter((m) => m.rol === 'chauffeur').length,
+      monteurs: personeel.filter((m) => m.rol === 'monteur').length,
+      ziek: personeel.filter((m) => m.ziekTot !== undefined && m.ziekTot >= bedrijf.dag).length,
+      cursus: personeel.filter((m) => m.cursusTot !== undefined && m.cursusTot >= bedrijf.dag).length
+    },
+    week: (bedrijf.historie ?? []).slice(-7).map((d) => ({ dag: d.dag, resultaat: d.resultaat ?? d.inkomsten - d.uitgaven })),
+    boekingen: bedrijf.boekingen.slice(0, 12),
+    post: (bedrijf.post ?? []).slice(0, 30),
+    ongelezen: ongelezen(bedrijf)
   }
 }

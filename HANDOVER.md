@@ -1477,6 +1477,30 @@ Opleidingen; niveau en XP-balk in de zijbalk.
   er aan staat ontbreekt, reparatie 30-100 % van de schade. Het hoofdproces
   klemt de score, dus een vreemde waarde uit het venster doet niets geks.
 
+**Stap 5: het bedrijf op de telefoon** (28-09-2026). Een knop met een busje in
+het balkje van de telefoon (overlay én tablet), alleen als er een bedrijf is,
+met een stip bij ongelezen post. Eén app met drie tabbladen -- Bedrijf, Geld,
+Post -- en niet drie apps: het balkje heeft al zes knoppen op 330 punten.
+- **Alleen kijken.** Beslissen (kopen, aannemen, inschrijven) blijft op het
+  eigen scherm; op de telefoon lees je alleen, en het enige dat je doet is post
+  als gelezen merken (`telefoon:post`, en `wat: 'post'` via `api/telefoon`).
+- **Het beeld** (`bedrijfBeeld` in core/bedrijf.ts): een samenvatting van ~4 kB
+  -- kas, niveau, prognose van vandaag, concessies met dagen over, wagenpark,
+  personeel, zeven dagen resultaat, twaalf boekingen, dertig berichten. Gaat
+  mee in het beeld van de overlay en van de tablet (`frameVoorApparaat`), en
+  wordt alleen opnieuw gerekend als het bedrijf een ander object is.
+- **Het postvak** (`Bedrijf.post`, `Bericht`, `meld`, `leesPost`): een bericht
+  is een soort met waarden, de tekst staat in de vertalingen (`tb.msg.*`), dus
+  het profiel wisselt niet mee met de taal. Berichten komen bij oprichten, bij
+  een eigen dienst, en bij het afsluiten van de dag: dagrapport, ziekmelding,
+  vertrek, ontevreden (alleen op het moment dat iemand onder 35 zakt),
+  concessie loopt over drie dagen af (met of hij bij de reputatie van nu
+  verlengd wordt), verlengd, vervallen, bus terug uit de werkplaats, bus onder
+  staat 40, rood staan, opleiding klaar en nieuw niveau. Zestig bewaard.
+- Proef: `probe-bedrijf.ts` (post en beeld); de telefoon op beeld in een
+  proefopstelling buiten het project. `probe-apparaat.cjs` (Electron) is hier
+  niet gedraaid.
+
 Proef in het spel die de open vragen beantwoordt: OMSI 2.3.004, dienstregeling
 via het menu, drie haltes: A 60 s voor de plantijd weg, B 30 s na, C
 doorrijden. Daarna het spoor in de map `ritten` naast de rittenstaat leggen.
@@ -1559,7 +1583,8 @@ Er staan probes in `scripts/`:
   verspringen; doorrijden, tellers die teruglopen, geschatte tijden zonder oordeel.
 - `probe-bedrijf.ts` — de regels van het busbedrijf: inschrijven, dag
   afsluiten, eigen dienst, verlengen en vervallen, hele centen; bussen,
-  personeel, niveaus, opleidingen, bijscholing en zelf onderhouden.
+  personeel, niveaus, opleidingen, bijscholing en zelf onderhouden, het
+  postvak en het beeld voor de telefoon.
 - `probe-kaartmogelijkheden.ts` — proef 0 voor een busbedrijf-modus, alleen
   lezen: per kaart de soort ritten (.ttr / typ2 / oud), `StnLinks.cfg` ruw,
   haltes met meer dan één opvolger, KI-groepen per lijn, de wagenparklijsten

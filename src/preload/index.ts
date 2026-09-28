@@ -92,6 +92,7 @@ const api: CareerApi = {
   telefoonIbis: (tripKey) => ipcRenderer.invoke('telefoon:ibis', tripKey),
   telefoonToets: (actie) => ipcRenderer.invoke('telefoon:toets', actie),
   telefoonKnoppen: () => ipcRenderer.invoke('telefoon:knoppen'),
+  telefoonPost: (id) => ipcRenderer.invoke('telefoon:post', id),
   telefoonModule: (id, aan) => ipcRenderer.invoke('telefoon:module', id, aan),
   schermvorm: (id) => ipcRenderer.invoke('scherm:vorm', id),
   apparaatStart: () => ipcRenderer.invoke('apparaat:start'),

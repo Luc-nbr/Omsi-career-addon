@@ -120,6 +120,9 @@ import {
   verkoop,
   vormVanNaam,
   zegOp,
+  bedrijfBeeld,
+  leesPost,
+  type BedrijfBeeld,
   type MarktBus
 } from '../core/bedrijf'
 import {
@@ -2571,6 +2574,8 @@ function pushFrame(): void {
       : undefined,
     // Aanmelden, tekenen, pauze en IBIS; zie "DE STAND VAN DE TELEFOON".
     telefoon: telefoonBeeld(),
+    // De bedrijfsapp op de telefoon: een samenvatting, zie `bedrijfBeeld`.
+    bedrijf: bedrijfVoorTelefoon(),
     editing: overlayEditing
   }
 
@@ -2601,6 +2606,7 @@ function frameVoorApparaat(frame: {
   panelen?: unknown
   busmodules?: unknown
   telefoon: TelefoonStand
+  bedrijf?: BedrijfBeeld
 }): unknown {
   return {
     connected: frame.connected,
@@ -2620,8 +2626,36 @@ function frameVoorApparaat(frame: {
     knoppen: frame.knoppen,
     panelen: frame.panelen,
     busmodules: frame.busmodules,
-    telefoon: frame.telefoon
+    telefoon: frame.telefoon,
+    /*
+     * Het bedrijf mag mee: geld en post van een spel, niets van de chauffeur
+     * zelf. Wie op de tablet rijdt, wil daar ook zijn postvak.
+     */
+    bedrijf: frame.bedrijf
   }
+}
+
+/**
+ * De samenvatting van het bedrijf voor de telefoon, alleen opnieuw gerekend
+ * als het bedrijf veranderd is: het beeld gaat een paar keer per tel uit, en
+ * het bedrijf verandert alleen als je iets doet.
+ */
+let bedrijfBeeldVan: { bron: NonNullable<CareerState['bedrijf']>; beeld: BedrijfBeeld } | undefined
+function bedrijfVoorTelefoon(): BedrijfBeeld | undefined {
+  const bron = career?.bedrijf
+  if (!bron) return undefined
+  if (bedrijfBeeldVan?.bron !== bron) bedrijfBeeldVan = { bron, beeld: bedrijfBeeld(bron) }
+  return bedrijfBeeldVan.beeld
+}
+
+/** Een bericht in het postvak gelezen, of zonder id alles; van de telefoon of het toestel. */
+function postGelezen(id?: number): void {
+  // Een nummer dat geen nummer is, is geen "alles": dan gebeurt er niets.
+  if (!career?.bedrijf || (id !== undefined && !Number.isFinite(id))) return
+  const bedrijf = leesPost(career.bedrijf, id)
+  if (bedrijf === career.bedrijf) return
+  persist({ ...career, bedrijf })
+  pushFrame()
 }
 
 /**
@@ -3106,6 +3140,9 @@ function apparaatBronnen(): ApparaatBronnen {
           return dienstAanbod()
         case 'wissel':
           return { ok: wisselDienst(Number(opdracht.nr)) }
+        case 'post':
+          postGelezen(opdracht.nr === undefined ? undefined : Number(opdracht.nr))
+          return { ok: true }
         case 'pauze':
           telefoon.pauzeVanaf =
             typeof opdracht.vanaf === 'number' && Number.isFinite(opdracht.vanaf)
@@ -3551,6 +3588,7 @@ function registerHandlers(): void {
   handle('telefoon:aanbod', () => dienstAanbod())
   handle('telefoon:wissel', (_event, nr: number) => wisselDienst(Number(nr)))
   handle('telefoon:knoppen', () => zetBusknoppenAan())
+  handle('telefoon:post', (_event, id?: number) => postGelezen(id === undefined ? undefined : Number(id)))
 
   /*
    * BUSSEN KLAARMAKEN, VANUIT DE APP
