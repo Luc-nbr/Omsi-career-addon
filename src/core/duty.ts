@@ -155,7 +155,11 @@ function walk(
   return legs
 }
 
-function toDuty(map: OmsiMap, legs: TripRun[]): Duty {
+/**
+ * Maakt van een reeks geplande ritten een dienst. Vrij rijden gebruikt hem ook
+ * (core/omloopvolgen.ts), met de ritten uit de omloop die OMSI rijdt.
+ */
+export function toDuty(map: OmsiMap, legs: TripRun[]): Duty {
   const start = legs[0]
   const end = legs[legs.length - 1]
 
@@ -330,81 +334,6 @@ export function generateDuties(
     if (!found.has(key)) found.set(key, duty)
   }
   return [...found.values()].sort((a, b) => a.start - b.start)
-}
-
-/** "TTData\\92 Fd-Sg.ttp" en "92 Fd-Sg" zijn dezelfde rit. */
-function ritSleutel(naam: string): string {
-  const basis = naam.trim().split(/[\\/]/).pop() ?? ''
-  return basis.replace(/\.ttp$/i, '').trim().toLowerCase()
-}
-
-/** Hoe ver twee kloktijden uit elkaar liggen, ook over middernacht heen. */
-function klokAfstand(a: number, b: number): number {
-  const verschil = Math.abs((((a - b) % 1440) + 1440) % 1440)
-  return Math.min(verschil, 1440 - verschil)
-}
-
-/**
- * De dienst bij wat er in het dienstregelingsmenu van OMSI gekozen is.
- *
- * Vrij rijden laat de chauffeur onderweg van gedachten veranderen: kiest hij in
- * OMSI een andere lijn of omloop, dan hoort de overlay die te volgen in plaats
- * van te zeggen dat hij de verkeerde rit rijdt. OMSI geeft door welke lijn,
- * welke omloop en welke rit er op de bus staat; dit zoekt die omloop op in de
- * dienstregeling van de kaart en maakt er een dienst van, vanaf de gekozen rit
- * tot het eind van de omloop.
- *
- * Een omloopnummer staat soms in meer dagvarianten (Mo-Fr en Sa heten allebei
- * "3"), en een rit komt in een omloop soms twee keer voor. De rit die OMSI
- * noemt, het dichtst bij de klok, beslist; is die er niet -- een Betriebsfahrt
- * zonder haltes staat niet in het net -- dan de eerstvolgende rit van die
- * omloop. Geen omloop gevonden: niets.
- */
-export function dutyFromTour(
-  map: OmsiMap,
-  network: Network,
-  keuze: { lineFile: string; tourNumber: string; tripFile: string; clockMinutes: number }
-): Duty | undefined {
-  const lijn = keuze.lineFile.trim().toLowerCase()
-  const omloop = keuze.tourNumber.trim()
-  const rit = ritSleutel(keuze.tripFile)
-  const alle = [...network.departingFrom.values()].flat()
-
-  /*
-   * Eerst op rit en omloop: dat zijn de namen die OMSI letterlijk uit de
-   * dienstregeling haalt. De lijnnaam beslist alleen als dezelfde rit en
-   * hetzelfde omloopnummer bij twee lijnen voorkomen.
-   */
-  let raak = alle.filter((run) => run.tourNumber.trim() === omloop && ritSleutel(run.tripFile) === rit)
-  if (raak.length > 1 && raak.some((run) => run.lineFile.toLowerCase() === lijn)) {
-    raak = raak.filter((run) => run.lineFile.toLowerCase() === lijn)
-  }
-  const vanDezeLijn = alle.filter(
-    (run) => run.tourNumber.trim() === omloop && run.lineFile.toLowerCase() === (raak[0]?.lineFile.toLowerCase() ?? lijn)
-  )
-  if (vanDezeLijn.length === 0) return undefined
-
-  const nu = keuze.clockMinutes
-  const begin =
-    raak.length > 0
-      ? raak.reduce((beste, run) =>
-          klokAfstand(run.departure, nu) < klokAfstand(beste.departure, nu) ? run : beste
-        )
-      : ([...vanDezeLijn].sort((a, b) => a.departure - b.departure).find((run) => run.departure >= nu - 5) ??
-        vanDezeLijn[0])
-
-  /* De rest van dezelfde omloop -- dezelfde dagen, dezelfde periode -- op volgorde. */
-  const gezien = new Set<string>()
-  const reeks = vanDezeLijn
-    .filter((run) => run.days === begin.days && run.period === begin.period && run.departure >= begin.departure)
-    .sort((a, b) => a.departure - b.departure)
-    .filter((run) => {
-      const sleutel = `${run.tripFile}@${run.departure}`
-      if (gezien.has(sleutel)) return false
-      gezien.add(sleutel)
-      return true
-    })
-  return reeks.length > 0 ? toDuty(map, reeks) : undefined
 }
 
 /** Een lijn van een kaart, zoals het dienstregelingsmenu van OMSI hem toont. */

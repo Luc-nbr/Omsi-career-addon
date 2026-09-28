@@ -49,6 +49,12 @@ export interface TourTrip {
   profileIndex: number
   /** Minuten na middernacht; mag boven 1440 uitkomen bij nachtritten. */
   departure: number
+  /**
+   * De plek van dit `[addtrip]` in zijn omloop, zoals het bestand hem noemt. Een
+   * leeg `[addtrip]` telt mee, ook al staat het niet in `trips`: OMSI telt zijn
+   * ritten ook zo, en dit is het nummer dat de plugin als `tourEntry` doorgeeft.
+   */
+  entry: number
 }
 
 /**
@@ -65,6 +71,12 @@ export interface Tour {
    * helikopter en een vliegtuig.
    */
   userAllowed: boolean
+  /**
+   * De plek van deze `[newtour]` in het lijnbestand, over alle blokken heen --
+   * ook de omlopen zonder ritten, die `loadMap` daarna weglaat. Dit is het
+   * nummer dat de plugin als `tour` doorgeeft; zie core/omloopvolgen.ts.
+   */
+  index: number
   number: string
   depot: string
   /**
@@ -122,7 +134,22 @@ export interface DutyLeg {
    * dienst die van voor de rittenstaat in het profiel staat.
    */
   stopVast?: Array<number | null>
+  /**
+   * Welk nummer OMSI deze rit in zijn omloop geeft (`mem.tourEntry`), in de
+   * volgorde waarin de koppeling hem vond. Alleen bij vrij rijden; zie
+   * `Duty.omsi`.
+   */
+  tourEntry?: number
+  /**
+   * Een leegrit: van of naar de remise, zonder reizigers. Zo'n rit heeft geen
+   * lijnnummer, en het lijnbestand is er geen -- dat zou de IBIS een lijn als
+   * "Eichenhoehe TA11 Mo-Do Schule" laten intoetsen.
+   */
+  leer?: boolean
 }
+
+/** Hoe de omloop die OMSI rijdt in de dienstregeling van de kaart is teruggevonden. */
+export type Koppelsoort = 'index' | 'vertrek' | 'naam' | 'rit' | 'niets'
 
 /** De dienst die de speler krijgt toegewezen. */
 export interface Duty {
@@ -148,4 +175,26 @@ export interface Duty {
    * datum de omloop in het dienstregelingsmenu van OMSI staat.
    */
   period: number
+  /**
+   * Bij vrij rijden: welke lijn en omloop OMSI hiervoor in zijn geheugen heeft
+   * staan, als nummers in zijn eigen lijsten. Daarmee herkent `readSchedule`
+   * elke volgende rit aan zijn nummer in plaats van te raden op de klok.
+   * `volgorde` zegt of die nummers tellen zoals het bestand ze noemt of op
+   * vertrektijd; `zeker` is onwaar als beide volgordes kloppen maar een ander
+   * vervolg geven -- dan wordt elke wissel nagekeken.
+   */
+  omsi?: {
+    lineFile: string
+    lineIndex: number
+    tourIndex: number
+    volgorde: 'bestand' | 'vertrek'
+    koppeling: Koppelsoort
+    zeker: boolean
+    /**
+     * Het nummer (`mem.tourEntry`) van de rit waarop de koppeling begon. Kiest
+     * de speler in OMSI daarna een eerdere rit van dezelfde omloop, dan staat
+     * die niet in de dienst en is het een nieuwe keuze -- niet "de rit erna".
+     */
+    vanaf: number
+  }
 }

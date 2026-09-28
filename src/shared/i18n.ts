@@ -165,71 +165,19 @@ const TEXT = {
     fr: 'Vous avez choisi la ligne {line}, service {tour} dans OMSI. La surimpression et les codes IBIS suivent.',
     nl: 'Je koos in OMSI lijn {line}, omloop {tour}. De overlay en de IBIS-codes gaan mee.'
   },
-  'setup.step.start': {
-    en: 'Start',
-    de: 'Startpunkt',
-    fr: 'Départ',
-    nl: 'Beginpunt'
-  },
-  'setup.startTitle': {
-    en: 'Starting point',
-    de: 'Startpunkt',
-    fr: 'Point de départ',
-    nl: 'Beginpunt'
-  },
-  'setup.startIntro': {
-    en: 'Where and when your bus stands. Trips begin at a starting point; buses only pass an intermediate stop. The tour you pick later in OMSI.',
-    de: 'Wo und wann dein Bus steht. An einem Startpunkt beginnen Fahrten; an einem Zwischenhalt kommen Busse nur vorbei. Den Umlauf wählst du später in OMSI.',
-    fr: 'Où et quand votre bus est placé. Les trajets commencent aux points de départ ; les bus ne font que passer aux arrêts intermédiaires. Le service se choisit ensuite dans OMSI.',
-    nl: 'Waar en wanneer je bus staat. Bij een beginpunt beginnen ritten; bij een tussenhalte komen bussen alleen langs. De omloop kies je straks in OMSI.'
-  },
-  'setup.colStop': {
-    en: 'Stop',
-    de: 'Haltestelle',
-    fr: 'Arrêt',
-    nl: 'Halte'
-  },
-  'setup.startFoot': {
-    en: '{map} · the bus will stand at {stop} at {time}',
-    de: '{map} · der Bus steht um {time} an {stop}',
-    fr: '{map} · le bus sera à {stop} à {time}',
-    nl: '{map} · de bus staat om {time} bij {stop}'
-  },
-  'setup.colLines': { en: 'Lines', de: 'Linien', fr: 'Lignes', nl: 'Lijnen' },
-  'setup.colStarts': { en: 'Departures', de: 'Abfahrten', fr: 'Départs', nl: 'Vertrekken' },
-  'setup.colPasses': { en: 'Trips', de: 'Fahrten', fr: 'Trajets', nl: 'Ritten langs' },
-  'free.stopKind': { en: 'Kind of stop', de: 'Art der Haltestelle', fr: 'Type d’arrêt', nl: 'Soort halte' },
-  'free.kindStart': {
-    en: 'Starting points ({n})',
-    de: 'Startpunkte ({n})',
-    fr: 'Points de départ ({n})',
-    nl: 'Beginpunten ({n})'
-  },
-  'free.kindVia': {
-    en: 'Intermediate stops ({n})',
-    de: 'Zwischenhalte ({n})',
-    fr: 'Arrêts intermédiaires ({n})',
-    nl: 'Tussenhaltes ({n})'
-  },
   'free.date': { en: 'Date', de: 'Datum', fr: 'Date', nl: 'Datum' },
   'free.time': { en: 'Time', de: 'Uhrzeit', fr: 'Heure', nl: 'Tijd' },
-  'free.startPick': {
-    en: 'Pick a stop as your starting point first.',
-    de: 'Wähle zuerst eine Haltestelle als Startpunkt.',
-    fr: 'Choisissez d’abord un arrêt comme point de départ.',
-    nl: 'Kies eerst een halte als beginpunt.'
-  },
   'free.alreadyRunning': {
-    en: 'OMSI is already running, so nothing is set up. Load your map and bus in OMSI and pick a tour in the timetable menu; the overlay follows.',
-    de: 'OMSI läuft schon, also wird nichts vorbereitet. Lade Karte und Bus in OMSI und wähle im Fahrplanmenü einen Umlauf; das Overlay folgt.',
-    fr: 'OMSI tourne déjà : rien n’est préparé. Chargez carte et bus dans OMSI et choisissez un service dans le menu horaires ; la surimpression suit.',
-    nl: 'OMSI draait al, dus er wordt niets klaargezet. Laad in OMSI je kaart en bus en kies in het dienstregelingsmenu een omloop; de overlay gaat mee.'
+    en: 'OMSI is already running, so nothing is set up: load a map and bus there yourself, or close OMSI and press START again. Then pick a tour; the navigation finds it.',
+    de: 'OMSI läuft schon, also wird nichts vorbereitet: Lade dort selbst Karte und Bus, oder schließe OMSI und drücke erneut START. Wähle dann einen Umlauf; das Navi findet ihn.',
+    fr: 'OMSI tourne déjà, rien n’est préparé : chargez vous-même carte et bus, ou fermez OMSI et appuyez à nouveau sur START. Choisissez ensuite un service ; la navigation le trouve.',
+    nl: 'OMSI draait al, dus er wordt niets klaargezet: laad daar zelf een kaart en bus, of sluit OMSI en druk opnieuw op START. Kies daarna een omloop; de navigatie vindt hem.'
   },
   'free.ready': {
-    en: 'OMSI opens on {map}; press Start there. Then pick a line and tour in the timetable menu, and the overlay follows.',
-    de: 'OMSI öffnet auf {map}; drücke dort auf Start. Wähle dann im Fahrplanmenü Linie und Umlauf, und das Overlay folgt.',
-    fr: 'OMSI s’ouvre sur {map} ; appuyez sur Start. Choisissez ensuite une ligne et un service dans le menu horaires, la surimpression suit.',
-    nl: 'OMSI opent op {map}; druk daar op Start. Kies daarna in het dienstregelingsmenu een lijn en omloop, en de overlay gaat mee.'
+    en: 'OMSI opens on {map} with your bus at {plek}; press Start there. Then pick a tour in the timetable menu (Set Time Table); the navigation shows what leaves here soon and finds the route.',
+    de: 'OMSI öffnet auf {map}, dein Bus steht bei {plek}; drücke dort auf Start. Wähle dann im Fahrplanmenü (Set Time Table) einen Umlauf; das Navi zeigt, was hier bald abfährt, und findet die Route.',
+    fr: 'OMSI s’ouvre sur {map}, votre bus est à {plek} ; appuyez sur Start. Choisissez ensuite un service dans le menu horaires (Set Time Table) ; la navigation montre ce qui part bientôt d’ici et trouve l’itinéraire.',
+    nl: 'OMSI opent op {map} met je bus bij {plek}; druk daar op Start. Kies daarna in het dienstregelingsmenu (Set Time Table) een omloop; de navigatie toont wat hier straks vertrekt en vindt de route.'
   },
   'free.drivingTitle': {
     en: 'Free play',
@@ -238,10 +186,10 @@ const TEXT = {
     nl: 'Vrij rijden'
   },
   'free.drivingPick': {
-    en: 'You are driving freely on {map}. Pick a line and tour in OMSI’s timetable menu (Set Time Table); the overlay follows and gives you the IBIS codes.',
-    de: 'Du fährst frei auf {map}. Wähle in OMSIs Fahrplanmenü (Set Time Table) Linie und Umlauf; das Overlay folgt und nennt dir die IBIS-Codes.',
-    fr: 'Vous roulez librement sur {map}. Choisissez une ligne et un service dans le menu horaires d’OMSI (Set Time Table) ; la surimpression suit et donne les codes IBIS.',
-    nl: 'Je rijdt vrij op {map}. Kies in het dienstregelingsmenu van OMSI (Set Time Table) een lijn en omloop; de overlay volgt je keuze en geeft de IBIS-codes.'
+    en: 'You are driving freely on {map}. Pick a line and tour in OMSI’s timetable menu (Set Time Table); the navigation finds the route and the IBIS codes.',
+    de: 'Du fährst frei auf {map}. Wähle in OMSIs Fahrplanmenü (Set Time Table) Linie und Umlauf; das Navi findet Route und IBIS-Codes.',
+    fr: 'Vous roulez librement sur {map}. Choisissez une ligne et un service dans le menu horaires d’OMSI (Set Time Table) ; la navigation trouve l’itinéraire et les codes IBIS.',
+    nl: 'Je rijdt vrij op {map}. Kies in het dienstregelingsmenu van OMSI (Set Time Table) een lijn en omloop; de navigatie vindt de route en de IBIS-codes.'
   },
   'free.drivingTour': {
     en: 'You drive line {line}, tour {tour}, as picked in OMSI. Pick another and the overlay follows.',
@@ -261,11 +209,244 @@ const TEXT = {
     fr: 'Jeu libre arrêté. Rien n’a été enregistré.',
     nl: 'Vrij rijden gestopt. Er is niets geboekt.'
   },
+  'free.mapFootBusy': {
+    en: '{map} · finding a spot for your bus…',
+    de: '{map} · suche einen Platz für deinen Bus…',
+    fr: '{map} · recherche d’une place pour votre bus…',
+    nl: '{map} · plek voor je bus zoeken…'
+  },
+  /*
+   * Met "noch"/"nog" tussen de tijd en het aantal: "bis 18:18 3 Fahrten" las
+   * als één getal. En één rit apart, geen "1 Fahrten" (nakijken 28-09).
+   */
+  'free.mapFoot': {
+    en: '{map} · your bus will be at {plek}; {n} trips leave there until {tot}',
+    de: '{map} · dein Bus steht bei {plek}; dort fahren bis {tot} noch {n} Fahrten ab',
+    fr: '{map} · votre bus sera à {plek} ; {n} trajets y partent d’ici {tot}',
+    nl: '{map} · je bus staat klaar bij {plek}; daar vertrekken tot {tot} nog {n} ritten'
+  },
+  'free.mapFootOne': {
+    en: '{map} · your bus will be at {plek}; one trip leaves there until {tot}',
+    de: '{map} · dein Bus steht bei {plek}; dort fährt bis {tot} noch eine Fahrt ab',
+    fr: '{map} · votre bus sera à {plek} ; un trajet y part d’ici {tot}',
+    nl: '{map} · je bus staat klaar bij {plek}; daar vertrekt tot {tot} nog één rit'
+  },
+  'free.mapFootPullout': {
+    en: '{map} · your bus will be at {plek}; the first tour leaves there at {tijd}',
+    de: '{map} · dein Bus steht bei {plek}; dort rückt um {tijd} der erste Umlauf aus',
+    fr: '{map} · votre bus sera à {plek} ; le premier service y part à {tijd}',
+    nl: '{map} · je bus staat klaar bij {plek}; daar rukt om {tijd} de eerste omloop uit'
+  },
+  'free.mapFootPlain': {
+    en: '{map} · your bus will be at {plek}',
+    de: '{map} · dein Bus steht bei {plek}',
+    fr: '{map} · votre bus sera à {plek}',
+    nl: '{map} · je bus staat klaar bij {plek}'
+  },
+  'free.mapBroken': {
+    en: 'This map is incomplete: its tile files are missing, so OMSI cannot load it. Reinstall the map or pick another one.',
+    de: 'Diese Karte ist unvollständig: Ihre Kacheldateien fehlen, OMSI kann sie nicht laden. Installiere sie neu oder wähle eine andere.',
+    fr: 'Cette carte est incomplète : ses fichiers de tuiles manquent et OMSI ne peut pas la charger. Réinstallez-la ou choisissez-en une autre.',
+    nl: 'Deze kaart is onvolledig: de tegelbestanden ontbreken, dus OMSI kan hem niet laden. Installeer hem opnieuw of kies een andere.'
+  },
+  'free.noPlace': {
+    en: 'The app found no spot on {map} to put your bus. Pick another map.',
+    de: 'Die App hat auf {map} keinen Platz für deinen Bus gefunden. Wähle eine andere Karte.',
+    fr: 'L’application n’a trouvé aucune place pour votre bus sur {map}. Choisissez une autre carte.',
+    nl: 'De app vond op {map} geen plek om je bus neer te zetten. Kies een andere kaart.'
+  },
+  'free.noTimetable': {
+    en: 'The timetable of {map} could not be read.',
+    de: 'Der Fahrplan von {map} ließ sich nicht lesen.',
+    fr: 'L’horaire de {map} est illisible.',
+    nl: 'De dienstregeling van {map} is niet te lezen.'
+  },
+  'free.whenTitle': {
+    en: 'Time and weather',
+    de: 'Zeit und Wetter',
+    fr: 'Heure et météo',
+    nl: 'Tijd en weer'
+  },
+  'free.whenAuto': {
+    en: '{date} · {time} · {weather} · automatic',
+    de: '{date} · {time} · {weather} · automatisch',
+    fr: '{date} · {time} · {weather} · automatique',
+    nl: '{date} · {time} · {weather} · automatisch'
+  },
+  'free.whenOwn': {
+    en: '{date} · {time} · {weather}',
+    de: '{date} · {time} · {weather}',
+    fr: '{date} · {time} · {weather}',
+    nl: '{date} · {time} · {weather}'
+  },
+  'free.whenReset': {
+    en: 'Back to automatic',
+    de: 'Wieder automatisch',
+    fr: 'Revenir en automatique',
+    nl: 'Weer automatisch'
+  },
+  'free.whenHint': {
+    en: 'Automatic: a school weekday in the map’s era, your PC’s clock, and the spot where most trips leave soon. At night: just before the first tour leaves.',
+    de: 'Automatisch: ein Schul-Werktag aus der Zeit der Karte, die Uhr deines PCs und der Platz, an dem bald die meisten Fahrten abfahren. Nachts: kurz bevor der erste Umlauf ausrückt.',
+    fr: 'Automatique : un jour de semaine scolaire de l’époque de la carte, l’horloge de votre PC et l’endroit d’où partent bientôt le plus de trajets. La nuit : juste avant le départ du premier service.',
+    nl: 'Automatisch: een schooldag door de week uit het tijdvak van de kaart, de klok van je pc, en de plek waar straks de meeste ritten vertrekken. ’s Nachts: vlak voordat de eerste omloop uitrukt.'
+  },
+  'weather.map': {
+    en: 'As on the map',
+    de: 'Wie auf der Karte',
+    fr: 'Comme sur la carte',
+    nl: 'Zoals de kaart'
+  },
+  'free.pickBus': {
+    en: 'Pick a bus first.',
+    de: 'Wähle zuerst einen Bus.',
+    fr: 'Choisissez d’abord un bus.',
+    nl: 'Kies eerst een bus.'
+  },
+  'free.readyRunning': {
+    en: 'OMSI is already running. The situation "OMSI Enhancer" on {map} is ready: load it in OMSI via Load, or close OMSI and press START again. Then pick a tour; the navigation finds it.',
+    de: 'OMSI läuft schon. Die Situation „OMSI Enhancer“ auf {map} steht bereit: Lade sie in OMSI über Laden, oder schließe OMSI und drücke erneut START. Wähle dann einen Umlauf; das Navi findet ihn.',
+    fr: 'OMSI tourne déjà. La situation « OMSI Enhancer » sur {map} est prête : chargez-la dans OMSI via Charger, ou fermez OMSI et appuyez à nouveau sur START. Choisissez ensuite un service ; la navigation le trouve.',
+    nl: 'OMSI draait al. De situatie „OMSI Enhancer“ op {map} staat klaar: laad hem in OMSI via Laden, of sluit OMSI en druk opnieuw op START. Kies daarna een omloop; de navigatie vindt hem.'
+  },
+  /* Op de busstap, vóór START: er staat dan nog niets klaar (free.readyRunning komt erna). */
+  'free.runningHint': {
+    en: 'OMSI is already running. START then only sets up the situation "OMSI Enhancer" on {map}; load it in OMSI via Load. Close OMSI first and START sets everything up and launches the game.',
+    de: 'OMSI läuft schon. START bereitet dann nur die Situation „OMSI Enhancer“ auf {map} vor; lade sie in OMSI über Laden. Schließe OMSI vorher, dann bereitet START alles vor und startet das Spiel.',
+    fr: 'OMSI tourne déjà. START ne prépare alors que la situation « OMSI Enhancer » sur {map} ; chargez-la dans OMSI via Charger. Fermez d’abord OMSI et START prépare tout et lance le jeu.',
+    nl: 'OMSI draait al. START zet dan alleen de situatie „OMSI Enhancer“ op {map} klaar; die laad je in OMSI via Laden. Sluit je OMSI eerst, dan zet START alles klaar en start het spel.'
+  },
+  'free.readyManual': {
+    en: 'OMSI starts, but the app could not set {map} as the start (no write access to the OMSI folder). In OMSI, load the situation "OMSI Enhancer" via Load.',
+    de: 'OMSI startet, aber die App konnte {map} nicht als Start einstellen (keine Schreibrechte im OMSI-Ordner). Lade in OMSI über Laden die Situation „OMSI Enhancer“.',
+    fr: 'OMSI démarre, mais l’application n’a pas pu définir {map} comme départ (pas de droits d’écriture dans le dossier d’OMSI). Dans OMSI, chargez la situation « OMSI Enhancer » via Charger.',
+    nl: 'OMSI start, maar de app kon {map} niet als start instellen (geen schrijfrechten in de OMSI-map). Laad in OMSI via Laden de situatie „OMSI Enhancer“.'
+  },
+  'free.launchRefused': {
+    en: 'Windows asked for permission to start OMSI and it was refused. Everything is ready: start OMSI yourself; this window closes as soon as OMSI is there.',
+    de: 'Windows hat um Erlaubnis gefragt, OMSI zu starten, und sie wurde verweigert. Alles steht bereit: Starte OMSI selbst; dieses Fenster schließt sich, sobald OMSI da ist.',
+    fr: 'Windows a demandé l’autorisation de lancer OMSI et elle a été refusée. Tout est prêt : lancez OMSI vous-même ; cette fenêtre se ferme dès qu’OMSI est là.',
+    nl: 'Windows vroeg toestemming om OMSI te starten en die werd geweigerd. Alles staat klaar: start OMSI zelf; dit venster gaat dicht zodra OMSI er is.'
+  },
+  'free.launchFailed': {
+    en: 'OMSI could not be started ({reden}). Everything is ready: start OMSI via Steam; this window closes as soon as OMSI is there.',
+    de: 'OMSI ließ sich nicht starten ({reden}). Alles steht bereit: Starte OMSI über Steam; dieses Fenster schließt sich, sobald OMSI da ist.',
+    fr: 'Impossible de lancer OMSI ({reden}). Tout est prêt : lancez OMSI via Steam ; cette fenêtre se ferme dès qu’OMSI est là.',
+    nl: 'OMSI kon niet gestart worden ({reden}). Alles staat klaar: start OMSI via Steam; dit venster gaat dicht zodra OMSI er is.'
+  },
+  'free.writeFailed': {
+    en: 'The app could not write the situation into the OMSI folder ({reden}). Nothing was started.',
+    de: 'Die App konnte die Situation nicht in den OMSI-Ordner schreiben ({reden}). Es wurde nichts gestartet.',
+    fr: 'L’application n’a pas pu écrire la situation dans le dossier d’OMSI ({reden}). Rien n’a été lancé.',
+    nl: 'De app kon de situatie niet in de OMSI-map schrijven ({reden}). Er is niets gestart.'
+  },
+  'free.waiting': {
+    en: 'Waiting for OMSI…',
+    de: 'Warte auf OMSI…',
+    fr: 'En attente d’OMSI…',
+    nl: 'Wachten op OMSI…'
+  },
+  'free.waitingLong': {
+    en: 'OMSI is running but passes nothing on. Still on its start screen? Load your map there. Loading a big map can take a few minutes. Nothing happening for longer? Close OMSI yourself and press START again.',
+    de: 'OMSI läuft, gibt aber nichts weiter. Noch im Startbildschirm? Lade dort deine Karte. Eine große Karte lädt ein paar Minuten. Passiert länger nichts? Schließe OMSI selbst und drücke erneut START.',
+    fr: 'OMSI tourne mais ne transmet rien. Toujours sur l’écran de démarrage ? Chargez-y votre carte. Une grande carte met quelques minutes à charger. Rien ne se passe plus longtemps ? Fermez OMSI vous-même et appuyez à nouveau sur START.',
+    nl: 'OMSI draait, maar geeft niets door. Staat het nog in het startscherm? Laad daar je kaart. Een grote kaart laden duurt een paar minuten. Gebeurt er langer niets? Sluit OMSI zelf af en druk opnieuw op START.'
+  },
+  'free.noBus': {
+    en: 'OMSI has no bus of yours on the map. On OMSI’s start screen pick "Last Situation" or load "OMSI Enhancer"; both were just set up. Or place a bus in OMSI yourself.',
+    de: 'In OMSI steht noch kein Bus von dir auf der Karte. Wähle im Startbildschirm „Last Situation“ oder lade „OMSI Enhancer“; beide sind gerade vorbereitet. Oder setze in OMSI selbst einen Bus ein.',
+    fr: 'Aucun de vos bus n’est sur la carte dans OMSI. Sur l’écran de démarrage, choisissez « Last Situation » ou chargez « OMSI Enhancer » ; les deux viennent d’être préparés. Ou placez vous-même un bus.',
+    nl: 'In OMSI staat nog geen bus van jou op de kaart. Kies in het startscherm „Last Situation“ of laad „OMSI Enhancer“; die zijn net klaargezet. Of zet in OMSI zelf een bus in.'
+  },
+  'free.noBusLoad': {
+    en: 'OMSI has no bus of yours on the map. In OMSI, load the situation "OMSI Enhancer" via Load; it was just set up. Or place a bus in OMSI yourself.',
+    de: 'In OMSI steht noch kein Bus von dir auf der Karte. Lade in OMSI über Laden die Situation „OMSI Enhancer“; sie ist gerade vorbereitet. Oder setze in OMSI selbst einen Bus ein.',
+    fr: 'Aucun de vos bus n’est sur la carte dans OMSI. Dans OMSI, chargez la situation « OMSI Enhancer » via Charger ; elle vient d’être préparée. Ou placez vous-même un bus.',
+    nl: 'In OMSI staat nog geen bus van jou op de kaart. Laad in OMSI via Laden de situatie „OMSI Enhancer“; die is net klaargezet. Of zet in OMSI zelf een bus in.'
+  },
+  'free.noBusNothing': {
+    en: 'OMSI has no bus of yours on the map. The app set nothing up because OMSI was already running: place a bus in OMSI yourself, or close OMSI and press START again.',
+    de: 'In OMSI steht noch kein Bus von dir auf der Karte. Die App hat nichts vorbereitet, weil OMSI schon lief: Setze in OMSI selbst einen Bus ein, oder schließe OMSI und drücke erneut START.',
+    fr: 'Aucun de vos bus n’est sur la carte dans OMSI. L’application n’a rien préparé car OMSI tournait déjà : placez vous-même un bus, ou fermez OMSI et appuyez à nouveau sur START.',
+    nl: 'In OMSI staat nog geen bus van jou op de kaart. De app heeft niets klaargezet omdat OMSI al draaide: zet in OMSI zelf een bus in, of sluit OMSI en druk opnieuw op START.'
+  },
+  'free.noMemory': {
+    en: 'This OMSI version does not let the app read the timetable (only 2.3.004 does). The navigation shows the map; key in line and route on the IBIS.',
+    de: 'Diese OMSI-Version lässt die App den Fahrplan nicht lesen (nur 2.3.004). Das Navi zeigt die Karte; gib Linie und Route am IBIS ein.',
+    fr: 'Cette version d’OMSI ne laisse pas l’application lire l’horaire (seule la 2.3.004 le permet). La navigation montre la carte ; saisissez ligne et itinéraire sur l’IBIS.',
+    nl: 'Deze OMSI-versie laat de app de dienstregeling niet lezen (alleen 2.3.004). De navigatie toont de kaart; toets lijn en route in op de IBIS.'
+  },
+  'free.otherMap': {
+    en: 'Your bus in OMSI is not on {map}. Is another map loaded? The app finds the map by itself as soon as you drive a bit or pick a tour.',
+    de: 'Dein Bus in OMSI steht nicht auf {map}. Ist eine andere Karte geladen? Die App sucht die Karte selbst, sobald du ein Stück fährst oder einen Umlauf wählst.',
+    fr: 'Votre bus dans OMSI n’est pas sur {map}. Une autre carte est-elle chargée ? L’application trouve la carte elle-même dès que vous roulez un peu ou choisissez un service.',
+    nl: 'Je bus in OMSI staat niet op {map}. Is er een andere kaart geladen? De app zoekt de kaart zelf zodra je een stukje rijdt of een omloop kiest.'
+  },
+  'free.mapSwitched': {
+    en: 'OMSI is playing {map}, so the navigation follows that map now.',
+    de: 'OMSI fährt {map}; das Navi folgt jetzt dieser Karte.',
+    fr: 'OMSI joue {map} ; la navigation suit maintenant cette carte.',
+    nl: 'OMSI speelt {map}; de navigatie volgt nu die kaart.'
+  },
+  'free.tripOnly': {
+    en: 'Tour {tour} of {line} is not in the timetable of {map}; the navigation shows trip {trip} only.',
+    de: 'Umlauf {tour} von {line} steht nicht im Fahrplan von {map}; das Navi zeigt nur die Fahrt {trip}.',
+    fr: 'Le service {tour} de {line} ne figure pas dans l’horaire de {map} ; la navigation ne montre que le trajet {trip}.',
+    nl: 'Omloop {tour} van {line} staat niet in de dienstregeling van {map}; de navigatie toont alleen rit {trip}.'
+  },
+  'free.lost': {
+    en: 'OMSI drives {line}, tour {tour}, trip {trip}, but that is not in the timetable of {map}. Is another map or map version loaded in OMSI?',
+    de: 'OMSI fährt {line}, Umlauf {tour}, Fahrt {trip}, aber das steht nicht im Fahrplan von {map}. Ist in OMSI eine andere Karte oder Kartenversion geladen?',
+    fr: 'OMSI roule {line}, service {tour}, trajet {trip}, mais cela ne figure pas dans l’horaire de {map}. Une autre carte ou version est-elle chargée dans OMSI ?',
+    nl: 'OMSI rijdt {line}, omloop {tour}, rit {trip}, maar dat staat niet in de dienstregeling van {map}. Is in OMSI een andere kaart of kaartversie geladen?'
+  },
+  'free.tourEnded': {
+    en: 'The tour in OMSI has ended or was released. Pick a new one; the navigation follows.',
+    de: 'Der Umlauf in OMSI ist zu Ende oder wurde abgewählt. Wähle einen neuen; das Navi folgt.',
+    fr: 'Le service dans OMSI est terminé ou a été abandonné. Choisissez-en un autre ; la navigation suit.',
+    nl: 'De omloop in OMSI is afgelopen of losgelaten. Kies een nieuwe; de navigatie volgt.'
+  },
+  'free.suggestTitle': {
+    en: 'Leaving soon',
+    de: 'Demnächst ab',
+    fr: 'Départs à venir',
+    nl: 'Straks vertrekken'
+  },
+  'free.hereTitle': {
+    en: 'Leaving from {stop}',
+    de: 'Abfahrten ab {stop}',
+    fr: 'Départs de {stop}',
+    nl: 'Vertrekken vanaf {stop}'
+  },
+  'free.suggestRow': {
+    en: '{time} line {line} to {naar} · in OMSI: {lineFile} / {tour}',
+    de: '{time} Linie {line} nach {naar} · in OMSI: {lineFile} / {tour}',
+    fr: '{time} ligne {line} vers {naar} · dans OMSI : {lineFile} / {tour}',
+    nl: '{time} lijn {line} naar {naar} · in OMSI: {lineFile} / {tour}'
+  },
+  'free.pulloutRow': {
+    en: '{time} tour {tour} pulls out to {naar} · in OMSI: {lineFile} / {tour}',
+    de: '{time} Umlauf {tour} rückt aus nach {naar} · in OMSI: {lineFile} / {tour}',
+    fr: '{time} le service {tour} sort vers {naar} · dans OMSI : {lineFile} / {tour}',
+    nl: '{time} omloop {tour} rukt uit naar {naar} · in OMSI: {lineFile} / {tour}'
+  },
+  'ovl.freeLeer': {
+    en: 'Empty run',
+    de: 'Betriebsfahrt',
+    fr: 'Haut-le-pied',
+    nl: 'Leegrit'
+  },
+  'ovl.freeApproach': {
+    en: 'Drive to {stop} · {afstand}',
+    de: 'Fahre zu {stop} · {afstand}',
+    fr: 'Rejoignez {stop} · {afstand}',
+    nl: 'Rijd naar {stop} · {afstand}'
+  },
   'ovl.freePickTour': {
-    en: 'Free play on {kaart}. Pick a line and tour in OMSI’s timetable menu; the overlay follows.',
-    de: 'Freies Fahren auf {kaart}. Wähle im Fahrplanmenü von OMSI Linie und Umlauf; das Overlay folgt.',
-    fr: 'Jeu libre sur {kaart}. Choisissez une ligne et un service dans le menu horaires d’OMSI ; la surimpression suit.',
-    nl: 'Vrij rijden op {kaart}. Kies in het dienstregelingsmenu van OMSI een lijn en omloop; de overlay volgt.'
+    en: 'Free play on {kaart}. Pick a line and tour in OMSI’s timetable menu; the navigation finds the route.',
+    de: 'Freies Fahren auf {kaart}. Wähle im Fahrplanmenü von OMSI Linie und Umlauf; das Navi findet die Route.',
+    fr: 'Jeu libre sur {kaart}. Choisissez une ligne et un service dans le menu horaires d’OMSI ; la navigation trouve l’itinéraire.',
+    nl: 'Vrij rijden op {kaart}. Kies in het dienstregelingsmenu van OMSI een lijn en omloop; de navigatie vindt de route.'
   },
   'done.cancelled': {
     en: 'Duty cancelled. Nothing was booked.',
@@ -1166,10 +1347,10 @@ const TEXT = {
   },
   'mode.free': { en: 'Free play', de: 'Freies Fahren', fr: 'Jeu libre', nl: 'Vrij rijden' },
   'mode.freeIntro': {
-    en: 'You pick a map, a starting point and a bus. Pick a tour in OMSI itself and the overlay follows it. Nothing is booked.',
-    de: 'Du wählst Karte, Startpunkt und Bus. Den Umlauf wählst du in OMSI selbst, und das Overlay folgt. Es wird nichts gebucht.',
-    fr: 'Vous choisissez une carte, un point de départ et un bus. Choisissez le service dans OMSI, la surimpression suit. Rien n’est enregistré.',
-    nl: 'Jij kiest een kaart, een beginpunt en een bus. De omloop kies je in OMSI zelf, en de overlay gaat mee. Er wordt niets geboekt.'
+    en: 'Pick a map and a bus, nothing else. Choose a tour in OMSI itself; the navigation finds the route. Nothing is booked.',
+    de: 'Du wählst nur Karte und Bus. Den Umlauf wählst du in OMSI selbst; das Navi findet die Route. Es wird nichts gebucht.',
+    fr: 'Choisissez une carte et un bus, rien d’autre. Le service se choisit dans OMSI ; la navigation trouve l’itinéraire. Rien n’est enregistré.',
+    nl: 'Je kiest alleen een kaart en een bus. De omloop kies je in OMSI zelf; de navigatie vindt de route. Er wordt niets geboekt.'
   },
   'mode.otherDriver': { en: 'Other driver', de: 'Anderer Fahrer', fr: 'Autre conducteur', nl: 'Andere chauffeur' },
   // ---------- opnieuw kijken wat er geïnstalleerd is ----------
@@ -1330,13 +1511,6 @@ const TEXT = {
   },
 
   // ---------- vrij rijden ----------
-  'free.title': { en: 'Set up your own drive', de: 'Eigene Fahrt einrichten', fr: 'Préparez votre trajet', nl: 'Zet je eigen rit klaar' },
-  'free.intro': {
-    en: 'Nothing is logged and nothing is judged. The app writes the situation, starts OMSI and puts the overlay on top.',
-    de: 'Nichts wird gebucht und nichts bewertet. Die App schreibt die Situation, startet OMSI und legt das Overlay darüber.',
-    fr: 'Rien n’est enregistré ni évalué. L’application écrit la situation, lance OMSI et pose la surimpression.',
-    nl: 'Er wordt niets geboekt en niets beoordeeld. De app schrijft de situatie, start OMSI en legt de overlay erboven.'
-  },
   'free.weather': { en: 'Weather', de: 'Wetter', fr: 'Météo', nl: 'Weer' },
   'weather.clear': { en: 'Clear', de: 'Klar', fr: 'Dégagé', nl: 'Helder' },
   'weather.summer': { en: 'Summer day', de: 'Sommertag', fr: 'Journée d’été', nl: 'Zomerdag' },
@@ -1500,6 +1674,20 @@ const TEXT = {
     de: 'OMSI ist nicht gestartet. Alles ist eingerichtet: versuch es noch einmal oder starte das Spiel selbst.',
     fr: 'OMSI n’a pas démarré. Tout est prêt : réessayez, ou lancez le jeu vous-même.',
     nl: 'OMSI is niet opgestart. Alles staat klaar: probeer het opnieuw, of start het spel zelf.'
+  },
+  // Idem, met de reden die main terugkreeg van het starten (`BeginResult.startFout`).
+  'start.notLaunchedReason': {
+    en: 'OMSI did not start ({reden}). Everything is set up: try again, or start the game yourself.',
+    de: 'OMSI ist nicht gestartet ({reden}). Alles ist eingerichtet: versuch es noch einmal oder starte das Spiel selbst.',
+    fr: 'OMSI n’a pas démarré ({reden}). Tout est prêt : réessayez, ou lancez le jeu vous-même.',
+    nl: 'OMSI is niet opgestart ({reden}). Alles staat klaar: probeer het opnieuw, of start het spel zelf.'
+  },
+  // Idem, maar de speler zei nee tegen het UAC-venster van Windows.
+  'start.launchRefused': {
+    en: 'Windows asked for permission to start OMSI and it was refused. Everything is set up: try again, or start the game yourself.',
+    de: 'Windows hat um Erlaubnis gefragt, OMSI zu starten, und sie wurde verweigert. Alles ist eingerichtet: versuch es noch einmal oder starte das Spiel selbst.',
+    fr: 'Windows a demandé l’autorisation de lancer OMSI et elle a été refusée. Tout est prêt : réessayez, ou lancez le jeu vous-même.',
+    nl: 'Windows vroeg toestemming om OMSI te starten en die werd geweigerd. Alles staat klaar: probeer het opnieuw, of start het spel zelf.'
   },
 
   // ---------- instellingen van OMSI ----------
@@ -2645,6 +2833,13 @@ const TEXT = {
     fr: 'Toujours en cours. Les grandes cartes prennent leur temps.',
     nl: 'Nog steeds bezig. Grote kaarten nemen ruim de tijd.'
   },
+  // Het starten mislukte; het venster wacht tot de speler OMSI zelf start.
+  'starting.waitManual': {
+    en: 'Waiting for you to start OMSI…',
+    de: 'Wartet, bis du OMSI startest…',
+    fr: 'En attente : lancez OMSI vous-même…',
+    nl: 'Wacht tot je OMSI zelf start…'
+  },
   'starting.close': { en: 'Close', de: 'Schließen', fr: 'Fermer', nl: 'Sluiten' },
 
   // ---------- overlay ----------
@@ -3629,12 +3824,13 @@ const TEXT = {
   },
 
   /* Wat je in de aangewezen dienst gaat doen. */
-  'duty.overviewHead': {
-    en: '{trips} trips · {stops} stops · {lines} lines',
-    de: '{trips} Fahrten · {stops} Haltestellen · {lines} Linien',
-    fr: '{trips} courses · {stops} arrêts · {lines} lignes',
-    nl: '{trips} ritten · {stops} haltes · {lines} lijnen'
-  },
+  // De kop van het dienstoverzicht, in drie stukken: één rit/halte/lijn apart.
+  'duty.overviewTrips': { en: '{n} trips', de: '{n} Fahrten', fr: '{n} courses', nl: '{n} ritten' },
+  'duty.overviewTripOne': { en: '1 trip', de: '1 Fahrt', fr: '1 course', nl: '1 rit' },
+  'duty.overviewStops': { en: '{n} stops', de: '{n} Haltestellen', fr: '{n} arrêts', nl: '{n} haltes' },
+  'duty.overviewStopOne': { en: '1 stop', de: '1 Haltestelle', fr: '1 arrêt', nl: '1 halte' },
+  'duty.overviewLines': { en: '{n} lines', de: '{n} Linien', fr: '{n} lignes', nl: '{n} lijnen' },
+  'duty.overviewLineOne': { en: '1 line', de: '1 Linie', fr: '1 ligne', nl: '1 lijn' },
   'duty.overviewBreak': {
     en: '{time} break',
     de: '{time} Pause',
@@ -4244,6 +4440,8 @@ const TEXT = {
   },
   'ovl.appLine': { en: 'line {line}', de: 'Linie {line}', fr: 'ligne {line}', nl: 'lijn {line}' },
   'ovl.appStops': { en: '{count} stops', de: '{count} Halte', fr: '{count} arrêts', nl: '{count} haltes' },
+  // Een leegrit heeft er soms maar één; geen "1 haltes".
+  'ovl.appStopOne': { en: '1 stop', de: '1 Halt', fr: '1 arrêt', nl: '1 halte' },
   'ovl.appLayover': {
     en: '{minutes} min break before this trip',
     de: '{minutes} Min Pause vor dieser Fahrt',

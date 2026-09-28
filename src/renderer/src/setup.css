@@ -4280,3 +4280,116 @@
   overflow-y: auto;
   padding: 4px 2px 12px;
 }
+
+/*
+ * Vrij rijden, de kaartstap: "Tijd en weer", dichtgeklapt.
+ *
+ * De meeste spelers willen er niets aan doen -- de app kiest een schooldag uit
+ * het tijdvak van de kaart, de klok van de pc en de plek waar straks de meeste
+ * ritten vertrekken. Dicht staat er in één regel wat het wordt; open dezelfde
+ * velden en chips als elders op het vel.
+ */
+.vrij-wanneer {
+  border: 1px solid var(--vel-rand);
+  border-radius: var(--radius-klein);
+  background: var(--vel-hover);
+}
+
+.vrij-wanneer > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 9px 11px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.vrij-wanneer > summary::-webkit-details-marker {
+  display: none;
+}
+
+.vrij-wanneer > summary::before {
+  content: '▸';
+  color: var(--vel-zacht);
+  font-size: 11px;
+}
+
+.vrij-wanneer[open] > summary::before {
+  content: '▾';
+}
+
+.vrij-wanneer > summary b {
+  color: var(--vel-zacht);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.vrij-wanneer > summary span {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.vrij-wanneer[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 12px;
+}
+
+.vrij-wanneer[open] > :not(summary) {
+  margin: 0 11px;
+}
+
+.vrij-wanneer-terug {
+  align-self: flex-start;
+}
+
+/*
+ * Het rijscherm van vrij rijden zonder omloop: wat er straks vertrekt, met in
+ * elke regel waar je het in OMSI vindt (lijnbestand / omloop).
+ */
+.vrij-straks {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 2px 12px;
+  overflow-y: auto;
+}
+
+.vrij-straks h3 {
+  margin: 0 0 6px;
+  color: var(--vel-zacht);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.vrij-straks ul {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vrij-straks li {
+  padding: 8px 10px;
+  border: 1px solid var(--vel-rand);
+  border-radius: var(--radius-klein);
+  font-size: 13px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* Een leegrit in het omloopoverzicht: geen lijn, dus geen geel lijnplaatje. */
+.dienstuitleg-lijn.leeg {
+  background: transparent;
+  color: var(--vel-zacht);
+  border: 1px dashed var(--vel-rand);
+  font-weight: 600;
+}

@@ -1242,8 +1242,11 @@ function SelectPanel({
   return (
     <div className="select-duty">
       <div className="topline">
+        {/* Een leegrit heeft geen lijn: `??` liet dan een leeg plaatje staan. */}
         <span className="line">
-          {leg?.lineNumber ?? duty.lineNumbers.join(" / ")}
+          {leg?.leer
+            ? t(language, "ovl.freeLeer")
+            : leg?.lineNumber || duty.lineNumbers.join(" / ")}
         </span>
         <b>{t(language, "ovl.selectTitle")}</b>
         <LayoutButton language={language} />
@@ -1334,7 +1337,9 @@ function IbisStep({
     // proef moet kunnen zien welke van de twee er staat.
     <div className="select-duty ibis-step">
       <div className="topline">
-        <span className="line">{leg?.lineNumber ?? "—"}</span>
+        <span className="line">
+          {leg?.leer ? t(language, "ovl.freeLeer") : leg?.lineNumber || "—"}
+        </span>
         <b>{t(language, "ovl.ibisStepTitle")}</b>
         <LayoutButton language={language} />
       </div>

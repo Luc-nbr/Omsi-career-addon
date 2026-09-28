@@ -10,12 +10,11 @@ import type { KeyBinding } from '../core/omsiKeys'
 import type { ProfileSummary } from '../core/profiles'
 import type { MapGeometry } from '../core/geo'
 import type { IbisPlan } from '../core/ibis'
-import type { HalteInfo } from '../core/haltes'
 import type { WeatherKind } from './weather'
 import type { TripRoute } from '../core/routing'
 import type { PluginStatus } from '../core/pluginInstall'
 import type { AanmeldUitslag, WisselAanbod } from './telefoon'
-import type { Duty } from '../core/types'
+import type { Duty, Koppelsoort } from '../core/types'
 import type { Vehicle } from '../core/vehicles'
 import type { LiveStatus } from '../core/live'
 import type { VehiclePosition } from '../core/vehicle'
@@ -167,29 +166,116 @@ export interface DutyRequest {
 }
 
 /**
- * Vrij rijden: kaart, beginpunt en bus, en verder niets. Geen dienst -- die
- * kies je zelf in OMSI, en de overlay volgt wat je kiest.
+ * Vrij rijden: kaart en bus, en verder niets. Waar de bus staat kiest de app
+ * (core/beginplek.ts); de omloop kies je in OMSI, en de navigatie vindt hem
+ * (core/omloopvolgen.ts).
  */
 export interface FreeRequest {
   mapFolder: string
   vehiclePath?: string
   /** De kleurstelling op naam, zoals OMSI's "Appearance"; leeg laat OMSI kiezen. */
   kleurstelling?: string
-  /** De halte waar de bus komt te staan. */
-  stopId?: string
-  /** De datum en de tijd die de chauffeur koos. */
-  year: number
-  dayOfYear: number
-  minutes: number
+  /** Wat de speler zelf aan datum en tijd koos; leeg is automatisch. */
+  wanneer?: VrijWanneer
+  /** Leeg: het weer van de kaart, of anders de standaard van OMSI. */
   weather?: WeatherKind
   /** Het wagenpark (.hof) naast de bus; leeg laat OMSI kiezen. */
   yard?: string
+  /**
+   * Het inzetpunt dat de controle op de kaartstap vond; zo komt de bus waar de
+   * voet zei. Alleen met een zelf gekozen tijd: met een automatische bepaalt
+   * START plek en moment opnieuw (core/vrijstart.ts), en dan zijn deze de
+   * terugval als dat een fout gooit.
+   */
+  plek?: number
+  /** En het moment dat daarbij hoort. */
+  moment?: { year: number; dayOfYear: number; minutes: number }
 }
 
+/** De keuze van de speler; wat ontbreekt rekent de app zelf uit. */
+export interface VrijWanneer {
+  /** jjjj-mm-dd */
+  datum?: string
+  /** Minuten na middernacht. */
+  tijd?: number
+}
+
+/** Wat er klaargezet is: het startscherm, alleen de situatie, of niets. */
+export type Klaargezet = 'start' | 'situatie' | 'niets'
+
 export interface FreeResult {
-  /** OMSI draaide al: er is niets klaargezet. */
   running: boolean
   launched: boolean
+  /** Hoe het starten van OMSI afliep, als de app het startte. */
+  start?: 'gestart' | 'geweigerd' | 'mislukt'
+  klaargezet: Klaargezet
+  /** De naam van de plek waar de bus staat. */
+  plek?: string
+  fout?: 'geenBus' | 'onvolledig' | 'geenPlek' | 'geenDienstregeling' | 'schrijven'
+  foutTekst?: string
+}
+
+/** De controle op de kaartstap: kan de bus hier neer, en waar. */
+export interface FreeCheck {
+  ok: boolean
+  fout?: 'onvolledig' | 'geenPlek' | 'geenDienstregeling'
+  plek?: {
+    nr: number
+    naam: string
+    bron: 'vertrekken' | 'uitrukken' | 'remise' | 'eerste' | 'halte'
+    aantal: number
+    tot?: number
+    eerste?: number
+    /** Kaartmeters, voor de marker op de kaart. */
+    x: number
+    y: number
+    heading: number
+  }
+  moment: { iso: string; minutes: number; bron: 'klok' | 'eersteVertrek' }
+}
+
+/** Een omloop die straks vertrekt; voor wie in OMSI nog niets koos. */
+export interface VrijSuggestie {
+  lineFile: string
+  tourNumber: string
+  lineNumber: string
+  /** Minuten na middernacht. */
+  vertrek: number
+  vanaf: string
+  naar: string
+  /** De eerste rit van de omloop: hier rukt hij uit. */
+  uitrukken: boolean
+  /** Binnen 300 m van de bus. */
+  dichtbij: boolean
+  meters?: number
+}
+
+/**
+ * Waar vrij rijden staat. Het hoofdproces rekent het uit; het rijscherm, de
+ * overlay en de telefoon tonen hetzelfde (renderer/vrijstaat.ts).
+ */
+export type VrijStaat =
+  | { soort: 'wacht'; lang?: boolean }
+  | { soort: 'geenBus'; klaargezet: Klaargezet }
+  | { soort: 'geenGeheugen' }
+  | { soort: 'andereKaart' }
+  | { soort: 'geenOmloop'; suggesties: VrijSuggestie[]; halte?: string; losgelaten?: boolean }
+  | { soort: 'gevolgd'; koppeling: Koppelsoort; line: string; tour: string }
+  | { soort: 'alleenRit'; line: string; tour: string; trip: string }
+  | { soort: 'onbekend'; line: string; tour: string; trip: string }
+
+/** Wat een beeld van de overlay over vrij rijden meekrijgt. */
+export interface VrijBeeld {
+  kaart: string
+  mapFolder: string
+  staat?: VrijStaat
+  /** De kaart die eerst gekozen was, als de app naar de kaart van OMSI wisselde. */
+  gewisseldVan?: string
+  /**
+   * Naar de eerste halte van een rit die nog niet begonnen is: een rechte lijn
+   * met de afstand, als gok (fase 1 heeft geen route).
+   */
+  aanrij?: { naar: string; meters: number; punten: [number, number, number, number]; gok: true }
 }
 
 /** Een toegewezen dienst met de bus die erbij gezocht is. */
@@ -301,6 +387,10 @@ export interface BeginResult {
   connected: boolean
   launched: boolean
   running: boolean
+  /** Hoe het starten van OMSI afliep, als de app het startte (zoals `FreeResult.start`). */
+  start?: 'gestart' | 'geweigerd' | 'mislukt'
+  /** Waarom het starten mislukte, als er een fout was. */
+  startFout?: string
   /** Er is met opzet niets klaargezet: je stapt in een spel dat al draait. */
   meegereden?: boolean
   prepared?: PreparedSituation
@@ -746,19 +836,27 @@ export interface CareerApi {
   clearProfilePhoto(id: string): Promise<CareerPayload>
   /** Vinkt af dat de chauffeur zijn personeelsnummer en pincode gezien heeft. */
   dienstpasGezien(): Promise<CareerPayload>
-  /** Vrij rijden: kaart, beginpunt en bus klaarzetten en OMSI starten. */
+  /** Vrij rijden: de bus neerzetten, klaarzetten en OMSI starten. */
   startFree(request: FreeRequest): Promise<FreeResult>
+  /** Kan de bus op deze kaart neer, en waar; de voet van de kaartstap. */
+  checkFree(mapFolder: string, wanneer?: VrijWanneer): Promise<FreeCheck>
   /** De vrije rit afsluiten: de overlay gaat dicht. */
   stopFree(): Promise<void>
-  /** Per halte van een kaart: welke lijnen er stoppen, en of ritten er beginnen. */
-  haltes(mapFolder: string): Promise<HalteInfo[]>
   /** De wagenparken naast een bus, gemeten aan alle eindbestemmingen van de kaart. */
   vrijeYards(mapFolder: string, vehiclePath: string, year: number): Promise<YardOption[]>
   /**
-   * Vrij rijden: in OMSI een omloop gekozen, en de overlay volgt hem. Met de
-   * omloop als dienst en zijn IBIS-codes.
+   * Vrij rijden: hoe het ervoor staat, met de omloop die gevolgd wordt en zijn
+   * IBIS-codes zodra die er is.
    */
-  onVrijGevolgd(handler: (gevolgd: { duty: Duty; ibis?: IbisPlan }) => void): () => void
+  onVrijStaat(
+    handler: (uitslag: {
+      staat: VrijStaat
+      duty?: Duty
+      ibis?: IbisPlan
+      kaart: string
+      mapFolder: string
+    }) => void
+  ): () => void
   /** De geïnstalleerde bussen, per map, en welke al klaargemaakt zijn. */
   bussen(): Promise<Busmapinfo[]>
   /** Een bus uitlezen: welke apparaten er zijn en wat ze zijn. Kan een minuut duren. */

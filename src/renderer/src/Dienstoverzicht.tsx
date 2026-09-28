@@ -29,11 +29,18 @@ export function Dienstoverzicht({ duty }: { duty: Duty }): JSX.Element {
   return (
     <div className="dienstuitleg">
       <p className="dienstuitleg-kop">
-        {tr('duty.overviewHead', {
-          trips: duty.legs.length,
-          stops: duty.totalStops,
-          lines: duty.lineNumbers.length
-        })}
+        {/*
+          Eén rit, één halte en één lijn in het enkelvoud. Bij vrij rijden staat
+          dit overzicht onder een gevolgde omloop, en een losse rit of de laatste
+          rit van een omloop gaf "1 ritten · ... · 1 lijnen".
+        */}
+        {[
+          tr(duty.legs.length === 1 ? 'duty.overviewTripOne' : 'duty.overviewTrips', { n: duty.legs.length }),
+          tr(duty.totalStops === 1 ? 'duty.overviewStopOne' : 'duty.overviewStops', { n: duty.totalStops }),
+          tr(duty.lineNumbers.length === 1 ? 'duty.overviewLineOne' : 'duty.overviewLines', {
+            n: duty.lineNumbers.length
+          })
+        ].join(' · ')}
       </p>
 
       <ol className="dienstuitleg-ritten">
@@ -47,7 +54,10 @@ export function Dienstoverzicht({ duty }: { duty: Duty }): JSX.Element {
             )}
             <span className="dienstuitleg-rit">
               <span className="dienstuitleg-tijd">{formatTime(leg.departure)}</span>
-              <span className="dienstuitleg-lijn">{leg.lineNumber || '—'}</span>
+              {/* Een leegrit heeft geen lijn; zie `leer` in core/types.ts. */}
+              <span className={`dienstuitleg-lijn${leg.leer ? ' leeg' : ''}`}>
+                {leg.leer ? tr('ovl.freeLeer') : leg.lineNumber || '—'}
+              </span>
               <span className="dienstuitleg-naar" title={leg.terminus}>
                 {leg.terminus}
               </span>

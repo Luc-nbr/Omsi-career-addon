@@ -122,6 +122,12 @@ interface Props {
    * de kaart. Daar komt geen haltenaam: hij zou eronder verdwijnen.
    */
   bezet?: (w: number, h: number) => Array<{ x: number; y: number; w: number; h: number }>
+  /**
+   * Vrij rijden: naar de eerste halte van een rit die nog niet begonnen is.
+   * Een rechte lijn van de bus naar de halte, gestreept: er is (nog) geen
+   * route berekend, dus hij mag niet lezen als een weg (kaartmeters).
+   */
+  aanrij?: { punten: [number, number, number, number] }
 }
 
 /**
@@ -246,7 +252,8 @@ export function RouteMap({
   pixelScale = 1,
   bediening,
   zoom,
-  bezet
+  bezet,
+  aanrij
 }: Props): JSX.Element {
   const tr = useT()
   const boxRef = useRef<HTMLDivElement>(null)
@@ -1328,6 +1335,14 @@ export function RouteMap({
         {pieces.guessed.map((piece) => (
           <polyline key={`gok-${piece.key}`} className="route-guess" points={asPoints(piece.line)} />
         ))}
+
+        {/* Naar de eerste halte, zolang de rit nog niet begonnen is: een gok, dus gestreept. */}
+        {aanrij &&
+          (() => {
+            const [ax, ay] = toScreen(aanrij.punten[0], aanrij.punten[1])
+            const [bx, by] = toScreen(aanrij.punten[2], aanrij.punten[3])
+            return <line className="route-aanrij" x1={ax} y1={ay} x2={bx} y2={by} />
+          })()}
 
         {otherStops.map((stop) => {
           const [x, y] = toScreen(stop.x, stop.y)

@@ -41,6 +41,11 @@ export interface TrackLine {
   gaps: number[]
   /** Per baan: welke kant hij op mag, en of de route hem tegen zijn tekenrichting in rijdt. */
   driven: Array<{ direction: number; reversed: boolean; file: string }>
+  /**
+   * De gevonden banen zelf, in rijrichting gedraaid. `gaps[i - 1]` is de naad
+   * tussen stuk i - 1 en stuk i; zie `routeForTrip` voor het dichten ervan.
+   */
+  stukken: number[][]
 }
 
 export function readTrack(path: string): TrackEntry[] {
@@ -162,6 +167,7 @@ export function readTrackLine(
   const points: number[] = []
   const gaps: number[] = []
   const driven: TrackLine['driven'] = []
+  const stukken: number[][] = []
   for (let i = 0; i < pieces.length; i++) {
     let piece = pieces[i].points
     let reversed = false
@@ -178,12 +184,13 @@ export function readTrackLine(
       gaps.push(Math.min(toStart, toEnd))
     }
     if (reversed) piece = reverse(piece)
+    stukken.push(piece)
     driven.push({ direction: pieces[i].direction, reversed, file: pieces[i].file })
     // Het eerste punt valt samen met het vorige eindpunt; niet dubbel opnemen.
     points.push(...(i === 0 ? piece : piece.slice(2)))
   }
 
-  return { points, missing, gaps, driven }
+  return { points, missing, gaps, driven, stukken }
 }
 
 /** Welk uiteinde van `piece` het dichtst bij een van beide uiteinden van `other` ligt. */

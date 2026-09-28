@@ -30,8 +30,9 @@ je rijden**. Die tweede vraag kent drie antwoorden:
   lijn erbij vraagt een eigen examen. De remise wijst de dienst toe en kiest
   alleen uit lijnen waar je een vergunning voor hebt.
 - **Dienst** — hetzelfde rijden zonder die regels: eigen route, eigen lengte.
-- **Vrij rijden** — niets wordt geboekt of beoordeeld. Je kiest lijn, bus, plek,
-  weer, datum en tijd; de app zet het klaar en biedt de overlay aan.
+- **Vrij rijden** — niets wordt geboekt of beoordeeld. Je kiest alleen een kaart
+  en een bus; de app zet de bus waar straks iets vertrekt, en de navigatie vindt
+  zelf de omloop die je daarna in OMSI kiest (zie 5.0).
 
 Daarnaast beheert de app de **instellingen, toetsen en gamecontrollers van OMSI
 zelf**: 37 van de 47 blokken uit `options.cfg` met uitleg erbij in vier talen,
@@ -759,55 +760,216 @@ die aan het eind met rmdir zonder /s worden losgehaald; **die map nooit
 recursief verwijderen**), en `scripts/probe-toetsdelen.ts` voor de regels van
 het delen.
 
-**Vrij rijden: kaart, beginpunt en bus -- de omloop kies je in OMSI** (27-09-2026).
-Luc: "Vrij rijden modus moet helemaal geen dienst genereren, de speler kiest in
-omsi een omloop en de overlay detecteert dat, in vrije modus kiest de speler
-enkel een kaart, beginpunt en bus." (Een eerste versie die dezelfde dag uit
-aangevinkte lijnen een dienst samenstelde, is daarmee vervangen.)
+**Vrij rijden: alleen kaart en bus -- de navigatie vindt zelf wat je in OMSI
+rijdt** (28-09-2026, 0.4.8). Een gebruiker, doorgestuurd door Luc: "meine Idee
+wäre das die Haltestellen aussuchen Option komplett weg fällt in dem Modus nur
+und nur noch Karte und Bus ausgesucht werden müssen und das Navi es von alleine
+findet" -- en twee soorten fouten moesten weg: een verkeerde lijnroute in de
+navigatie, en "er lädt garnix". Dit vervangt de versie van 27-09 met een
+beginpunt (haltekeuze), die weer de versie met aangevinkte lijnen verving.
 
-- **Opzet:** kaart -> beginpunt (de haltes van de kaart, op de plek van de
-  dienststap; twee perrons met dezelfde naam krijgen (1) en (2), en de gekozen
-  halte staat op de kaart) -> bus -> START. Geen lijnen, geen dienst, niets in
-  het profiel, niets geboekt. `free:start` zet de bus bij de halte, met de
-  datum uit het tijdvak van de kaart en de tijd van de klok van de pc, en start
-  OMSI. Draait OMSI al, dan wordt er niets klaargezet en gaat de overlay meteen
-  open.
-- **Beginpunt, datum, tijd en weer** (later op 27-09): Luc miste de tijd-, datum-
-  en weerkeuze, en wilde bij een halte zien welke lijnen er zijn en of het een
-  beginpunt of een tussenstop is, gecategoriseerd. `haltesVan` (core/haltes.ts,
-  `map:haltes`) telt per halte de lijnen en de ritten die er beginnen of langs
-  komen, over de kiesbare omlopen; de stap toont "Beginpunten" of
-  "Tussenhaltes" (chips), met datum (tijdvak van de kaart), tijd (08:00) en weer
-  erboven. Proef: `scripts/probe-haltes.ts` over alle kaarten -- op Wenen vindt
-  de kaartlezer geen enkele halte, dus valt daar niets te kiezen (ook al zo voor
-  deze wijziging).
-- **Navigatie zonder omloop** (Luc: "de navigatie moet het wel altijd doen ...
-  en wanneer de dienst is gekozen komt er pas een opgelichte lijn"): bij een
-  vrije rit krijgt de overlay en de tablet de kaart van de rit (`frame.vrij`,
-  `geometrie`, `vehicleOnMap`), met het net, de bus en bovenin hoe je een
-  omloop kiest (`.nav-vrij`). Is er een omloop, dan licht zijn route meteen op.
-- **De vrije rit** staat alleen in het hoofdproces (`vrijeRit`), niet in het
-  profiel. Een dienst aannemen of `free:stop` ("Vrij rijden stoppen" op het
-  rijscherm van vrij rijden) sluit hem af, met de overlay.
-- **De overlay zonder omloop** zegt hoe je er een kiest (`frame.vrij`,
-  `ovl.freePickTour`). `openOverlay` en `overlay:set` mogen zonder dienst, maar
-  alleen bij een vrije rit.
-- **Meegaan:** `volgOmloopInOmsi` in main/index.ts, elk beeld. Staat er in het
-  dienstregelingsmenu van OMSI een omloop die de overlay nog niet toont
-  (`mem.lineName`, `tourName`, `tripName`, met `schedActive`), dan bouwt
-  `dutyFromTour` (core/duty.ts) die op vanaf de gekozen rit, komen de IBIS-codes
-  erbij (het wagenpark naast de bus die OMSI noemt, het jaar van het spel), en
-  krijgen de overlay, de tablet en het rijscherm hem (`vrij:gevolgd`). De
-  aanmelding hangt aan de vrije rit (`vrij<n>` in telefoonSleutel) en blijft dus
-  staan; er valt niets te aanvaarden (`telefoon.aanvaard` gaat vanzelf aan).
-- **Wat het niet volgt:** alleen een lijn en route in de IBIS intoetsen zonder het
-  dienstregelingsmenu, en een andere kaart laden in OMSI (de plugin geeft de
-  kaart niet door, en logfile.txt is tijdens het spelen op slot).
+- **Opzet:** profiel -> modus -> KAART -> BUS -> START. De stap Beginpunt is weg
+  (`STAPPEN_VRIJ` zonder `duty`; een oude stand op `duty` springt naar `bus`).
+  Op de kaartstap staat "Tijd en weer" dichtgeklapt (`.vrij-wanneer`):
+  automatisch is een schooldag door de week uit het tijdvak van de kaart
+  (`dienstDatum(folder, 287)`), de klok van de pc, en het weer van de kaart.
+  Wie datum of tijd verzet, krijgt een nieuwe plek; "Weer automatisch" zet het
+  terug. De voet zegt waar de bus komt te staan ("je bus staat klaar bij
+  [ 51 ] Krefrath Hbf; daar vertrekken tot 14:50 9 ritten", 's nachts "daar rukt
+  om 04:22 de eerste omloop uit"), en de bus staat als marker op de kaart. Een
+  kaart zonder tegels (Wenen), zonder dienstregeling of zonder plek: VERDER
+  weigert met de reden.
+- **Waar de bus staat** (`core/beginplek.ts`): op een inzetpunt van de kaart
+  (`[entrypoints]` in global.cfg, twaalf regels per punt: twee ids, een nul, x,
+  hoogte, z, quaternion x/y/z/w, tegel, naam). OMSI zet de bus in zijn eigen
+  situaties exact op zo'n punt met hetzelfde quaternion; dat gaat daarom
+  ongewijzigd mee (`SituationRequest.spawn.quaternion`). Gekozen wordt het punt
+  waar tussen klok+5 en klok+45 binnen 300 m de meeste ritten vertrekken (bij
+  gelijke stand: tot klok+90, dan een remisenaam, dan de volgorde in het
+  bestand), anders tot klok+120; 's nachts met een automatische tijd gaat de
+  klok naar tien minuten voor het eerste vertrek bij een inzetpunt. **Niet "de
+  eerste remise"**: bij het Betriebshof Alsterdorf op HamburgLi20 begint geen
+  enkele van de 252 omlopen, en tussen tien en vier rukt er uit een remise
+  bijna niets uit. Kaarten zonder inzetpunten: de halte met de meeste
+  vertrekken (`spawnAtStop`, in de werker). Alles in de werker
+  (`vrijcheck`); het hoofdproces houdt de uitkomst vast, zodat START de bus
+  zet waar de voet het zei -- als de speler zelf een tijd koos. Met een
+  automatische tijd bepaalt START plek en tijd opnieuw (een gekozen datum
+  blijft): de voet rekende ze uit bij het kiezen van de kaart, en wie daarna
+  lang op de busstap bleef, startte op de klok van toen. Gooit die controle
+  een fout, dan de plek van het scherm; "geen tegels" en dergelijke weigeren
+  zoals de voet.
+- **START** (`core/vrijstart.ts`, zonder Electron na te lopen): OMSI dicht ->
+  situatie, `laststn.osn` + `[last_map]`, de wachtende knoppen (in een eigen
+  `try`: een fout daar hield eerst het starten tegen), OMSI starten. Mislukt
+  dat ('geweigerd', 'mislukt'), dan blijft het startvenster staan met de reden
+  (`StartingDialog.melding`) en gaat het dicht zodra OMSI er is; de overlay
+  opent dan pas -- niet meer boven het bureaublad. De voet van dat venster zegt
+  dan "Wacht tot je OMSI zelf start…" (`StartingDialog.mislukt`), niet "Bezig
+  met opstarten…" en na 25 s "De kaart wordt ingeladen". Het weer naast
+  `laststn.osn` (kopiëren of het oude weghalen) staat in `presetStartup` in een
+  eigen `try`: een `.owt` die niet weg kon maakte eerst de hele "Last
+  Situation" tot mislukt (`StartupResult.weerFout`, alleen voor het logboek).
+  `duty:begin` doet het net zo: de knoppen in een eigen `try` (een fout daar
+  sloeg het starten van OMSI over), `launchOmsi` altijd, en `start`/`startFout`
+  terug in `BeginResult`; de voet van de busstap noemt dan de reden
+  (`start.launchRefused`, `start.notLaunchedReason`). OMSI al draaiend -> **alleen**
+  `Situations\OMSI Enhancer.osn` (nooit `laststn.osn` of `options.cfg`) en de
+  overlay; de voet zegt dat hij via Laden klaarstaat. De vrije rit bestaat pas
+  na het schrijven; een weigering laat niets achter. Het logboek zegt per start
+  de plek, de bron en het klaarzetten (`vrij rijden klaargezet: start|situatie|
+  niets`). Staat het startscherm niet klaar, dan vervalt ook `klaargezet` van
+  een eerdere rit (zoals bij meerijden); anders zette `herstelStartscherm` die
+  na het afsluiten van OMSI terug.
+- **Het sjabloon zonder eigen situaties** (`findTemplate(..., { zonderEigen })`):
+  situaties die "OMSI Enhancer"/"OMSI Career" heten tellen niet voor het
+  tijdvak; de kopieën `laststn.osn.voor-omsi-*` wel. Een zelfgekozen datum
+  werd anders het tijdvak van de volgende sessie. Het overzicht in de
+  schijfcache heet daarom `overzicht2`.
+- **Het weer "zoals de kaart"** (`findWeather` in core/situation.ts) staat los
+  van het sjabloon: het eerste `.owt` naast `laststn.osn`, de kopieën of een
+  scenario van deze kaart (niet `OMSI Enhancer.osn`) dat de app niet zelf koos
+  -- `isEigenWeer`: weer uit `writeWeather` heet "OMSI Enhancer - ..." /
+  "OMSI Career - ...", en OMSI schrijft die naam na een rit zo terug. Eerst
+  nam het het `.owt` van het sjabloon, en naast de kopie stond er nooit een:
+  op zes kaarten werd het het standaardweer, en daarna haalde presetStartup
+  ook `laststn.osn.owt` weg (tegenlezing 28-09). Nu op Lucs installatie: 11
+  kaarten met weer van de kaart; Krefrath en Rheinhausen hebben alleen weer
+  dat de app koos (Vienna geen), en krijgen het standaardweer. presetStartup zet één keer
+  het weer van de kaart naast de kopie (`laststn.osn.voor-omsi-*.owt`, nooit
+  gekozen weer) en haalt `laststn.osn.owt` alleen weg als de app dat weer
+  koos; het weer van de kaart blijft staan. Het logboek noemt de bron
+  ("weer van de kaart (maps\X\laststn.osn.owt)", `SituationResult.weerVan`).
+- **De omloop vinden** (`core/omloopvolgen.ts`). De plugin geeft naast de namen
+  ook de nummers: `line` (plek van het `.ttl` in readdir), `tour` (plek van de
+  `[newtour]` in het bestand, ook lege omlopen tellen: `Tour.index`),
+  `tourEntry` (plek van de `[addtrip]`, ook lege: `TourTrip.entry`) en `trip`.
+  Koppelen gebeurt op nummer, met drie controles (de rit, de omloopnaam met
+  tolerantie voor een verminkte naam van één teken, en de rijdag) en in beide
+  volgordes (bestand en vertrektijd -- vier omlopen staan niet op tijd, en op
+  22 plekken kloppen beide met een ander vervolg; dan `zeker: false`). Daarna
+  terugvallen op de naam, dan de rit alleen, dan niets. Op naam gaat een
+  exacte naam voor de rijdag: `naamGelijk("12", "1")` is waar (een verminkte
+  "1"), en met de rijdag voorop koppelde OMSI "12" aan omloop "1" als "12"
+  die dag niet reed. Tussen dagvarianten met dezelfde naam beslist de rijdag
+  nog wel. De losse rit (`soort: 'rit'`) zoekt op de naam, en op het
+  ritnummer alleen als OMSI geen bruikbare naam geeft: een rit van een
+  andere kaart wees met zijn nummer in de ritlijst van deze kaart een
+  willekeurige rit aan, en die route stond dan in de navigatie (590 van 728
+  keuzes van een andere kaart; nu 706 `niets` en 0 een andere rit,
+  `probe-koppelen.ts`). `dutyFromTour` (op de
+  klok raden) is weg: dat was de "falsche Linien Route". Namen worden
+  vergeleken via `vouw` (zonder pad, kleine letters, alles buiten ASCII als
+  '?'; "TTData 853_..." met de spatie van `copy_text` telt ook).
+- **Elke volgende rit op nummer:** `legVolgensOmsi` (core/live.ts) wijst bij een
+  op nummer gekoppelde dienst (`Duty.omsi`) de rit aan met `tourEntry`, en toetst
+  lijn, omloop en rit. Klopt de rit niet, dan koppelt het volgen opnieuw met de
+  andere volgorde voorop (`volgorde gecorrigeerd` in het logboek, alleen als de
+  volgorde echt omdraait). Komt precies dezelfde koppeling terug -- klopt maar
+  één volgorde -- dan gebeurt er niets: eerst stond elke 30 s dezelfde regel
+  met "volgt OMSI" in het logboek, met nieuwe IBIS-codes. Een rit van
+  vóór het begin van de koppeling (`Duty.omsi.vanaf`: de speler koos in OMSI
+  terug) is een nieuwe keuze en wordt opnieuw gekoppeld; eerst wees
+  `legVolgensOmsi` dan de eerste rit van de dienst aan, een latere dan OMSI reed.
+- **Leegritten** (`DutyLeg.leer`: minder dan drie haltes en geen lijn of een
+  bestemming als "Betriebsfahrt") horen in de dienst, zonder lijnnummer -- de
+  naam van het lijnbestand kwam anders op de IBIS -- en met hun eigen route uit
+  de `.ttr` (`routeZonderHaltes`). Het overzicht toont "Leegrit". Eén rit,
+  halte of lijn staat in het enkelvoud: de voet ("nog één rit",
+  `free.mapFootOne`), de kop van het dienstoverzicht (`duty.overviewTripOne`
+  enz.; een losse rit gaf "1 ritten · ... · 1 lijnen") en een rit met één
+  halte op de telefoon (`ovl.appStopOne`). Ook de volgende rit in de pauze
+  op de telefoon en het lijnplaatje van de keuze- en IBIS-stap in de overlay
+  zeggen "Leegrit" (`ovl.freeLeer`); daar stond "Lijn " met niets erachter
+  of een leeg plaatje.
+- **Routes: de `.ttr` met naden** (`metNaden` in core/routing.ts, achter de vlag
+  `NADEN`). Een `.ttr` mag nu ook met hooguit 5% ontbrekende banen, als elke
+  halte ernaast ligt en de gaten samen hooguit een vijfde van de lengte zijn;
+  een naad boven een meter wordt gedicht over het rijstrokennet
+  (`LaneNetwork.verbind`, verankerd op de strook in de rijrichting van het stuk
+  ervoor en erna, hooguit drie keer het gat plus 50 m), anders een gestreepte
+  gok. Meetpoort `probe-routing.ts --naden`: 479 ritten heel -> 999 met naden
+  (Ahlheim 114 -> 489, TH_Wald 71 -> 121, Region Grundorf 37 -> 82), leegritten
+  zonder haltes 360 -> 664, **0 ritten verder van OMSI's banen dan de planner**.
+  De planner zelf is ongewijzigd (zelfde uitkomst als 28-09 ervoor).
+- **Welke kaart?** (`core/kaartherkenning.ts`). De plek van de bus (tegel, x, z,
+  hoogte) past maar op één kaart bij het maaiveld. Per plek: *klopt* (hooguit
+  0,6 m van het maaiveld), *kan niet* (de tegel bestaat daar niet, of de bus
+  staat meer dan 0,6 m ONDER het maaiveld) of *niets* (erboven: talud, brug;
+  of geen hoogtebestand). Vanaf zes monsters: de helft klopt -> zeker; de
+  helft kan niet, of minder dan 25% klopt terwijl een andere kaart 75%+ haalt
+  -> een andere kaart. Eerst telde "erboven" als "past niet", en in Hamburg
+  ligt het wegdek vaak een meter of meer boven de grond: op HafenCity zei de
+  app bij 16% van de stukjes rijden "Je bus staat niet op ..." (Li20 12%,
+  109_2 4,5%). Nu 1 van 2600 (een tunnel op Li20; was 81), en een echt
+  verkeerde kaart wordt 80% herkend (was 83%; alleen "kan niet" haalde 53%).
+  **Wisselen** ("OMSI speelt ...") alleen naar een kaart die als enige 75%+
+  haalt terwijl geen andere kaart ook maar 50% haalt: zonder die eis ging de
+  app in 57 van de 31200 gevallen (bus op K, app op een andere) naar een
+  DERDE kaart (109_2/Li20 -> Hamburg109, TH_Wald -> Krefrath, Ahlheim ->
+  Region Grundorf); nu 0, tegen 38,5% goede wissels (was 41,5%). Anders zegt
+  hij dat de bus niet op de kaart staat. Een platte kaart twijfelt, en dan
+  gebeurt er niets. Past een keuze van OMSI niet in de dienstregeling maar wel
+  op precies één andere kaart (het `.ttl` bestaat, het ritnummer klopt, de
+  plek spreekt het niet tegen), dan wisselt hij ook. Delen meer kaarten het
+  terrein (HafenCityHamburg, Hamburg109, Hamburg109_2 en HamburgLi20) en
+  rijdt OMSI een omloop, dan beslist dat koppelen, niet "andere kaart". Zonder
+  gevolgde omloop (losgelaten, onbekend) kijkt de kaartherkenning weer mee.
+  Er is één herkenning in het volgen, bovenaan `volgStap`; een tweede na een
+  mislukte koppeling stelde dezelfde vraag over dezelfde monsters en was dood.
+- **De herkenning draait in de werker** (`herken` en `elders` in
+  core/kaartlaag.ts): de eerste keer leest hij global.cfg en het terrein van
+  alle kaarten, 62 tot 75 ms, en dat stond in het hoofdproces. Het volgen
+  wacht er niet op: bij elk nieuw monster gaat er een vraag weg en geldt het
+  laatste oordeel over deze kaart van deze rit (`herkenningVoor`); een
+  koppeling of een wissel gooit dat oordeel weg. Ook `free:yards` (de
+  wagenparken bij vrij rijden) gaat door de werker (`vrijeWagenparken`): koud
+  63 tot 348 ms, warm nog 30 ms voor 22 wagenparken naast de MAN SG. Die vraag
+  staat in de rij achter het busvoorstel en de controle (koud tot 1,8 s), dus
+  stelt `free:start` het wagenpark zelf vast (`wagenparkVoorStart`): het
+  gevraagde als het naast deze bus ligt, anders het voorstel van de kaart.
+  Eerst ging een START binnen twee tellen na VERDER zonder wagenpark ("door
+  OMSI gekozen"). Het logboek zegt "(voorstel bij START)" als dat gebeurde.
+- **Volgen** (`volgOmloopInOmsi` in main/index.ts): elk beeld, en elke seconde
+  ook met de overlay dicht. Het zware werk (`koppel`, `vertrekken`, `herken`,
+  `elders`, `vrijewagenparken`) in de werker; het hoofdproces laadt voor vrij
+  rijden geen dienstregeling, rijstrokennet of terrein meer (alleen de
+  tegellijst van de eigen kaart voor `busOpKaart`, 1 tot 6 ms, één keer). De staat (`vrijStaat`: wacht, geenBus, geenGeheugen,
+  andereKaart, geenOmloop met wat er straks vertrekt, gevolgd, alleenRit,
+  onbekend) gaat met `vrij:staat` naar het rijscherm en in `frame.vrij` naar de
+  overlay en de telefoon; de zinnen staan op één plek (renderer/vrijstaat.ts).
+  Een omloop die op naam gevolgd wordt (geen `Duty.omsi`) is dezelfde als
+  OMSI er een noemt met precies die naam; `naamGelijk` las "10" als een
+  verminkte "1" en liet de overlay dan "1" volgen. Een verminkte naam koppelt
+  zo opnieuw, en komt dezelfde omloop (`volg.omloop`: lijnbestand en plek)
+  terug met de rit erin, dan gebeurt er niets -- geen logregel, geen IBIS.
+  Losgelaten in OMSI: na 30 s weg (`schedActive` kan kort wegvallen). Een keuze
+  die nergens staat wist de oude dienst -- eerst bleef die staan alsof hij
+  klopte. Staat de bus meer dan 150 m van de eerste halte van een rit die nog
+  niet begon, dan een gestreepte rechte lijn met "Rijd naar ..." (fase 1: geen
+  route).
 
-Proeven: `scripts/probe-omloopvolgen.ts` (dutyFromTour over alle kaarten, 276
-van 276) en `scripts/probe-vrijrijden.cjs` (het hele verloop in de echte app,
-met een eigen procesje als "OMSI" dat al draait; starten met OMSI dicht wordt
-daar met opzet NIET nagelopen, want dan schrijft de app in de spelmap).
+**Niet in het spel gezien** (dat moet Luc doen): of de bus rechtop op het
+inzetpunt staat; of het logboek bij een gekozen omloop "koppeling index" zegt;
+Spandau lijn 92 op een werkdag met een omloop die in het `.ttl` na de Za/Zo-
+omlopen staat (index of naam: dat leert of OMSI de lijst filtert); Hamburg109_2
+omloop 66093 bij rit 7 (telt OMSI op tijd?); een rit uitrijden en `schedActive`
+in live.json volgen (beslist over de 30 s); een andere kaart laden in OMSI.
+
+**Fase 2, niet gebouwd:** een aanrijroute via de planner in plaats van de rechte
+lijn; haltes op naam, richtingsneutraal; plugin 14 met een codepagina per veld
+(`lineName`/`tripName` CP_ACP, `tourName`/`nextStop` 1252) en de lengte uit de
+Delphi-string; de naam van de situatie in de taal van de speler.
+
+Proeven: `probe-koppelen.ts` (alle kaarten, 53184 gevallen 100% `index`, 44717
+varianten zonder fout, het monster van 21-09 en de reproducties, en 728
+keuzes van een andere kaart zonder een andere rit), `probe-beginplek.ts`,
+`probe-kaartherkenning.ts`, `probe-vrijstart.ts` (ook het weer, in een
+nagemaakte spelmap),
+`probe-routing.ts --naden`, en `probe-vrijrijden.cjs` (het hele verloop in de
+echte app, met een eigen procesje als "OMSI" dat al draait). Starten met OMSI
+dicht wordt daar met opzet NIET nagelopen, want dan schrijft de app in de
+spelmap; dat doet `probe-vrijstart.ts` met nagemaakte stappen.
 
 **LET OP -- wat er bij de eerste versie van die proef misging (27-09).** De
 vraag "draait OMSI?" op de busstap (`omsi:running`) en de controle in
@@ -822,7 +984,10 @@ Rechtgezet: elke "draait OMSI?" gebruikt nu `OMSI_PROCES`. En de proef
 weigert zelf, voordat de app laadt, elke schrijfactie onder de spelmap en elk
 programma dat Omsi.exe start, en drukt pas op START als de app zegt dat
 "OMSI" draait. **Een proef die de echte OMSI-map gebruikt, hoort die
-vangrails te hebben** -- kopieer ze uit probe-vrijrijden.cjs.
+vangrails te hebben** -- kopieer ze uit probe-vrijrijden.cjs. Sinds 0.4.8
+schrijft vrij rijden met OMSI al draaiend `Situations\OMSI Enhancer.osn`; de
+proef leidt precies die schrijfacties om naar een tijdelijke map en weigert de
+rest nog steeds.
 
 **Bussen klaarmaken, vanuit de app** (26-09-2026). Wens van de gebruiker: "de
 gebruiker moet via de app zelf de bus kunnen toevoegen zodat de app de
@@ -1841,8 +2006,19 @@ Uit de ronde van september 2026, op volgorde van waar ze over gaan:
 - `probe-hoftijd.ts` — wat het lezen van alle wagenparken kost, koud en warm.
 - `probe-hofvraag.cjs` — komt het venstertje als de bus de kaart niet kent, staat
   de tegel "Wagenpark toevoegen" er, en is er een terugknop.
-- `probe-modi.cjs` — loopt carrière en vrij rijden stap voor stap af en meldt per
-  stap wat er staat. Eigen gebruikersmap; er wordt niet op START gedrukt.
+- `probe-modi.cjs` — loopt vrij rijden en carrière stap voor stap af en meldt per
+  stap wat er staat. Eigen gebruikersmap; er wordt niet op START gedrukt. De
+  afsluitcode zegt of vrij rijden kaart -> bus is, met de plek in de voet.
+- `probe-koppelen.ts`, `probe-beginplek.ts`, `probe-kaartherkenning.ts`,
+  `probe-vrijstart.ts` — vrij rijden zonder de app: de omloop op nummer vinden
+  (met "exacte naam": OMSI "12" naast "1" en "12" op een zaterdag),
+  de plek van de bus, de kaart herkennen, en START in elke tak (zie 5.0; ook
+  automatische tijd tegen gekozen tijd, en het weer naast `laststn.osn` dat
+  niet weg kan, in een nagemaakte spelmap).
+  `probe-kaartherkenning.ts` loopt naast de situaties en inzetpunten ook 2600
+  stukjes rijden op de hoogte van het wegdek na (onterecht "andere kaart" op
+  de eigen kaart hooguit 0,2%, nooit een wissel naar een derde kaart, een
+  verkeerde kaart 75%+ herkend); `--snel` slaat dat deel (20 s) over.
 - `probe-profiel.cjs` — de staat van dienst met een **kopie** van een echt
   logboek, zodat het profiel van de gebruiker onaangeroerd blijft.
 - `probe-beweging.cjs`, `probe-velsleutel.cjs` — welke animaties er werkelijk

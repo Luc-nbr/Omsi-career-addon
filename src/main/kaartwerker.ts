@@ -1,7 +1,9 @@
 import { parentPort, workerData } from 'node:worker_threads'
 import { maakKaartlaag } from '../core/kaartlaag'
 import { actiesPerVariant, analyseerBusmap, busmappen, modelcfgsVan, type Busanalyse } from '../core/busklaar'
-import type { DutyRequest } from '../shared/api'
+import type { DutyRequest, VrijWanneer } from '../shared/api'
+import type { OmsiKeuze } from '../core/omloopvolgen'
+import type { Monster } from '../core/kaartherkenning'
 
 /**
  * Het zware werk, buiten het hoofdproces.
@@ -40,6 +42,43 @@ type Opdracht =
   | { id: number; soort: 'busmappen' }
   | { id: number; soort: 'busanalyse'; sleutel: string }
   | { id: number; soort: 'busacties'; sleutel: string; ids: string[] }
+  /*
+   * Vrij rijden. Een dienstregeling en een rijstrokennet lezen kost koud tot
+   * seconden (HamburgLi20 1759 ms, het net van Ahlheim 3084 ms); dat hoort
+   * niet in het hoofdproces, dat intussen de overlay moet tekenen.
+   */
+  | { id: number; soort: 'vrijcheck'; folder: string; wanneer?: VrijWanneer }
+  | {
+      id: number
+      soort: 'koppel'
+      folder: string
+      keuze: OmsiKeuze
+      datum?: string
+      voorkeur?: 'bestand' | 'vertrek'
+    }
+  | {
+      id: number
+      soort: 'vertrekken'
+      folder: string
+      datum?: string
+      klok: number
+      bus?: { x: number; y: number }
+    }
+  /*
+   * Welke kaart OMSI speelt, aan de plek van de bus. De eerste keer leest dat
+   * global.cfg en het terrein van alle kaarten: 62 tot 75 ms, en dat stond in
+   * het hoofdproces midden in het volgen.
+   */
+  | { id: number; soort: 'herken'; folder: string; monsters: Monster[] }
+  | {
+      id: number
+      soort: 'elders'
+      folder: string
+      keuze: { lineName: string; trip: number; tripName: string }
+      monsters: Monster[]
+    }
+  /* De wagenparken naast een bus bij vrij rijden: koud 63 tot 348 ms. */
+  | { id: number; soort: 'vrijewagenparken'; folder: string; vehiclePath: string; year: number }
 
 interface Antwoord {
   id: number
@@ -112,7 +151,17 @@ parentPort?.on('message', (opdracht: Opdracht) => {
     } else if (opdracht.soort === 'busacties') {
       const cfgs = modelcfgsVan(omsiPath, laag.voertuigen(), opdracht.sleutel)
       uitkomst = actiesPerVariant(omsiPath, cfgs, opdracht.ids)
-    } else uitkomst = laag.routes(opdracht.folder, opdracht.legs)
+    } else if (opdracht.soort === 'vrijcheck') uitkomst = laag.vrijCheck(opdracht.folder, opdracht.wanneer)
+    else if (opdracht.soort === 'koppel')
+      uitkomst = laag.koppel(opdracht.folder, opdracht.keuze, opdracht.datum, opdracht.voorkeur)
+    else if (opdracht.soort === 'vertrekken')
+      uitkomst = laag.vertrekken(opdracht.folder, opdracht.datum, opdracht.klok, opdracht.bus)
+    else if (opdracht.soort === 'herken') uitkomst = laag.herken(opdracht.folder, opdracht.monsters)
+    else if (opdracht.soort === 'elders')
+      uitkomst = laag.elders(opdracht.folder, opdracht.keuze, opdracht.monsters)
+    else if (opdracht.soort === 'vrijewagenparken')
+      uitkomst = laag.vrijeWagenparken(opdracht.folder, opdracht.vehiclePath, opdracht.year)
+    else uitkomst = laag.routes(opdracht.folder, opdracht.legs)
 
     const antwoord: Antwoord = { id: opdracht.id, ok: true, ms: Date.now() - begin, uitkomst, detail }
     parentPort?.postMessage(antwoord)

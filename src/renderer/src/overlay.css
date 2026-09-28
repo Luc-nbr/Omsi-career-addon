@@ -3417,3 +3417,109 @@
   border-radius: var(--radius-klein);
   background: rgba(20, 26, 38, 0.92);
 }
+
+/*
+ * Vrij rijden in de navigatie: wat er straks vertrekt onder de zin in
+ * `.nav-vrij`, en onder de balk met de volgende halte de weg naar de eerste
+ * halte (of dat het een leegrit is). Hetzelfde glas als de balk erboven.
+ */
+.nav-vrij p {
+  margin: 0;
+}
+
+.nav-vrij-wissel {
+  margin-bottom: 6px !important;
+  color: #ffd23f;
+}
+
+.nav-vrij-groep {
+  margin-top: 8px;
+}
+
+.nav-vrij-groep b {
+  display: block;
+  margin-bottom: 3px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.nav-vrij-groep ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nav-vrij-groep li {
+  padding: 2px 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.nav-aanrij {
+  position: absolute;
+  z-index: 2;
+  top: 84px;
+  left: 7px;
+  right: 7px;
+  padding: 7px 12px;
+  border-radius: var(--radius-klein);
+  background: var(--vel-overlay);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.nav-leer {
+  color: rgba(255, 255, 255, 0.78);
+  font-weight: 500;
+}
+
+/* De rechte lijn naar de eerste halte: gestreept, want het is geen berekende route. */
+.route-aanrij {
+  stroke: #ffd23f;
+  stroke-width: 3;
+  stroke-dasharray: 6 8;
+  stroke-linecap: round;
+}
+
+/*
+ * De dienstapp op de telefoon bij vrij rijden zonder omloop: de zin van het
+ * hoofdproces, en daaronder wat er straks vertrekt (hooguit vijf regels).
+ */
+.vrij-app {
+  gap: 12px;
+}
+
+.vrij-app-staat {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.vrij-app-groep b {
+  display: block;
+  margin-bottom: 4px;
+  opacity: 0.7;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.vrij-app-groep ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vrij-app-groep li {
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}

@@ -1,5 +1,6 @@
-import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { isEigenWeer } from './situation'
 
 /**
  * OMSI zo laten opstarten dat de dienst al klaarstaat.
@@ -23,6 +24,11 @@ export interface StartupResult {
   lastMap: boolean
   /** Waar de vorige `laststn.osn` gebleven is, als we er een opzij hebben gezet. */
   backup?: string
+  /**
+   * Het weerbestand naast `laststn.osn` kon niet gekopieerd of weggehaald
+   * worden. De situatie staat wel klaar; dit is alleen voor het logboek.
+   */
+  weerFout?: string
 }
 
 const BACKUP_SUFFIX = '.voor-omsi-enhancer'
@@ -57,11 +63,45 @@ export function presetStartup(
       result.backup = target + BACKUP_SUFFIX
     }
     copyFileSync(situationFile, target)
-    // Het weer hoort bij de situatie en staat in een bestand ernaast.
-    if (existsSync(`${situationFile}.owt`)) copyFileSync(`${situationFile}.owt`, `${target}.owt`)
     result.lastSituation = true
   } catch {
     // Geen schrijfrechten in de spelmap; dan kiest de speler de situatie zelf.
+  }
+
+  /*
+   * Het weer hoort bij de situatie en staat in een bestand ernaast. Een eigen
+   * `try`: de situatie staat al klaar, en een `.owt` die niet te kopiëren of
+   * weg te halen valt (op slot bij een virusscanner, alleen-lezen) maakte
+   * eerst de hele "Last Situation" tot mislukt -- dan zette de app het
+   * startscherm niet terug na het afsluiten van OMSI, en zei de voet dat de
+   * speler zelf moest laden. Het ergste nu: het weer van de vorige rit.
+   */
+  if (result.lastSituation) {
+    const weer = `${target}.owt`
+    try {
+      /*
+       * Eerst het weer van de kaart veiligstellen, naast de kopie van
+       * `laststn.osn` -- één keer, en alleen weer dat de app niet zelf koos
+       * (`isEigenWeer`). Die kopie had nooit een `.owt`, en `findWeather`
+       * vond het weer van de kaart dan nergens meer zodra het hieronder
+       * overschreven was (tegenlezing 28-09).
+       */
+      const kopie = [target + BACKUP_SUFFIX, target + OLD_BACKUP_SUFFIX].find((pad) => existsSync(pad))
+      if (kopie && existsSync(weer) && !existsSync(`${kopie}.owt`) && !isEigenWeer(weer)) {
+        copyFileSync(weer, `${kopie}.owt`)
+      }
+      if (existsSync(`${situationFile}.owt`)) copyFileSync(`${situationFile}.owt`, weer)
+      /*
+       * Heeft de situatie geen eigen weer, dan hoort het weer dat de app bij de
+       * vorige rit koos er ook niet naast te blijven staan: OMSI zou het
+       * meelezen. Het weer van de kaart zelf blijft wel staan -- dat is precies
+       * "zoals de kaart"; het staat er bijvoorbeeld als OMSI het na het
+       * afsluiten net schreef (herstelStartscherm). Eerst ging ook dat weg, en
+       * dan was er op sommige kaarten geen weer van de kaart meer over.
+       */ else if (existsSync(weer) && isEigenWeer(weer)) unlinkSync(weer)
+    } catch (fout) {
+      result.weerFout = fout instanceof Error ? fout.message : String(fout)
+    }
   }
 
   result.lastMap = setLastMap(omsiPath, mapFolder)

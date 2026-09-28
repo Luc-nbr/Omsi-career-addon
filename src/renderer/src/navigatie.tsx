@@ -5,10 +5,12 @@ import type { Paneel } from '../../core/busprofiel';
 import type { LiveStatus } from "../../core/live";
 import type { Duty, DutyLeg } from "../../core/types";
 import type { Kaartset } from "../../shared/kaartjes";
+import type { VrijBeeld } from "../../shared/api";
 import { formatTime } from "../../shared/format";
 import { punctuality } from "../../shared/status";
 import { t, type Language } from "../../shared/i18n";
 import { RouteMap, type Manoeuvre, type NavZoom } from "./RouteMap";
+import { afstandTekst, suggestieGroepen, vrijeStaatTekst } from "./vrijstaat";
 
 /*
  * De navigatie, los van het venster waarin hij staat.
@@ -40,10 +42,11 @@ export interface NavFrame {
   /** OMSI staat open, maar de kaart laadt nog: de plugin geeft pas daarna iets door. */
   laadt?: boolean;
   /**
-   * Een vrije rit: geen dienst vooraf. Zolang er in OMSI geen omloop gekozen is,
-   * zegt de overlay hoe dat gaat; daarna volgt hij die omloop.
+   * Een vrije rit: geen dienst vooraf. Het hoofdproces zegt hoe het ervoor
+   * staat (renderer/vrijstaat.ts): nog geen omloop, met wat er straks
+   * vertrekt; de omloop die gevolgd wordt; of waarom er niets te volgen valt.
    */
-  vrij?: { kaart: string; mapFolder: string };
+  vrij?: VrijBeeld;
   /** De kaartsoorten van deze kaart, met hun prijzen; zie core/kaartjes.ts. */
   kaartjes?: Kaartset;
   /**
@@ -456,20 +459,62 @@ export function NavKaart({
   if (!kaartDienst || !geometry) {
     return <div className="empty">{t(language, "ovl.mapLoading")}</div>;
   }
+  const vrij = frame.vrij;
+  /* In de overlay is het klein: hooguit drie regels van wat er straks vertrekt. */
+  const groepen = zonderOmloop ? suggestieGroepen(language, vrij?.staat, 3) : [];
   return (
     <div className="nav-wrap">
-      {zonderOmloop ? (
+      {zonderOmloop && vrij ? (
         <div className="nav-vrij">
-          {t(language, "ovl.freePickTour", { kaart: zonderOmloop.mapName })}
+          {vrij.gewisseldVan && (
+            <p className="nav-vrij-wissel">
+              {t(language, "free.mapSwitched", { map: vrij.kaart })}
+            </p>
+          )}
+          <p>{vrijeStaatTekst(language, vrij.staat, vrij.kaart, "overlay")}</p>
+          {groepen.map((groep) => (
+            <div key={groep.titel} className="nav-vrij-groep">
+              <b>{groep.titel}</b>
+              <ul>
+                {groep.regels.map((regel) => (
+                  <li key={regel}>{regel}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </div>
       ) : (
-        <NavBar
-          status={status}
-          leg={leg}
-          passed={passed}
-          manoeuvre={manoeuvre}
-          language={language}
-        />
+        <>
+          <NavBar
+            status={status}
+            leg={leg}
+            passed={passed}
+            manoeuvre={manoeuvre}
+            language={language}
+          />
+          {/*
+            Vrij rijden: nog niet bij de eerste halte, dan eerst daarheen. Een
+            leegrit heeft geen halte om naartoe te wijzen; die krijgt zijn naam.
+          */}
+          {vrij?.aanrij ? (
+            <div className="nav-aanrij">
+              {t(language, "ovl.freeApproach", {
+                stop: vrij.aanrij.naar,
+                afstand: afstandTekst(vrij.aanrij.meters),
+              })}
+            </div>
+          ) : vrij && leg?.leer ? (
+            <div className="nav-aanrij nav-leer">{t(language, "ovl.freeLeer")}</div>
+          ) : vrij?.staat?.soort === "alleenRit" ? (
+            <div className="nav-aanrij">
+              {vrijeStaatTekst(language, vrij.staat, vrij.kaart, "overlay")}
+            </div>
+          ) : vrij?.gewisseldVan ? (
+            <div className="nav-aanrij">
+              {t(language, "free.mapSwitched", { map: vrij.kaart })}
+            </div>
+          ) : null}
+        </>
       )}
       <RouteMap
         duty={kaartDienst}
@@ -504,19 +549,27 @@ export function NavKaart({
             Zolang OMSI niets doorgeeft is er nog geen stap: dan zegt de
             kaart of OMSI er al is en de kaart laadt, of dat het er nog
             niet is.
+
+            Vrij rijden zonder omloop: dan zegt `.nav-vrij` bovenin al hoe
+            het ervoor staat. Het kaartje van RouteMap lag er half
+            doorzichtig onder ("De route verschijnt zodra je de dienst
+            kiest...") en schemerde door het glas heen (nakijken 28-09).
           */
-          waiting: t(
-            language,
-            !frame.connected
-              ? frame.laadt
-                ? "ovl.loading"
-                : "ovl.waiting"
-              : ibisLoaded
-                ? "ovl.mapIbis"
-                : readable
-                  ? "ovl.mapSelect"
-                  : "ovl.mapWaiting",
-          ),
+          waiting:
+            zonderOmloop && vrij
+              ? undefined
+              : t(
+                  language,
+                  !frame.connected
+                    ? frame.laadt
+                      ? "ovl.loading"
+                      : "ovl.waiting"
+                    : ibisLoaded
+                      ? "ovl.mapIbis"
+                      : readable
+                        ? "ovl.mapSelect"
+                        : "ovl.mapWaiting",
+                ),
           busNote: t(language, "ovl.busHere"),
           centre: t(language, "ovl.centre"),
         }}
@@ -525,6 +578,7 @@ export function NavKaart({
         onSpeedLimit={onSpeedLimit}
         zoom={zoom}
         bezet={bezetOpDeKaart}
+        aanrij={vrij?.aanrij}
       />
       {status && (
         <div className="nav-speed">

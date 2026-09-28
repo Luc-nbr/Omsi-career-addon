@@ -123,13 +123,13 @@ const api: CareerApi = {
   clearProfilePhoto: (id) => ipcRenderer.invoke('career:photo:clear', id),
   dienstpasGezien: () => ipcRenderer.invoke('career:pas:gezien'),
   startFree: (request) => ipcRenderer.invoke('free:start', request),
+  checkFree: (mapFolder, wanneer) => ipcRenderer.invoke('free:check', mapFolder, wanneer),
   stopFree: () => ipcRenderer.invoke('free:stop'),
-  haltes: (mapFolder) => ipcRenderer.invoke('map:haltes', mapFolder),
   vrijeYards: (mapFolder, vehiclePath, year) => ipcRenderer.invoke('free:yards', mapFolder, vehiclePath, year),
-  onVrijGevolgd: (handler) => {
-    const heen = (_event: unknown, gevolgd: Parameters<typeof handler>[0]) => handler(gevolgd)
-    ipcRenderer.on('vrij:gevolgd', heen)
-    return () => ipcRenderer.removeListener('vrij:gevolgd', heen)
+  onVrijStaat: (handler) => {
+    const heen = (_event: unknown, uitslag: Parameters<typeof handler>[0]) => handler(uitslag)
+    ipcRenderer.on('vrij:staat', heen)
+    return () => ipcRenderer.removeListener('vrij:staat', heen)
   },
   bussen: () => ipcRenderer.invoke('bussen:lijst'),
   busAnalyse: (sleutel) => ipcRenderer.invoke('bussen:analyse', sleutel),

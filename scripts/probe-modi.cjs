@@ -21,7 +21,7 @@ app.setPath('userData', mkdtempSync(join(tmpdir(), 'omsi-enhancer-modi-')))
 setTimeout(() => {
   console.error('time-out')
   app.exit(1)
-}, 300000).unref()
+}, 900000).unref()
 require('../out/main/index.js')
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -96,41 +96,54 @@ app.whenReady().then(async () => {
     return s
   }
 
-  // Het welkomstscherm: de gevonden map bevestigen.
-  if (await waitFor(main, `document.querySelector('.welkom-knop.primair')`, 40)) {
-    await klik(main, '.welkom-talen button[aria-label="Nederlands"]', '')
-    await wait(400)
-    await klik(main, '.welkom-knop.primair', '')
-    await wait(900)
+  /*
+   * Een verse gebruikersmap, in de volgorde van de app: eerst de taal, dan een
+   * chauffeur, dan de vraag waar OMSI staat, het klaarzetten van de kaarten en
+   * de vraag over de busplaatjes (overgeslagen). Zo doet screenshotModes.cjs
+   * het ook.
+   */
+  if (await waitFor(main, `document.querySelector('.taaltegel')`, 60)) {
+    await js(main, `[...document.querySelectorAll('.taaltegel')].find((b) => b.textContent.includes('Nederlands'))?.click()`)
+    await wait(600)
   }
-
-  // Chauffeur aanmaken.
-  if (await waitFor(main, `document.querySelector('.invoerveld')`, 40)) {
+  if (await waitFor(main, `document.querySelector('.startnaam .invoerveld')`, 60)) {
     await js(
       main,
-      `(() => { const i = document.querySelector('.invoerveld')
+      `(() => { const i = document.querySelector('.startnaam .invoerveld')
          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, 'Proef')
          i.dispatchEvent(new Event('input', { bubbles: true })) })()`
     )
-    await wait(300)
-    await klik(main, '.invoerknop', '')
-    await wait(900)
-  }
-  await waitFor(main, `document.querySelector('.startknop')`)
-  await klik(main, '.startknop', '')
-  await wait(700)
-
-  /** Naar de modusstap en daar een modus aanwijzen. */
-  const kiesModus = async (naam) => {
-    await klik(main, '.stapknop', 'Modus')
-    await wait(600)
-    await js(
-      main,
-      `[...document.querySelectorAll('.dienstrij')].find((r) => r.textContent.includes(${JSON.stringify(naam)}))?.click()`
-    )
     await wait(400)
-    await klik(main, '.startknop', '')
-    await wait(900)
+    await js(main, `document.querySelector('.welkom-knop.primair')?.click()`)
+    await wait(1200)
+  }
+  if (await waitFor(main, `document.querySelector('.welkom-pad, .welkom-hint')`, 60)) {
+    await js(main, `document.querySelector('.welkom-knop.primair')?.click()`)
+  }
+  if (await waitFor(main, `document.querySelector('.klaarbalk')`, 120)) {
+    await waitFor(main, `!document.querySelector('.klaarbalk')`, 1200)
+  }
+  if (await waitFor(main, `document.querySelector('.fotoaantal')`, 40)) {
+    await js(main, `document.querySelector('.welkom-knoppen .welkom-knop:not(.primair)')?.click()`)
+    await wait(800)
+  }
+  await waitFor(main, `document.querySelector('.setup')`, 80)
+  await wait(1200)
+  /* Het personeelsnummer van de nieuwe chauffeur: gezien. */
+  if (await waitFor(main, `document.querySelector('.dialog .btn:not(.ghost)')`, 12)) {
+    await js(main, `document.querySelector('.dialog .btn:not(.ghost)')?.click()`)
+    await wait(700)
+  }
+
+  /** Via het hoofdmenu naar een modus: de tegel met die modus. */
+  const kiesModus = async (modus) => {
+    await js(main, `document.querySelector('.balk-knop[aria-label]')?.click()`)
+    await waitFor(main, `document.querySelector('.hub-tegel')`, 40)
+    await js(main, `document.querySelector(".hub-tegel[data-modus='${modus}']")?.click()`)
+    await wait(1200)
+    // De lijst, niet de tegels: dan staan de kaarten als regels.
+    await js(main, `document.querySelectorAll('.weergavekeuze button')[0]?.click()`)
+    await wait(400)
   }
 
   const kiesKaart = async () => {
@@ -144,8 +157,43 @@ app.whenReady().then(async () => {
     await wait(2500)
   }
 
+  /*
+   * Vrij rijden is sinds 0.4.8 alleen kaart en bus: de app kiest zelf waar de
+   * bus staat, en de voet van de kaartstap zegt waar. Geen lijn, geen
+   * beginpunt, geen dienst.
+   */
+  console.log('\n== VRIJ RIJDEN ==')
+  await kiesModus('free')
+  await meld('kaartstap')
+  await waitFor(main, `document.querySelectorAll('.dienstrij').length > 0`)
+  await js(
+    main,
+    `[...document.querySelectorAll('.dienstrij')].find((r) => r.textContent.includes(${JSON.stringify(mapNaam)}))?.click()`
+  )
+  const metPlek = await waitFor(main, `/staat klaar bij|onvolledig|geen plek/.test(document.querySelector('.velvoet')?.textContent ?? '')`, 160)
+  const kaartstap = await meld('kaartstap met plek')
+  await schiet('vrij-kaart')
+  await klik(main, '.vrij-wanneer > summary', '')
+  await wait(500)
+  await schiet('vrij-kaart-tijd-en-weer')
+  await klik(main, '.vrij-wanneer > summary', '')
+  await klik(main, '.startknop', '')
+  await wait(1500)
+  const busstap = await meld('busstap')
+  await schiet('vrij-bus')
+  const balk = busstap.balk.join(' ').toUpperCase()
+  const goed =
+    metPlek && /staat klaar bij/.test(kaartstap.voet ?? '') && /bus/i.test(busstap.nu ?? '') && !/LIJN|BEGINPUNT|DIENST/.test(balk)
+  console.log(`vrij rijden: ${goed ? 'kaart en bus, de plek in de voet' : 'KLOPT NIET'} (balk: ${balk})`)
+
+  /*
+   * Vrij rijden gaat voor: het examen in de carriere hieronder neemt een dienst
+   * aan, en met een aangenomen dienst gaat de app daarmee verder in plaats van
+   * vrij te rijden.
+   */
+
   console.log('\n== CARRIERE ==')
-  await kiesModus('Carrière')
+  await kiesModus('career')
   await meld('kaartstap')
   await schiet('carriere-kaart')
   await kiesKaart()
@@ -168,21 +216,6 @@ app.whenReady().then(async () => {
   await meld('vergunningstap met een vergunning')
   await schiet('carriere-vergunninglijst')
 
-  console.log('\n== VRIJ RIJDEN ==')
-  await kiesModus('Vrij')
-  await meld('kaartstap')
-  await kiesKaart()
-  await meld('lijnstap')
-  await schiet('vrij-lijn')
-  await klik(main, '.startknop', '')
-  await wait(1500)
-  await meld('ritstap')
-  await schiet('vrij-rit')
-  await klik(main, '.startknop', '')
-  await wait(1500)
-  await meld('busstap')
-  await schiet('vrij-bus')
-
   console.log('\nklaar')
-  app.exit(0)
+  app.exit(goed ? 0 : 1)
 })

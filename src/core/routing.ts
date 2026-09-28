@@ -1,8 +1,35 @@
 import type { Lane, StopPoint } from './geo'
-import { readTrackLine } from './track'
+import { readTrackLine, type TrackLine } from './track'
 
 /** Verder dan dit van de route uit de .ttr ligt een halte niet, als die route klopt. */
 const TRACK_STOP_M = 15
+
+/*
+ * DE .TTR MET NADEN (vrij rijden, 0.4.8)
+ *
+ * Een `.ttr` gold alleen als hij heel was: geen baan kwijt, geen naad boven een
+ * meter. Van de afgekeurde bestanden mist het gros niets of bijna niets -- op
+ * Ahlheim 128 van de 208 geen enkele baan, 203 hooguit 5 procent; op TH_Wald is
+ * het mediane grootste gat 1,8 m (tegenlezing, `ttrkapot.ts`). Voor al die
+ * ritten tekende de planner, en in het slechtste tiende ligt maar een klein
+ * deel daarvan op de weg die OMSI rijdt (0,000 op Region Grundorf, 0,114 op
+ * Krefrath). Dat is de "falsche Linien Route".
+ *
+ * Nu mag een `.ttr` met naden, als hij verder deugt: hooguit 5 procent van de
+ * banen kwijt (of een), elke halte ernaast, en de gaten samen hooguit een
+ * vijfde van de lengte. Een naad boven een meter wordt gedicht over het
+ * rijstrokennet (`LaneNetwork.verbind`), vanaf de strook in de rijrichting van
+ * het stuk ervoor tot die van het stuk erna, en alleen als dat niet veel
+ * langer is dan het gat; anders een rechte lijn, gemarkeerd als gok.
+ *
+ * Achter een meetpoort: `probe-routing.ts --naden` moet laten zien dat meer
+ * ritten de route van OMSI krijgen en dat geen enkele rit verder van die route
+ * af komt te liggen. Staat de poort dicht, dan zet deze vlag het uit.
+ */
+export const NADEN = true
+
+/** Een naad langer dan dit wordt gedicht; korter is meetonnauwkeurigheid. */
+const NAAD_M = 1
 
 /**
  * De route van een rit over de kaart.
@@ -28,19 +55,110 @@ export function routeForTrip(
   network: () => LaneNetwork
 ): TripRoute {
   const track = readTrackLine(mapPath, omsiPath, tripFile)
-  if (track && track.missing === 0 && track.gaps.every((gap) => gap <= 1)) {
-    const p = track.points
-    const onTrack = stops.every((stop) => {
-      for (let i = 2; i < p.length; i += 2) {
-        if (distanceToSegment(stop.x, stop.y, p[i - 2], p[i - 1], p[i], p[i + 1]) <= TRACK_STOP_M) return true
-      }
-      return false
-    })
-    if (onTrack) return { points: p, guessed: [] }
+  if (track && isHeel(track) && haltesOp(track.points, stops)) return { points: track.points, guessed: [] }
+  if (NADEN && track) {
+    const genaaid = metNaden(track, stops, network)
+    if (genaaid) return genaaid
   }
   const guessed: boolean[] = []
   const points = network().routeStops(stops, guessed)
   return { points, guessed }
+}
+
+/**
+ * De route van een rit waarvan minder dan twee haltes op de kaart staan -- een
+ * leegrit naar de remise noemt er vaak geen. Dan alleen wat OMSI zelf in de
+ * `.ttr` heeft; zonder bruikbare `.ttr` blijft de lijn leeg.
+ */
+export function routeZonderHaltes(
+  mapPath: string,
+  omsiPath: string,
+  tripFile: string,
+  network: () => LaneNetwork
+): TripRoute {
+  const track = readTrackLine(mapPath, omsiPath, tripFile)
+  if (!track) return { points: [], guessed: [] }
+  if (isHeel(track)) return { points: track.points, guessed: [] }
+  if (NADEN) {
+    const genaaid = metNaden(track, [], network)
+    if (genaaid) return genaaid
+  }
+  return { points: [], guessed: [] }
+}
+
+/** Geen baan kwijt en nergens een naad: de `.ttr` zoals OMSI hem rijdt. */
+export function isHeel(track: TrackLine): boolean {
+  return track.missing === 0 && track.gaps.every((gap) => gap <= NAAD_M)
+}
+
+/** Ligt elke halte op de route? Anders hoort die route bij een andere weg. */
+export function haltesOp(p: number[], stops: StopPoint[]): boolean {
+  return stops.every((stop) => {
+    for (let i = 2; i < p.length; i += 2) {
+      if (distanceToSegment(stop.x, stop.y, p[i - 2], p[i - 1], p[i], p[i + 1]) <= TRACK_STOP_M) return true
+    }
+    return false
+  })
+}
+
+function lengteVan(p: number[]): number {
+  let totaal = 0
+  for (let i = 2; i < p.length; i += 2) totaal += Math.hypot(p[i] - p[i - 2], p[i + 1] - p[i - 1])
+  return totaal
+}
+
+/** Mag deze `.ttr` met naden gebruikt worden? Zie DE .TTR MET NADEN hierboven. */
+export function naadBruikbaar(track: TrackLine, stops: StopPoint[]): boolean {
+  const banen = track.stukken.length + track.missing
+  if (track.stukken.length < 1 || track.missing > Math.max(1, banen * 0.05)) return false
+  if (!haltesOp(track.points, stops)) return false
+  const gaten = track.gaps.filter((gap) => gap > NAAD_M).reduce((som, gap) => som + gap, 0)
+  return gaten <= lengteVan(track.points) * 0.2
+}
+
+/**
+ * Een `.ttr` met naden, gedicht. Het stuk tussen twee banen komt van het
+ * rijstrokennet als dat een weg vindt die niet veel langer is dan het gat
+ * (drie keer plus vijftig meter); anders een rechte lijn, als gok gemarkeerd.
+ */
+export function metNaden(track: TrackLine, stops: StopPoint[], network: () => LaneNetwork): TripRoute | undefined {
+  if (!naadBruikbaar(track, stops)) return undefined
+  const points: number[] = []
+  const guessed: boolean[] = []
+  let net: LaneNetwork | undefined
+  const voegToe = (stuk: number[], gok: boolean): void => {
+    const voor = Math.max(0, points.length / 2 - 1)
+    append(points, stuk)
+    const na = Math.max(0, points.length / 2 - 1)
+    for (let k = voor; k < na; k++) guessed[k] = gok
+  }
+  track.stukken.forEach((stuk, i) => {
+    if (i > 0 && (track.gaps[i - 1] ?? 0) > NAAD_M && points.length >= 4 && stuk.length >= 4) {
+      const n = points.length
+      const van = { x: points[n - 2], y: points[n - 1], ...richting(points[n - 4], points[n - 3], points[n - 2], points[n - 1]) }
+      const naar = { x: stuk[0], y: stuk[1], ...richting(stuk[0], stuk[1], stuk[2], stuk[3]) }
+      const gat = Math.hypot(naar.x - van.x, naar.y - van.y)
+      net ??= network()
+      const weg = net.verbind(van, naar, gat * 3 + 50)
+      voegToe(weg ?? [van.x, van.y, naar.x, naar.y], !weg)
+    }
+    voegToe(stuk, false)
+  })
+  if (points.length < 4) return undefined
+  return { points, guessed: guessed.some(Boolean) ? guessed : [] }
+}
+
+function richting(ax: number, ay: number, bx: number, by: number): { hx: number; hy: number } {
+  const [hx, hy] = unit(bx - ax, by - ay)
+  return { hx, hy }
+}
+
+/** Een plek met de richting waarin er gereden wordt. */
+export interface Richtpunt {
+  x: number
+  y: number
+  hx: number
+  hy: number
 }
 
 function distanceToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
@@ -382,7 +500,70 @@ export class LaneNetwork {
     if (sources.length === 0 || targets.length === 0) return undefined
 
     const straight = Math.hypot(from.x - to.x, from.y - to.y)
-    const limit = straight * 5 + 1500
+    return this.zoek(sources, targets, to, straight * 5 + 1500, false)
+  }
+
+  /**
+   * Een naad in een `.ttr` dichten: de weg van het eind van het ene stuk naar
+   * het begin van het volgende. Verankerd op de strook die in de rijrichting
+   * van die stukken ligt -- niet op de dichtstbijzijnde, want dat is op een
+   * tweebaansweg even vaak de tegenrichting, en dan maakt de lijn een lus.
+   * Langer dan `max`: niets. Lukt het niet met de rijrichtingen, dan nog eens
+   * zonder, zoals `routeStops` dat ook doet.
+   */
+  verbind(van: Richtpunt, naar: Richtpunt, max: number): number[] | undefined {
+    const probeer = (net: LaneNetwork): number[] | undefined => {
+      const sources = net.richtAnkers(van)
+      const targets = net.richtAnkers(naar)
+      if (sources.length === 0 || targets.length === 0) return undefined
+      const weg = net.zoek(sources, targets, naar, max, true)
+      return weg && lengteVan(weg) <= max ? weg : undefined
+    }
+    return probeer(this) ?? probeer(this.bothWays())
+  }
+
+  /** Stroken vlak bij een punt die in de gegeven richting bereden kunnen worden, beste eerst. */
+  private richtAnkers(punt: Richtpunt, reach = 6): Anchor[] {
+    const found = new Map<string, Anchor>()
+    const gx = Math.floor(punt.x / GRID_M)
+    const gy = Math.floor(punt.y / GRID_M)
+    for (let ox = -1; ox <= 1; ox++) {
+      for (let oy = -1; oy <= 1; oy++) {
+        const cell = this.segments.get(`${gx + ox},${gy + oy}`)
+        if (!cell) continue
+        for (let k = 0; k < cell.length; k += 2) {
+          const lane = cell[k]
+          const hit = this.project(lane, cell[k + 1], punt.x, punt.y)
+          if (hit.distance > reach) continue
+          const cos = hit.dx * punt.hx + hit.dy * punt.hy
+          const direction = this.lanes[lane].direction
+          const forward = cos >= SAME_WAY_COS && direction !== 1
+          const backward = cos <= -SAME_WAY_COS && direction !== 0
+          if (!forward && !backward) continue
+          const key = `${lane}|${forward}`
+          const known = found.get(key)
+          if (!known || hit.distance < known.penalty) {
+            found.set(key, { lane, along: hit.along, forward, penalty: hit.distance })
+          }
+        }
+      }
+    }
+    return [...found.values()].sort((a, b) => a.penalty - b.penalty).slice(0, ANCHORS)
+  }
+
+  /**
+   * De zoektocht zelf, van een paar mogelijke beginstroken naar een paar
+   * mogelijke doelstroken. `opKnoop`: een begin dat precies op een knoop ligt
+   * mag daar vertrekken (een naad begint aan het eind van een baan); bij een
+   * halte gaat het naar de volgende knoop, zoals het altijd deed.
+   */
+  private zoek(
+    sources: Anchor[],
+    targets: Anchor[],
+    to: { x: number; y: number },
+    limit: number,
+    opKnoop: boolean
+  ): number[] | undefined {
     const TARGET = this.nodeX.length
 
     const cost = new Float64Array(TARGET + 1).fill(Infinity)
@@ -409,8 +590,8 @@ export class LaneNetwork {
       // De eerste knoop voorbij de halte, in rijrichting.
       const cuts = this.cuts[source.lane]
       const exit = source.forward
-        ? cuts.find((cut) => cut.along > source.along)
-        : [...cuts].reverse().find((cut) => cut.along < source.along)
+        ? cuts.find((cut) => (opKnoop ? cut.along >= source.along - 0.01 : cut.along > source.along))
+        : [...cuts].reverse().find((cut) => (opKnoop ? cut.along <= source.along + 0.01 : cut.along < source.along))
       if (!exit) continue
       const g = Math.abs(exit.along - source.along) + source.penalty
       if (g < cost[exit.node]) {

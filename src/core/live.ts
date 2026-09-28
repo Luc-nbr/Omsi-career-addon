@@ -2,6 +2,7 @@ import { existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'n
 import { dirname, join } from 'node:path'
 import type { Apparaatsoort, Busapparaat, Uitlijning } from './busscherm'
 import { log } from './logboek'
+import { onbruikbaar, vouw } from './omloopvolgen'
 import type { Duty, DutyLeg } from './types'
 
 /**
@@ -589,14 +590,55 @@ function tripKey(name: string): string {
 }
 
 /**
+ * Vrij rijden: welke rit van een op nummer gekoppelde dienst OMSI nu rijdt.
+ *
+ * De omloop is op nummer gekoppeld (core/omloopvolgen.ts). Dan zegt OMSI met
+ * `tourEntry` welke rit het is, en hoeft er niet op de klok geraden te worden
+ * -- dat pakte bij een rit die twee keer in de omloop staat de verkeerde. De
+ * lijn telt mee: elke lijn heeft een omloop 0. Een rit zonder `.ttp` zit niet
+ * in de dienst; dan geldt de rit erna.
+ *
+ * Geeft de index van de rit; `null` als lijn en omloop kloppen maar de rit niet
+ * (dan klopt de volgorde van de koppeling niet); `undefined` als het hier niet
+ * over gaat.
+ */
+export function legVolgensOmsi(mem: MemoryData, duty: Duty | undefined): number | null | undefined {
+  if (!duty?.omsi || mem.line !== duty.omsi.lineIndex || mem.tour !== duty.omsi.tourIndex || mem.tourEntry < 0) {
+    return undefined
+  }
+  /*
+   * Een eerdere rit van dezelfde omloop dan waar de koppeling begon: de speler
+   * koos in OMSI terug. Die rit staat niet in de dienst, en "de rit erna" zou
+   * hier een latere rit aanwijzen dan OMSI rijdt; dus opnieuw koppelen.
+   */
+  if (mem.tourEntry < duty.omsi.vanaf) return undefined
+  let index = duty.legs.findIndex((leg) => leg.tourEntry === mem.tourEntry)
+  if (index < 0) index = duty.legs.findIndex((leg) => (leg.tourEntry ?? -1) > mem.tourEntry)
+  const leg = index >= 0 ? duty.legs[index] : undefined
+  if (!leg) return null
+  /*
+   * Staat de rit van OMSI niet in de dienst (zijn `.ttp` ontbreekt), dan valt
+   * er niets na te kijken en geldt de volgende -- tenzij OMSI een rit noemt
+   * die wel in de dienst staat: dan klopt de volgorde niet.
+   */
+  const gevouwen = vouw(mem.tripName)
+  const klopt =
+    onbruikbaar(mem.tripName) ||
+    gevouwen === vouw(leg.tripFile) ||
+    (mem.tourEntry !== leg.tourEntry &&
+      (leg.leer === true || !duty.legs.some((item) => vouw(item.tripFile) === gevouwen)))
+  return klopt ? index : null
+}
+
+/**
  * Welke dienstregeling staat er op de bus, en past die bij de dienst? Een rit
  * komt in een dienst soms twee keer voor (heen en terug heten anders, maar een
  * omloop kan dezelfde rit later nog eens rijden): dan de rit die op de klok het
  * dichtst bij ligt.
  */
-function readSchedule(data: LiveData, duty: Duty | undefined, clockMinutes: number): OmsiSchedule | undefined {
+export function readSchedule(data: LiveData, duty: Duty | undefined, clockMinutes: number): OmsiSchedule | undefined {
   const mem = data.mem
-  if (!mem || mem.ok !== 1 || !mem.tripName.trim()) return undefined
+  if (!mem || mem.ok !== 1) return undefined
   /*
    * Alleen een dienstregeling die daadwerkelijk rijdt. Terwijl het venster Set
    * Time Table openstaat houdt OMSI de rit die je aan het bekijken bent al in
@@ -604,6 +646,24 @@ function readSchedule(data: LiveData, duty: Duty | undefined, clockMinutes: numb
    * nog niet gekozen heeft.
    */
   if (!(mem.schedActive > 0.5)) return undefined
+  /*
+   * Vrij rijden: de omloop is op nummer gekoppeld (core/omloopvolgen.ts). Dan
+   * zegt OMSI met `tourEntry` welke rit het is, en hoeft er niet op de klok
+   * geraden te worden -- dat pakte bij een rit die twee keer in de omloop
+   * staat de verkeerde. De lijn telt mee: elke lijn heeft een omloop 0. Een
+   * leegrit zonder `.ttp` zit niet in de dienst; dan geldt de rit erna.
+   */
+  const volgensOmsi = legVolgensOmsi(mem, duty)
+  if (volgensOmsi !== undefined && volgensOmsi !== null) {
+    return {
+      lineName: mem.lineName.trim(),
+      tourName: mem.tourName.trim(),
+      tripName: mem.tripName.trim(),
+      matchesDuty: true,
+      legIndex: volgensOmsi
+    }
+  }
+  if (!mem.tripName.trim()) return undefined
   const key = tripKey(mem.tripName)
   let legIndex: number | undefined
   if (duty) {

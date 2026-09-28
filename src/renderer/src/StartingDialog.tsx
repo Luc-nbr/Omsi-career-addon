@@ -5,6 +5,18 @@ interface Props {
   /** Sluit vanzelf zodra de plugin meldt dat het spel er is. */
   onDone(): void
   onDismiss(): void
+  /**
+   * Wat er in plaats van de gewone uitleg staat. Bij vrij rijden: waar de bus
+   * staat, of waarom OMSI niet vanzelf startte -- dan blijft het venster staan
+   * tot de speler het zelf gestart heeft, en gaat het daarna vanzelf dicht.
+   */
+  melding?: string
+  /**
+   * Het starten van OMSI mislukte (Windows weigerde, of Omsi.exe kwam niet
+   * op). Dan start er niets op en laadt er geen kaart: de voet zegt dat het
+   * venster op de speler wacht, niet "Bezig met opstarten…".
+   */
+  mislukt?: boolean
 }
 
 /**
@@ -14,7 +26,7 @@ interface Props {
  * dat het spel er echt is. Er zit een sluitknop bij, want een venster dat je
  * niet weg kunt klikken is altijd verkeerd.
  */
-export function StartingDialog({ onDone, onDismiss }: Props): JSX.Element {
+export function StartingDialog({ onDone, onDismiss, melding, mislukt }: Props): JSX.Element {
   const [seconds, setSeconds] = useState(0)
 
   useEffect(() => {
@@ -69,15 +81,17 @@ export function StartingDialog({ onDone, onDismiss }: Props): JSX.Element {
       <section className="dialog">
         <div className="glow" />
         <h2>{tr('starting.title')}</h2>
-        <p>{tr('starting.body')}</p>
+        <p>{melding ?? tr('starting.body')}</p>
         <div className="dialog-foot">
           <span className="note">
             {tr(
-              seconds < 25
-                ? 'starting.busy'
-                : seconds < 60
-                  ? 'starting.loading'
-                  : 'starting.still'
+              mislukt
+                ? 'starting.waitManual'
+                : seconds < 25
+                  ? 'starting.busy'
+                  : seconds < 60
+                    ? 'starting.loading'
+                    : 'starting.still'
             )}
             {seconds > 4 ? ` · ${seconds}s` : ''}
           </span>

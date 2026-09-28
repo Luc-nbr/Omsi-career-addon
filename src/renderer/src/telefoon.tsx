@@ -30,6 +30,8 @@ import type { BedrijfRit } from "../../core/bedrijf";
 import { BedrijfKaart } from "./telefoonBedrijf";
 import type { OnderwegBeeld } from "../../core/onderweg";
 import { Aankondiging, FlitsMelding, GebeurtenisKaart } from "./telefoonOnderweg";
+import type { VrijBeeld } from "../../shared/api";
+import { suggestieGroepen, vrijeStaatTekst } from "./vrijstaat";
 
 /*
  * De telefoon: het toestel in de bus, los van het venster waarin hij staat.
@@ -541,18 +543,34 @@ function DienstApp({
   onAnder,
 }: {
   duty?: Duty;
-  vrij?: { kaart: string; mapFolder: string };
+  vrij?: VrijBeeld;
   status?: LiveStatus;
   language: Language;
   /** Een andere dienst kiezen; ontbreekt als dat hier niet kan. */
   onAnder?: () => void;
 }): JSX.Element {
   if (!duty) {
+    if (!vrij) return <div className="empty">{t(language, "ovl.appNoDuty")}</div>;
+    /*
+     * Vrij rijden zonder omloop: dezelfde zin als op het rijscherm, en op de
+     * telefoon is er plek voor vijf regels van wat er straks vertrekt.
+     */
+    const groepen = suggestieGroepen(language, vrij.staat, 5);
     return (
-      <div className="empty">
-        {vrij
-          ? t(language, "ovl.freePickTour", { kaart: vrij.kaart })
-          : t(language, "ovl.appNoDuty")}
+      <div className="app-lijst vrij-app" data-hit>
+        <p className="vrij-app-staat">
+          {vrijeStaatTekst(language, vrij.staat, vrij.kaart)}
+        </p>
+        {groepen.map((groep) => (
+          <div key={groep.titel} className="vrij-app-groep">
+            <b>{groep.titel}</b>
+            <ul>
+              {groep.regels.map((regel) => (
+                <li key={regel}>{regel}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
       </div>
     );
   }
@@ -571,8 +589,15 @@ function DienstApp({
           <span className="app-rit-naar">
             <b>{leg.terminus}</b>
             <small>
-              {t(language, "ovl.appLine", { line: leg.lineNumber })} ·{" "}
-              {t(language, "ovl.appStops", { count: leg.stops.length })}
+              {leg.leer
+                ? t(language, "ovl.freeLeer")
+                : t(language, "ovl.appLine", { line: leg.lineNumber })}{" "}
+              ·{" "}
+              {t(
+                language,
+                leg.stops.length === 1 ? "ovl.appStopOne" : "ovl.appStops",
+                { count: leg.stops.length },
+              )}
             </small>
           </span>
           <span className="app-rit-aan">{formatTime(leg.arrival)}</span>
@@ -697,10 +722,18 @@ function PauzeApp({
               <span className="app-rit-naar">
                 <b>{volgende.terminus}</b>
                 <small>
-                  {t(language, "ovl.appLine", { line: volgende.lineNumber })} ·{" "}
-                  {t(language, "ovl.appStops", {
-                    count: volgende.stops.length,
-                  })}
+                  {/* Een leegrit heeft geen lijn; er stond "Lijn " met niets erachter. */}
+                  {volgende.leer
+                    ? t(language, "ovl.freeLeer")
+                    : t(language, "ovl.appLine", { line: volgende.lineNumber })}{" "}
+                  ·{" "}
+                  {t(
+                    language,
+                    volgende.stops.length === 1
+                      ? "ovl.appStopOne"
+                      : "ovl.appStops",
+                    { count: volgende.stops.length },
+                  )}
                 </small>
               </span>
               <span className="app-rit-aan">

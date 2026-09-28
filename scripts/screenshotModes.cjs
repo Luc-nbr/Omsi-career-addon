@@ -236,6 +236,20 @@ app.whenReady().then(async () => {
     }
 
     /*
+     * Vrij rijden: de voet zegt waar de bus komt te staan zodra de controle
+     * klaar is, en "Tijd en weer" staat dichtgeklapt. Allebei vastleggen.
+     */
+    if (modus === 'vrij' && (await js(main, `Boolean(document.querySelector('.vrij-wanneer'))`))) {
+      await waitFor(main, `!/zoeken|finding|suche|recherche/.test(document.querySelector('.velvoet')?.textContent ?? '')`, 120)
+      console.log(`   voet: ${await js(main, `document.querySelector('.velvoet')?.textContent ?? ''`)}`)
+      await js(main, `document.querySelector('.vrij-wanneer > summary')?.click()`)
+      await wait(500)
+      await shoot(`stap-${naam}-tijd-en-weer`)
+      await js(main, `document.querySelector('.vrij-wanneer > summary')?.click()`)
+      await wait(300)
+    }
+
+    /*
      * Een venstertje (de aanbevolen bus, het wagenpark) dimt het scherm
      * erachter. Dat is de stap zelf niet, dus die krijgt daarna een eigen
      * afdruk: eerst het venstertje, dan de stap eronder.

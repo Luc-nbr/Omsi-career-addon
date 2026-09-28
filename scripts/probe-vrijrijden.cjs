@@ -1,49 +1,58 @@
 /**
- * Vrij rijden: kaart, beginpunt en bus in de app, de omloop in OMSI, en een
- * overlay die volgt wat je daar kiest.
+ * Vrij rijden: alleen kaart en bus in de app, de omloop in OMSI, en een
+ * navigatie die zelf vindt wat je daar rijdt.
  *
  *   npx electron scripts/probe-vrijrijden.cjs [uitvoermap]
  *
- * Luc: "Vrij rijden modus moet helemaal geen dienst genereren, de speler kiest
- * in omsi een omloop en de overlay detecteert dat, in vrije modus kiest de
- * speler enkel een kaart, beginpunt en bus."
+ * Een gebruiker (via Luc): "meine Idee wäre das die Haltestellen aussuchen
+ * Option komplett weg fällt in dem Modus nur und nur noch Karte und Bus
+ * ausgesucht werden müssen und das Navi es von alleine findet".
  *
  * Nagelopen in de echte app, met echte klikken, terwijl "OMSI" al draait:
- * - Vrij rijden -> Rheinhausen -> de stap erna is het beginpunt (haltes), geen
- *   lijnen en geen diensten; de balk heeft geen lijnstap;
- * - een halte kiezen -> bus -> START: er komt niets in het profiel, er wordt
- *   niets klaargezet (OMSI draait al), en het rijscherm van vrij rijden staat;
- * - de overlay gaat open en zegt, zolang er geen omloop is, hoe je die in OMSI
- *   kiest;
- * - OMSI zegt dat er een omloop gekozen is: de overlay en het rijscherm krijgen
- *   die omloop, vanaf de gekozen rit, met IBIS-codes; aanmelden blijft staan en
- *   er valt niets te aanvaarden;
- * - OMSI zegt dat er een ANDERE omloop gekozen is: alles gaat mee;
- * - "Vrij rijden stoppen": terug naar het hoofdmenu, overlay dicht, niets
- *   geboekt.
+ * - Vrij rijden -> Rheinhausen: de voet zegt waar de bus komt te staan en hoeveel
+ *   ritten daar vertrekken; "Tijd en weer" staat dicht op automatisch; de bus
+ *   staat als marker op de kaart; de balk is Kaart -> Bus, zonder beginpunt;
+ * - VERDER gaat meteen naar de bus; START schrijft alleen de situatie (OMSI
+ *   draait al) en niets anders; het rijscherm van vrij rijden staat;
+ * - de overlay zonder omloop: hoe je er een kiest, met wat er straks vertrekt;
+ * - de kaart herkennen aan de plek van de bus: een reeks plekken op Krefrath
+ *   laat de navigatie naar Krefrath wisselen, en een reeks op Rheinhausen weer
+ *   terug;
+ * - een omloop gekozen in OMSI: gekoppeld op nummer ("koppeling index"), en de
+ *   volgende rit volgt zonder opnieuw te koppelen;
+ * - een andere lijn met hetzelfde omloopnummer en een rit die nergens staat:
+ *   de oude ritten verdwijnen, en de overlay zegt dat het niet in de
+ *   dienstregeling staat;
+ * - een andere omloop: de navigatie gaat mee;
+ * - "Vrij rijden stoppen": terug naar het hoofdmenu, niets geboekt;
+ * - een tweede vrije rit op Hamburg109_2, omloop 66093: bij rit 6 kloppen beide
+ *   volgordes (de app kiest die van het bestand, onzeker); bij rit 7 telt OMSI
+ *   op vertrektijd, en dan draait het volgen de volgorde om: 109_UAL_ZAL om
+ *   10:23, niet de leegrit van 12:44 die in het bestand op plek 7 staat.
  *
- * Wat hier NIET nagelopen wordt: starten terwijl OMSI dicht is. Dan schrijft de
- * app een situatie in de spelmap en start hij het spel, en dat hoort een proef
- * niet te doen (zie hieronder).
+ * Wat hier NIET nagelopen wordt: starten terwijl OMSI dicht is. Dan zet de app
+ * het startscherm van OMSI klaar en start hij het spel, en dat hoort een proef
+ * niet te doen; core/vrijstart.ts loopt die takken na (probe-vrijstart.ts).
  *
  * VANGRAILS. De eerste versie van deze proef, 27-09, heeft het echte OMSI
- * gestart en een situatie in de spelmap gezet: de app zocht bij "draait OMSI?"
- * op de busstap nog vast naar Omsi.exe in plaats van naar het procesje van de
- * proef. Dat is in de app rechtgezet (OMSI_PROCES in main/index.ts), maar een
- * proef die de echte spelmap leest mag daar nooit op hoeven vertrouwen. Daarom
- * weigert dit script, voordat de app geladen wordt, elke schrijfactie onder de
- * spelmap en elk programma dat Omsi.exe start -- en drukt het pas op START als
- * de app zelf zegt dat "OMSI" draait.
+ * gestart en een situatie in de spelmap gezet. Daarom weigert dit script,
+ * voordat de app geladen wordt, elke schrijfactie onder de spelmap en elk
+ * programma dat Omsi.exe start -- en drukt het pas op START als de app zelf
+ * zegt dat "OMSI" draait. Eén uitzondering, en die is omgeleid: met OMSI al
+ * draaiend schrijft de app `Situations\OMSI Enhancer.osn`, en dat gaat hier
+ * naar een tijdelijke map in plaats van naar de spelmap.
  */
 const { app, BrowserWindow, ipcMain } = require('electron')
 const { spawn } = require('node:child_process')
-const { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, utimesSync, writeFileSync } = require('node:fs')
+const { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, utimesSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { join, resolve } = require('node:path')
 
 const uitvoer = process.argv.slice(2).find((a) => !a.startsWith('-') && !a.endsWith('.cjs'))
 if (uitvoer) mkdirSync(uitvoer, { recursive: true })
 const KAART = 'Rheinhausen'
+const ANDERE = 'Krefrath'
+const TWEEDE = 'Hamburg109_2'
 const NUMMER = '123456'
 const PINCODE = '9876'
 
@@ -56,6 +65,7 @@ cpSync(join(bron, 'profiles'), join(map, 'profiles'), { recursive: true })
 if (existsSync(join(bron, 'kaartcache'))) cpSync(join(bron, 'kaartcache'), join(map, 'kaartcache'), { recursive: true })
 const inst = JSON.parse(readFileSync(join(map, 'settings.json'), 'utf8'))
 inst.tourSeen = true
+inst.language = 'nl'
 writeFileSync(join(map, 'settings.json'), JSON.stringify(inst, null, 2))
 const actiefId = JSON.parse(readFileSync(join(map, 'profiles', 'active.json'), 'utf8')).id
 const profielPad = join(map, 'profiles', `${actiefId}.json`)
@@ -70,11 +80,13 @@ const profielPad = join(map, 'profiles', `${actiefId}.json`)
 const profiel = () => JSON.parse(readFileSync(profielPad, 'utf8'))
 const logboekVoor = profiel().entries?.length ?? 0
 
-/* ---- de dienstregeling van de kaart, om omlopen te kunnen kiezen zoals OMSI ---- */
+/* ---- de dienstregeling van de kaart, om omlopen te kiezen zoals OMSI ze doorgeeft ---- */
 const kernPad = join(mkdtempSync(join(tmpdir(), 'omsi-vrij-kern-')), 'kern.cjs')
 require('esbuild').buildSync({
   stdin: {
-    contents: "export { loadMap } from './src/core/timetable'; export { buildNetwork } from './src/core/duty'",
+    contents:
+      "export { loadMap } from './src/core/timetable'; export { leesInzetpunten } from './src/core/beginplek'; " +
+      "export { monsterKlopt } from './src/core/kaartherkenning'",
     resolveDir: join(__dirname, '..'),
     loader: 'ts'
   },
@@ -91,15 +103,53 @@ if (!kaart) {
   console.log(`${KAART} niet gevonden; proef overgeslagen`)
   process.exit(0)
 }
-const ritten = [...kern.buildNetwork(kaart).departingFrom.values()]
-  .flat()
-  .sort((a, b) => a.departure - b.departure)
-const eersteOmloop = ritten.find((run) => run.departure > 7 * 60)
-const andereOmloop = ritten.find(
-  (run) =>
-    run.departure > 9 * 60 &&
-    (run.tourNumber !== eersteOmloop.tourNumber || run.lineFile !== eersteOmloop.lineFile)
-)
+const namen = (m, soort) =>
+  readdirSync(join(m.path, 'TTData'))
+    .filter((n) => n.toLowerCase().endsWith(soort))
+    .map((n) => n.slice(0, -soort.length))
+const ttl = namen(kaart, '.ttl')
+const ttp = namen(kaart, '.ttp')
+/** Wat OMSI in zijn geheugen zet voor een rit van een omloop, op nummer. */
+const keuzeVan = (m, ttlNamen, ttpNamen, tour, entry) => ({
+  schedActive: 1,
+  line: ttlNamen.indexOf(tour.lineFile),
+  tour: tour.index,
+  tourEntry: entry.entry,
+  trip: ttpNamen.findIndex((n) => n.toLowerCase() === entry.tripFile.toLowerCase()),
+  lineName: tour.lineFile,
+  tourName: tour.number,
+  tripName: entry.tripFile
+})
+/* Een omloop met minstens twee ritten na zevenen, en een tweede op een andere lijn of omloop. */
+const bruikbaar = kaart.tours.filter((t) => t.trips.filter((e) => e.departure > 7 * 60 && kaart.trips.has(e.tripFile.toLowerCase())).length >= 2)
+const eersteOmloop = bruikbaar[0]
+const eersteRit = eersteOmloop.trips.find((e) => e.departure > 7 * 60 && kaart.trips.has(e.tripFile.toLowerCase()))
+const volgendeRit = eersteOmloop.trips[eersteOmloop.trips.indexOf(eersteRit) + 1]
+const andereOmloop = bruikbaar.find((t) => t.lineFile !== eersteOmloop.lineFile || t.number !== eersteOmloop.number)
+const andereRit = andereOmloop.trips.find((e) => e.departure > 7 * 60 && kaart.trips.has(e.tripFile.toLowerCase()))
+/* Een andere lijn met een omloop op dezelfde plek: die hoort de oude niet te laten staan. */
+const andereLijn = kaart.tours.find((t) => t.lineFile !== eersteOmloop.lineFile && t.index === eersteOmloop.index)
+/*
+ * Plekken van de bus op een andere kaart en op deze: de inzetpunten, daar zet
+ * OMSI bussen neer. Alleen die op de andere kaart niet toevallig ook op de
+ * grond liggen: hier gaat het om het wisselen, niet om het herkennen zelf --
+ * dat loopt probe-kaartherkenning.ts na, en daar twijfelt Krefrath tegen
+ * Rheinhausen terecht op een kwart van de plekken. En elke plek een eigen
+ * monster: een andere tegel of 50 m verder.
+ */
+const plekkenOp = (folder, niet) => {
+  const uit = []
+  for (const p of kern.leesInzetpunten(join(inst.omsiPath, 'maps', folder))) {
+    if (kern.monsterKlopt(join(inst.omsiPath, 'maps', niet), { tile: p.tile, x: p.x, y: p.y, z: p.z })) continue
+    const vorige = uit[uit.length - 1]
+    if (vorige && vorige.tile === p.tile && Math.hypot(vorige.x - p.x, vorige.z - p.z) < 50) continue
+    uit.push({ tile: p.tile, x: p.x, y: p.y, z: p.z })
+  }
+  return uit
+}
+const plekkenAnders = plekkenOp(ANDERE, KAART)
+const plekkenHier = plekkenOp(KAART, ANDERE)
+const tweede = kern.loadMap(join(inst.omsiPath, 'maps'), TWEEDE)
 
 /* ---- "OMSI draait": een eigen procesje met een eigen naam ---- */
 const nepMap = mkdtempSync(join(tmpdir(), 'omsi-vrij-proces-'))
@@ -116,8 +166,16 @@ app.setPath('userData', map)
 
 /* ---- de vangrails, voordat de app geladen wordt ---- */
 const spelmap = resolve(inst.omsiPath).toLowerCase()
+const situaties = join(spelmap, 'situations').toLowerCase()
+const omleiding = mkdtempSync(join(tmpdir(), 'omsi-vrij-situaties-'))
 const geweigerd = []
+const omgeleid = []
 const inSpelmap = (pad) => typeof pad === 'string' && resolve(pad).toLowerCase().startsWith(spelmap)
+/* Alleen de situatie mag, en die gaat naar een tijdelijke map. */
+const omleid = (pad) => {
+  const vol = resolve(pad)
+  return vol.toLowerCase().startsWith(situaties) ? join(omleiding, vol.slice(situaties.length)) : undefined
+}
 {
   const echteFs = require('node:fs')
   /* Welk argument het doel is: bij kopiëren en hernoemen het tweede. */
@@ -130,9 +188,16 @@ const inSpelmap = (pad) => typeof pad === 'string' && resolve(pad).toLowerCase()
     const echt = echteFs[naam]
     if (typeof echt !== 'function') continue
     echteFs[naam] = function (...args) {
-      if (inSpelmap(String(args[plek]))) {
-        geweigerd.push(`${naam} ${args[plek]}`)
-        throw new Error(`proef: niet schrijven in de spelmap (${naam} ${args[plek]})`)
+      const doel = String(args[plek])
+      if (inSpelmap(doel)) {
+        const ander = omleid(doel)
+        if (ander) {
+          omgeleid.push(`${naam} ${doel}`)
+          args[plek] = ander
+          return echt.apply(this, args)
+        }
+        geweigerd.push(`${naam} ${doel}`)
+        throw new Error(`proef: niet schrijven in de spelmap (${naam} ${doel})`)
       }
       return echt.apply(this, args)
     }
@@ -140,6 +205,8 @@ const inSpelmap = (pad) => typeof pad === 'string' && resolve(pad).toLowerCase()
   const echtOpen = echteFs.openSync
   echteFs.openSync = function (pad, vlag, ...rest) {
     if (inSpelmap(String(pad)) && !/^r$|^rs\+?$/.test(String(vlag ?? 'r'))) {
+      const ander = omleid(String(pad))
+      if (ander) return echtOpen.call(this, ander, vlag, ...rest)
       geweigerd.push(`openSync ${pad} ${vlag}`)
       throw new Error(`proef: niet schrijven in de spelmap (openSync ${pad})`)
     }
@@ -164,7 +231,13 @@ const inSpelmap = (pad) => typeof pad === 'string' && resolve(pad).toLowerCase()
 /* Niets in de spelmap: wat er voor de proef stond, staat er na de proef nog. */
 const spelmapStand = () => {
   const uit = {}
-  for (const naam of ['options.cfg', join('Inputs', 'keyboard.cfg'), join('maps', KAART, 'laststn.osn')]) {
+  for (const naam of [
+    'options.cfg',
+    join('Inputs', 'keyboard.cfg'),
+    join('maps', KAART, 'laststn.osn'),
+    join('maps', TWEEDE, 'laststn.osn'),
+    join('Situations', 'OMSI Enhancer.osn')
+  ]) {
     try {
       uit[naam] = statSync(join(inst.omsiPath, naam)).mtimeMs
     } catch {
@@ -186,7 +259,7 @@ function stop(code) {
 setTimeout(() => {
   console.log('time-out')
   stop(1)
-}, 240000).unref()
+}, 420000).unref()
 require('../out/main/index.js')
 const wacht = (ms) => new Promise((r) => setTimeout(r, ms))
 const js = (w, code) =>
@@ -204,16 +277,17 @@ app.on('browser-window-created', (_e, w) => {
 
 /* ---- de plugin: een live.json die de proef zelf schrijft ---- */
 let mem = {
-  ok: 1, tile: 0, x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1, schedActive: 0, line: 0, tour: 0,
-  tourEntry: 0, trip: 0, nextIndex: 0, nextDist: 0, delay: 0, lineName: '', tourName: '', tripName: '', nextStop: ''
+  ok: 1, tile: 0, x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1, schedActive: 0, line: -1, tour: -1,
+  tourEntry: -1, trip: -1, nextIndex: 0, nextDist: 0, delay: 0, lineName: '', tourName: '', tripName: '', nextStop: ''
 }
 let klok = 7 * 3600
+let datum = { year: 2016, month: 11, day: 9 }
 const schrijfLive = () =>
   writeFileSync(
     join(live, 'live.json'),
     JSON.stringify({
       alive: true, seen: 8388607, seenSys: 63, seenStr: 63, strKind: 1, plugin: 13,
-      time: klok, day: 1, month: 7, year: 2026, velocity: 0, passengers: 3,
+      time: klok, day: datum.day, month: datum.month, year: datum.year, velocity: 0, passengers: 3,
       scheduleActive: 1, targetIndex: 0, tankPercent: 0.7, km: 0, metres: 0,
       busstopIndex: 0, busstop: '', line: '', terminus: '',
       matrix: '', delayMin: '', delaySec: '', entryRequest: 0, exitRequest: 0, ticket: -1,
@@ -225,9 +299,9 @@ const schrijfLive = () =>
       mem
     })
   )
-const kies = (run) => {
-  klok = run.departure * 60
-  mem = { ...mem, schedActive: 1, lineName: run.lineFile, tourName: run.tourNumber, tripName: `TTData\\${run.tripFile}.ttp` }
+const kies = (keuze, departure) => {
+  klok = Math.round(departure) * 60
+  mem = { ...mem, ...keuze }
   schrijfLive()
 }
 
@@ -269,9 +343,27 @@ app.whenReady().then(async () => {
     const w = overlay()
     return w ? js(w, `document.body.innerText`) : ''
   }
+  const wachtOpOverlay = async (patroon, keer = 60) => {
+    for (let i = 0; i < keer; i++) {
+      if (patroon.test(await overlayTekst())) return true
+      await wacht(250)
+    }
+    return false
+  }
   const beeld = async (naam) => {
     if (uitvoer) writeFileSync(join(uitvoer, naam), (await hoofd.webContents.capturePage()).toPNG())
   }
+  /* De overlay heel even tonen om hem vast te leggen; daarna weer weg. */
+  const overlayBeeld = async (naam) => {
+    const w = overlay()
+    if (!uitvoer || !w) return
+    w.showInactive = BrowserWindow.prototype.showInactive
+    w.showInactive()
+    await wacht(700)
+    writeFileSync(join(uitvoer, naam), (await w.webContents.capturePage()).toPNG())
+    w.hide()
+  }
+  const logboek = () => readFileSync(join(map, 'logs', 'omsi-enhancer.log'), 'utf8').split(/\r?\n/)
 
   /* De plugin schrijft al: OMSI draait, maar er is nog geen omloop gekozen. */
   schrijfLive()
@@ -293,55 +385,42 @@ app.whenReady().then(async () => {
     else break
     await wacht(1200)
   }
+  /* De lijst, niet de tegels: dan staat de kaart ernaast, met de bus erop. */
+  await js(hoofd, `[...document.querySelectorAll('.weergavekeuze button')][0]?.click()`)
+  await wacht(400)
   await wachtOp(`[...document.querySelectorAll('.dienstrij, .tegel')].some((r) => r.textContent.includes('${KAART}'))`)
   await js(hoofd, `[...document.querySelectorAll('.dienstrij, .tegel')].find((r) => r.textContent.includes('${KAART}'))?.click()`)
-  await wacht(400)
-  await js(hoofd, `document.querySelector('.startknop')?.click()`)
-
-  /* ---- 2. Het beginpunt ---- */
-  const haltes = await wachtOp(`(() => { const r = [...document.querySelectorAll('.dienstrij')]; return /Beginpunt|Starting point/.test(document.body.innerText) && r.length > 5 ? r.length : 0 })()`, 80)
-  /* Geen dienst om te kiezen: geen schuif voor de dienstlengte (de soort, datum en weer horen er wel). */
-  const geenDiensten = await js(hoofd, `!document.querySelector('#dienstlengte')`)
-  /* De stappenbalk zelf: de uitleg op het vel noemt de lijn wel, de balk niet. */
-  const balkTekst = (await js(hoofd, `document.querySelector('.stappen')?.innerText ?? ''`)).toUpperCase()
-  const zonderLijnstap = !/\bLIJN\b/.test(balkTekst) && /BEGINPUNT/.test(balkTekst)
-  /* De soorten: beginpunten en tussenhaltes, elk met hun lijnen; datum en tijd erbij. */
-  const soorten = await js(hoofd, `[...document.querySelectorAll('.regelaar-chips button')].map((b) => b.textContent).filter((t) => /Beginpunten|Tussenhaltes/.test(t))`)
-  const beginRijen = await js(hoofd, `document.querySelectorAll('.dienstrij').length`)
-  const metLijnen = await js(hoofd, `[...document.querySelectorAll('.dienstrij')].filter((r) => /[0-9A-Z]/.test(r.querySelectorAll('span')[2]?.textContent ?? '')).length`)
-  await js(hoofd, `[...document.querySelectorAll('.regelaar-chips button')].find((b) => /Tussenhaltes/.test(b.textContent))?.click()`)
-  await wacht(400)
-  const tussenRijen = await js(hoofd, `document.querySelectorAll('.dienstrij').length`)
-  await js(hoofd, `[...document.querySelectorAll('.regelaar-chips button')].find((b) => /Beginpunten/.test(b.textContent))?.click()`)
-  await wacht(400)
-  const datumTijd = await js(hoofd, `[document.querySelector('input[type=date]')?.value ?? '', document.querySelector('input[type=time]')?.value ?? '']`)
-  const weerKeuze = await js(hoofd, `[...document.querySelectorAll('.regelaar-chips button')].some((b) => /Regen|Rain/.test(b.textContent))`)
-  console.log(`soorten: ${soorten.join(' | ')}; beginpunten ${beginRijen} (${metLijnen} met lijnen), tussenhaltes ${tussenRijen}; datum ${datumTijd[0]}, tijd ${datumTijd[1]}, weer: ${weerKeuze}`)
-  await js(hoofd, `(() => { const r = [...document.querySelectorAll('.dienstrij')]; (r.find((x) => /Hauptbahnhof|Markt|Rathaus/.test(x.textContent)) ?? r[0]).click(); return true })()`)
-  await wacht(300)
-  const gekozenHalte = await js(hoofd, `document.querySelector('.dienstrij[aria-pressed=true] .dienstnaam')?.textContent ?? ''`)
-  console.log(`beginpunt: ${haltes} haltes, gekozen "${gekozenHalte}"; geen dienstlengte: ${geenDiensten}; balk zonder lijnstap: ${zonderLijnstap}`)
+  const voetKaart = await wachtOp(`(() => { const v = document.querySelector('.velvoet')?.textContent ?? ''; return /staat klaar bij/.test(v) ? v : '' })()`, 120)
   await wacht(1500)
-  await beeld('vrij-beginpunt.png')
+  const balkTekst = (await js(hoofd, `document.querySelector('.stappen')?.innerText ?? ''`)).toUpperCase()
+  const balkGoed = /KAART/.test(balkTekst) && /BUS/.test(balkTekst) && !/\bLIJN\b|BEGINPUNT|DIENST/.test(balkTekst)
+  const wanneerDicht = await js(hoofd, `(() => { const d = document.querySelector('.vrij-wanneer'); return d ? { open: d.open, samen: d.querySelector('summary')?.textContent ?? '' } : null })()`)
+  const marker = await wachtOp(`Boolean(document.querySelector('.setup-kaart .bus-arrow'))`, 40)
+  console.log(`kaartstap: voet "${voetKaart}"; balk ${balkTekst.replace(/\s+/g, ' ')}; tijd en weer ${JSON.stringify(wanneerDicht)}; bus op de kaart: ${Boolean(marker)}`)
+  await beeld('vrij-kaart.png')
+  await js(hoofd, `document.querySelector('.vrij-wanneer > summary')?.click()`)
+  await wacht(600)
+  const wanneerOpen = await js(hoofd, `({ datum: document.querySelector('.vrij-wanneer input[type=date]')?.value ?? '', tijd: document.querySelector('.vrij-wanneer input[type=time]')?.value ?? '', chips: [...document.querySelectorAll('.vrij-wanneer .regelaar-chips button')].map((b) => b.textContent) })`)
+  console.log(`  open: datum ${wanneerOpen.datum}, tijd ${wanneerOpen.tijd}, weer ${wanneerOpen.chips.join(' | ')}`)
+  await beeld('vrij-kaart-tijd-en-weer.png')
+  await js(hoofd, `document.querySelector('.vrij-wanneer > summary')?.click()`)
+  const [jaar, maand, dag] = wanneerOpen.datum.split('-').map(Number)
+  if (jaar) datum = { year: jaar, month: maand, day: dag }
   await js(hoofd, `document.querySelector('.startknop')?.click()`)
 
-  /* ---- 3. De bus, en START terwijl "OMSI" draait ---- */
-  await wachtOp(`document.querySelector('.startknop')?.textContent?.match(/START/i)`, 60)
+  /* ---- 2. Meteen de bus, en START terwijl "OMSI" draait ---- */
+  const busstap = await wachtOp(`document.querySelector('.stap[data-stand="nu"]')?.textContent?.match(/Bus/i) && document.querySelector('.startknop')?.textContent?.match(/START/i)`, 60)
   await wacht(500)
   if (!(await js(hoofd, `window.career.omsiRunning()`))) {
     console.log('de app ziet "OMSI" niet draaien; NIET op START gedrukt')
     stop(1)
     return
   }
+  await beeld('vrij-bus.png')
   /*
    * Het wagenpark: Luc, "het moet gewoon de map herkennen en die toepassen".
-   * Welke bus er voorgesteld wordt verschilt per pc; heeft hij een wagenpark
-   * dat naar de kaart heet, dan hoort dat het voorstel te zijn.
-   */
-  /*
    * Door naar de remisestap: steeds de aangewezen tegel aantikken (merk, type,
-   * uitvoering, kleurstelling) tot het wagenpark aan de beurt is. Die stap
-   * bleef bij vrij rijden leeg.
+   * uitvoering, kleurstelling) tot het wagenpark aan de beurt is.
    */
   for (let i = 0; i < 6; i++) {
     if (await js(hoofd, `/Remise|Depot/.test(document.querySelector('h1, h2')?.textContent ?? '')`)) break
@@ -349,110 +428,181 @@ app.whenReady().then(async () => {
     await wacht(900)
   }
   const remise = await js(hoofd, `({ titel: document.querySelector('h1, h2')?.textContent ?? '', tegels: [...document.querySelectorAll('.tegel')].map((t) => ({ tekst: t.textContent.trim().slice(0, 40), aan: t.getAttribute('aria-pressed') === 'true' })) })`)
-  console.log(`remisestap "${remise.titel}": ${remise.tegels.length} tegels; gekozen: ${remise.tegels.filter((t) => t.aan).map((t) => t.tekst).join(', ')}`)
-  await beeld('vrij-remise.png')
   const bus = await js(hoofd, `window.career.suggestVehicle('${KAART}').then((b) => b?.relativePath ?? '')`)
   const wagenparken = bus ? await js(hoofd, `window.career.vrijeYards('${KAART}', ${JSON.stringify(bus)}, 2016)`) : []
   const voorstel = wagenparken.find((optie) => optie.suggested)?.name ?? ''
   const heeftKaartHof = wagenparken.some((optie) => /rheinhausen/i.test(optie.name))
-  console.log(`wagenparken bij ${bus}: ${wagenparken.map((o) => `${o.name} ${o.known}/${o.total}`).join(', ')}; voorstel ${voorstel || 'geen'}`)
+  console.log(`busstap: ${Boolean(busstap)}; remise "${remise.titel}", ${remise.tegels.length} tegels; voorstel ${voorstel || 'geen'}`)
   await js(hoofd, `document.querySelector('.startknop')?.click()`)
-  /* innerText volgt text-transform: de startknop staat in hoofdletters. */
   const rijscherm = await wachtOp(`/Vrij rijden stoppen|Stop free play/i.test(document.body.innerText)`, 60)
-  await wacht(500)
+  await wacht(800)
   const voetStart = await js(hoofd, `document.querySelector('.velvoet')?.textContent ?? ''`)
-  const geenDienstInProfiel = !profiel().activeDuty
-  console.log(`rijscherm van vrij rijden: ${Boolean(rijscherm)}; voet "${voetStart.slice(0, 90)}"; niets in het profiel: ${geenDienstInProfiel}`)
+  const situatie = join(omleiding, 'OMSI Enhancer.osn')
+  const situatieTekst = existsSync(situatie) ? readFileSync(situatie).toString('utf16le') : ''
+  const regels = situatieTekst.split('\r\n')
+  const at = regels.indexOf('[vehicle]')
+  const quaternion = at > 0 ? regels.slice(at + 5, at + 9) : []
+  const situatieGoed = situatieTekst.includes(`maps\\${KAART}\\global.cfg`) && quaternion.length === 4 && quaternion.every((v) => /^-?\d+\.\d{6}$/.test(v))
+  const startRegels = logboek().filter((r) => /vrij rijden: .*beginplek|vrij rijden klaargezet/.test(r))
+  console.log(`rijscherm: ${Boolean(rijscherm)}; voet "${voetStart.slice(0, 110)}"; situatie omgeleid: ${situatieGoed} (quaternion ${quaternion.join(', ')})`)
+  for (const regel of startRegels.slice(-2)) console.log(`  ${regel.slice(24, 230)}`)
 
-  /* ---- 4. De overlay, zonder omloop ---- */
+  /* ---- 3. De overlay, zonder omloop ---- */
   for (let i = 0; i < 20 && !overlay(); i++) await wacht(250)
   await wacht(1500)
-  /* Aanmelden, zoals op de telefoon; daarvoor staat het cijferblok voor alles. */
   await js(hoofd, `window.career.telefoonAanmelden('${NUMMER}', '${PINCODE}')`)
-  await wacht(1500)
+  const metSuggesties = await wachtOpOverlay(/in OMSI:/, 80)
   const zonderOmloop = await overlayTekst()
-  const zegtHoe = /dienstregelingsmenu|timetable menu/i.test(zonderOmloop)
-  /* De kaart werkt al zonder omloop: het net staat er, met bovenin hoe je er een kiest. */
-  const kaartZonder = overlay() ? await js(overlay(), `({ kaart: Boolean(document.querySelector('.nav-wrap canvas, .nav-wrap svg')), hint: Boolean(document.querySelector('.nav-vrij')), balk: Boolean(document.querySelector('.navbar')) })`) : {}
-  console.log(`overlay open: ${Boolean(overlay())}; zegt hoe je een omloop kiest: ${zegtHoe}; kaart zonder omloop: ${JSON.stringify(kaartZonder)}`)
-  await beeld('vrij-zonder-omloop.png')
+  const zegtHoe = /dienstregelingsmenu/i.test(zonderOmloop)
+  const rijschermStraks = await js(hoofd, `document.querySelectorAll('.vrij-straks li').length`)
+  console.log(`overlay zonder omloop: zegt hoe ${zegtHoe}, straks vertrekken ${metSuggesties}; rijscherm ${rijschermStraks} regels`)
+  console.log(`  ${zonderOmloop.split('\n').filter((r) => /in OMSI:/.test(r)).slice(0, 3).join(' || ')}`)
+  await beeld('vrij-rijscherm-geen-omloop.png')
+  await overlayBeeld('vrij-overlay-geen-omloop.png')
+
+  /* ---- 4. De kaart herkennen aan de plek van de bus ---- */
+  const zetPlekken = async (plekken) => {
+    for (const plek of plekken.slice(0, 12)) {
+      mem = { ...mem, ...plek, ok: 1 }
+      schrijfLive()
+      await wacht(450)
+    }
+  }
+  await zetPlekken(plekkenAnders)
+  const naarAnders = await wachtOp(`/OMSI speelt Krefrath|Krefrath/.test(document.querySelector('.velonderschrift')?.textContent ?? '') || true`, 4)
+  await wacht(1500)
+  const wisselHeen = logboek().some((r) => /OMSI speelt .*Krefrath/i.test(r))
+  const overlayWissel = await overlayTekst()
+  await overlayBeeld('vrij-overlay-kaartwissel.png')
+  await zetPlekken(plekkenHier)
+  await wacht(2000)
+  const wisselTerug = logboek().filter((r) => /OMSI speelt /.test(r)).some((r) => /Rheinhausen/.test(r.split('OMSI speelt ')[1] ?? ''))
+  console.log(`kaartwissel: naar ${ANDERE} ${wisselHeen} (overlay "${(overlayWissel.match(/OMSI speelt[^\n]*/) ?? [''])[0]}"), terug ${wisselTerug}`)
+  void naarAnders
+  mem = { ...mem, tile: 0, x: 0, y: 0, z: 0 }
 
   /* ---- 5. OMSI: een omloop gekozen ---- */
-  kies(eersteOmloop)
-  const eerste = await wachtOp(`/Je rijdt lijn|You drive line/.test(document.body.innerText)`, 40)
-  await wacht(1200)
-  /* Het aantal tijden in het overzicht: elke rit heeft er een, met een dubbele punt. */
+  kies(keuzeVan(kaart, ttl, ttp, eersteOmloop, eersteRit), eersteRit.departure)
+  const eerste = await wachtOp(`/Je rijdt lijn/.test(document.body.innerText)`, 60)
+  await wacht(1500)
   const rijenEerst = await js(hoofd, `(document.querySelector('.vrij-omloop')?.innerText ?? '').split(':').length - 1`)
-  const aangemeld1 = overlay() ? await js(overlay(), `!document.querySelector('.aanmelden') && !document.querySelector('.opdracht')`) : false
   const kaartMet = overlay() ? await js(overlay(), `({ kaart: Boolean(document.querySelector('.nav-wrap canvas, .nav-wrap svg')), hint: Boolean(document.querySelector('.nav-vrij')), balk: Boolean(document.querySelector('.navbar')) })`) : {}
-  console.log(`  kaart met omloop: ${JSON.stringify(kaartMet)}`)
-  console.log(
-    `omloop ${eersteOmloop.lineFile}/${eersteOmloop.tourNumber} vanaf ${eersteOmloop.tripFile}: ` +
-      `rijscherm ${Boolean(eerste)}, ${rijenEerst} tijden in het overzicht; aangemeld zonder opdracht: ${aangemeld1}`
-  )
-  await beeld('vrij-omloop.png')
+  const koppelRegels = () => logboek().filter((r) => /vrij rijden volgt OMSI/.test(r))
+  const eersteKoppeling = koppelRegels().slice(-1)[0] ?? ''
+  console.log(`omloop ${eersteOmloop.lineFile}/${eersteOmloop.number} rit #${eersteRit.entry} ${eersteRit.tripFile}: rijscherm ${Boolean(eerste)}, ${rijenEerst} tijden; kaart ${JSON.stringify(kaartMet)}`)
+  console.log(`  ${eersteKoppeling.slice(24, 330)}`)
+  await beeld('vrij-rijscherm-gevolgd.png')
+  await overlayBeeld('vrij-overlay-gevolgd.png')
 
-  /* ---- 6. OMSI: een andere omloop ---- */
-  kies(andereOmloop)
-  const tweede = await wachtOp(`document.body.innerText.includes('omloop ${andereOmloop.tourNumber}')`, 40)
+  /* De volgende rit van dezelfde omloop: readSchedule volgt op nummer, zonder opnieuw te koppelen. */
+  const voorVolgende = koppelRegels().length
+  kies({ tourEntry: volgendeRit.entry, tripName: volgendeRit.tripFile, trip: ttp.findIndex((n) => n.toLowerCase() === volgendeRit.tripFile.toLowerCase()) }, volgendeRit.departure)
+  await wacht(3000)
+  const zonderOpnieuw = koppelRegels().length === voorVolgende && !logboek().some((r) => /volgorde gecorrigeerd/.test(r))
+  console.log(`volgende rit ${volgendeRit.tripFile}: niet opnieuw gekoppeld ${zonderOpnieuw}`)
+
+  /* ---- 6. Een andere lijn, zelfde omloopnummer, een rit die nergens staat ---- */
+  let verloren = true
+  if (andereLijn) {
+    kies({ line: ttl.indexOf(andereLijn.lineFile), lineName: andereLijn.lineFile, tour: andereLijn.index, tourName: andereLijn.number, tourEntry: 0, tripName: 'ProefRitDieNergensStaat', trip: -1 }, eersteRit.departure)
+    verloren = Boolean(await wachtOp(`/staat niet in de dienstregeling/.test(document.body.innerText)`, 60))
+    await wacht(1500)
+    const overlayVerloren = await overlayTekst()
+    const geenBalk = overlay() ? await js(overlay(), `!document.querySelector('.navbar')`) : false
+    verloren = verloren && /staat niet in de dienstregeling/.test(overlayVerloren) && geenBalk && !(await js(hoofd, `Boolean(document.querySelector('.vrij-omloop'))`))
+    console.log(`andere lijn ${andereLijn.lineFile} met omloopplek ${andereLijn.index} en een onbekende rit: oude ritten weg en gemeld ${verloren}`)
+    await beeld('vrij-rijscherm-onbekend.png')
+    await overlayBeeld('vrij-overlay-onbekend.png')
+  } else console.log('geen andere lijn met dezelfde omloopplek op deze kaart; overgeslagen')
+
+  /* ---- 7. OMSI: een andere omloop ---- */
+  kies(keuzeVan(kaart, ttl, ttp, andereOmloop, andereRit), andereRit.departure)
+  const tweedeOmloop = await wachtOp(`document.body.innerText.includes('omloop ${andereOmloop.number}')`, 60)
   await wacht(1200)
-  const aangemeld2 = overlay() ? await js(overlay(), `!document.querySelector('.aanmelden') && !document.querySelector('.opdracht')`) : false
-  const log = readFileSync(join(map, 'logs', 'omsi-enhancer.log'), 'utf8')
-  const gevolgdRegels = log.split(/\r?\n/).filter((r) => /vrij rijden volgt OMSI/.test(r))
-  console.log(`andere omloop ${andereOmloop.lineFile}/${andereOmloop.tourNumber}: rijscherm ${Boolean(tweede)}; aangemeld: ${aangemeld2}; gevolgd ${gevolgdRegels.length} keer`)
-  for (const regel of gevolgdRegels) console.log(`  ${regel.slice(24, 200)}`)
+  const aangemeld = overlay() ? await js(overlay(), `!document.querySelector('.aanmelden') && !document.querySelector('.opdracht')`) : false
+  const gevolgdRegels = koppelRegels()
+  console.log(`andere omloop ${andereOmloop.lineFile}/${andereOmloop.number}: ${Boolean(tweedeOmloop)}; aangemeld ${aangemeld}; gevolgd ${gevolgdRegels.length} keer`)
+  for (const regel of gevolgdRegels) console.log(`  ${regel.slice(24, 330)}`)
 
-  /* ---- 7. Stoppen ---- */
+  /* ---- 8. Stoppen ---- */
   await js(hoofd, `document.querySelector('.startknop')?.click()`)
   const hub = await wachtOp(`document.querySelectorAll('.hub-tegel').length > 0`, 40)
   await wacht(1000)
-  const melding = await js(hoofd, `document.body.innerText.match(/Vrij rijden gestopt[^\\n]*|Free play stopped[^\\n]*/)?.[0] ?? ''`)
+  const melding = await js(hoofd, `document.body.innerText.match(/Vrij rijden gestopt[^\\n]*/)?.[0] ?? ''`)
   console.log(`gestopt: hoofdmenu ${Boolean(hub)}, "${melding}", overlay dicht: ${!overlay()}`)
 
+  /* ---- 9. Hamburg109_2, omloop 66093, OMSI telt op vertrektijd ---- */
+  let gesorteerd = true
+  if (tweede) {
+    const t2 = tweede.tours.find((t) => t.number === '66093')
+    const opTijd = t2 ? [...t2.trips].sort((a, b) => a.departure - b.departure) : []
+    if (t2 && opTijd[7]) {
+      mem = { ...mem, schedActive: 0, line: -1, tour: -1, tourEntry: -1, trip: -1, lineName: '', tourName: '', tripName: '' }
+      schrijfLive()
+      const uit = await js(hoofd, `window.career.startFree({ mapFolder: '${TWEEDE}', vehiclePath: ${JSON.stringify(bus)} })`)
+      await wacht(2500)
+      const ttl2 = namen(tweede, '.ttl')
+      const ttp2 = namen(tweede, '.ttp')
+      await js(hoofd, `window.career.telefoonAanmelden('${NUMMER}', '${PINCODE}')`)
+      /*
+       * Eerst rit 6, LEE_UAL_M om 10:19: die staat in beide volgordes op die
+       * plek, met een ander vervolg -- de app kiest de volgorde van het bestand,
+       * onzeker. Dan rit 7 zoals OMSI hem op vertrektijd telt: 109_UAL_ZAL om
+       * 10:23, terwijl in het bestand op plek 7 de leegrit van 12:44 staat. Dan
+       * hoort het volgen de volgorde om te draaien.
+       */
+      const voor = koppelRegels().length
+      kies({ ...keuzeVan(tweede, ttl2, ttp2, t2, opTijd[6]), tourEntry: 6 }, opTijd[6].departure)
+      for (let i = 0; i < 60 && koppelRegels().length === voor; i++) await wacht(250)
+      const zes = koppelRegels().slice(voor)[0] ?? ''
+      kies({ ...keuzeVan(tweede, ttl2, ttp2, t2, opTijd[7]), tourEntry: 7 }, opTijd[7].departure)
+      let regel = ''
+      for (let i = 0; i < 60 && !regel; i++) {
+        await wacht(250)
+        regel = koppelRegels().slice(voor + 1)[0] ?? ''
+      }
+      const gecorrigeerd = logboek().some((r) => /volgorde gecorrigeerd bij rit #7/.test(r))
+      gesorteerd = /koppeling index, bestand, onzeker/.test(zes) && gecorrigeerd && /koppeling vertrek/.test(regel) && /rit #7 109_ual_zal 10:23/.test(regel)
+      console.log(`66093 bij rit 6: ${zes.slice(24, 330)}`)
+      console.log(`66093 bij rit 7 (OMSI op vertrektijd): gecorrigeerd ${gecorrigeerd}, ${gesorteerd} -- ${regel.slice(24, 330)} (start: ${JSON.stringify(uit)})`)
+      await wacht(1500)
+      await overlayBeeld('vrij-overlay-66093.png')
+      await js(hoofd, `window.career.stopFree()`)
+      await wacht(800)
+    } else console.log('66093 niet gevonden; overgeslagen')
+  } else console.log(`${TWEEDE} niet geïnstalleerd; overgeslagen`)
+
   const spelmapGelijk = JSON.stringify(spelmapStand()) === JSON.stringify(spelmapVoor) && geweigerd.length === 0
-  console.log(`spelmap onaangeroerd: ${spelmapGelijk}${geweigerd.length ? `; geweigerd: ${geweigerd.join(' | ')}` : ''}`)
+  console.log(`spelmap onaangeroerd: ${spelmapGelijk}${geweigerd.length ? `; geweigerd: ${geweigerd.join(' | ')}` : ''}; omgeleid: ${[...new Set(omgeleid.map((r) => r.split(' ')[0]))].join(', ')}`)
   const fouten = meldingen.filter((m) => !/Electron Security Warning|willReadFrequently/.test(m))
   console.log('meldingen:', fouten.length ? fouten.map((m) => m.slice(0, 140)) : 'geen')
 
-  const startRegel = log.split(/\r?\n/).reverse().find((r) => /vrij rijden: .*beginpunt/.test(r)) ?? ''
-  console.log(`  bij START: ${startRegel.slice(24, 220)}`)
-  const goed =
-    /Remise|Depot/.test(remise.titel) &&
-    remise.tegels.length > 1 &&
-    remise.tegels.some((t) => t.aan && (!heeftKaartHof || /rheinhausen/i.test(t.tekst))) &&
-    (!heeftKaartHof || /rheinhausen/i.test(voorstel)) &&
-    (!voorstel || startRegel.includes(`wagenpark ${voorstel}`)) &&
-    haltes > 5 &&
-    soorten.length === 2 &&
-    beginRijen > 0 &&
-    metLijnen === beginRijen &&
-    tussenRijen > 0 &&
-    tussenRijen !== beginRijen &&
-    datumTijd[0].length === 10 && datumTijd[0].split('-').length === 3 &&
-    datumTijd[1] === '08:00' &&
-    weerKeuze &&
-    kaartZonder.kaart && kaartZonder.hint && !kaartZonder.balk &&
-    kaartMet.kaart && !kaartMet.hint && kaartMet.balk &&
-    Boolean(gekozenHalte) &&
-    geenDiensten &&
-    zonderLijnstap &&
-    Boolean(rijscherm) &&
-    geenDienstInProfiel &&
-    zegtHoe &&
-    Boolean(eerste) &&
-    rijenEerst > 0 &&
-    aangemeld1 &&
-    Boolean(tweede) &&
-    aangemeld2 &&
-    gevolgdRegels.length === 2 &&
-    gevolgdRegels.every((r) => /IBIS lijn/.test(r)) &&
-    Boolean(hub) &&
-    Boolean(melding) &&
-    !overlay() &&
-    !profiel().activeDuty &&
-    (profiel().entries?.length ?? 0) === logboekVoor &&
-    spelmapGelijk &&
-    fouten.length === 0
-  console.log(goed ? 'vrij rijden: kaart, beginpunt en bus, en de overlay volgt OMSI' : 'VRIJ RIJDEN KLOPT NIET')
-  stop(goed ? 0 : 1)
+  const startRegel = logboek().reverse().find((r) => /vrij rijden: .*beginplek/.test(r)) ?? ''
+  const checks = {
+    voet: /vertrekken tot/.test(voetKaart || '') || /staat klaar bij/.test(voetKaart || ''),
+    balk: balkGoed,
+    wanneer: Boolean(wanneerDicht) && !wanneerDicht.open && /automatisch/.test(wanneerDicht.samen) && wanneerOpen.chips.some((c) => /Zoals de kaart/.test(c)),
+    marker: Boolean(marker),
+    busstap: Boolean(busstap),
+    remise: /Remise|Depot/.test(remise.titel) && remise.tegels.some((t) => t.aan && (!heeftKaartHof || /rheinhausen/i.test(t.tekst))),
+    wagenpark: (!heeftKaartHof || /rheinhausen/i.test(voorstel)) && (!voorstel || startRegels.some((r) => r.includes(`wagenpark ${voorstel}`))),
+    rijscherm: Boolean(rijscherm) && /staat klaar/.test(voetStart),
+    situatie: situatieGoed && startRegels.some((r) => /klaargezet: situatie/.test(r)),
+    zegtHoe,
+    suggesties: metSuggesties && rijschermStraks > 0,
+    kaartwissel: wisselHeen && wisselTerug,
+    gekoppeld: Boolean(eerste) && rijenEerst > 0 && /koppeling index/.test(eersteKoppeling) && kaartMet.kaart && !kaartMet.hint && kaartMet.balk,
+    zonderOpnieuw,
+    verloren,
+    andereOmloop: Boolean(tweedeOmloop) && aangemeld && gevolgdRegels.length >= 2 && gevolgdRegels.every((r) => /IBIS lijn/.test(r)),
+    gestopt: Boolean(hub) && Boolean(melding),
+    gesorteerd,
+    geboekt: !profiel().activeDuty && (profiel().entries?.length ?? 0) === logboekVoor,
+    spelmap: spelmapGelijk,
+    meldingen: fouten.length === 0
+  }
+  const mis = Object.entries(checks).filter(([, goed]) => !goed).map(([naam]) => naam)
+  console.log(`  bij START: ${startRegel.slice(24, 260)}`)
+  console.log(mis.length === 0 ? 'vrij rijden: kaart en bus, en de navigatie vindt wat OMSI rijdt' : `VRIJ RIJDEN KLOPT NIET: ${mis.join(', ')}`)
+  stop(mis.length === 0 ? 0 : 1)
 })

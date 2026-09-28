@@ -6,7 +6,7 @@ import {
   unlinkSync,
   writeFileSync
 } from 'node:fs'
-import { basename, join } from 'node:path'
+import { basename, join, relative } from 'node:path'
 import { readOmsiLines, str } from './omsiFile'
 import { writeWeather } from './weather'
 import type { WeatherKind } from '../shared/weather'
@@ -99,6 +99,13 @@ export interface SituationRequest {
     height: number
     /** Koers in graden, noord nul, met de klok mee. */
     heading: number
+    /**
+     * De draaiing zoals OMSI hem zelf noteert (x, y, z, w). Een inzetpunt van
+     * de kaart heeft er een, en OMSI zet de bus in zijn eigen situaties met
+     * precies dat quaternion neer; dan gaat hij ongewijzigd mee in plaats van
+     * uit de koers teruggerekend te worden.
+     */
+    quaternion?: [number, number, number, number]
   }
 }
 
@@ -109,6 +116,11 @@ export interface SituationResult {
   /** Of hij op de gevraagde plek staat, of op die uit het sjabloon. */
   spawnPlaced: boolean
   template?: string
+  /**
+   * Waar het weer vandaan kwam, vanaf de OMSI-map ("maps\X\laststn.osn.owt"),
+   * als het van de kaart kwam; zonder keuze en zonder weer van de kaart niets.
+   */
+  weerVan?: string
 }
 
 /** Geeft de index van de regel met deze tag, of -1. */
@@ -135,6 +147,73 @@ function situationMap(file: string): string {
   }
 }
 
+/**
+ * Is dit een situatie die de app zelf schreef? Die heet "OMSI Enhancer — ..."
+ * (vroeger "OMSI Career — ..."), ook als hij als `laststn.osn` klaarstaat.
+ */
+function isEigen(file: string): boolean {
+  try {
+    const lines = readOmsiLines(file)
+    const index = indexOfTag(lines, '[name]')
+    return index >= 0 && /^\s*OMSI (Enhancer|Career)/i.test(lines[index + 1] ?? '')
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Koos de app dit weer zelf? `writeWeather` noemt het "OMSI Enhancer - ..."
+ * (vroeger "OMSI Career - ..."), en OMSI schrijft die naam na een rit ermee
+ * zo terug in `laststn.osn.owt`. Zo'n weer is het weer van een vorige rit,
+ * niet dat van de kaart.
+ */
+export function isEigenWeer(owt: string): boolean {
+  try {
+    const lines = readOmsiLines(owt)
+    const index = indexOfTag(lines, '[name]')
+    return index >= 0 && /^\s*OMSI (Enhancer|Career)/i.test(lines[index + 1] ?? '')
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Het weer van de kaart: het eerste weerbestand naast een situatie van deze
+ * kaart dat de app niet zelf koos (`isEigenWeer`). Eerst `laststn.osn` en de
+ * kopieën die presetStartup ervan maakte, dan de scenario's in `Situations/`
+ * (zonder die van de app zelf: `OMSI Enhancer.osn` draagt het weer van de
+ * vorige rit, misschien van een andere kaart).
+ *
+ * Het weer telt apart van het sjabloon. `findTemplate(..., { zonderEigen })`
+ * kiest voor het tijdvak de kopie `laststn.osn.voor-omsi-*`, en daar stond
+ * nooit een `.owt` naast: op zes kaarten werd "zoals de kaart" zo het
+ * standaardweer van OMSI, en haalde presetStartup het weer van de kaart
+ * daarna ook nog weg (tegenlezing 28-09). Een `laststn.osn` die de app
+ * schreef mag wel: het weer ernaast is dat van de kaart, tenzij de app het
+ * koos -- en dat zegt de naam.
+ */
+export function findWeather(omsiPath: string, mapFolder: string): string | undefined {
+  const kaart = join(omsiPath, 'maps', mapFolder)
+  const kandidaten = ['laststn.osn', 'laststn.osn.voor-omsi-enhancer', 'laststn.osn.voor-omsi-career'].map((naam) =>
+    join(kaart, naam)
+  )
+  const situations = join(omsiPath, 'Situations')
+  if (existsSync(situations)) {
+    for (const entry of readdirSync(situations)) {
+      if (entry.toLowerCase().endsWith('.osn')) kandidaten.push(join(situations, entry))
+    }
+  }
+  for (const osn of kandidaten) {
+    const owt = `${osn}.owt`
+    // Eerst wat niets kost: zonder weerbestand hoeft de situatie niet open.
+    if (!existsSync(owt) || isEigenWeer(owt)) continue
+    if (situationMap(osn) !== mapFolder) continue
+    if (osn.startsWith(situations) && isEigen(osn)) continue
+    return owt
+  }
+  return undefined
+}
+
 /** Heeft dit bestand een eigen voertuig? Dan is het een echt gespeelde situatie. */
 function hasOwnVehicle(file: string): boolean {
   try {
@@ -148,10 +227,27 @@ function hasOwnVehicle(file: string): boolean {
  * Zoekt een situatie die bij deze kaart hoort. OMSI bewaart na elke sessie
  * `laststn.osn` per kaart, en in `Situations/` staan de meegeleverde scenario's.
  */
-export function findTemplate(omsiPath: string, mapFolder: string): string | undefined {
+export function findTemplate(
+  omsiPath: string,
+  mapFolder: string,
+  opties: { zonderEigen?: boolean } = {}
+): string | undefined {
   const candidates: string[] = []
   const lastSituation = join(omsiPath, 'maps', mapFolder, 'laststn.osn')
   if (existsSync(lastSituation)) candidates.push(lastSituation)
+  /*
+   * Zonder de eigen situaties. `laststn.osn` is vaak door de app zelf geschreven
+   * (presetStartup), met de datum en het weer van de vorige rit -- dan werd een
+   * zelfgekozen datum het tijdvak van de kaart, en het weer van gisteren "zoals
+   * de kaart". De kopie die presetStartup van het origineel maakte, is wel
+   * van OMSI.
+   */
+  if (opties.zonderEigen) {
+    for (const kopie of ['laststn.osn.voor-omsi-enhancer', 'laststn.osn.voor-omsi-career']) {
+      const pad = join(omsiPath, 'maps', mapFolder, kopie)
+      if (existsSync(pad)) candidates.push(pad)
+    }
+  }
 
   const situations = join(omsiPath, 'Situations')
   if (existsSync(situations)) {
@@ -160,7 +256,9 @@ export function findTemplate(omsiPath: string, mapFolder: string): string | unde
     }
   }
 
-  const forThisMap = candidates.filter((file) => situationMap(file) === mapFolder)
+  const forThisMap = candidates.filter(
+    (file) => situationMap(file) === mapFolder && !(opties.zonderEigen && isEigen(file))
+  )
   return forThisMap.find(hasOwnVehicle) ?? forThisMap[0]
 }
 
@@ -262,7 +360,9 @@ export function buildSituation(request: SituationRequest): string[] {
   if (request.timetable) lines.push('[TT_active]', '')
 
   if (vehicle && spawn) {
-    const q = yawQuaternion(spawn.heading)
+    const q = spawn.quaternion
+      ? (spawn.quaternion.map((value) => value.toFixed(6)) as [string, string, string, string])
+      : yawQuaternion(spawn.heading)
     lines.push(
       '----------------------------------------------',
       '',
@@ -410,12 +510,23 @@ export function writeSituation(omsiPath: string, request: SituationRequest): Sit
   /*
    * Het weer hoort bij de situatie. Wie het zelf kiest krijgt precies dat;
    * anders nemen we over wat er voor deze kaart al klaarstond, want dat past bij
-   * de streek en het tijdvak. Zonder bestand valt OMSI terug op zijn standaard.
+   * de streek en het tijdvak (`findWeather`). Zonder bestand valt OMSI terug op
+   * zijn standaard.
    */
-  const template = findTemplate(omsiPath, request.mapFolder)
+  const template = findTemplate(omsiPath, request.mapFolder, { zonderEigen: true })
+  let weerVan: string | undefined
   try {
+    const vanKaart = request.weather ? undefined : findWeather(omsiPath, request.mapFolder)
     if (request.weather) writeWeather(file, request.weather)
-    else if (template && existsSync(`${template}.owt`)) copyFileSync(`${template}.owt`, `${file}.owt`)
+    else if (vanKaart) {
+      copyFileSync(vanKaart, `${file}.owt`)
+      weerVan = relative(omsiPath, vanKaart)
+    }
+    /*
+     * Geen keuze en niets van de kaart: dan het standaardweer van OMSI. Een
+     * oud weerbestand van een vorige rit hoort daar niet te blijven staan,
+     * want OMSI leest het gewoon mee.
+     */ else if (existsSync(`${file}.owt`)) unlinkSync(`${file}.owt`)
   } catch {
     // Weer is bijzaak; de dienst werkt ook zonder.
   }
@@ -424,6 +535,7 @@ export function writeSituation(omsiPath: string, request: SituationRequest): Sit
     file,
     vehiclePlaced: Boolean(request.vehicle && request.spawn),
     spawnPlaced: Boolean(request.spawn),
-    template: template ? basename(template) : undefined
+    template: template ? basename(template) : undefined,
+    weerVan
   }
 }

@@ -38,9 +38,7 @@ import {
   zorgVoorDienstgegevens,
   PHOTO_EXTENSIONS
 } from '../core/profiles'
-import { bestemmingenVan, haltesVan } from '../core/haltes'
 import {
-  dutyFromTour,
   examTrip,
   listLines,
   type LineSummary,
@@ -78,6 +76,7 @@ import {
 import {
   aanrijdingenGezien,
   describeLive,
+  legVolgensOmsi,
   leesSchermen,
   VRAGEN_MAX,
   liveMap,
@@ -89,7 +88,7 @@ import {
   type LiveData
 } from '../core/live'
 import { findOmsiInstall, hasMaps, isOmsiInstall, resolveOmsiFolder } from '../core/install'
-import { isOmsiRunning, launchOmsi } from '../core/launch'
+import { isOmsiRunning, launchOmsi, type LaunchResult } from '../core/launch'
 import { ensurePlugin, pluginSourceDir, type PluginStatus } from '../core/pluginInstall'
 import { readOverlayLayout, writeOverlayLayout } from '../core/overlayLayout'
 import { receiptHeightMicrons, RECEIPT_WIDTH_MICRONS } from '../core/receipt'
@@ -207,14 +206,20 @@ import {
 import { kaartjesVoor, type Kaartset } from '../core/kaartjes'
 import { leesKnoppen, zetKnop, type Schakelbaar, type Uitkomst as OverlayUitkomst, type OverlayKnoppen } from '../core/overlayknop'
 import { writeSituation } from '../core/situation'
+import { leesInzetpunten, plekVanInzetpunt, type Beginplek, type VrijCheckVol } from '../core/beginplek'
+import { MIN_MONSTERS, neemMonster, type Herkenning, type Monster } from '../core/kaartherkenning'
+import { onbruikbaar, vouw, vouwNaam, type Koppeling, type OmsiKeuze } from '../core/omloopvolgen'
+import { startVrijeRit } from '../core/vrijstart'
+import { readTileList } from '../core/track'
+import { t } from '../shared/i18n'
 import { presetStartup } from '../core/startup'
 import { zetKopieMap } from '../core/veilig'
 import { trailerOf } from '../core/trailer'
 import { spawnAtStop } from '../core/spawn'
-import { listMaps } from '../core/timetable'
+import { listMaps, readMapName } from '../core/timetable'
 import type { Vehicle } from '../core/vehicles'
 import type { Duty, DutyLeg, OmsiMap } from '../core/types'
-import { hofVoorKaart, listHofs, matchHof, pickHof } from '../core/hof'
+import { listHofs, matchHof, pickHof } from '../core/hof'
 import { placeHof, planHofs, readPlacements, writePlacements } from '../core/hofTool'
 import { readScreenMode } from '../core/schermmodus'
 import {
@@ -225,8 +230,14 @@ import {
   type OmsiMelding,
   type OmsiOverlays,
   type BeginRequest,
+  type FreeCheck,
   type FreeRequest,
   type FreeResult,
+  type Klaargezet,
+  type VrijBeeld,
+  type VrijStaat,
+  type VrijSuggestie,
+  type VrijWanneer,
   type Busklaaruitslag,
   type DutyDate,
   type DutyRequest,
@@ -1058,80 +1069,311 @@ function currentDuty(): Duty | undefined {
 }
 
 /*
- * VRIJ RIJDEN: DE OVERLAY VOLGT WAT JE IN OMSI KIEST
+ * VRIJ RIJDEN: DE NAVIGATIE VINDT ZELF WAT JE IN OMSI RIJDT
  *
- * Luc: "Vrij rijden modus moet helemaal geen dienst genereren, de speler kiest
- * in omsi een omloop en de overlay detecteert dat, in vrije modus kiest de
- * speler enkel een kaart, beginpunt en bus." Een vrije rit (`vrijeRit`) heeft
- * dus geen dienst en staat niet in het profiel: de app zet kaart, beginpunt en
- * bus klaar, start OMSI en opent de overlay. De dienst ontstaat pas als je in
- * het dienstregelingsmenu van OMSI een omloop kiest.
+ * Een gebruiker (via Luc): "meine Idee wäre das die Haltestellen aussuchen
+ * Option komplett weg fällt in dem Modus nur und nur noch Karte und Bus
+ * ausgesucht werden müssen und das Navi es von alleine findet". De speler
+ * kiest dus alleen een kaart en een bus; de app zet de bus op een inzetpunt
+ * waar straks iets vertrekt (core/beginplek.ts), en wat de speler daarna in
+ * OMSI kiest, vindt de navigatie zelf terug.
  *
- * De plugin geeft door welke lijn, omloop en rit OMSI op de bus heeft staan
- * (`mem.lineName`, `tourName`, `tripName`), en of het menu werkelijk rijdt
- * (`schedActive`; terwijl je in het menu bladert staat er al een rit in het
- * geheugen die je nog niet gekozen hebt). Hoort die niet bij wat de overlay nu
- * toont, dan wordt de omloop uit de dienstregeling van de kaart opgebouwd
- * (dutyFromTour in core/duty.ts), vanaf de gekozen rit, met zijn IBIS-codes, en
- * krijgen de overlay, de tablet en het hoofdvenster die. Kies je later een
- * andere, dan gaat hij weer mee. De aanmelding blijft staan: die hangt aan de
- * vrije rit, niet aan de omloop (telefoonSleutel).
+ * Een vrije rit (`vrijeRit`) staat niet in het profiel. `volgOmloopInOmsi`
+ * kijkt bij elk beeld, en elke seconde ook met de overlay dicht, wat er aan de
+ * hand is, en zet dat in `vrijStaat`: wachten op OMSI, geen bus, een andere
+ * kaart, nog geen omloop (met wat er straks vertrekt), de gevolgde omloop, een
+ * losse rit, of iets wat niet in de dienstregeling staat. Het rijscherm, de
+ * overlay en de telefoon tonen dezelfde staat (renderer/vrijstaat.ts).
  *
- * Eens per keuze: dezelfde lijn, omloop en rit worden niet elk beeld opnieuw
- * opgebouwd, ook niet als het opbouwen niets opleverde.
+ * Het zware werk -- de dienstregeling lezen, de koppeling, wat er vertrekt --
+ * gebeurt in de werker. Het hoofdproces tekent intussen de overlay; hier bleef
+ * het eerder seconden stil (tegenlezing B3).
  */
 let vrijeRit:
-  | { mapFolder: string; mapName: string; vehiclePath?: string; yard?: string; sinds: string }
+  | {
+      mapFolder: string
+      mapName: string
+      vehiclePath?: string
+      yard?: string
+      /** Het begin van de rit; een uitkomst van een oudere rit telt niet. */
+      sinds: string
+      /** Waar de bus neergezet is. */
+      plek?: string
+      klaargezet: Klaargezet
+      /** Draaide OMSI al bij START? Dan heeft de speler het zelf in de hand. */
+      startMet: 'draaiend' | 'dicht'
+      startTijd: number
+      /** De datum van de situatie, voor als de plugin er (nog) geen geeft. */
+      datum?: string
+    }
   | undefined
-let gevolgd = ''
 
-function ritSleutelVan(naam: string): string {
-  const basis = naam.trim().split(/[\\/]/).pop() ?? ''
-  return basis.replace(/\.ttp$/i, '').trim().toLowerCase()
+let vrijStaat: VrijStaat | undefined
+
+/** Wat het volgen onthoudt tussen twee beelden. */
+const volg = {
+  /** De laatste keuze van OMSI die gekoppeld is, en wanneer. */
+  sleutel: '',
+  sinds: 0,
+  /** Sinds wanneer er geen dienstregeling actief is. */
+  zonderSinds: 0,
+  /** Sinds wanneer de plugin de bus niet kan lezen. */
+  geenMemSinds: 0,
+  /** Er loopt een vraag aan de werker; dan niet nog een. */
+  bezig: false,
+  suggesties: [] as VrijSuggestie[],
+  halte: undefined as string | undefined,
+  suggestiesOp: 0,
+  suggestiesBij: undefined as { x: number; y: number } | undefined,
+  /** De omloop in OMSI is losgelaten; de eerste regel zegt dat. */
+  losgelaten: false,
+  /** Op welke kaart een koppeling lukte; dan beslist de kaartherkenning niet meer. */
+  gekoppeldOp: '',
+  /** De gevolgde omloop: lijnbestand en plek in dat bestand, zoals de koppeling hem vond. */
+  omloop: undefined as { lineFile?: string; tourIndex?: number } | undefined,
+  gewisseldVan: undefined as string | undefined,
+  gewisseldOp: 0,
+  /** Welke rit de bus al bereikt heeft; dan geen aanrijlijn meer. */
+  aanrijBereikt: '',
+  onbekendGelogd: new Set<string>()
 }
 
-function volgOmloopInOmsi(live: ReturnType<typeof readLive>): void {
-  const rit = vrijeRit
-  if (!rit || career?.activeDuty) return
-  const mem = live?.mem
-  if (!live?.alive || !mem || mem.ok !== 1 || !(mem.schedActive > 0.5) || !mem.tripName.trim()) return
+/** Plekken van de bus, voor de kaartherkenning; zie core/kaartherkenning.ts. */
+let monsters: Monster[] = []
+/** Telt elke nieuwe lijst monsters; zo weet de herkenning dat er iets te vragen valt. */
+let monsterVersie = 0
 
-  const keuze = {
-    lineFile: mem.lineName.trim(),
-    tourNumber: mem.tourName.trim(),
-    tripFile: mem.tripName.trim()
+/*
+ * De kaartherkenning, in de werker (`herken`). De eerste keer leest die
+ * global.cfg en het terrein van alle kaarten: 62 tot 75 ms, en dat stond
+ * eerst hier, midden in het volgen. Het volgen wacht er ook niet op: bij een
+ * nieuw monster gaat er een vraag weg, en tot het antwoord er is geldt het
+ * vorige oordeel over deze kaart -- of geen, en dan gebeurt er niets. Een
+ * werker die net een kaart van drie seconden inleest, houdt het volgen zo
+ * niet op.
+ */
+const herkenning = {
+  sleutel: '',
+  bezig: false,
+  uitkomst: undefined as (Herkenning & { sinds: string; folder: string }) | undefined
+}
+
+function vergeetVolgen(): void {
+  vrijStaat = undefined
+  monsters = []
+  herkenning.sleutel = ''
+  herkenning.uitkomst = undefined
+  Object.assign(volg, {
+    sleutel: '',
+    sinds: 0,
+    zonderSinds: 0,
+    geenMemSinds: 0,
+    suggesties: [],
+    halte: undefined,
+    suggestiesOp: 0,
+    suggestiesBij: undefined,
+    losgelaten: false,
+    gekoppeldOp: '',
+    omloop: undefined,
+    gewisseldVan: undefined,
+    gewisseldOp: 0,
+    aanrijBereikt: ''
+  })
+  volg.onbekendGelogd.clear()
+}
+
+const kaartPad = (folder: string): string => join(omsi(), 'maps', folder)
+
+/**
+ * Het laatste oordeel van de werker over de kaart van deze rit, en een nieuwe
+ * vraag als er sinds de vorige een monster bij kwam. Wacht nergens op.
+ */
+function herkenningVoor(rit: NonNullable<typeof vrijeRit>): Herkenning | undefined {
+  const sleutel = `${rit.sinds}|${rit.mapFolder}|${monsterVersie}`
+  if (sleutel !== herkenning.sleutel && !herkenning.bezig) {
+    herkenning.sleutel = sleutel
+    herkenning.bezig = true
+    const folder = rit.mapFolder
+    werkerVraag<Herkenning>({ soort: 'herken', folder, monsters })
+      .then((uit) => {
+        // Intussen gekoppeld, gewisseld of gestopt: dan is dit antwoord van gisteren.
+        if (vrijeRit === rit && rit.mapFolder === folder && herkenning.sleutel === sleutel) {
+          herkenning.uitkomst = { ...uit, sinds: rit.sinds, folder }
+        }
+      })
+      .catch((fout) => logFout('vrij rijden: de kaartherkenning', fout))
+      .finally(() => {
+        herkenning.bezig = false
+      })
   }
-  // Met het begin van de rit erin: een nieuwe vrije rit begint opnieuw met kijken.
-  const sleutel = `${rit.sinds}|${keuze.lineFile}|${keuze.tourNumber}|${ritSleutelVan(keuze.tripFile)}`
-  if (sleutel === gevolgd) return
-  gevolgd = sleutel
+  const uit = herkenning.uitkomst
+  return uit && uit.sinds === rit.sinds && uit.folder === rit.mapFolder ? uit : undefined
+}
 
-  /* Toont de overlay deze rit al, in deze omloop? Dan valt er niets te volgen. */
-  const nu = overlayDuty
-  const ritNu = ritSleutelVan(keuze.tripFile)
-  if (nu?.legs.some((leg) => ritSleutelVan(leg.tripFile) === ritNu && leg.tourNumber.trim() === keuze.tourNumber)) {
-    return
+/** Waar de bus staat in kaartmeters, uit de tegel en de plek erbinnen; zonder rijstrokennet. */
+const tegelsVoorBus = new Map<string, { lijst: ReturnType<typeof readTileList>; grid: ReturnType<typeof readTileGrid> }>()
+function busOpKaart(folder: string, mem: LiveData['mem']): { x: number; y: number } | undefined {
+  if (!mem || mem.ok !== 1) return undefined
+  let tegels = tegelsVoorBus.get(folder)
+  if (!tegels) {
+    let lijst: ReturnType<typeof readTileList> = []
+    try {
+      lijst = readTileList(kaartPad(folder))
+    } catch {
+      lijst = []
+    }
+    tegels = { lijst, grid: readTileGrid(kaartPad(folder)) }
+    tegelsVoorBus.set(folder, tegels)
   }
+  const tegel = tegels.lijst[mem.tile]
+  if (!tegel || !tegels.grid) return undefined
+  const [ox, oy] = tegels.grid.offset(tegel.tx, tegel.ty)
+  return { x: ox + mem.x, y: oy + mem.z }
+}
 
-  let nieuw: Duty | undefined
+/** De datum in het spel als jjjj-mm-dd, of die van de situatie. */
+function speldatum(live: LiveData, rit: NonNullable<typeof vrijeRit>): string | undefined {
+  if (live.year > 1900 && live.month >= 1 && live.day >= 1) {
+    return `${live.year}-${String(live.month).padStart(2, '0')}-${String(live.day).padStart(2, '0')}`
+  }
+  return rit.datum
+}
+
+/**
+ * Een nieuwe staat, en alleen als hij anders is dan de vorige -- of als de
+ * dienst veranderde. Het rijscherm krijgt hem met de dienst en de IBIS-codes;
+ * de overlay en de telefoon in het volgende beeld.
+ */
+function zetVrijeStaat(staat: VrijStaat, dienstGewijzigd = false): void {
+  if (!dienstGewijzigd && JSON.stringify(staat) === JSON.stringify(vrijStaat)) return
+  vrijStaat = staat
+  lastFrame = undefined
+  if (mainWindow && !mainWindow.isDestroyed() && vrijeRit) {
+    mainWindow.webContents.send('vrij:staat', {
+      staat,
+      duty: overlayDuty,
+      ibis: overlayIbis,
+      kaart: vrijeRit.mapName,
+      mapFolder: vrijeRit.mapFolder
+    })
+  }
+}
+
+/** De gevolgde omloop loslaten: OMSI rijdt hem niet meer. */
+function wisGevolgd(): void {
+  overlayDuty = undefined
+  overlayIbis = undefined
+  volg.sleutel = ''
+  /*
+   * Zonder gevolgde omloop mag de kaartherkenning weer beslissen. Bleef de
+   * koppeling van daarnet gelden, dan merkte de app een andere kaart die de
+   * speler daarna in OMSI laadde de hele rit niet meer op.
+   */
+  volg.gekoppeldOp = ''
+  volg.omloop = undefined
+  lastFrame = undefined
+}
+
+/**
+ * De kaart wisselen naar die van OMSI. De speler koos er in de app een, maar
+ * laadde in OMSI een andere; dan volgt de navigatie OMSI.
+ */
+async function wisselKaart(rit: NonNullable<typeof vrijeRit>, folder: string, waarom: string): Promise<void> {
   try {
-    nieuw = dutyFromTour(map(rit.mapFolder), network(rit.mapFolder), {
-      ...keuze,
-      clockMinutes: live.time / 60
+    await zorgVoorKaart(folder)
+  } catch (fout) {
+    logFout(`kaart ${folder} klaarzetten`, fout)
+  }
+  if (vrijeRit !== rit) return
+  const oud = rit.mapName
+  rit.mapFolder = folder
+  rit.mapName = readMapName(kaartPad(folder)) || folder
+  wisGevolgd()
+  volg.gekoppeldOp = ''
+  // Het oordeel over de oude kaart geldt niet voor de nieuwe; ook niet als de rit er ooit terugkomt.
+  herkenning.uitkomst = undefined
+  volg.suggesties = []
+  volg.halte = undefined
+  volg.suggestiesOp = 0
+  /*
+   * De volgende staat gaat hoe dan ook naar het rijscherm: die draagt de nieuwe
+   * kaart mee. Was hij gelijk aan de vorige (geen omloop, niets dat vertrekt),
+   * dan hield het rijscherm de naam en het net van de oude kaart.
+   */
+  vrijStaat = undefined
+  volg.gewisseldVan = oud
+  volg.gewisseldOp = Date.now()
+  log(`vrij rijden: OMSI speelt ${rit.mapName}, niet ${oud} (${waarom}); de navigatie volgt die kaart`)
+}
+
+/**
+ * Een andere kaart waar deze keuze van OMSI wel past: het lijnbestand bestaat
+ * er, het ritnummer wijst daar dezelfde rit aan, en de plek van de bus spreekt
+ * het niet tegen. Alleen als er precies een is. In de werker (`elders` in
+ * core/kaartlaag.ts): dat leest de ritnamen en het terrein van andere kaarten.
+ */
+async function andereKaartVoor(
+  rit: NonNullable<typeof vrijeRit>,
+  mem: NonNullable<LiveData['mem']>
+): Promise<string | undefined> {
+  try {
+    return await werkerVraag<string | undefined>({
+      soort: 'elders',
+      folder: rit.mapFolder,
+      keuze: { lineName: mem.lineName, trip: mem.trip, tripName: mem.tripName },
+      monsters
     })
   } catch (fout) {
-    logFout('omloop uit OMSI opbouwen', fout)
-    return
+    logFout('vrij rijden: een andere kaart zoeken', fout)
+    return undefined
   }
-  if (!nieuw) {
-    log(`vrij rijden: lijn ${keuze.lineFile}, omloop ${keuze.tourNumber}, rit ${keuze.tripFile} staat niet in de dienstregeling van ${rit.mapName}`)
-    return
-  }
+}
 
+/** Wat er straks vertrekt, uit de werker; hooguit om de 30 s, of na 250 m rijden. */
+async function geenOmloop(rit: NonNullable<typeof vrijeRit>, live: LiveData): Promise<void> {
+  const bus = busOpKaart(rit.mapFolder, live.mem)
+  const nu = Date.now()
+  const verplaatst =
+    bus && volg.suggestiesBij ? Math.hypot(bus.x - volg.suggestiesBij.x, bus.y - volg.suggestiesBij.y) > 250 : false
+  if (nu - volg.suggestiesOp >= 30_000 || verplaatst) {
+    volg.suggestiesOp = nu
+    volg.suggestiesBij = bus
+    try {
+      const uit = await werkerVraag<{ suggesties: VrijSuggestie[]; halte?: string }>({
+        soort: 'vertrekken',
+        folder: rit.mapFolder,
+        datum: speldatum(live, rit),
+        klok: live.time / 60,
+        bus
+      })
+      if (vrijeRit !== rit) return
+      volg.suggesties = uit.suggesties
+      volg.halte = uit.halte
+    } catch (fout) {
+      logFout('vrij rijden: wat er vertrekt', fout)
+    }
+  }
+  zetVrijeStaat({
+    soort: 'geenOmloop',
+    suggesties: volg.suggesties,
+    halte: volg.halte,
+    losgelaten: volg.losgelaten || undefined
+  })
+}
+
+/** Een gevonden omloop overnemen: de dienst, de IBIS-codes, en de staat. */
+function pasKoppelingToe(
+  rit: NonNullable<typeof vrijeRit>,
+  koppeling: Koppeling,
+  live: LiveData,
+  keuze: OmsiKeuze
+): void {
+  const nieuw = koppeling.duty
+  if (!nieuw) return
   /*
-   * De IBIS-codes van de nieuwe omloop. Het wagenpark ligt naast de bus die je
-   * rijdt -- de bus die OMSI noemt, of anders die van de dienst -- en de codes
-   * verschillen per tijdvak, dus telt het jaar van het spel.
+   * De IBIS-codes. Het wagenpark ligt naast de bus die je rijdt -- de bus die
+   * OMSI noemt, of anders die van de start -- en de codes verschillen per
+   * tijdvak, dus telt het jaar van het spel.
    */
   const busPad = live.bus?.pad ? join(live.bus.pad, 'bus.bus') : rit.vehiclePath
   /*
@@ -1140,8 +1382,9 @@ function volgOmloopInOmsi(live: ReturnType<typeof readLive>): void {
    * en dan kiest buildIbisPlan zelf.
    */
   const zelfdeMap =
-    rit.vehiclePath && busPad && dirname(busPad).toLowerCase().replace(/\\/g, '/') ===
-      dirname(rit.vehiclePath).toLowerCase().replace(/\\/g, '/')
+    rit.vehiclePath &&
+    busPad &&
+    dirname(busPad).toLowerCase().replace(/\\/g, '/') === dirname(rit.vehiclePath).toLowerCase().replace(/\\/g, '/')
   let ibis: IbisPlan | undefined
   if (busPad) {
     try {
@@ -1150,19 +1393,382 @@ function volgOmloopInOmsi(live: ReturnType<typeof readLive>): void {
       logFout('IBIS-codes van de gevolgde omloop', fout)
     }
   }
-
   overlayDuty = nieuw
   overlayIbis = ibis
   /* Er valt niets te aanvaarden: de chauffeur koos deze omloop zelf. */
   telefoon.aanvaard = true
   lastFrame = undefined
+  volg.gekoppeldOp = rit.mapFolder
+  volg.omloop = { lineFile: koppeling.lineFile, tourIndex: koppeling.tourIndex }
+  /*
+   * Gekoppeld: de kaartherkenning rust. Een oordeel van vóór de koppeling hoort
+   * niet te blijven liggen tot ze weer loslaat, en dan meteen te wisselen op
+   * plekken van lang geleden. Bij het loslaten gaat er meteen een nieuwe vraag.
+   */
+  herkenning.uitkomst = undefined
+  herkenning.sleutel = ''
+  volg.losgelaten = false
+  volg.aanrijBereikt = ''
+  const eerste = nieuw.legs[0]
   log(
-    `vrij rijden volgt OMSI: lijn ${nieuw.lineNumbers.join('/') || keuze.lineFile}, omloop ${nieuw.tourNumber}, ` +
-      `${nieuw.legs.length} ritten vanaf ${formatTime(nieuw.start)}${ibis ? `, IBIS lijn ${ibis.line} uit wagenpark ${ibis.yard ?? '?'}` : ''}`
+    `vrij rijden volgt OMSI: lijn ${nieuw.lineNumbers.join('/') || koppeling.lineFile || keuze.lineName}, ` +
+      `omloop ${nieuw.tourNumber}, ${nieuw.legs.length} ${nieuw.legs.length === 1 ? 'rit' : 'ritten'} vanaf ${formatTime(nieuw.start)}` +
+      `${ibis ? `, IBIS lijn ${ibis.line} uit wagenpark ${ibis.yard ?? '?'}` : ''} ` +
+      `(koppeling ${koppeling.soort}, ${koppeling.volgorde ?? '-'}, ${koppeling.zeker ? 'zeker' : 'onzeker'}, ` +
+      `lijnbestand ${koppeling.lineFile ?? '?'}, omloop #${koppeling.tourIndex ?? '?'} "${koppeling.tourNumber ?? ''}", ` +
+      `vanaf rit #${koppeling.entry ?? '?'} ${eerste?.tripFile ?? ''} ${eerste ? formatTime(eerste.departure) : ''})`
   )
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('vrij:gevolgd', { duty: nieuw, ibis })
+  zetVrijeStaat(
+    koppeling.soort === 'rit'
+      ? { soort: 'alleenRit', line: keuze.lineName.trim(), tour: keuze.tourName.trim(), trip: keuze.tripName.trim() }
+      : {
+          soort: 'gevolgd',
+          koppeling: koppeling.soort,
+          line: nieuw.lineNumbers.join('/') || nieuw.lineFile,
+          tour: nieuw.tourNumber
+        },
+    true
+  )
+}
+
+/**
+ * Wat OMSI nu rijdt, en wat de navigatie daarmee doet. Zie VRIJ RIJDEN
+ * hierboven. Eén tegelijk: een tweede aanroep terwijl de werker nog rekent,
+ * doet niets.
+ */
+async function volgOmloopInOmsi(live: LiveData | undefined): Promise<void> {
+  const rit = vrijeRit
+  if (!rit || career?.activeDuty || volg.bezig) return
+  volg.bezig = true
+  try {
+    await volgStap(rit, live)
+  } catch (fout) {
+    logFout('vrij rijden volgen', fout)
+  } finally {
+    volg.bezig = false
   }
+}
+
+async function volgStap(rit: NonNullable<typeof vrijeRit>, live: LiveData | undefined): Promise<void> {
+  const nu = Date.now()
+
+  /* Nog niets van OMSI. Draaide het al bij START en blijft het stil, dan zegt de tekst meer. */
+  if (!live?.alive) {
+    const lang = rit.startMet === 'draaiend' && nu - rit.startTijd > 60_000
+    zetVrijeStaat(lang ? { soort: 'wacht', lang: true } : { soort: 'wacht' })
+    return
+  }
+
+  /* De plugin kan de bus niet lezen: nog geen bus neergezet, of een andere OMSI-versie. */
+  const mem = live.mem
+  if (!mem || mem.ok !== 1) {
+    if (!volg.geenMemSinds) volg.geenMemSinds = nu
+    if (nu - volg.geenMemSinds >= 10_000) {
+      zetVrijeStaat(
+        live.exeVersion === '2.3.004' ? { soort: 'geenBus', klaargezet: rit.klaargezet } : { soort: 'geenGeheugen' }
+      )
+    } else if (!vrijStaat) zetVrijeStaat({ soort: 'wacht' })
+    return
+  }
+  volg.geenMemSinds = 0
+
+  /* Rijdt OMSI een dienstregeling, of is er nog niets gekozen (of losgelaten)? */
+  const actief = mem.schedActive > 0.5 && !(mem.tripName.trim() === '' && mem.tourEntry < 0)
+
+  /*
+   * Staat de bus op deze kaart? Dit is de enige kaartherkenning in het volgen.
+   * Na een mislukte koppeling stond er even een tweede, met dezelfde vraag over
+   * dezelfde monsters en dezelfde kaart (en `gekoppeldOp` verandert daartussen
+   * niet): die wisselde alleen waar deze het in hetzelfde beeld al gedaan had,
+   * en dan was het volgen hier al gestopt. Wat een mislukte koppeling wel
+   * toevoegt, is de dienstregeling van de andere kaarten (andereKaartVoor).
+   */
+  const nieuw = neemMonster(monsters, mem)
+  if (nieuw !== monsters) {
+    monsters = nieuw
+    monsterVersie++
+  }
+  if (volg.gekoppeldOp !== rit.mapFolder && monsters.length >= MIN_MONSTERS) {
+    const herkend = herkenningVoor(rit)
+    if (herkend?.oordeel === 'anders') {
+      if (herkend.wisselNaar) {
+        await wisselKaart(rit, herkend.wisselNaar, 'de plek van de bus')
+        return
+      }
+      /*
+       * Geen of meer kaarten met dit terrein -- HafenCityHamburg, Hamburg109,
+       * Hamburg109_2 en HamburgLi20 delen het hunne -- of een tweede kaart die
+       * er half bij past. Rijdt OMSI een omloop, dan beslist die: het koppelen
+       * hieronder zoekt ook op de andere kaarten (andereKaartVoor). Stond hier
+       * een `return`, dan bleef de navigatie op "niet op deze kaart" staan, ook
+       * nadat de speler een omloop koos.
+       */
+      if (!actief) {
+        zetVrijeStaat({ soort: 'andereKaart' })
+        return
+      }
+    }
+  }
+
+  /* Geen dienstregeling actief: nog niets gekozen, of losgelaten. */
+  if (!actief) {
+    if (!volg.zonderSinds) volg.zonderSinds = nu
+    if (overlayDuty) {
+      /*
+       * Een halve minuut geduld: `schedActive` kan even wegvallen, bij een
+       * eindpunt of een leegrit, en dan hoort de route niet bij elke keerhalte
+       * te verdwijnen.
+       */
+      if (nu - volg.zonderSinds < 30_000) return
+      wisGevolgd()
+      volg.losgelaten = true
+      log('vrij rijden: omloop in OMSI losgelaten')
+    }
+    await geenOmloop(rit, live)
+    return
+  }
+  volg.zonderSinds = 0
+
+  const keuze: OmsiKeuze = {
+    lineName: mem.lineName,
+    tourName: mem.tourName,
+    tripName: mem.tripName,
+    line: mem.line,
+    tour: mem.tour,
+    tourEntry: mem.tourEntry,
+    trip: mem.trip,
+    klok: live.time / 60
+  }
+
+  /* Eens per keuze, en na een halve minuut nog eens: een mislukte koppeling blijft niet stil. */
+  const sleutel = `${rit.sinds}|${rit.mapFolder}|${mem.line}|${vouw(mem.lineName)}|${mem.tour}|${mem.tourEntry}|${vouw(mem.tripName)}`
+  const alGeprobeerd = sleutel === volg.sleutel && nu - volg.sinds < 30_000
+
+  /* Volgt de overlay dit al? Dan valt er niets te doen. */
+  let voorkeur: 'bestand' | 'vertrek' | undefined
+  const nuGevolgd = overlayDuty
+  if (nuGevolgd?.omsi) {
+    const leg = legVolgensOmsi(mem, nuGevolgd)
+    if (leg !== undefined && leg !== null) return
+    if (leg === null && !alGeprobeerd) {
+      /*
+       * Lijn en omloop kloppen, de rit niet: de volgorde van de koppeling was
+       * fout (OMSI telt op vertrektijd, of juist niet). Opnieuw, met de andere
+       * voorop. Gelogd wordt pas na het koppelen, en alleen als er iets
+       * verandert (hieronder).
+       */
+      voorkeur = nuGevolgd.omsi.volgorde === 'bestand' ? 'vertrek' : 'bestand'
+    }
+  } else if (nuGevolgd) {
+    const ritNu = vouw(mem.tripName)
+    /*
+     * Een losse rit (`alleenRit`) hoort bij geen omloop met de naam die OMSI
+     * noemt -- daarom was het een losse rit -- dus telt dan alleen de rit.
+     * Verder moet de naam precies kloppen. Hier stond `naamGelijk`, en die leest
+     * "10" als een verminkte "1": koos de speler omloop "10" terwijl de overlay
+     * "1" volgde, en rijdt "10" een rit die ook in "1" staat (38 van de 40 zulke
+     * paren), dan bleef de overlay "1" volgen (tegenlezing 28-09). Een echt
+     * verminkte naam ("1" met rommel erachter) koppelt nu opnieuw, en daar
+     * beslist `zoekOpNaam` met de dienstregeling erbij; komt dezelfde omloop
+     * terug, dan verandert er niets (hieronder).
+     */
+    const alleenRit = vrijStaat?.soort === 'alleenRit'
+    const zelfde = nuGevolgd.legs.some(
+      (leg) =>
+        vouw(leg.tripFile) === ritNu &&
+        (alleenRit || onbruikbaar(mem.tourName) || vouwNaam(mem.tourName) === vouwNaam(leg.tourNumber))
+    )
+    if (zelfde) return
+  }
+
+  if (!voorkeur && alGeprobeerd) return
+  volg.sleutel = sleutel
+  volg.sinds = nu
+
+  const datum = speldatum(live, rit)
+  let koppeling: Koppeling
+  try {
+    koppeling = await werkerVraag<Koppeling>({ soort: 'koppel', folder: rit.mapFolder, keuze, datum, voorkeur })
+  } catch (fout) {
+    logFout('vrij rijden koppelen', fout)
+    return
+  }
+  if (vrijeRit !== rit || volg.sleutel !== sleutel) return
+  if (koppeling.soort === 'index' || koppeling.soort === 'vertrek' || koppeling.soort === 'naam') {
+    /*
+     * Op naam dezelfde omloop als die de overlay al volgt, en de rit staat erin:
+     * een verminkte naam van één teken, die hierboven niet precies klopte. Dan
+     * niets opnieuw: anders stond hier elke halve minuut "volgt OMSI" in het
+     * logboek, met nieuwe IBIS-codes.
+     */
+    if (
+      !voorkeur &&
+      koppeling.soort === 'naam' &&
+      nuGevolgd &&
+      !nuGevolgd.omsi &&
+      overlayDuty === nuGevolgd &&
+      volg.omloop !== undefined &&
+      volg.omloop.lineFile === koppeling.lineFile &&
+      volg.omloop.tourIndex === koppeling.tourIndex &&
+      nuGevolgd.legs.some((leg) => vouw(leg.tripFile) === vouw(mem.tripName))
+    ) {
+      return
+    }
+    const was = voorkeur ? overlayDuty?.omsi : undefined
+    if (was) {
+      /*
+       * Een poging om de volgorde recht te zetten. Klopt maar één volgorde,
+       * dan komt er elke halve minuut precies dezelfde koppeling terug als die
+       * er al ligt -- en dan stond hier elke 30 s "volgorde gecorrigeerd" in
+       * het logboek, met "volgt OMSI" en nieuwe IBIS-codes erachter. Dezelfde
+       * koppeling: niets opnieuw, niets gelogd. Een andere: dan pas de regel.
+       */
+      const nu = koppeling.duty?.omsi
+      const zelfde =
+        nu !== undefined &&
+        nu.lineFile === was.lineFile &&
+        nu.tourIndex === was.tourIndex &&
+        nu.volgorde === was.volgorde &&
+        nu.vanaf === was.vanaf &&
+        nu.koppeling === was.koppeling
+      if (zelfde) return
+      if (koppeling.volgorde !== was.volgorde) {
+        log(
+          `vrij rijden: volgorde gecorrigeerd bij rit #${mem.tourEntry} ${mem.tripName.trim()} ` +
+            `(was ${was.volgorde}, nu ${koppeling.volgorde ?? `koppeling ${koppeling.soort}`})`
+        )
+      }
+    }
+    pasKoppelingToe(rit, koppeling, live, keuze)
+    return
+  }
+
+  /* Niet in deze dienstregeling. Past het op precies één andere kaart, dan rijdt OMSI daar. */
+  const elders = await andereKaartVoor(rit, mem)
+  if (vrijeRit !== rit || volg.sleutel !== sleutel) return
+  if (elders) {
+    try {
+      const daar = await werkerVraag<Koppeling>({ soort: 'koppel', folder: elders, keuze, datum })
+      if (vrijeRit !== rit) return
+      if (daar.soort === 'index' || daar.soort === 'vertrek' || daar.soort === 'naam') {
+        await wisselKaart(rit, elders, `lijn ${keuze.lineName.trim()} staat daar`)
+        if (vrijeRit !== rit) return
+        volg.sleutel = sleutel
+        pasKoppelingToe(rit, daar, live, keuze)
+        return
+      }
+    } catch (fout) {
+      logFout('vrij rijden koppelen op een andere kaart', fout)
+    }
+  }
+  if (koppeling.soort === 'rit' && koppeling.duty) {
+    pasKoppelingToe(rit, koppeling, live, keuze)
+    return
+  }
+
+  /* Nergens te vinden: de oude dienst hoort dan niet te blijven staan alsof hij klopt. */
+  wisGevolgd()
+  volg.sleutel = sleutel
+  zetVrijeStaat({ soort: 'onbekend', line: mem.lineName.trim(), tour: mem.tourName.trim(), trip: mem.tripName.trim() }, true)
+  if (!volg.onbekendGelogd.has(sleutel)) {
+    volg.onbekendGelogd.add(sleutel)
+    log(
+      `vrij rijden: lijn ${mem.lineName.trim()} (#${mem.line}), omloop ${mem.tourName.trim()} (#${mem.tour}), ` +
+        `rit ${mem.tripName.trim()} (#${mem.tourEntry}) staat niet in de dienstregeling van ${rit.mapName}`
+    )
+  }
+}
+
+/**
+ * Wat een beeld van de overlay over vrij rijden meekrijgt, met de aanrijlijn:
+ * staat de bus meer dan 150 m van de eerste halte van een rit die nog niet
+ * begonnen is, dan een rechte lijn erheen met de afstand (fase 1: geen
+ * route). Weg zodra de bus binnen 60 m is.
+ */
+function vrijBeeld(
+  duty: Duty | undefined,
+  status: ReturnType<typeof describeLive> | undefined,
+  vehicle: VehiclePosition | undefined
+): VrijBeeld | undefined {
+  const rit = vrijeRit
+  if (!rit || career?.activeDuty) return undefined
+  const beeld: VrijBeeld = { kaart: rit.mapName, mapFolder: rit.mapFolder, staat: vrijStaat }
+  if (volg.gewisseldVan && Date.now() - volg.gewisseldOp < 30_000) beeld.gewisseldVan = volg.gewisseldVan
+  if (duty && vehicle && status && vrijStaat?.soort === 'gevolgd') {
+    const leg = duty.legs[status.legIndex ?? 0]
+    const legSleutel = leg ? `${leg.tripFile}@${leg.departure}` : ''
+    if (leg && !leg.leer && (status.stopIndex ?? 0) === 0 && volg.aanrijBereikt !== legSleutel) {
+      try {
+        if (laag().kaartStaatKlaar(rit.mapFolder)) {
+          const stops = mapGeometry(rit.mapFolder).stops
+          const doel = leg.stopIds.map((id) => stops.find((stop) => stop.id === id)).find((stop) => stop !== undefined)
+          if (doel) {
+            const meters = Math.hypot(doel.x - vehicle.x, doel.y - vehicle.y)
+            if (meters <= 60) volg.aanrijBereikt = legSleutel
+            else if (meters > 150) {
+              beeld.aanrij = {
+                naar: doel.name,
+                meters: Math.round(meters),
+                punten: [vehicle.x, vehicle.y, doel.x, doel.y],
+                gok: true
+              }
+            }
+          }
+        }
+      } catch {
+        // Zonder tekening geen aanrijlijn; de rest van de navigatie werkt gewoon.
+      }
+    }
+  }
+  return beeld
+}
+
+/**
+ * De laatste controle per kaart, met alles erop en eraan. START krijgt van het
+ * scherm alleen het nummer van het inzetpunt; zo staat de bus waar de voet het
+ * zei, met de reden erbij voor het logboek (tegenlezing M6).
+ */
+const laatsteControle = new Map<string, VrijCheckVol>()
+
+async function vrijeControle(folder: string, wanneer?: VrijWanneer): Promise<VrijCheckVol> {
+  const uit = await werkerVraag<VrijCheckVol>({ soort: 'vrijcheck', folder, wanneer })
+  laatsteControle.set(folder, uit)
+  return uit
+}
+
+/**
+ * Het wagenpark waarmee START de bus neerzet. Het scherm stuurt het voorstel
+ * mee zodra de wagenparken van deze bus binnen zijn, maar die vraag staat in
+ * de rij van de werker achter het busvoorstel en de controle (koud HamburgLi20
+ * 1759 ms): wie binnen twee tellen na VERDER op START drukte, kreeg geen
+ * wagenpark, en OMSI koos er zelf een -- met misschien de codes van een ander
+ * `.hof` (tegenlezing 28-09). Hoort het genoemde wagenpark niet bij deze bus
+ * (het scherm had nog die van de vorige), dan telt het ook niet. Dan hier het
+ * voorstel van deze kaart, zoals `free:yards` het geeft.
+ */
+async function wagenparkVoorStart(folder: string, vehiclePath: string, gevraagd?: string): Promise<string | undefined> {
+  try {
+    const opties = await werkerVraag<YardOption[]>({
+      soort: 'vrijewagenparken',
+      folder,
+      vehiclePath: String(vehiclePath),
+      year: era(folder).year
+    })
+    if (gevraagd && opties.some((optie) => optie.name === gevraagd)) return gevraagd
+    return opties.find((optie) => optie.suggested)?.name
+  } catch (fout) {
+    logFout('vrij rijden: het wagenpark bij START', fout)
+    return gevraagd
+  }
+}
+
+/** Het inzetpunt dat het scherm noemde, als het nog bestaat. Een halte (nummer -1) alleen uit de controle. */
+function inzetpuntVoorStart(folder: string, nr: number): Beginplek | undefined {
+  const bekend = laatsteControle.get(folder)?.plek
+  if (bekend && bekend.nr === nr) return bekend
+  if (nr < 0) return undefined
+  const punt = leesInzetpunten(kaartPad(folder)).find((item) => item.nr === nr)
+  return punt ? plekVanInzetpunt(punt, { bron: 'eerste', aantal: 0, klok: 0 }) : undefined
 }
 
 /** Een vrije rit afsluiten: de overlay dicht, en wat hij volgde weg. */
@@ -1170,7 +1776,7 @@ function stopVrijeRit(): void {
   if (!vrijeRit) return
   log(`vrij rijden gestopt: ${vrijeRit.mapName}`)
   vrijeRit = undefined
-  gevolgd = ''
+  vergeetVolgen()
   overlayDuty = undefined
   overlayIbis = undefined
   closeOverlay()
@@ -1594,7 +2200,8 @@ async function herstelStartscherm(): Promise<void> {
   if (netAf) meldPluginLogboek('OMSI is net afgesloten')
   if (!netAf || !klaargezet) return
   try {
-    presetStartup(omsi(), klaargezet.mapFolder, klaargezet.file)
+    const startup = presetStartup(omsi(), klaargezet.mapFolder, klaargezet.file)
+    if (startup.weerFout) log(`startscherm hersteld, maar het weer niet: ${startup.weerFout}`)
   } catch {
     // Geen schrijfrechten; dan kiest de speler de kaart zelf.
   }
@@ -1677,7 +2284,8 @@ function vehicleOnMap(live: ReturnType<typeof readLive>, duty: Duty | undefined)
   try {
     let tracker = vehicleTrackers.get(kaart)
     if (!tracker) {
-      tracker = new VehicleTracker(map(kaart).path)
+      // Het pad, niet map(kaart): dat laadt de hele dienstregeling in het hoofdproces.
+      tracker = new VehicleTracker(join(omsi(), 'maps', kaart))
       vehicleTrackers.set(kaart, tracker)
     }
     const network = laneNetwork(kaart)
@@ -2849,20 +3457,22 @@ function pushFrame(): void {
   spoorVanDeVerkoop(live)
   telVerkoop(live)
   captureBaseline(live)
-  volgOmloopInOmsi(live)
+  void volgOmloopInOmsi(live)
   const duty = currentDuty()
+  const status = live ? describeLive(live, duty, nulmeting(), busApparaten(live)) : undefined
+  const vehicle = vehicleOnMap(live, duty)
   const frame = {
     connected: Boolean(live?.alive),
     laadt: laadtOmsi(Boolean(live?.alive)),
-    status: live ? describeLive(live, duty, nulmeting(), busApparaten(live)) : undefined,
-    vehicle: vehicleOnMap(live, duty),
+    status,
+    vehicle,
     duty,
     ibis: overlayIbis,
-    /* Een vrije rit: dan zegt de overlay hoe je in OMSI een omloop kiest, zolang er geen is. */
-    vrij:
-      vrijeRit && !career?.activeDuty
-        ? { kaart: vrijeRit.mapName, mapFolder: vrijeRit.mapFolder }
-        : undefined,
+    /*
+     * Een vrije rit: de staat die het volgen uitrekende (wachten, geen omloop
+     * met wat er straks vertrekt, de gevolgde omloop, ...) en de aanrijlijn.
+     */
+    vrij: vrijBeeld(duty, status, vehicle),
     /*
      * De kaartjes van deze kaart gaan mee in het beeld. Ze veranderen niet
      * tijdens een dienst, maar de overlay heeft geen eigen brug naar het
@@ -3355,6 +3965,7 @@ function prepareSituation(
 
   // En het startscherm van OMSI erop zetten, zodat Start genoeg is.
   const startup = presetStartup(omsi(), duty.mapFolder, result.file)
+  if (startup.weerFout) log(`dienst klaargezet, maar het weer naast laststn.osn niet: ${startup.weerFout}`)
   klaargezet = { mapFolder: duty.mapFolder, file: result.file }
   // `timetableSet` blijft onwaar: de chauffeur kiest de omloop zelf in OMSI.
   return { ...result, date: when, startup, timetableSet: false }
@@ -4441,66 +5052,149 @@ function registerHandlers(): void {
   )
 
   /**
-   * Vrij rijden: kaart, beginpunt en bus klaarzetten, en verder niets.
+   * Vrij rijden: kan de bus op deze kaart neer, en waar? De voet van de
+   * kaartstap, en wat START straks gebruikt. In de werker: de dienstregeling
+   * en de tekening van de kaart horen niet in het hoofdproces.
+   */
+  handle('free:check', async (_event, folder: string, wanneer?: VrijWanneer): Promise<FreeCheck> => {
+    const uit = await vrijeControle(String(folder), wanneer)
+    return {
+      ok: uit.ok,
+      fout: uit.fout,
+      plek: uit.plek && {
+        nr: uit.plek.nr,
+        naam: uit.plek.naam,
+        bron: uit.plek.bron,
+        aantal: uit.plek.aantal,
+        tot: uit.plek.tot,
+        eerste: uit.plek.eerste,
+        x: uit.plek.wereld.x,
+        y: uit.plek.wereld.y,
+        heading: uit.plek.spawn.heading
+      },
+      moment: { iso: uit.moment.iso, minutes: uit.moment.minutes, bron: uit.moment.bron }
+    }
+  })
+
+  /**
+   * Vrij rijden: de bus neerzetten, klaarzetten, OMSI starten. Geen dienst,
+   * niets in het profiel, niets geboekt; welke omloop je rijdt kies je daarna in
+   * OMSI, en de navigatie vindt hem (volgOmloopInOmsi).
    *
-   * Geen dienst, niets in het profiel, niets geboekt. De datum komt uit het
-   * tijdvak van de kaart en de tijd van de klok van de pc; welke omloop je rijdt
-   * kies je daarna zelf in OMSI, en de overlay volgt dat (volgOmloopInOmsi).
-   * Draait OMSI al, dan wordt er niets klaargezet -- het spel leest zijn
-   * startscherm alleen bij het opstarten -- en gaat de overlay meteen open.
+   * De volgorde staat in core/vrijstart.ts; hier alleen wat Electron nodig
+   * heeft. De vrije rit bestaat pas als er geschreven is -- een weigering laat
+   * niets achter -- en de overlay gaat alleen open als OMSI al draait: anders
+   * hing hij over het bureaublad terwijl de speler OMSI nog moest starten. Het
+   * startvenster op het rijscherm opent hem zodra OMSI er is.
    */
   handle('free:start', async (_event, request: FreeRequest): Promise<FreeResult> => {
-    const running = await isOmsiRunning(`${OMSI_PROCES}.exe`)
+    const folder = String(request.mapFolder)
+    const instellingen = readSettings(userData())
+    const yard = request.vehiclePath ? await wagenparkVoorStart(folder, request.vehiclePath, request.yard) : undefined
+    const vehicle = request.vehiclePath
+      ? {
+          relativePath: request.vehiclePath,
+          lineNumber: '',
+          terminus: '',
+          yard,
+          vars: kleurVars(request.vehiclePath, request.kleurstelling),
+          // Een gelede bus is twee voertuigen; zonder dit begin je met een halve.
+          trailer: aanhangerVan(request.vehiclePath, request.kleurstelling)
+        }
+      : undefined
+    const uitkomst = await startVrijeRit(
+      {
+        isRunning: () => isOmsiRunning(`${OMSI_PROCES}.exe`),
+        check: (kaart, wanneer) => vrijeControle(kaart, wanneer),
+        inzetpunt: (kaart, nr) => inzetpuntVoorStart(kaart, nr),
+        writeSituation: (situatie) => writeSituation(omsi(), situatie),
+        presetStartup: (kaart, file) => presetStartup(omsi(), kaart, file),
+        schrijfStraks: () => schrijfStraks('voor het starten van OMSI'),
+        launchOmsi: () => launchOmsi(omsi(), instellingen.windowedOmsi),
+        log
+      },
+      {
+        mapFolder: folder,
+        vehicle,
+        wanneer: request.wanneer,
+        weather: request.weather,
+        plek: request.plek,
+        moment: request.moment,
+        naam: `OMSI Enhancer — ${t(instellingen.language, 'mode.free')}`,
+        beschrijving: `${t(instellingen.language, 'mode.free')}.`
+      }
+    )
+    const { running } = uitkomst
+    if (uitkomst.fout) {
+      log(`vrij rijden geweigerd: ${uitkomst.fout}${uitkomst.foutTekst ? ` (${uitkomst.foutTekst})` : ''}`)
+      return { running, launched: false, klaargezet: 'niets', fout: uitkomst.fout, foutTekst: uitkomst.foutTekst }
+    }
+
     stopVrijeRit()
     vrijeRitten += 1
+    const mapName = readMapName(kaartPad(folder)) || folder
+    const moment = uitkomst.moment
+    const iso = moment
+      ? new Date(Date.UTC(moment.year, 0, moment.dayOfYear)).toISOString().slice(0, 10)
+      : undefined
     vrijeRit = {
-      mapFolder: request.mapFolder,
-      mapName: map(request.mapFolder).name,
+      mapFolder: folder,
+      mapName,
       vehiclePath: request.vehiclePath,
-      yard: request.yard,
-      sinds: new Date().toISOString()
+      yard,
+      sinds: new Date().toISOString(),
+      plek: uitkomst.plek?.naam,
+      klaargezet: uitkomst.klaargezet,
+      startMet: running ? 'draaiend' : 'dicht',
+      startTijd: Date.now(),
+      datum: iso
     }
-    log(
-      `vrij rijden: ${vrijeRit.mapName}, bus ${request.vehiclePath ?? '?'}, beginpunt ${request.stopId ?? 'geen'}, ` +
-        `wagenpark ${request.yard ?? 'door OMSI gekozen'}` +
-        (running ? ' -- OMSI draait al, niets klaargezet' : '')
-    )
 
-    let launched = false
-    if (!running) {
-      const result = writeSituation(omsi(), {
-        mapFolder: request.mapFolder,
-        name: 'OMSI Enhancer — vrij rijden',
-        description: `Vrij rijden vanaf ${formatTime(request.minutes)}.`,
-        year: request.year,
-        dayOfYear: request.dayOfYear,
-        minutes: request.minutes,
-        vehicle: request.vehiclePath
-          ? {
-              relativePath: request.vehiclePath,
-              lineNumber: '',
-              terminus: '',
-              yard: request.yard,
-              vars: kleurVars(request.vehiclePath, request.kleurstelling),
-              // Een gelede bus is twee voertuigen; zonder dit begin je met een halve.
-              trailer: aanhangerVan(request.vehiclePath, request.kleurstelling)
-            }
-          : undefined,
-        spawn: request.vehiclePath ? spawnFor(request.mapFolder, request.stopId) : undefined,
-        weather: request.weather
-      })
-      presetStartup(omsi(), request.mapFolder, result.file)
-      klaargezet = { mapFolder: request.mapFolder, file: result.file }
-      try {
-        /* Knoppen die nog aan een toets moesten: nu kan het, OMSI is nog dicht. */
-        await schrijfStraks('voor het starten van OMSI')
-        launched = (await launchOmsi(omsi(), readSettings(userData()).windowedOmsi)) === 'gestart'
-      } catch {
-        // Lukt starten niet, dan doet de speler het zelf.
-      }
+    const plek = uitkomst.plek
+    const weerVan = uitkomst.situatie?.weerVan
+    const weer = request.weather ?? (weerVan ? `van de kaart (${weerVan})` : 'standaard')
+    const tijd = moment ? formatTime(moment.minutes) : '?'
+    log(
+      `vrij rijden: ${mapName}, bus ${request.vehiclePath ?? '?'}, ` +
+        (plek
+          ? `beginplek "${plek.naam}" (${plek.bron}, ${plek.aantal} ${plek.aantal === 1 ? 'vertrek' : 'vertrekken'}${plek.tot !== undefined ? ` tot ${formatTime(plek.tot)}` : ''}), `
+          : 'geen beginplek, ') +
+        `wagenpark ${yard ?? 'door OMSI gekozen'}${yard && yard !== request.yard ? ' (voorstel bij START)' : ''}, ${iso ?? '?'} ${tijd} ` +
+        `(${request.wanneer?.tijd !== undefined || request.wanneer?.datum ? 'gekozen' : 'automatisch'}), weer ${weer}` +
+        (running ? ' -- OMSI draait al' : '')
+    )
+    log(
+      `vrij rijden klaargezet: ${uitkomst.klaargezet} (laatste situatie ${uitkomst.startup?.lastSituation ? 'ja' : 'nee'}, ` +
+        `last_map ${uitkomst.startup?.lastMap ? 'ja' : 'nee'}` +
+        `${uitkomst.startup?.weerFout ? `, weer niet: ${uitkomst.startup.weerFout}` : ''})`
+    )
+    /* Alleen wat werkelijk als startscherm klaarstaat, wordt na het afsluiten van OMSI opnieuw klaargezet. */
+    if (uitkomst.startup?.lastSituation && uitkomst.situatie) {
+      klaargezet = { mapFolder: folder, file: uitkomst.situatie.file }
+    } else {
+      /*
+       * En wat een eerdere rit in deze sessie klaarzette, geldt dan niet meer
+       * (net als bij meerijden). Bleef het staan, dan zette herstelStartscherm
+       * bij het afsluiten van OMSI die oude dienst of rit weer in het startscherm.
+       */
+      klaargezet = undefined
     }
-    if (freshLive()?.alive) openOverlay(undefined)
-    return { running, launched }
+    if (!running) {
+      log(
+        `vrij rijden: OMSI starten ${uitkomst.start === 'mislukt' ? `mislukt: ${uitkomst.foutTekst ?? 'onbekend'}` : (uitkomst.start ?? '?')}`
+      )
+    }
+    if (running) openOverlay(undefined)
+    /* De kaart alvast klaarzetten voor de navigatie, in de werker. */
+    void zorgVoorKaart(folder).catch(() => undefined)
+    return {
+      running,
+      launched: uitkomst.launched,
+      start: uitkomst.start,
+      klaargezet: uitkomst.klaargezet,
+      plek: plek?.naam,
+      foutTekst: uitkomst.foutTekst
+    }
   })
 
   handle('free:stop', () => {
@@ -4521,27 +5215,21 @@ function registerHandlers(): void {
    * (Krefrath.hof bij Krefrath, Grundorf.hof bij Region Grundorf), dan is dat
    * het; anders het wagenpark dat de meeste bestemmingen kent. Wie niets kiest,
    * krijgt dat voorstel bij START (startVrij in App.tsx).
+   *
+   * In de werker (`vrijeWagenparken` in core/kaartlaag.ts): hier kostte het
+   * koud 63 tot 348 ms (de dienstregeling van de kaart) en ook warm nog 30 ms
+   * (22 wagenparken naast de MAN SG van schijf) -- bij elke buskeuze.
    */
   handle(
     'free:yards',
-    (_event, folder: string, vehiclePath: string, year: number): YardOption[] => {
-      const kaart = map(String(folder))
-      const termini = bestemmingenVan(kaart)
-      const hofs = listHofs(join(omsi(), String(vehiclePath)))
-      const suggested = hofVoorKaart(hofs, kaart, termini, year)
-      return hofs
-        .map((hof) => ({
-          name: hof.name,
-          known: matchHof(hof, termini).matched,
-          total: termini.length,
-          suggested: hof.name === suggested
-        }))
-        .sort((a, b) => b.known - a.known || a.name.localeCompare(b.name))
-    }
+    (_event, folder: string, vehiclePath: string, year: number): Promise<YardOption[]> =>
+      werkerVraag<YardOption[]>({
+        soort: 'vrijewagenparken',
+        folder: String(folder),
+        vehiclePath: String(vehiclePath),
+        year
+      })
   )
-
-  /* Per halte welke lijnen er stoppen en of ritten er beginnen; zie core/haltes.ts. */
-  handle('map:haltes', (_event, folder: string) => haltesVan(map(String(folder))))
 
   /**
    * De chauffeur neemt een dienst aan. Vanaf nu staat hij in het profiel en
@@ -4679,16 +5367,33 @@ function registerHandlers(): void {
      */
     if (live?.alive) openOverlay(duty, ibis)
 
-    // Het spel erbij starten, tenzij het al draait (zie `running` hierboven).
+    /*
+     * Het spel erbij starten, tenzij het al draait (zie `running` hierboven).
+     * Zoals bij vrij rijden (core/vrijstart.ts): de wachtende knoppen in een
+     * eigen `try`. Stonden ze in dezelfde als het starten, dan sloeg een fout
+     * in keyboard.cfg het starten van OMSI over -- met de dienst klaargezet en
+     * de speler die wachtte op een spel dat niet kwam. Hoe het starten afliep
+     * gaat mee terug, zodat de voet de reden kan noemen.
+     */
     let launched = false
+    let start: LaunchResult | undefined
+    let startFout: string | undefined
     if (!running) {
       try {
         /* Knoppen die nog aan een toets moesten: nu kan het, OMSI is nog dicht. */
         await schrijfStraks('voor het starten van OMSI')
-        launched = (await launchOmsi(omsi(), readSettings(userData()).windowedOmsi)) === 'gestart'
-      } catch {
-        // Lukt starten niet, dan doet de speler het zelf; de overlay staat klaar.
+      } catch (fout) {
+        log(`dienst: knoppen bijschrijven mislukt (${fout instanceof Error ? fout.message : String(fout)}); OMSI start toch`)
       }
+      try {
+        start = await launchOmsi(omsi(), readSettings(userData()).windowedOmsi)
+      } catch (fout) {
+        // Lukt starten niet, dan doet de speler het zelf; de overlay staat klaar.
+        start = 'mislukt'
+        startFout = fout instanceof Error ? fout.message : String(fout)
+      }
+      launched = start === 'gestart'
+      log(`dienst: OMSI starten ${start}${startFout ? `: ${startFout}` : ''}`)
     }
     /*
      * Vanaf hier houden we in de gaten of het spel weer dichtgaat. Doet het dat,
@@ -4700,6 +5405,8 @@ function registerHandlers(): void {
       connected: Boolean(live?.alive),
       launched,
       running,
+      start,
+      startFout,
       meegereden: meerijden,
       prepared,
       prepareError
@@ -5511,6 +6218,18 @@ if (!app.requestSingleInstanceLock()) {
       } catch (fout) {
         if (!spoorFoutGemeld) logFout('meetlus', fout)
         spoorFoutGemeld = true
+      }
+    }, 1000).unref?.()
+    /*
+     * Vrij rijden volgt ook met de overlay dicht: dan loopt `pushFrame` niet,
+     * en het rijscherm hoort toch te weten wat OMSI rijdt. Kijkt de overlay of
+     * een toestel, dan doet `pushFrame` het al.
+     */
+    setInterval(() => {
+      try {
+        if (vrijeRit && !overlayIsOpen() && !apparaatKijkt()) void volgOmloopInOmsi(freshLive())
+      } catch (fout) {
+        logFout('vrij rijden volgen', fout)
       }
     }, 1000).unref?.()
     career = resolveActive(userData())

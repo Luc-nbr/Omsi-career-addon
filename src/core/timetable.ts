@@ -112,13 +112,23 @@ export function readTours(path: string): Tour[] {
    * onderaan zet.
    */
   let userAllowed = false
+  /*
+   * De nummers waaronder OMSI een omloop en een rit in zijn geheugen zet: de
+   * plek in het bestand. Een omloop zonder ritten en een leeg `[addtrip]`
+   * tellen mee, anders loopt de telling achter op die van OMSI.
+   */
+  let tourIndex = -1
+  let entry = 0
   for (const block of parseOmsiFile(path, LINE_SCHEMA)) {
     if (block.tag === '[userallowed]') {
       userAllowed = true
     } else if (block.tag === '[newtour]') {
+      tourIndex++
+      entry = 0
       current = {
         lineFile,
         userAllowed,
+        index: tourIndex,
         number: str(block.values[0]),
         depot: str(block.values[1]),
         // Alle dagen als het veld ontbreekt; dan sluit niets onnodig af.
@@ -128,12 +138,14 @@ export function readTours(path: string): Tour[] {
       tours.push(current)
     } else if (block.tag === '[addtrip]' && current) {
       // velden: ritbestand, profiel-index, vertrek in minuten na middernacht
+      const plek = entry++
       const tripFile = str(block.values[0])
       if (!tripFile) continue
       current.trips.push({
         tripFile,
         profileIndex: Math.max(0, Math.round(num(block.values[1]))),
-        departure: num(block.values[2])
+        departure: num(block.values[2]),
+        entry: plek
       })
     }
   }
@@ -299,7 +311,7 @@ export function readMapOverview(
 }
 
 /** De leesbare kaartnaam staat als `[name]`-blok in global.cfg. */
-function readMapName(mapPath: string): string {
+export function readMapName(mapPath: string): string {
   try {
     const lines = readOmsiLines(join(mapPath, 'global.cfg'))
     const index = lines.findIndex((line) => line.trim() === '[name]')

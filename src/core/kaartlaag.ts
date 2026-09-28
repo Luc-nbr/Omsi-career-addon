@@ -1,5 +1,29 @@
-import { join } from 'node:path'
+import { existsSync, readdirSync } from 'node:fs'
+import { extname, join } from 'node:path'
+import {
+  kiesVertrekplek,
+  leesInzetpunten,
+  minutenNa,
+  tegelsCompleet,
+  vertrekkenOp,
+  type Beginplek,
+  type Inzetpunt,
+  type Vertrek,
+  type VrijCheckVol
+} from './beginplek'
 import { dateForMask, dayKind, readCalendar, type Calendar } from './calendar'
+import {
+  komendeVertrekken,
+  koppelOmsiKeuze,
+  onbruikbaar,
+  ritIndexKlopt,
+  type Koppeling,
+  type OmsiKeuze
+} from './omloopvolgen'
+import { herkenKaart, type Herkenning, type Monster } from './kaartherkenning'
+import { bestemmingenVan } from './haltes'
+import { hofVoorKaart, listHofs, matchHof, type Hof } from './hof'
+import { spawnAtStop } from './spawn'
 import { generateDuties, buildNetwork, type Network } from './duty'
 import {
   buildFleetIndex,
@@ -13,9 +37,9 @@ import {
 import { bouwBusTekeningMetPlaten, type BusTekeningMetPlaten } from './busbeeld'
 import { kleurstellingenVanBus } from './kleurstelling'
 import type { BusKleurstellingen } from '../shared/api'
-import { readMapData, type Lane, type MapGeometry } from './geo'
+import { readMapData, readTileGrid, type Lane, type MapGeometry } from './geo'
 import { leesUitCache, schrijfInCache, vingerafdruk } from './kaartcache'
-import { LaneNetwork, routeForTrip, type TripRoute } from './routing'
+import { LaneNetwork, routeForTrip, routeZonderHaltes, type TripRoute } from './routing'
 import { findTemplate, readSituationTime } from './situation'
 import { listMaps, loadMap, readMapOverview } from './timetable'
 import { listVehicles, type Vehicle } from './vehicles'
@@ -27,7 +51,6 @@ import {
   type BusHofState,
   type HofFile
 } from './hofTool'
-import type { Hof } from './hof'
 import type { OmsiMap } from './types'
 import {
   TIME_WINDOWS,
@@ -35,7 +58,10 @@ import {
   type DutyDate,
   type DutyRequest,
   type HofOffer,
-  type MapSummary
+  type MapSummary,
+  type VrijSuggestie,
+  type VrijWanneer,
+  type YardOption
 } from '../shared/api'
 
 /**
@@ -125,6 +151,50 @@ export interface Kaartlaag {
   bustekening(busPad: string, kleurstelling?: string): BusTekeningMetPlaten | undefined
   /** De kleurstellingen van een bus, zonder de texturen; zie kleurstelling.ts. */
   kleurstellingen(busPad: string): BusKleurstellingen | undefined
+  /*
+   * VRIJ RIJDEN. Alles hieronder draait in de werker: een dienstregeling of
+   * rijstrokennet inlezen hoort niet in het hoofdproces (tegenlezing B3 --
+   * HamburgLi20 koud 1759 ms, Ahlheim 3084 ms voor het net).
+   */
+  /** Kan de bus op deze kaart neer, waar, en wanneer. Zie core/beginplek.ts. */
+  vrijCheck(folder: string, wanneer?: VrijWanneer): VrijCheckVol
+  /** De inzetpunten van de kaart die bruikbaar zijn. */
+  inzetpunten(folder: string): Inzetpunt[]
+  /** De `.ttl`-bestanden in de volgorde van readdir, zonder extensie: OMSI's lijnnummers. */
+  ttlNamen(folder: string): string[]
+  /** Idem de `.ttp`-bestanden: OMSI's ritnummers. */
+  ttpNamen(folder: string): string[]
+  /** De omloop die OMSI rijdt, teruggevonden in de dienstregeling; zie core/omloopvolgen.ts. */
+  koppel(folder: string, keuze: OmsiKeuze, datum?: string, voorkeur?: 'bestand' | 'vertrek'): Koppeling
+  /** Wat er straks vertrekt, voor wie nog geen omloop koos; met de halte waar de bus staat. */
+  vertrekken(
+    folder: string,
+    datum: string | undefined,
+    klok: number,
+    bus?: { x: number; y: number }
+  ): { suggesties: VrijSuggestie[]; halte?: string }
+  /**
+   * Staat de bus op deze kaart, en zo niet, op welke dan? Zie
+   * core/kaartherkenning.ts. De eerste keer leest dit global.cfg en het terrein
+   * van alle kaarten: 62 tot 75 ms, te veel voor het hoofdproces.
+   */
+  herken(folder: string, monsters: Monster[]): Herkenning
+  /**
+   * Een andere kaart waar deze keuze van OMSI wel past: het lijnbestand bestaat
+   * er, het ritnummer wijst daar dezelfde rit aan, en de plek van de bus spreekt
+   * het niet tegen. Alleen als er precies één is.
+   */
+  elders(
+    folder: string,
+    keuze: { lineName: string; trip: number; tripName: string },
+    monsters: Monster[]
+  ): string | undefined
+  /**
+   * De wagenparken naast een bus, gemeten aan alle eindbestemmingen van de
+   * kaart: vrij rijden heeft vooraf geen dienst. Koud 63 tot 348 ms (de
+   * dienstregeling, en 22 wagenparken naast de MAN SG: 30 ms, ook warm).
+   */
+  vrijeWagenparken(folder: string, vehiclePath: string, year: number): YardOption[]
 }
 
 export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
@@ -139,9 +209,16 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
   const laneCache = new Map<string, Lane[]>()
   const laneNetworkCache = new Map<string, LaneNetwork>()
   const routeCache = new Map<string, TripRoute>()
+  const inzetCache = new Map<string, Inzetpunt[]>()
+  const ttlCache = new Map<string, string[]>()
+  const ttpCache = new Map<string, string[]>()
+  const vertrekCache = new Map<string, Vertrek[]>()
+  const ttrBeginCache = new Map<string, Map<string, { x: number; y: number } | null>>()
+  const checkCache = new Map<string, { op: number; uit: VrijCheckVol }>()
   let fleetIndex: FleetIndex | undefined
   let voertuigenCache: Vehicle[] | undefined
   let hofBestanden: HofFile[] | undefined
+  let kaartlijst: { op: number; mappen: string[] } | undefined
 
   const aanbodCache = new Map<string, BusHofState[]>()
 
@@ -296,7 +373,11 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
     tijdvak(folder) {
       const cached = mapEraCache.get(folder)
       if (cached) return cached
-      const template = findTemplate(omsiPath, folder)
+      /*
+       * Zonder de situaties die de app zelf schreef: die dragen de datum van de
+       * vorige rit, en dan werd een zelfgekozen datum het tijdvak van de kaart.
+       */
+      const template = findTemplate(omsiPath, folder, { zonderEigen: true })
       const fromName = folder.match(/(19\d{2}|20[0-2]\d)/)
       const time = (template && readSituationTime(template)) || {
         year: fromName ? Number.parseInt(fromName[1], 10) : new Date().getFullYear(),
@@ -309,7 +390,8 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
     kalender(folder) {
       const cached = calendarCache.get(folder)
       if (cached) return cached
-      const built = readCalendar(laag.map(folder).path)
+      // Alleen Holidays.txt; daarvoor hoeft de dienstregeling niet open.
+      const built = readCalendar(kaartPad(folder))
       calendarCache.set(folder, built)
       return built
     },
@@ -385,7 +467,8 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
       for (const folder of listMaps(omsiPath)) {
         try {
           const afdruk = vingerafdruk(kaartPad(folder))
-          const bewaard = leesUitCache<MapSummary>(userData, folder, 'overzicht', afdruk)
+          // 'overzicht2': het tijdvak komt sinds vrij rijden 0.4.8 niet meer uit de eigen situaties.
+          const bewaard = leesUitCache<MapSummary>(userData, folder, 'overzicht2', afdruk)
           if (bewaard) {
             uit.push(bewaard)
             continue
@@ -402,7 +485,7 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
             year: tijd.year,
             dayOfYear: tijd.dayOfYear
           }
-          schrijfInCache(userData, folder, 'overzicht', afdruk, samenvatting)
+          schrijfInCache(userData, folder, 'overzicht2', afdruk, samenvatting)
           uit.push(samenvatting)
         } catch {
           // Een kaart die niet te lezen is hoort de lijst niet te breken.
@@ -561,15 +644,254 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
         const cached = routeCache.get(sleutel)
         if (cached) return cached
         const stops = leg.stopIds.map((id) => stopAt.get(id)).filter((stop) => stop !== undefined)
-        if (stops.length < 2) return { points: [], guessed: [] }
-        const route = routeForTrip(loaded.path, omsiPath, leg.tripFile, stops, () =>
-          laag.rijstrokennet(folder)
-        )
+        /*
+         * Minder dan twee haltes op de kaart: een leegrit naar de remise, of
+         * een rit waarvan de haltes niet gevonden worden. Dan de `.ttr` van
+         * OMSI zelf, als die er is; zonder route blijft de lijn leeg.
+         */
+        const route =
+          stops.length < 2
+            ? routeZonderHaltes(loaded.path, omsiPath, leg.tripFile, () => laag.rijstrokennet(folder))
+            : routeForTrip(loaded.path, omsiPath, leg.tripFile, stops, () => laag.rijstrokennet(folder))
         routeCache.set(sleutel, route)
         return route
       })
+    },
+
+    inzetpunten(folder) {
+      const bewaard = inzetCache.get(folder)
+      if (bewaard) return bewaard
+      const punten = leesInzetpunten(kaartPad(folder))
+      inzetCache.set(folder, punten)
+      return punten
+    },
+
+    ttlNamen(folder) {
+      return namenIn(folder, '.ttl', ttlCache)
+    },
+
+    ttpNamen(folder) {
+      return namenIn(folder, '.ttp', ttpCache)
+    },
+
+    vrijCheck(folder, wanneer) {
+      /*
+       * Een halve minuut bewaard: de kaartstap vraagt het bij elke keuze, en
+       * START vraagt het nog eens als de plek van het scherm niet meer klopt.
+       * Zonder eigen tijd schuift de klok door, dus niet langer.
+       */
+      const sleutel = `${folder}|${wanneer?.datum ?? ''}|${wanneer?.tijd ?? ''}`
+      const bewaard = checkCache.get(sleutel)
+      if (bewaard && Date.now() - bewaard.op < 30_000) return bewaard.uit
+      const uit = vrijeControle(folder, wanneer)
+      checkCache.set(sleutel, { op: Date.now(), uit })
+      return uit
+    },
+
+    koppel(folder, keuze, datum, voorkeur) {
+      return koppelOmsiKeuze(laag.map(folder), keuze, {
+        kalender: laag.kalender(folder),
+        ttlNamen: laag.ttlNamen(folder),
+        ttpNamen: laag.ttpNamen(folder),
+        datum: datum ? new Date(`${datum}T00:00:00Z`) : undefined,
+        voorkeur
+      })
+    },
+
+    vertrekken(folder, datum, klok, bus) {
+      const iso = datum ?? laag.dienstDatum(folder, AUTOMATISCH_MASKER)?.iso
+      const suggesties = komendeVertrekken(vertrekkenVan(folder, iso), { klok, bus })
+      /* De halte waar de bus staat, als hij er vlak bij staat: "Vertrekken vanaf ...". */
+      let halte: string | undefined
+      if (bus) {
+        let dichtst = HALTE_BIJ_M
+        for (const stop of laag.geometrie(folder).stops) {
+          const afstand = Math.hypot(stop.x - bus.x, stop.y - bus.y)
+          if (afstand <= dichtst && stop.name) {
+            dichtst = afstand
+            halte = stop.name
+          }
+        }
+      }
+      return { suggesties, halte }
+    },
+
+    herken(folder, monsters) {
+      return herkenKaart(omsiPath, folder, kaartMappen(), monsters)
+    },
+
+    elders(folder, keuze, monsters) {
+      const lijn = (keuze.lineName.trim().split(/[\\/]/).pop() ?? '').replace(/\.ttl$/i, '').trim()
+      if (!lijn || onbruikbaar(lijn)) return undefined
+      const mappen = kaartMappen()
+      const kandidaten = mappen.filter((ander) => {
+        if (ander === folder) return false
+        if (!existsSync(join(kaartPad(ander), 'TTData', `${lijn}.ttl`))) return false
+        if (ritIndexKlopt(laag.ttpNamen(ander), keuze.trip, keuze.tripName) !== true) return false
+        return herkenKaart(omsiPath, ander, mappen, monsters).oordeel !== 'anders'
+      })
+      return kandidaten.length === 1 ? kandidaten[0] : undefined
+    },
+
+    vrijeWagenparken(folder, vehiclePath, year) {
+      const kaart = laag.map(folder)
+      const termini = bestemmingenVan(kaart)
+      // Niet bewaard: de app legt zelf wagenparken naast bussen (hof:install).
+      const hofs = listHofs(join(omsiPath, vehiclePath))
+      const suggested = hofVoorKaart(hofs, kaart, termini, year)
+      return hofs
+        .map((hof) => ({
+          name: hof.name,
+          known: matchHof(hof, termini).matched,
+          total: termini.length,
+          suggested: hof.name === suggested
+        }))
+        .sort((a, b) => b.known - a.known || a.name.localeCompare(b.name))
     }
+  }
+
+  /** De kaarten, eens per minuut opnieuw gelezen: listMaps kost zo'n 15 ms. */
+  function kaartMappen(): string[] {
+    if (!kaartlijst || Date.now() - kaartlijst.op > 60_000) kaartlijst = { op: Date.now(), mappen: listMaps(omsiPath) }
+    return kaartlijst.mappen
+  }
+
+  /** De bestanden met deze extensie in TTData, in de volgorde van readdir. */
+  function namenIn(folder: string, soort: string, cache: Map<string, string[]>): string[] {
+    const bewaard = cache.get(folder)
+    if (bewaard) return bewaard
+    let namen: string[] = []
+    try {
+      namen = readdirSync(join(kaartPad(folder), 'TTData'))
+        .filter((naam) => extname(naam).toLowerCase() === soort)
+        .map((naam) => naam.slice(0, naam.length - soort.length))
+    } catch {
+      namen = []
+    }
+    cache.set(folder, namen)
+    return namen
+  }
+
+  /** Alle vertrekken van een kaart op een datum; de zware som, dus bewaard. */
+  function vertrekkenVan(folder: string, iso: string | undefined): Vertrek[] {
+    const sleutel = `${folder}|${iso ?? ''}`
+    const bewaard = vertrekCache.get(sleutel)
+    if (bewaard) return bewaard
+    let ttrBegin = ttrBeginCache.get(folder)
+    if (!ttrBegin) {
+      ttrBegin = new Map()
+      ttrBeginCache.set(folder, ttrBegin)
+    }
+    const alle = vertrekkenOp(
+      laag.map(folder),
+      laag.geometrie(folder),
+      iso ? new Date(`${iso}T00:00:00Z`) : undefined,
+      laag.kalender(folder),
+      omsiPath,
+      ttrBegin
+    )
+    vertrekCache.set(sleutel, alle)
+    return alle
+  }
+
+  /**
+   * De controle zelf; zie `vrijCheck`. De datum is automatisch een schooldag
+   * door de week in het tijdvak van de kaart (masker 287: ma-vr, schooldag),
+   * de tijd de klok van de pc.
+   */
+  function vrijeControle(folder: string, wanneer: VrijWanneer | undefined): VrijCheckVol {
+    const pad = kaartPad(folder)
+    const nu = new Date()
+    const klok = wanneer?.tijd ?? nu.getHours() * 60 + nu.getMinutes()
+    const tijdvak = laag.tijdvak(folder)
+    const automatisch = wanneer?.datum ? undefined : laag.dienstDatum(folder, AUTOMATISCH_MASKER)
+    const iso =
+      wanneer?.datum ??
+      automatisch?.iso ??
+      new Date(Date.UTC(tijdvak.year, 0, tijdvak.dayOfYear)).toISOString().slice(0, 10)
+    const dag = new Date(`${iso}T00:00:00Z`)
+    const moment = (minutes: number, bron: 'klok' | 'eersteVertrek'): VrijCheckVol['moment'] => ({
+      iso,
+      year: dag.getUTCFullYear(),
+      dayOfYear: Math.round((dag.getTime() - Date.UTC(dag.getUTCFullYear(), 0, 1)) / 86_400_000) + 1,
+      minutes,
+      bron
+    })
+
+    const grid = readTileGrid(pad)
+    if (!grid || tegelsCompleet(pad).aanwezig === 0) {
+      return { ok: false, fout: 'onvolledig', moment: moment(klok, 'klok') }
+    }
+    let aantalOmlopen = 0
+    try {
+      aantalOmlopen = laag.map(folder).tours.length
+    } catch {
+      aantalOmlopen = 0
+    }
+    if (aantalOmlopen === 0) return { ok: false, fout: 'geenDienstregeling', moment: moment(klok, 'klok') }
+
+    const vertrekken = vertrekkenVan(folder, iso)
+    const punten = laag.inzetpunten(folder)
+    let plek: Beginplek | undefined = kiesVertrekplek(punten, vertrekken, {
+      klok,
+      tijdAutomatisch: wanneer?.tijd === undefined
+    })
+    if (!plek && punten.length === 0) plek = plekBijHalte(folder, vertrekken, klok)
+    if (!plek) return { ok: false, fout: 'geenPlek', moment: moment(klok, 'klok') }
+    return { ok: true, plek, moment: moment(plek.klok, plek.klok !== klok ? 'eersteVertrek' : 'klok') }
+  }
+
+  /**
+   * Een kaart zonder inzetpunten (kaarten van derden): de halte waar in het
+   * venster de meeste ritten vertrekken, en de bus op de rijstrook ervoor.
+   */
+  function plekBijHalte(folder: string, vertrekken: Vertrek[], klok: number): Beginplek | undefined {
+    const geometry = laag.geometrie(folder)
+    if (geometry.stops.length === 0) return undefined
+    const grid = readTileGrid(kaartPad(folder))
+    if (!grid) return undefined
+    for (const tot of [45, 120, 1440]) {
+      const telling = new Map<string, { x: number; y: number; n: number }>()
+      for (const vertrek of vertrekken) {
+        const na = minutenNa(vertrek.dep, klok)
+        if (na < 5 || na > tot) continue
+        const sleutel = `${Math.round(vertrek.x)},${Math.round(vertrek.y)}`
+        const bestaand = telling.get(sleutel)
+        if (bestaand) bestaand.n++
+        else telling.set(sleutel, { x: vertrek.x, y: vertrek.y, n: 1 })
+      }
+      const volgorde = [...telling.values()].sort((a, b) => b.n - a.n)
+      for (const kandidaat of volgorde) {
+        const stop = geometry.stops.find((item) => Math.hypot(item.x - kandidaat.x, item.y - kandidaat.y) < 1)
+        if (!stop) continue
+        const spawn = spawnAtStop(kaartPad(folder), grid, laag.rijstrokennet(folder), stop)
+        if (!spawn) continue
+        return {
+          nr: -1,
+          naam: stop.name,
+          bron: 'halte',
+          aantal: tot < 1440 ? kandidaat.n : 0,
+          tot: tot < 1440 ? (klok + tot) % 1440 : undefined,
+          klok,
+          spawn: {
+            tx: spawn.tx,
+            ty: spawn.ty,
+            x: spawn.x,
+            z: spawn.z,
+            height: spawn.height,
+            heading: spawn.heading
+          },
+          wereld: { x: stop.x, y: stop.y }
+        }
+      }
+    }
+    return undefined
   }
 
   return laag
 }
+
+/** Schooldag, maandag tot en met vrijdag: het masker van een gewone werkdagomloop. */
+const AUTOMATISCH_MASKER = 287
+/** Binnen zoveel meter van een halte staat de bus "bij" die halte. */
+const HALTE_BIJ_M = 40
