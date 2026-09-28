@@ -89,7 +89,7 @@ export function modelVanBus(busPad: string): string | undefined {
     if (regels[i].trim().toLowerCase() !== '[model]') continue
     const rel = (regels[i + 1] ?? '').trim()
     if (!rel) return undefined
-    const pad = join(dirname(busPad), ...rel.split(/[\/]/))
+    const pad = join(dirname(busPad), ...rel.split(/[\\/]/))
     return existsSync(pad) ? pad : undefined
   }
   return undefined
@@ -110,6 +110,14 @@ export function modelVanBus(busPad: string): string | undefined {
  * ondiepste: `Textureus.dds` gaat voor `Texture\oudus.dds`.
  */
 const indexPerMap = new Map<string, Map<string, string>>()
+
+/**
+ * De index weggooien. Nodig na het installeren of verwijderen van een add-on:
+ * anders zegt de foutcontrole dat een textuur ontbreekt die er net bij kwam.
+ */
+export function vergeetBestandenIndex(): void {
+  indexPerMap.clear()
+}
 
 function bestandenIn(map: string): Map<string, string> {
   const bekend = indexPerMap.get(map)
@@ -159,7 +167,7 @@ export function zoekTextuurVan(
 ): string | undefined {
   const gevonden = zoekTextuur(voertuigmap, omsimap, naam)
   if (gevonden) return gevonden
-  const plat = naam.split(/[\/]/).pop() ?? naam
+  const plat = naam.split(/[\\/]/).pop() ?? naam
   const punt = plat.lastIndexOf('.')
   if (punt <= 0) return undefined
   const stam = plat.slice(0, punt).toLowerCase()
@@ -180,7 +188,7 @@ export function zoekTextuurVan(
  * zonder die tweede plek bleven 647 van de 8549 verwijzingen liggen.
  */
 function zoekTextuur(voertuigmap: string, omsimap: string, naam: string): string | undefined {
-  const plat = naam.split(/[\/]/).pop()?.toLowerCase()
+  const plat = naam.split(/[\\/]/).pop()?.toLowerCase()
   if (!plat) return undefined
   return bestandenIn(voertuigmap).get(plat) ?? bestandenIn(join(omsimap, 'Texture')).get(plat)
 }
@@ -222,7 +230,7 @@ export function leesBusModel(busPad: string): BusModel | undefined {
     if (kop === '[mesh]') {
       const bestand = (regels[i + 1] ?? '').trim()
       if (!bestand) continue
-      const pad = join(modelmap, ...bestand.split(/[\/]/))
+      const pad = join(modelmap, ...bestand.split(/[\\/]/))
       huidig = {
         bestand,
         pad: existsSync(pad) ? pad : undefined,

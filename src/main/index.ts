@@ -110,6 +110,11 @@ import { runsOn } from '../core/calendar'
 import {
   boekEigenDienst,
   geefOpslag,
+  stuurOpBijscholing,
+  volgOpleiding,
+  zelfOnderhoud,
+  zelfRepareren,
+  type OpleidingId,
   koopNieuw,
   neemAan,
   ontsla,
@@ -122,6 +127,9 @@ import {
   verkoop,
   vormVanNaam,
   zegOp,
+  leesPost,
+  ritVoorBedrijf,
+  type BedrijfRit,
   type MarktBus
 } from '../core/bedrijf'
 import {
@@ -132,6 +140,31 @@ import {
   type Rittenstaat,
   type SpoorRegel
 } from '../core/rittenstaat'
+import {
+  installeerStappen,
+  leesRegister,
+  openBron,
+  planStappen,
+  reserveMap,
+  schrijfRegister,
+  verwijderStappen,
+  type Plan
+} from '../core/addon'
+import { controleerBus, controleerKaart, type Controle } from '../core/addoncheck'
+import { ZipFout } from '../core/zip'
+import type { AddonOverzicht, AddonPlan } from '../shared/api'
+import {
+  FLITS,
+  controleAanBoord,
+  flitsControle,
+  flitspalen,
+  gebeurtenisVoor,
+  onderwegVan,
+  type Flits,
+  type Flitspaal,
+  type Gebeurtenis,
+  type OnderwegBeeld
+} from '../core/onderweg'
 import {
   apparaatBeeld,
   apparaatKijkt,
@@ -1271,7 +1304,7 @@ function sluitLopendeDienstAf(): void {
     tickets: gemeten.tickets,
     collisions: gemeten.collisions,
     fuelUsed: gemeten.fuelUsed
-  }, staat)
+  }, staat, onderwegVanDienst(staat, gemeten))
   writeProfile(userData(), career)
 }
 
@@ -1337,17 +1370,38 @@ function meet(): void {
     reizigers: live.passengers,
     remmen: live.harshBrakes,
     optrekken: live.harshAccels,
-    klappen: aanrijdingenGezien(live) ? live.collisions : undefined
+    klappen: aanrijdingenGezien(live) ? live.collisions : undefined,
+    wisselgeld: wisselgeldFouten
   })
   const nieuw: SpoorRegel[] = spoor.stand
     ? regels
     : [{ t: 'begin', k: klokVoorDienst(status.clockMinutes, duty), dienst: dutyKeyOf(duty) }]
   spoor.stand = stand
+  // Langs een flitspaal gekomen? Dat hoort in hetzelfde spoor, bij de halte waar je heen reed.
+  const flits = meetFlits(live, duty)
+  if (flits) {
+    nieuw.push({
+      t: 'flits',
+      k: klokVoorDienst(status.clockMinutes, duty),
+      rit: Math.max(0, status.legIndex),
+      halte: uitMenu ? status.halteOpNaam : undefined,
+      ...flits
+    })
+    laatsteFlits = { ...flits, om: Date.now() }
+    log(`Geflitst: ${flits.kmh} km/u waar ${flits.limiet} mag, boete ${flits.boete} euro`)
+  }
+  aanBoord = controleAanBoord(gebeurtenisVanDienst(), Math.max(0, status.legIndex), uitMenu ? status.halteOpNaam : undefined)
   if (nieuw.length === 0) return
   try {
     const pad = spoorPad(sleutel)
     mkdirSync(dirname(pad), { recursive: true })
     appendFileSync(pad, nieuw.map((regel) => JSON.stringify(regel)).join('\n') + '\n')
+    /*
+     * Er is iets gebeurd (een halte, een vertrek, een flits): de telling voor
+     * de telefoon bijwerken. Alleen dan, want het spoor lezen is een bestand
+     * lezen.
+     */
+    lopendeStaat = { sleutel, staat: rittenstaatVanDienst(duty, false) }
   } catch (fout) {
     // Eén keer melden: een volle schijf hoort niet elke seconde in het logboek.
     if (!spoorFoutGemeld) logFout('spoor van de dienst', fout)
@@ -1361,7 +1415,7 @@ function meet(): void {
  * Alleen als het spoor bij deze dienst hoort: na een wissel via de telefoon is
  * er een nieuw spoor, en de ritten van de oude dienst horen daar niet in.
  */
-function rittenstaatVanDienst(duty: Duty): Rittenstaat | undefined {
+function rittenstaatVanDienst(duty: Duty, opruimen = true): Rittenstaat | undefined {
   const sleutel = spoorSleutel()
   if (!sleutel) return undefined
   try {
@@ -1375,7 +1429,92 @@ function rittenstaatVanDienst(duty: Duty): Rittenstaat | undefined {
     logFout('rittenstaat', fout)
     return undefined
   } finally {
-    ruimSporenOp()
+    if (opruimen) ruimSporenOp()
+  }
+}
+
+/** De rittenstaat van de lopende dienst tot nu toe, voor de telling op de telefoon. */
+let lopendeStaat: { sleutel: string; staat?: Rittenstaat } | undefined
+
+/*
+ * ONDERWEG: FLITSPALEN EN GEBEURTENISSEN
+ *
+ * De regels staan in core/onderweg.ts; hier de toestand die erbij hoort. De
+ * gebeurtenis van een dienst komt uit een zaad van profiel en aannametijd,
+ * dus dezelfde dienst houdt dezelfde gebeurtenis, ook na een herstart.
+ */
+let gebeurtenisVan: { zaad: string; gebeurtenis?: Gebeurtenis } | undefined
+function gebeurtenisVanDienst(): Gebeurtenis | undefined {
+  const lopend = career?.activeDuty
+  const duty = (lopend?.assignment as Assignment | undefined)?.duty
+  if (!career || !lopend || !duty) return undefined
+  const zaad = `${career.id ?? 'profiel'}|${lopend.confirmedAt}|${dutyKeyOf(duty)}`
+  if (gebeurtenisVan?.zaad !== zaad) {
+    gebeurtenisVan = { zaad, gebeurtenis: gebeurtenisVoor(duty, zaad, Boolean(lopend.exam)) }
+  }
+  return gebeurtenisVan.gebeurtenis
+}
+
+/** Zitten de controleurs nu in de bus; bijgehouden door de meetlus. */
+let aanBoord = false
+
+/**
+ * De flitspalen van de kaart waarop gereden wordt. De kaart lezen gaat via de
+ * werker en kan even duren; tot hij er is, flitst er niets.
+ */
+let flitsKaart: { sleutel: string; palen?: Flitspaal[] } | undefined
+function palenVoor(duty: Duty): Flitspaal[] | undefined {
+  const dichtheid = gebeurtenisVanDienst()?.soort === 'flitsactie' ? FLITS.dichtheidActie : FLITS.dichtheid
+  const sleutel = `${duty.mapFolder}|${dichtheid}`
+  if (flitsKaart?.sleutel !== sleutel) {
+    const hier = { sleutel } as { sleutel: string; palen?: Flitspaal[] }
+    flitsKaart = hier
+    void geometrieVoor(duty.mapFolder)
+      .then((kaart) => {
+        hier.palen = flitspalen(kaart.limits, duty.mapFolder, dichtheid)
+        log(`Flitspalen op ${duty.mapFolder}: ${hier.palen.length} van ${kaart.limits?.length ?? 0} borden`)
+      })
+      .catch((fout) => logFout('flitspalen', fout))
+  }
+  return flitsKaart.palen
+}
+
+let vorigePlek: { x: number; y: number } | undefined
+const vlakGeflitst = new Set<number>()
+/** De laatste flits, voor de melding op de telefoon. */
+let laatsteFlits: (Flits & { om: number }) | undefined
+
+function meetFlits(live: NonNullable<ReturnType<typeof freshLive>>, duty: Duty): Flits | undefined {
+  const palen = palenVoor(duty)
+  const plek = vehicleOnMap(live, duty)
+  const van = vorigePlek
+  vorigePlek = plek ? { x: plek.x, y: plek.y } : undefined
+  if (!palen?.length || !plek || !van) return undefined
+  return flitsControle(palen, van, plek, live.velocity, vlakGeflitst)
+}
+
+/** Wat onderweg gebeurde, voor het logboek. */
+function onderwegVanDienst(staat: Rittenstaat | undefined, sessie: { harshBrakes?: number; harshAccels?: number; collisions?: number } | undefined) {
+  return onderwegVan(gebeurtenisVanDienst(), staat, sessie ?? {})
+}
+
+/**
+ * Wat de telefoon van onderweg ziet. De controleurs alleen zolang ze aan boord
+ * zijn -- ze worden niet aangekondigd -- en een flits een halve minuut lang.
+ */
+function onderwegVoorTelefoon(): OnderwegBeeld | undefined {
+  const g = gebeurtenisVanDienst()
+  const flits = laatsteFlits && Date.now() - laatsteFlits.om < 30_000 ? laatsteFlits : undefined
+  const gebeurtenis = g && (g.soort !== 'controle' || aanBoord) ? g : undefined
+  if (!gebeurtenis && !flits) return undefined
+  const staat = lopendeStaat?.sleutel === spoorSleutel() ? lopendeStaat?.staat : undefined
+  const duty = (career?.activeDuty?.assignment as Assignment | undefined)?.duty
+  return {
+    gebeurtenis,
+    uitstapHalte: gebeurtenis?.soort === 'controle' ? duty?.legs[gebeurtenis.rit ?? 0]?.stops[gebeurtenis.tot ?? 0] : undefined,
+    stiptheid: staat ? { goed: staat.vastGemeten - staat.teVroeg - staat.teLaat, vroeg: staat.teVroeg, laat: staat.teLaat } : undefined,
+    flitsen: staat?.flitsen?.length ?? 0,
+    flits: flits ? { kmh: flits.kmh, limiet: flits.limiet, boete: flits.boete, om: flits.om } : undefined
   }
 }
 
@@ -2013,6 +2152,13 @@ let vorigSpoor = ''
  */
 let verkochtGeteld = 0
 let vorigeKoper = -1
+/**
+ * Verkopen met te weinig wisselgeld, opgeteld over de hele sessie. Een teller
+ * die alleen oploopt, zoals remmen en optrekken: de meetlus schrijft het
+ * verschil in het spoor, en de controleurs tellen het (core/onderweg.ts).
+ */
+let wisselgeldFouten = 0
+let slechtBijDezeKoper = false
 
 function telVerkoop(live: ReturnType<typeof readLive>): void {
   const mem = live?.mem
@@ -2026,7 +2172,14 @@ function telVerkoop(live: ReturnType<typeof readLive>): void {
    */
   if (vorigeKoper >= 0 && koper !== vorigeKoper && (mem.ticketPrijs ?? 0) >= 0) {
     verkochtGeteld += 1
+    if (slechtBijDezeKoper) wisselgeldFouten += 1
   }
+  /*
+   * Het vlaggetje voor slecht wisselgeld staat er maar even; onthouden of het
+   * tijdens deze verkoop ooit aan stond.
+   */
+  if (koper !== vorigeKoper) slechtBijDezeKoper = false
+  if ((mem.ticketSlecht ?? 0) > 0) slechtBijDezeKoper = true
   vorigeKoper = koper
 }
 
@@ -2735,6 +2888,10 @@ function pushFrame(): void {
       : undefined,
     // Aanmelden, tekenen, pauze en IBIS; zie "DE STAND VAN DE TELEFOON".
     telefoon: telefoonBeeld(),
+    // Rijd je voor je eigen bedrijf, dan staat dat op de telefoon; zie `ritVoorBedrijf`.
+    bedrijf: bedrijfVoorTelefoon(),
+    // Flitsen en gebeurtenissen; zie core/onderweg.ts.
+    onderweg: onderwegVoorTelefoon(),
     editing: overlayEditing
   }
 
@@ -2766,6 +2923,8 @@ function frameVoorApparaat(frame: {
   busmodules?: unknown
   vrij?: unknown
   telefoon: TelefoonStand
+  bedrijf?: BedrijfRit
+  onderweg?: OnderwegBeeld
 }): unknown {
   return {
     connected: frame.connected,
@@ -2786,9 +2945,45 @@ function frameVoorApparaat(frame: {
     knoppen: frame.knoppen,
     panelen: frame.panelen,
     busmodules: frame.busmodules,
-    telefoon: frame.telefoon
+    telefoon: frame.telefoon,
+    // Het bedrijf mag mee: een lijn en een telling uit een spel, niets van de chauffeur zelf.
+    bedrijf: frame.bedrijf,
+    onderweg: frame.onderweg
   }
 }
+
+/**
+ * Wat de telefoon van het bedrijf ziet: alleen tijdens een dienst op een lijn
+ * van het eigen bedrijf, zie `ritVoorBedrijf`. Opnieuw gerekend als het
+ * bedrijf, de dienst of de telling een ander object is; het beeld gaat een
+ * paar keer per tel uit.
+ */
+let ritBeeldVan:
+  | { bron: object; duty: Duty; staat?: Rittenstaat; beeld?: BedrijfRit }
+  | undefined
+function bedrijfVoorTelefoon(): BedrijfRit | undefined {
+  const bedrijf = career?.bedrijf
+  const lopend = career?.activeDuty
+  const assignment = lopend?.assignment as Assignment | undefined
+  const duty = assignment?.duty
+  if (!bedrijf || !lopend || !duty) return undefined
+  const sleutel = spoorSleutel()
+  /*
+   * Eén keer inlezen als er nog geen telling voor dit spoor is -- na een
+   * herstart midden in een dienst stond er anders nul tot de volgende halte.
+   */
+  if (sleutel && lopendeStaat?.sleutel !== sleutel) {
+    lopendeStaat = { sleutel, staat: rittenstaatVanDienst(duty, false) }
+  }
+  const staat = lopendeStaat && lopendeStaat.sleutel === sleutel ? lopendeStaat.staat : undefined
+  if (ritBeeldVan?.bron !== bedrijf || ritBeeldVan.duty !== duty || ritBeeldVan.staat !== staat) {
+    const busPad = lopend.vehicleOverride || assignment?.vehicle?.relativePath
+    ritBeeldVan = { bron: bedrijf, duty, staat, beeld: ritVoorBedrijf(bedrijf, duty, busPad, staat) }
+  }
+  return ritBeeldVan.beeld
+}
+
+
 
 /**
  * Waar de overlay mag komen: het hele scherm.
@@ -4728,7 +4923,7 @@ function registerHandlers(): void {
     const bedrijf = career.bedrijf
       ? boekEigenDienst(career.bedrijf, duty, staat, busPad, measured?.stopsDone)
       : undefined
-    return persist(completeDuty({ ...career, bedrijf }, duty, vehicle, measured, staat))
+    return persist(completeDuty({ ...career, bedrijf }, duty, vehicle, measured, staat, onderwegVanDienst(staat, measured)))
   })
 
   /*
@@ -4820,10 +5015,196 @@ function registerHandlers(): void {
     if (!career?.bedrijf) return careerPayload()
     return persist({ ...career, bedrijf: geefOpslag(career.bedrijf, Number(id)) })
   })
+  /*
+   * Opleidingen en de werkplaats zelf. De score van een minigame komt uit het
+   * venster; core/bedrijf.ts begrenst hem op 0 tot 1. Het is je eigen spel:
+   * wie hem vervalst, bedriegt alleen zichzelf.
+   */
+  const metUitslag = (
+    uit: { bedrijf: NonNullable<CareerState['bedrijf']> } | { fout: string }
+  ): { payload: ReturnType<typeof careerPayload>; fout?: string } =>
+    'fout' in uit || !career ? { payload: careerPayload(), fout: 'fout' in uit ? uit.fout : 'geen' } : { payload: persist({ ...career, bedrijf: uit.bedrijf }) }
+  handle('bedrijf:opleiding', (_event, id: OpleidingId) =>
+    career?.bedrijf ? metUitslag(volgOpleiding(career.bedrijf, id)) : { payload: careerPayload(), fout: 'geen' }
+  )
+  handle('bedrijf:bijscholing', (_event, id: number) =>
+    career?.bedrijf ? metUitslag(stuurOpBijscholing(career.bedrijf, Number(id))) : { payload: careerPayload(), fout: 'geen' }
+  )
+  handle('bedrijf:zelf', (_event, nummer: number, wat: 'onderhoud' | 'reparatie', score: number) => {
+    if (!career?.bedrijf) return { payload: careerPayload(), fout: 'geen' }
+    const doen = wat === 'reparatie' ? zelfRepareren : zelfOnderhoud
+    return metUitslag(doen(career.bedrijf, Number(nummer), Number(score)))
+  })
+  /* Het postvak: een bericht gelezen, of zonder id alles. */
+  handle('bedrijf:post', (_event, id?: number) => {
+    if (!career?.bedrijf) return careerPayload()
+    const nr = id === undefined || id === null ? undefined : Number(id)
+    // Een nummer dat geen nummer is, is geen "alles": dan gebeurt er niets.
+    if (nr !== undefined && !Number.isFinite(nr)) return careerPayload()
+    const bedrijf = leesPost(career.bedrijf, nr)
+    return bedrijf === career.bedrijf ? careerPayload() : persist({ ...career, bedrijf })
+  })
   handle('bedrijf:dagAf', () => {
     if (!career?.bedrijf) return careerPayload()
     return persist({ ...career, bedrijf: sluitDagAf(career.bedrijf) })
   })
+
+  /*
+   * DE ADD-ON-MANAGER (stap 7); de regels staan in core/addon.ts en
+   * core/addoncheck.ts. Eén klus tegelijk, en in stukjes met een pauze
+   * ertussen: een kaart van duizenden bestanden mag het venster niet
+   * stilzetten. Hoe ver hij is, gaat als `addon:voortgang` naar het venster.
+   */
+  let addonBezig = false
+  let addonPlan: { pad: string; plan: Plan } | undefined
+  const inStukjes = async <T>(
+    stappen: Generator<number, T>,
+    afzender: Electron.WebContents,
+    fase: string
+  ): Promise<T> => {
+    let sinds = Date.now()
+    for (;;) {
+      const stap = stappen.next()
+      if (stap.done) return stap.value
+      if (Date.now() - sinds > 25) {
+        if (!afzender.isDestroyed()) afzender.send('addon:voortgang', { fase, n: stap.value })
+        await new Promise((klaar) => setImmediate(klaar))
+        sinds = Date.now()
+      }
+    }
+  }
+  const eenTegelijk = async <T>(klus: () => Promise<T>): Promise<T | { fout: string }> => {
+    if (addonBezig) return { fout: 'bezig' }
+    addonBezig = true
+    try {
+      return await klus()
+    } catch (fout) {
+      logFout('add-on-manager', fout)
+      return { fout: fout instanceof ZipFout ? fout.soort : 'fout', melding: fout instanceof Error ? fout.message : String(fout) } as {
+        fout: string
+      }
+    } finally {
+      addonBezig = false
+    }
+  }
+  /** Wat het venster van een plan te zien krijgt: tellingen en de eerste regels, niet twintigduizend. */
+  const planVoorVenster = (plan: Plan): AddonPlan => ({
+    naam: plan.naam,
+    nieuw: plan.regels.filter((r) => r.staat === 'nieuw').length,
+    gelijk: plan.regels.filter((r) => r.staat === 'gelijk').length,
+    anders: plan.regels.filter((r) => r.staat === 'anders').slice(0, 200).map((r) => ({ doel: r.doel, van: r.van })),
+    andersAantal: plan.regels.filter((r) => r.staat === 'anders').length,
+    overig: plan.overig.slice(0, 100),
+    overigAantal: plan.overig.length,
+    plekken: plan.plekken.slice(0, 60),
+    bussen: plan.bussen,
+    kaarten: plan.kaarten,
+    bytes: plan.regels.reduce((som, r) => som + r.grootte, 0)
+  })
+
+  handle('addon:kies', async (_event, soort: 'zip' | 'map') => {
+    const keuze = await dialog.showOpenDialog({
+      title: soort === 'zip' ? 'Kies een add-on (zip)' : 'Kies een uitgepakte add-on',
+      properties: soort === 'zip' ? ['openFile'] : ['openDirectory'],
+      filters: soort === 'zip' ? [{ name: 'Zip', extensions: ['zip'] }] : undefined
+    })
+    return keuze.canceled ? undefined : keuze.filePaths[0]
+  })
+  handle('addon:plan', (event, pad: string) =>
+    eenTegelijk(async () => {
+      const bron = openBron(String(pad))
+      try {
+        const plan = await inStukjes(planStappen(bron, omsi(), leesRegister(userData())), event.sender, 'plan')
+        addonPlan = { pad: String(pad), plan }
+        return { plan: planVoorVenster(plan) }
+      } finally {
+        bron.sluit()
+      }
+    })
+  )
+  handle('addon:installeer', (event, pad: string, naam?: string) =>
+    eenTegelijk(async () => {
+      // Bestanden overschrijven die OMSI open heeft, gaat mis of half.
+      if (await isOmsiRunning()) return { fout: 'omsi' }
+      if (addonPlan?.pad !== String(pad)) return { fout: 'plan' }
+      const plan = { ...addonPlan.plan, naam: String(naam ?? '').trim().slice(0, 80) || addonPlan.plan.naam }
+      const bron = openBron(String(pad))
+      try {
+        const uit = await inStukjes(installeerStappen(bron, plan, omsi(), userData()), event.sender, 'installeer')
+        const register = leesRegister(userData())
+        schrijfRegister(userData(), { addons: [...register.addons, uit.addon] })
+        log(`Add-on geïnstalleerd: ${uit.addon.naam} (${uit.geschreven} bestanden, ${uit.overschreven} overschreven)`)
+        addonPlan = undefined
+        // Er kunnen bussen en kaarten bij zijn: de lijsten opnieuw lezen.
+        vergeetKaarten()
+        vehicleTrackers.clear()
+        return { id: uit.addon.id, geschreven: uit.geschreven, overschreven: uit.overschreven }
+      } finally {
+        bron.sluit()
+      }
+    })
+  )
+  handle('addon:lijst', (): AddonOverzicht[] =>
+    leesRegister(userData())
+      .addons.map((a) => ({
+        id: a.id,
+        naam: a.naam,
+        geinstalleerd: a.geinstalleerd,
+        bestanden: a.bestanden.length,
+        overschreven: a.bestanden.filter((b) => b.was === 'overschreven').length,
+        bussen: a.bussen,
+        kaarten: a.kaarten
+      }))
+      .reverse()
+  )
+  handle('addon:verwijder', (event, id: string) =>
+    eenTegelijk(async () => {
+      if (await isOmsiRunning()) return { fout: 'omsi' }
+      const register = leesRegister(userData())
+      const addon = register.addons.find((a) => a.id === String(id))
+      if (!addon) return { fout: 'weg' }
+      const uit = await inStukjes(verwijderStappen(addon, register, omsi(), userData()), event.sender, 'verwijder')
+      schrijfRegister(userData(), { addons: register.addons.filter((a) => a.id !== addon.id) })
+      rmSync(reserveMap(userData(), addon.id), { recursive: true, force: true })
+      log(`Add-on verwijderd: ${addon.naam} (${uit.verwijderd} weg, ${uit.teruggezet} terug, ${uit.gewijzigd.length} aangepast en blijven staan)`)
+      vergeetKaarten()
+      vehicleTrackers.clear()
+      return { verwijderd: uit.verwijderd, teruggezet: uit.teruggezet, gebleven: uit.gebleven, gewijzigd: uit.gewijzigd.slice(0, 50) }
+    })
+  )
+  /** Welke bussen en kaarten er staan, voor de foutcontrole. */
+  handle('addon:inhoud', () => {
+    const mappen = (sub: string, test: (map: string) => boolean): string[] => {
+      try {
+        const basis = join(omsi(), sub)
+        return readdirSync(basis, { withFileTypes: true })
+          .filter((d) => d.isDirectory() && test(join(basis, d.name)))
+          .map((d) => d.name)
+          .sort((a, b) => a.localeCompare(b))
+      } catch {
+        return []
+      }
+    }
+    return {
+      bussen: mappen('Vehicles', (m) => {
+        try {
+          return readdirSync(m).some((n) => /\.(bus|ovh)$/i.test(n))
+        } catch {
+          return false
+        }
+      }),
+      kaarten: mappen('maps', (m) => existsSync(join(m, 'global.cfg')))
+    }
+  })
+  handle('addon:controleer', (event, soort: 'bus' | 'kaart', naam: string): Promise<Controle | { fout: string }> =>
+    eenTegelijk(() =>
+      inStukjes(
+        soort === 'kaart' ? controleerKaart(omsi(), String(naam)) : controleerBus(omsi(), String(naam)),
+        event.sender,
+        'controle'
+      )
+    )
+  )
 
   handle('career:rename', (_event, name: string) => {
     if (!career) return careerPayload()

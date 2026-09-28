@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { createRoot } from "react-dom/client";
 import type { MapGeometry } from "../../core/geo";
 import type { TripRoute } from "../../core/routing";
@@ -84,6 +84,28 @@ function Apparaat(): JSX.Element {
   const [frame, setFrame] = useState<TelefoonFrame>({ connected: false });
   const [lijn, setLijn] = useState<Lijn>("bezig");
   const [taal, setTaal] = useState<Language>(DEFAULT_LANGUAGE);
+  /*
+   * Automatisch of vast zoomen, per toestel: de tablet mag niets in de
+   * instellingen op de pc schrijven, en een tablet naast het stuur wil vaak
+   * een andere stand dan de overlay op het scherm.
+   */
+  const [zoomVast, setZoomVast] = useState<number | undefined>(() => {
+    try {
+      const w = Number(localStorage.getItem("navZoomVast"));
+      return Number.isFinite(w) && w > 0 ? w : undefined;
+    } catch {
+      return undefined;
+    }
+  });
+  const kiesZoom = useCallback((mpp: number | undefined) => {
+    setZoomVast(mpp);
+    try {
+      if (mpp === undefined) localStorage.removeItem("navZoomVast");
+      else localStorage.setItem("navZoomVast", String(mpp));
+    } catch {
+      // Geen opslag (privévenster): dan geldt het tot de pagina herlaadt.
+    }
+  }, []);
   const acties = useMemo<TelefoonActies>(
     () => ({
       aanmelden: (nummer, pin) =>
@@ -296,6 +318,7 @@ function Apparaat(): JSX.Element {
                   pixelScale={schaal}
                   language={taal}
                   tablet
+                  zoom={{ vast: zoomVast, kies: kiesZoom }}
                 />
               </div>
             </div>

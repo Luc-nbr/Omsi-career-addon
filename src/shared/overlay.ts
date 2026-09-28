@@ -28,6 +28,19 @@ export interface PanelState {
    * doorheen wil kunnen kijken zet hem lichter.
    */
   opacity: number
+  /**
+   * De glazen achtergrond. Uit: het element zelf is helemaal doorzichtig en
+   * alleen de kaart, de route, de namen en de knoppen staan over het spel;
+   * de schuif `opacity` regelt dan alleen nog het wegennet. Een gebruiker
+   * vroeg om een navigatie "volledig transparant, maar met de knoppen goed
+   * leesbaar". Ontbreekt in een oud bestand: dan aan, zoals het was.
+   */
+  glas?: boolean
+  /**
+   * Alleen de navigatie: een vaste zoomstand in meter per punt, of leeg voor
+   * automatisch meezoomen met de snelheid; zie `NavZoom` in RouteMap.
+   */
+  zoomVast?: number
   /** Alleen de navigatie heeft een eigen hoogte; het paneel groeit met zijn inhoud. */
   h: number
   visible: boolean
@@ -104,6 +117,11 @@ export function mergeLayout(saved: unknown): OverlayLayout {
       h: Math.max(panel.minH, numberOr(state.h, fallback.h)),
       scale: Math.min(SCALE_MAX, Math.max(SCALE_MIN, numberOr(state.scale, 1))),
       opacity: Math.min(1, Math.max(OPACITY_MIN, numberOr(state.opacity, 1))),
+      glas: state.glas !== false,
+      zoomVast:
+        typeof state.zoomVast === 'number' && Number.isFinite(state.zoomVast) && state.zoomVast > 0
+          ? state.zoomVast
+          : undefined,
       visible: state.visible !== false
     }
   }

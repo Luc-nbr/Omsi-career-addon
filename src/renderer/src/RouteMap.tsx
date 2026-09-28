@@ -112,7 +112,33 @@ interface Props {
    * canvas; zonder deze factor wordt dat bij vergroten uitgerekt en dus wazig.
    */
   pixelScale?: number
+  /**
+   * Automatisch meezoomen met de snelheid, of een vaste stand. Alleen bij het
+   * meerijden; zonder deze prop zoomt de kaart automatisch, zoals altijd.
+   */
+  zoom?: NavZoom
+  /**
+   * Waar de omgeving iets over de kaart legt (een balk, knoppen), in punten van
+   * de kaart. Daar komt geen haltenaam: hij zou eronder verdwijnen.
+   */
+  bezet?: (w: number, h: number) => Array<{ x: number; y: number; w: number; h: number }>
 }
+
+/**
+ * De zoomstand van de navigatie. `vast` leeg: automatisch, verder uit naarmate
+ * de bus harder gaat (`liveZoom`). Anders blijft de kaart op die stand, in
+ * meter per punt; in- en uitzoomen verzet dan de vaste stand in plaats van
+ * na zes tellen terug te veren. Gebruikers vroegen daarom: bij sommigen deed
+ * het uitzoomen bij hogere snelheid de straat onleesbaar klein.
+ */
+export interface NavZoom {
+  vast?: number
+  kies(mpp: number | undefined): void
+}
+
+/** Grenzen aan een vaste stand: tot op de stoeprand, en tot waar een straat nog te volgen is. */
+const VAST_MIN_MPP = 0.2
+const VAST_MAX_MPP = 6
 
 const MIN_MPP = 0.2
 const MAX_MPP = 60
@@ -218,7 +244,9 @@ export function RouteMap({
   onManoeuvre,
   onSpeedLimit,
   pixelScale = 1,
-  bediening
+  bediening,
+  zoom,
+  bezet
 }: Props): JSX.Element {
   const tr = useT()
   const boxRef = useRef<HTMLDivElement>(null)
@@ -265,6 +293,26 @@ export function RouteMap({
         .filter((stop): stop is RouteStop => Boolean(stop))
     )
   }, [duty, byId])
+
+  /*
+   * Een halte van de dienst die niet op de kaart gevonden wordt, krijgt geen
+   * bord en geen naam -- en dan mis je hem zonder te weten waarom. Eén regel
+   * in het logboek per dienst, met de ids, zodat het na te zoeken is
+   * (`scripts/probe-stopobjects.ts`).
+   */
+  const gemeldMissend = useRef('')
+  useEffect(() => {
+    if (!duty || geometry.stops.length === 0) return
+    const missend = [
+      ...new Set(duty.legs.flatMap((leg) => leg.stopIds.map((id, at) => (byId.has(id) ? '' : `${leg.stops[at] ?? '?'} (${id})`)).filter(Boolean)))
+    ]
+    const sleutel = `${duty.mapFolder}|${missend.join(',')}`
+    if (missend.length === 0 || gemeldMissend.current === sleutel) return
+    gemeldMissend.current = sleutel
+    void window.career?.logboekMelden?.(
+      `navigatie: ${missend.length} halte(s) van de dienst niet op de kaart van ${duty.mapFolder} gevonden: ${missend.slice(0, 12).join(', ')}`
+    )
+  }, [duty, geometry, byId])
 
   /** Elke halte een keer, voor de borden. De eerste vermelding telt. */
   const routeStops = useMemo(() => {
@@ -454,6 +502,24 @@ export function RouteMap({
   const markManual = (): void => {
     if (bus || vehicle) manualUntil.current = Date.now() + MANUAL_MS
   }
+
+  /*
+   * Een vaste zoomstand volgt wat je zelf kiest. Wie met het wieltje, twee
+   * vingers of de knoppen zoomt terwijl de stand vastligt, verzet die stand:
+   * een halve tel nadat het zoomen stopt wordt hij bewaard. Alleen tijdens
+   * eigen bediening -- het meerijden zelf zet de kaart op de vaste stand en
+   * mag die niet terugschrijven.
+   */
+  const zoomRef = useRef(zoom)
+  zoomRef.current = zoom
+  useEffect(() => {
+    const z = zoomRef.current
+    if (z?.vast === undefined || !(bus || vehicle) || Date.now() >= manualUntil.current) return
+    if (Math.abs(view.mpp - z.vast) < z.vast * 0.02) return
+    const mpp = clamp(view.mpp, VAST_MIN_MPP, VAST_MAX_MPP)
+    const timer = window.setTimeout(() => zoomRef.current?.kies(mpp), 500)
+    return () => window.clearTimeout(timer)
+  }, [view.mpp, bus, vehicle])
 
   /*
    * Meerijden met de echte bus. De plugin meet tien keer per seconde; daartussen
@@ -665,7 +731,7 @@ export function RouteMap({
         shown.y += (ty - shown.y) * step
         shown.heading = (shown.heading + turn(shown.heading, target.data.heading) * step + 360) % 360
       }
-      const wanted = liveZoom(target.data.speedKmh)
+      const wanted = zoomRef.current?.vast ?? liveZoom(target.data.speedKmh)
       shown.mpp += (wanted - shown.mpp) * (1 - Math.exp(-dt / 1.2))
       /*
        * Een glijdende beweging komt er nooit helemaal: hij blijft op een kruimel
@@ -979,26 +1045,71 @@ export function RouteMap({
     return found
   }, [geometry, routeStops, view, size])
 
+  /*
+   * DE NAMEN BIJ DE HALTES
+   *
+   * Niet elke naam past: twee haltes aan weerskanten van een straat, of een
+   * cluster perrons ("Ortsm M St D", "Ortsm M P1", "Ortsm Post"), liggen op het
+   * scherm een paar punten uit elkaar. Wie eerst komt, krijgt de plek. Dat was
+   * de volgorde van de dienst over alle ritten heen, met de naam alleen rechts
+   * van het bord -- en dan won een halte die je al voorbij was, of een halte van
+   * de rit terug aan de overkant, het van de halte waar je heen rijdt. Een
+   * gebruiker: "ik mis soms haltes in de navigatie terwijl ze wel op mijn
+   * dienstkaart staan".
+   *
+   * Nu, in deze volgorde: de volgende halte, de haltes die in deze rit nog
+   * komen, het begin van de dienst, en pas dan de rest (gehad, of van een
+   * andere rit). Elke naam probeert rechts, links, boven en onder zijn bord, en
+   * als hij nergens past, nog een keer zonder de plaatsnaam ervoor. Waar de
+   * navigatie zijn balk, snelheid en knoppen over de kaart legt (`bezet`),
+   * komt geen naam: die zou eronder verdwijnen.
+   */
   const labels = useMemo(() => {
-    const placed: Array<{ x: number; y: number; w: number; h: number }> = []
-    const result: Array<{ key: string; x: number; y: number; text: string; strong: boolean }> = []
+    const placed: Array<{ x: number; y: number; w: number; h: number }> = [...(bezet?.(size.w, size.h) ?? [])]
+    const result: Array<{ key: string; x: number; y: number; text: string; strong: boolean; anchor?: 'end' | 'middle' }> = []
+    const gedaan = new Set<string>()
+    const breedte = (tekst: string): number => tekst.length * 5.7 + 6
     const consider = (stop: StopPoint, strong: boolean): void => {
-      if (!stop.name) return
+      if (!stop.name || gedaan.has(stop.id)) return
+      gedaan.add(stop.id)
       const [sx, sy] = toScreen(stop.x, stop.y)
       if (sx < -50 || sy < -20 || sx > size.w + 50 || sy > size.h + 20) return
-      const x = sx + signR + 5
-      const y = sy + 4
-      const box = { x, y: y - 11, w: stop.name.length * 5.7 + 6, h: 14 }
-      if (placed.some((other) => overlaps(box, other))) return
-      placed.push(box)
-      result.push({ key: stop.id, x, y, text: stop.name, strong })
+      const kort = stop.name.includes(', ') ? stop.name.slice(stop.name.indexOf(', ') + 2) : undefined
+      for (const tekst of kort ? [stop.name, kort] : [stop.name]) {
+        const w = breedte(tekst)
+        const r = signR + 5
+        // Rechts, links, boven, onder: de tekstregel en het vak dat hij beslaat.
+        const plekken: Array<{ x: number; y: number; anchor?: 'end' | 'middle'; box: { x: number; y: number; w: number; h: number } }> = [
+          { x: sx + r, y: sy + 4, box: { x: sx + r, y: sy - 7, w, h: 14 } },
+          { x: sx - r, y: sy + 4, anchor: 'end', box: { x: sx - r - w, y: sy - 7, w, h: 14 } },
+          { x: sx, y: sy - r - 2, anchor: 'middle', box: { x: sx - w / 2, y: sy - r - 13, w, h: 14 } },
+          { x: sx, y: sy + r + 10, anchor: 'middle', box: { x: sx - w / 2, y: sy + r - 1, w, h: 14 } }
+        ]
+        for (const plek of plekken) {
+          if (plek.box.x < 0 || plek.box.x + plek.box.w > size.w || plek.box.y < 0 || plek.box.y + plek.box.h > size.h) continue
+          if (placed.some((other) => overlaps(plek.box, other))) continue
+          placed.push(plek.box)
+          result.push({ key: stop.id, x: plek.x, y: plek.y, text: tekst, strong, anchor: plek.anchor })
+          return
+        }
+      }
     }
-    // Belangrijke namen eerst, zodat die het pleit winnen bij verdringing.
+    const rijdtNog = (stop: RouteStop): boolean => passedStops.get(stop.id) !== true
+    const volgende = routeStops.find((stop) => stop.id === nextStopId)
+    if (showRouteNames) {
+      if (volgende) consider(volgende, true)
+      if (activeLeg !== undefined) {
+        for (const stop of legs[activeLeg] ?? []) if (rijdtNog(stop)) consider(stop, true)
+      }
+    }
     if (start) consider(start, true)
-    if (showRouteNames) for (const stop of routeStops) consider(stop, true)
+    if (showRouteNames) {
+      for (const stop of routeStops) if (rijdtNog(stop)) consider(stop, true)
+      for (const stop of routeStops) consider(stop, false)
+    }
     if (showOtherNames) for (const stop of otherStops) consider(stop, false)
     return result
-  }, [start, routeStops, otherStops, showRouteNames, showOtherNames, toScreen, size, signR])
+  }, [start, routeStops, otherStops, showRouteNames, showOtherNames, toScreen, size, signR, bezet, passedStops, nextStopId, activeLeg, legs])
 
   /** Elke rit als lijn op het scherm: over de weg als de route er is, anders recht. */
   const legLines = useMemo(
@@ -1284,6 +1395,7 @@ export function RouteMap({
             className={label.strong ? 'map-label map-label-strong' : 'map-label'}
             x={label.x}
             y={label.y}
+            textAnchor={label.anchor}
           >
             {label.text}
           </text>
@@ -1321,6 +1433,20 @@ export function RouteMap({
         <button type="button" onClick={() => zoomBy(1.6)} aria-label={tr('map.zoomOut')}>
           −
         </button>
+        {zoom && (bus || vehicle) && (
+          <button
+            type="button"
+            className="map-zoomstand"
+            aria-pressed={zoom.vast === undefined}
+            title={tr(zoom.vast === undefined ? 'map.zoomAuto' : 'map.zoomFixed')}
+            aria-label={tr(zoom.vast === undefined ? 'map.zoomAuto' : 'map.zoomFixed')}
+            onClick={() =>
+              zoom.kies(zoom.vast === undefined ? clamp(view.mpp, VAST_MIN_MPP, VAST_MAX_MPP) : undefined)
+            }
+          >
+            {zoom.vast === undefined ? 'A' : '▣'}
+          </button>
+        )}
         {bus || vehicle ? (
           <button
             type="button"

@@ -3128,3 +3128,292 @@
   font-size: 11px;
   text-align: center;
 }
+
+/*
+ * JE EIGEN LIJN (telefoonBedrijf.tsx)
+ *
+ * Een kaart bovenaan de rit-app, alleen als je voor je eigen bedrijf rijdt.
+ * Dezelfde tegelvulling als eronder, zodat het één scherm blijft; groen en
+ * rood alleen voor wat geld oplevert of kost, zoals in de boeken.
+ */
+.tb-kaart {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--vel-overlay-rand);
+  border-radius: var(--radius-klein);
+  background: var(--vel-hover);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.tb-kaartkop,
+.tb-kaartvoet {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tb-kaartkop {
+  color: var(--vel-zacht);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tb-kaartvoet {
+  color: var(--vel-zacht);
+}
+
+.tb-kaartvoet b {
+  color: var(--vel-ink);
+  font-weight: 700;
+}
+
+.tb-oordelen {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  text-align: center;
+}
+
+.tb-oordelen > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.tb-oordelen b {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.tb-oordelen span {
+  color: var(--vel-zacht);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tb-oordelen small {
+  color: var(--vel-zacht);
+  font-size: 10.5px;
+}
+
+.tb-kaart .plus,
+.tb-kaartvoet b.plus {
+  color: #37d67a;
+}
+
+.tb-kaart .min,
+.tb-kaartvoet b.min {
+  color: #ff5f57;
+}
+
+/*
+ * ONDERWEG (telefoonOnderweg.tsx)
+ *
+ * De flits ligt bovenin over elke app heen, in het rood van "te laat": hij
+ * kost geld. De gebeurtenis is een smalle kaart boven de rit, in dezelfde
+ * vulling als de tegels; de controleurs krijgen de rand van de route, want
+ * die zitten nu in je bus.
+ */
+.ow-flits {
+  position: absolute;
+  z-index: 5;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: var(--radius-klein);
+  background: #c62f25;
+  color: #ffffff;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  animation: ow-flits-in 0.25s ease-out;
+}
+
+.ow-flits b {
+  font-size: 15px;
+  letter-spacing: 0.02em;
+}
+
+.ow-flits span {
+  font-size: 12.5px;
+  opacity: 0.92;
+}
+
+@keyframes ow-flits-in {
+  from {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ow-flits {
+    animation: none;
+  }
+}
+
+.ow-kaart {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 9px 12px;
+  border: 1px solid var(--vel-overlay-rand);
+  border-radius: var(--radius-klein);
+  background: var(--vel-hover);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.ow-kaart.controle {
+  border-color: var(--route);
+}
+
+.ow-kaart b {
+  white-space: nowrap;
+}
+
+.ow-kaart b.min {
+  color: #ff5f57;
+}
+
+.ow-kaartkop {
+  color: var(--vel-zacht);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.ow-aankondiging {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 10px 0 4px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--route);
+  border-radius: var(--radius-klein);
+  background: var(--vel-hover);
+}
+
+.ow-aankondiging b {
+  font-size: 14px;
+}
+
+.ow-aankondiging p {
+  margin: 2px 0 0;
+  color: var(--vel-zacht);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/*
+ * ACHTERGROND UIT (`PanelState.glas`)
+ *
+ * Een gebruiker vroeg om de navigatie "volledig transparant, maar met de
+ * knoppen goed leesbaar". Dus: het paneel zelf verdwijnt -- geen glas, geen
+ * waas, geen rand, geen schaduw, geen kaartondergrond -- en wat je moet
+ * kunnen lezen krijgt een eigen, vaste ondergrond: de manoeuvrebalk, de
+ * snelheid, de voetregel, de knoppen, het balkje onderin en de schermen van
+ * de apps. Namen op de kaart krijgen een dikkere donkere rand, zodat ze op
+ * een lichte straat net zo leesbaar zijn als op asfalt.
+ *
+ * De schuif regelt in deze stand alleen nog het wegennet: wie de straten van
+ * het spel wil zien, zet de kaart lichter en houdt de route en de namen vol.
+ * Minder mengen boven het spel is ook minder werk voor Windows (geen waas).
+ */
+.panel-bar .panel-glas svg {
+  fill: none;
+}
+
+.panel-bar .panel-glas[aria-pressed='true'] svg {
+  fill: rgba(232, 235, 242, 0.55);
+}
+
+.panel[data-glas='uit'] {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.panel[data-glas='uit'] .panel-body {
+  opacity: 1;
+}
+
+.panel[data-glas='uit'] .route-map {
+  background: transparent;
+  border-color: transparent;
+}
+
+.panel[data-glas='uit'] .route-roads {
+  opacity: var(--fade, 1);
+}
+
+.panel[data-glas='uit'] .map-label {
+  fill: #eef2f8;
+  stroke: rgba(8, 11, 16, 0.9);
+  stroke-width: 3.6;
+}
+
+.panel[data-glas='uit'] .map-label-strong {
+  fill: #ffffff;
+}
+
+.panel[data-glas='uit'] .map-scale text {
+  stroke: rgba(0, 0, 0, 0.85);
+  stroke-width: 3.2px;
+}
+
+/* Wat je leest, op een vaste ondergrond die niet met de schuif meegaat. */
+.panel[data-glas='uit'] .navbar,
+.panel[data-glas='uit'] .navfoot,
+.panel[data-glas='uit'] .nav-speed,
+.panel[data-glas='uit'] .map-note {
+  background: rgba(20, 26, 38, 0.9);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.panel[data-glas='uit'] .navfoot {
+  border-radius: var(--radius-klein);
+}
+
+.panel[data-glas='uit'] .map-tools button {
+  background: rgba(20, 26, 38, 0.9);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.panel[data-glas='uit'] .dock {
+  padding: 5px;
+  border-top: 0;
+  border-radius: var(--radius-klein);
+  background: rgba(20, 26, 38, 0.9);
+}
+
+.panel[data-glas='uit'] .dock-knop {
+  opacity: 0.7;
+}
+
+.panel[data-glas='uit'] .dock-knop[aria-pressed='true'] {
+  opacity: 1;
+}
+
+/* De apps zelf (rit, dienst, kaartjes) zijn tekst: die houden een vel. */
+.panel[data-glas='uit'] .app-scherm,
+.panel[data-glas='uit'] .panel-body > .aanmelden,
+.panel[data-glas='uit'] .panel-body > .opdracht {
+  padding: 10px;
+  border-radius: var(--radius-klein);
+  background: rgba(20, 26, 38, 0.92);
+}

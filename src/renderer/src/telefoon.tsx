@@ -25,7 +25,11 @@ import { NavKaart, stopName, type NavFrame, type RitStand } from "./navigatie";
 import { Apparaatscherm } from "./apparaatscherm";
 import type { Schermvorm } from "../../shared/scherm";
 import type { Profielknop } from "../../core/busprofiel";
-import type { Manoeuvre } from "./RouteMap";
+import type { Manoeuvre, NavZoom } from "./RouteMap";
+import type { BedrijfRit } from "../../core/bedrijf";
+import { BedrijfKaart } from "./telefoonBedrijf";
+import type { OnderwegBeeld } from "../../core/onderweg";
+import { Aankondiging, FlitsMelding, GebeurtenisKaart } from "./telefoonOnderweg";
 
 /*
  * De telefoon: het toestel in de bus, los van het venster waarin hij staat.
@@ -104,6 +108,10 @@ export interface TelefoonActies {
 export interface TelefoonFrame extends NavFrame {
   chauffeur?: { naam: string; personeelsnummer?: string; pincode?: string };
   telefoon?: TelefoonStand;
+  /** Alleen tijdens een dienst op een lijn van je eigen bedrijf; zie `ritVoorBedrijf`. */
+  bedrijf?: BedrijfRit;
+  /** Flitsen en de gebeurtenis van de dienst; zie core/onderweg.ts. */
+  onderweg?: OnderwegBeeld;
 }
 
 
@@ -126,6 +134,7 @@ export function Telefoon({
   language,
   extra,
   tablet,
+  zoom,
 }: {
   frame: TelefoonFrame;
   duty?: Duty;
@@ -141,6 +150,8 @@ export function Telefoon({
    * een touchscreen het hele scherm; zie IbisApp.
    */
   tablet?: boolean;
+  /** Automatisch of vast zoomen; zie `NavZoom`. De overlay bewaart het in de indeling, de tablet zelf. */
+  zoom?: NavZoom;
 }): JSX.Element {
   const [app, setApp] = useState<TelefoonApp>("kaart");
   /*
@@ -198,6 +209,7 @@ export function Telefoon({
         language={language}
         onAanvaard={acties.aanvaarden}
         onAnder={stand.wisselbaar ? () => setKiezen(true) : undefined}
+        onderweg={frame.onderweg}
       />
     );
   }
@@ -252,7 +264,12 @@ export function Telefoon({
           ) : extra && app === extra.id ? (
             extra.scherm
           ) : (
-            <RitApp status={frame.status} language={language} />
+            <RitApp
+              status={frame.status}
+              bedrijf={frame.bedrijf}
+              onderweg={frame.onderweg}
+              language={language}
+            />
           )}
         </div>
       ) : (
@@ -267,6 +284,7 @@ export function Telefoon({
           onManoeuvre={setManoeuvre}
           limit={limit}
           onSpeedLimit={setLimit}
+          zoom={zoom}
         />
       )}
 
@@ -277,6 +295,9 @@ export function Telefoon({
         pauze={stand.pauzeVanaf !== undefined}
         extra={extra}
       />
+      {frame.onderweg?.flits && (
+        <FlitsMelding flits={frame.onderweg.flits} language={language} />
+      )}
     </>
   );
 }
@@ -706,9 +727,13 @@ function PauzeApp({
  */
 function RitApp({
   status,
+  bedrijf,
+  onderweg,
   language,
 }: {
   status?: LiveStatus;
+  bedrijf?: BedrijfRit;
+  onderweg?: OnderwegBeeld;
   language: Language;
 }): JSX.Element {
   if (!status) return <div className="empty">{t(language, "ovl.noData")}</div>;
@@ -720,6 +745,12 @@ function RitApp({
   const at = status.stopIndex;
   return (
     <div className="app-ritscherm" data-hit>
+      {onderweg?.gebeurtenis && (
+        <GebeurtenisKaart onderweg={onderweg} status={status} language={language} />
+      )}
+      {bedrijf && (
+        <BedrijfKaart rit={bedrijf} lineFile={leg?.lineFile} language={language} />
+      )}
       <div className="app-tegels">
         <div className="breed">
           <b className={klasse}>
@@ -824,6 +855,7 @@ function DienstOpdracht({
   language,
   onAanvaard,
   onAnder,
+  onderweg,
 }: {
   duty: Duty;
   chauffeur?: { naam: string };
@@ -831,6 +863,8 @@ function DienstOpdracht({
   onAanvaard: () => void;
   /** Liever een andere dienst; ontbreekt bij een examen en bij vrij rijden. */
   onAnder?: () => void;
+  /** Een aangekondigde gebeurtenis (stiptheidsactie, flitsactie) hoort bij de opdracht. */
+  onderweg?: OnderwegBeeld;
 }): JSX.Element {
   const klok = (minuten: number): string => formatTime(minuten);
   return (
@@ -862,6 +896,7 @@ function DienstOpdracht({
           <dd>{duty.legs.length}</dd>
         </div>
       </dl>
+      <Aankondiging onderweg={onderweg} language={language} />
 
       <button type="button" className="opdracht-teken" onClick={onAanvaard}>
         {t(language, "ovl.dutyAccept")}

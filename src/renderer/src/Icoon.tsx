@@ -215,6 +215,8 @@ export const ICONEN = {
   kaartje: {
     d: 'M3 6.5h18v4a2 2 0 0 0 0 3.8v4H3v-4a2 2 0 0 0 0-3.8ZM5 8.5v1.1a4 4 0 0 1 0 5.4v1.1h14v-1.1a4 4 0 0 1 0-5.4V8.5Zm4 1.6h1.6v4.6H9Zm4 0h1.6v4.6H13Z'
   },
+  /* Een envelop: het postvak van het busbedrijf. */
+  post: { d: 'M3 5h18v14H3Zm2 2.4v9.6h14V7.4l-7 5.2Zm1.6-.4 5.4 4 5.4-4Z' },
   /* Het logboek: regels met hun datum ervoor. */
   logboek: {
     d:

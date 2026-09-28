@@ -20,6 +20,16 @@ import {
   vormVanNaam,
   waardeVan,
   type MarktBus,
+  NIVEAUS,
+  OPLEIDINGEN,
+  bedrijfsfactoren,
+  inschrijfkosten,
+  niveauVan,
+  opleidingKlaar,
+  stuurOpBijscholing,
+  volgOpleiding,
+  zelfOnderhoud,
+  zelfRepareren,
   aanHetWerk,
   geefOpslag,
   marktloon,
@@ -28,6 +38,9 @@ import {
   ontsla,
   sollicitanten,
   dagresultaat,
+  ritVoorBedrijf,
+  leesPost,
+  ongelezen,
   richtBedrijfOp,
   schrijfIn,
   sluitDagAf,
@@ -229,6 +242,112 @@ for (let i = 0; i < 100; i++) {
 klopt('100 dagen: tevredenheid en ervaring tussen 0 en 100', lang.personeel!.every((m) => m.tevredenheid >= 0 && m.tevredenheid <= 100 && m.ervaring <= 100))
 klopt('100 dagen: twee keer dezelfde uitkomst (geen echt toeval)', JSON.stringify(lang) === JSON.stringify(tweede))
 klopt('100 dagen: hele centen', Number.isInteger(lang.kas))
+
+// ---- niveaus en opleidingen ----
+console.log('')
+let o4 = richtBedrijfOp('Opleiding')
+const o4in = schrijfIn(o4, kaart, lijn)
+if ('bedrijf' in o4in) o4 = o4in.bedrijf
+klopt('een nieuw bedrijf is niveau 1 zonder voordelen', niveauVan(o4) === 1 && bedrijfsfactoren(o4).vergoeding === 1 && bedrijfsfactoren(o4).sollicitanten === 3)
+klopt('schadeherstel vraagt niveau 2', 'fout' in volgOpleiding(o4, 'schadeherstel') && (volgOpleiding(o4, 'schadeherstel') as { fout: string }).fout === 'niveau')
+const wp = volgOpleiding(o4, 'werkplaats')
+klopt('werkplaatsopleiding: betaald', 'bedrijf' in wp && wp.bedrijf.kas === o4.kas - OPLEIDINGEN.werkplaats.kosten)
+if ('bedrijf' in wp) o4 = wp.bedrijf
+klopt('dezelfde opleiding twee keer kan niet', 'fout' in volgOpleiding(o4, 'werkplaats'))
+klopt('nog niet klaar: zelf onderhoud kan nog niet', !opleidingKlaar(o4, 'werkplaats'))
+const xpVoor = o4.xp ?? 0
+for (let i = 0; i < OPLEIDINGEN.werkplaats.dagen; i++) o4 = sluitDagAf(o4)
+klopt('na drie dagen klaar, gemeld, en 100 punten erbij', opleidingKlaar(o4, 'werkplaats') && o4.opleidingen![0].gemeld === true && (o4.xp ?? 0) - xpVoor >= 100)
+klopt('elke dag geeft punten voor de gereden uren', (o4.xp ?? 0) - xpVoor >= 100 + 3 * 20)
+
+const kb = koopNieuw({ ...o4, kas: 1_000_000_00 }, markt[0])
+if ('bedrijf' in kb) o4 = kb.bedrijf
+o4 = { ...o4, bussen: o4.bussen!.map((b) => ({ ...b, staat: 40, schade: 30 })) }
+const duur = onderhoudskosten(o4.bussen![0], 0, o4)
+const zo = zelfOnderhoud(o4, o4.bussen![0].nummer, 1)
+klopt('zelf onderhoud met score 1: staat 100 voor 30 % van de prijs', 'bedrijf' in zo && zo.bedrijf.bussen![0].staat === 100 && o4.kas - zo.bedrijf.kas === Math.round(duur * 0.3))
+const zh = zelfOnderhoud(o4, o4.bussen![0].nummer, 0)
+klopt('zelf onderhoud met score 0 helpt nog wat (40 %)', 'bedrijf' in zh && zh.bedrijf.bussen![0].staat === 64)
+klopt('een score buiten 0-1 wordt begrensd', 'bedrijf' in zelfOnderhoud(o4, o4.bussen![0].nummer, 7) && (zelfOnderhoud(o4, o4.bussen![0].nummer, 7) as { bedrijf: Bedrijf }).bedrijf.bussen![0].staat === 100)
+klopt('zelf repareren zonder opleiding kan niet', 'fout' in zelfRepareren(o4, o4.bussen![0].nummer, 1))
+
+// Niveau 2 en verder: extra sollicitant, en een opleiding die dan open gaat.
+const n2: Bedrijf = { ...o4, xp: NIVEAUS[1].xp }
+klopt('niveau 2: een sollicitant extra', niveauVan(n2) === 2 && sollicitanten(n2).length === 4)
+klopt('niveau 3: twee tweedehands extra', tweedehandsAanbod({ ...n2, xp: NIVEAUS[2].xp }, markt).length === REGELS.tweedehandsPerDag + 2)
+klopt('niveau 4: inschrijven 10 % goedkoper', inschrijfkosten(lijn, { ...n2, xp: NIVEAUS[3].xp }) === Math.round(inschrijfkosten(lijn) * 0.9))
+const n5: Bedrijf = { ...n2, xp: NIVEAUS[4].xp }
+klopt('niveau 5: 3 % meer vergoeding, en dag afsluiten boekt nog steeds de prognose', (() => {
+  const v = dagprognose(n5)
+  const na = sluitDagAf(n5)
+  return v.vergoeding === Math.round(dagprognose(n2).vergoeding * 1.03) && na.kas - n5.kas === v.vergoeding - v.kosten
+})())
+
+// Bijscholing: een dag weg, ervaring erbij.
+let b4 = richtBedrijfOp('Bijscholing')
+const b4in = schrijfIn(b4, kaart, lijn)
+if ('bedrijf' in b4in) b4 = b4in.bedrijf
+const eerste4 = sollicitanten(b4)[0]
+const na4 = neemAan(b4, eerste4.nr)
+if ('bedrijf' in na4) b4 = na4.bedrijf
+const id4 = b4.personeel![0].id
+const bs = stuurOpBijscholing(b4, id4)
+klopt('bijscholing: ervaring erbij en vandaag niet aan het werk', 'bedrijf' in bs && bs.bedrijf.personeel![0].ervaring === Math.min(100, eerste4.ervaring + 12) && aanHetWerk(bs.bedrijf, eerste4.rol).length === 0)
+if ('bedrijf' in bs) b4 = sluitDagAf(bs.bedrijf)
+klopt('de dag erna weer aan het werk', aanHetWerk(b4, eerste4.rol).length === 1)
+
+// ---- het postvak ----
+console.log('')
+let p5 = richtBedrijfOp('Post')
+klopt('een nieuw bedrijf krijgt een welkomstbericht', p5.post?.length === 1 && p5.post[0].soort === 'welkom' && ongelezen(p5) === 1)
+const p5in = schrijfIn(p5, kaart, lijn)
+if ('bedrijf' in p5in) p5 = p5in.bedrijf
+p5 = sluitDagAf(p5)
+klopt('na een dag: een dagrapport bovenaan met het resultaat', p5.post![0].soort === 'dagrapport' && p5.post![0].v?.resultaat === p5.historie!.at(-1)!.resultaat)
+const ids = p5.post!.map((b) => b.id)
+klopt('ids zijn uniek', new Set(ids).size === ids.length)
+klopt('één bericht lezen', ongelezen(leesPost(p5, p5.post![0].id)) === ongelezen(p5) - 1)
+klopt('alles lezen', ongelezen(leesPost(p5)) === 0)
+{ const leeg = leesPost(p5); klopt('lezen zonder iets ongelezens geeft hetzelfde bedrijf terug', leesPost(leeg) === leeg) }
+// Een concessie die over drie dagen afloopt, en een die vandaag afloopt.
+let p6: Bedrijf = { ...p5, concessies: p5.concessies.map((c) => ({ ...c, tot: p5.dag + 3 })) }
+p6 = sluitDagAf(p6)
+// Na het afsluiten loopt hij nog drie dagen (tot en met dag + 3): dan komt het bericht.
+klopt('drie dagen voor het einde komt er bericht, met de verlenging erbij', p6.post!.some((b) => b.soort === 'afloop' && b.v?.dagen === 3 && b.v?.verlengt === 1))
+p6 = sluitDagAf(p6)
+klopt('... en de dag erna niet nog eens', p6.post!.filter((b) => b.soort === 'afloop').length === 1)
+const p7 = sluitDagAf({ ...p5, reputatie: 10, concessies: p5.concessies.map((c) => ({ ...c, tot: p5.dag })) })
+klopt('vervallen staat in de post', p7.post!.some((b) => b.soort === 'vervallen'))
+const p8 = sluitDagAf({ ...p5, kas: -5_000_00 })
+klopt('rood staan: een bericht van de boekhouding', p8.post![0].soort === 'kas')
+// Een bus die onder de grens van slijtage zakt, en een die uit de werkplaats komt.
+const kb5 = koopNieuw({ ...p5, kas: 1_000_000_00 }, markt[0])
+if ('bedrijf' in kb5) {
+  const q = { ...kb5.bedrijf, bussen: kb5.bedrijf.bussen!.map((b) => ({ ...b, staat: REGELS.slijtageMelding + 0.1 })) }
+  klopt('slijtage onder de grens wordt gemeld', sluitDagAf(q).post!.some((b) => b.soort === 'slijtage'))
+  const w = naarWerkplaats(q, q.bussen![0].nummer, 'onderhoud')
+  klopt('uit de werkplaats wordt gemeld', 'bedrijf' in w && sluitDagAf(w.bedrijf).post!.some((b) => b.soort === 'werkplaats' && b.v?.nummer === q.bussen![0].nummer))
+}
+// Honderd dagen: het postvak blijft binnen de grens, en de ziekmeldingen komen erin.
+let p9 = lang
+klopt('100 dagen: postvak begrensd', (p9.post ?? []).length <= REGELS.postBewaard)
+
+// ---- de telefoon: alleen tijdens een dienst op een eigen lijn ----
+const rv = ritVoorBedrijf(p5, duty, undefined, staat)
+klopt('op een eigen lijn: de kaart met de telling van de eigen dienst', rv?.lijnen[0].lineFile === 'Linie_35' && rv.telling?.opTijd === 3 && rv.telling.vroeg === 1)
+klopt('de telling op de telefoon is wat er straks geboekt wordt', (() => {
+  const na = boekEigenDienst(p5, duty, staat)
+  return rv?.telling?.bedrag === na.kas - p5.kas
+})())
+const vreemd = { mapFolder: 'Rheinhausen', legs: [{ lineFile: 'Linie_99', lineNumber: '99' }] } as unknown as Duty
+klopt('op een lijn van een ander: niets op de telefoon', ritVoorBedrijf(p5, vreemd, undefined, staat) === undefined)
+klopt('hoofdletters in de lijnnaam maken niet uit', ritVoorBedrijf(p5, { ...duty, legs: [{ lineFile: 'LINIE_35', lineNumber: '35' }] } as unknown as Duty) !== undefined)
+if ('bedrijf' in kb5) {
+  const metBus = ritVoorBedrijf(kb5.bedrijf, duty, markt[0].relativePath.toUpperCase())
+  klopt('in een eigen bus: nummer en staat op de telefoon', metBus?.bus?.nummer === kb5.bedrijf.bussen![0].nummer && metBus.bus.staat === 100)
+  klopt('in een andere bus: geen bus op de telefoon', ritVoorBedrijf(kb5.bedrijf, duty, 'Vehicles\\Ander\\x.bus')?.bus === undefined)
+}
+klopt('klein genoeg om elke tik mee te sturen (< 1 kB)', JSON.stringify(rv).length < 1000)
 
 console.log(fouten ? `\n${fouten} fout(en)` : '\nalles klopt')
 process.exit(fouten ? 1 : 0)

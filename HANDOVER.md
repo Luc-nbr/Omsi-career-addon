@@ -1537,6 +1537,177 @@ dashboard.
   hoofdproces rekenen ze allebei met `sollicitanten()`. Ontslag kost vijf
   dagen loon en drie punten tevredenheid bij de rest; opslag is 10 %.
 
+**Stap 4: niveaus, opleidingen en de werkplaats zelf** (28-09-2026). Tabblad
+Opleidingen; niveau en XP-balk in de zijbalk.
+- **Niveaus** (`NIVEAUS`, `niveauVan`, `heeftVoordeel`): XP voor elke twee
+  dienstregelingsuren, 10 voor een dag met winst, 5 + 1 per halte op tijd voor
+  een eigen dienst, 100 voor een afgeronde opleiding. Zeven niveaus (0, 300,
+  800, 1600, 3000, 5000, 8000 XP), elk met een voordeel: sollicitant erbij,
+  twee tweedehands bussen erbij, inschrijven 10 % goedkoper, vergoeding +3 %,
+  werkplaats 10 % goedkoper, vergoeding nog eens +3 %. Een niveau erbij staat
+  als boeking van nul euro in de boeken, zodat je ziet wanneer het kwam.
+- **Opleidingen voor de eigenaar** (`OPLEIDINGEN`, `volgOpleiding`): werkplaats,
+  schadeherstel, planner (inhuur 3 % goedkoper), instructeur (personeel 50 %
+  sneller ervaring), onderhandelen (vergoeding +2 %). Elk kost geld en dagen en
+  vraagt een niveau; `sluitDagAf` meldt ze af. Alle kortingen en toeslagen komen
+  uit één plek, `bedrijfsfactoren()`, en `dagprognose` rekent ermee, zodat de
+  prognose en de afsluiting gelijk blijven (proef, ook op niveau 5).
+- **Bijscholing** (`stuurOpBijscholing`): 500, de medewerker is een dag weg
+  (`cursusTot`, telt niet in het rooster) en krijgt +12 ervaring en +3
+  tevredenheid.
+- **Zelf onderhouden en repareren** (`zelfOnderhoud`, `zelfRepareren`): na de
+  opleiding werkplaats of schadeherstel. Je betaalt 30 % (alleen de onderdelen)
+  en speelt een spelletje (`WerkplaatsSpel` in `BedrijfOpleiding.tsx`):
+  inspectie (12 onderdelen, 3-5 versleten, 25 s, elk goed onderdeel dat je
+  openmaakt kost 5 %) of een stappenplan in de goede volgorde (elke fout 20 %).
+  De score (0-1) bepaalt hoeveel beter de bus wordt: onderhoud 40-100 % van wat
+  er aan staat ontbreekt, reparatie 30-100 % van de schade. Het hoofdproces
+  klemt de score, dus een vreemde waarde uit het venster doet niets geks.
+
+**Stap 5: post in de app, en je eigen lijn op de telefoon** (28-09-2026).
+Eerst stond er een bedrijfsapp op de telefoon (overzicht, geld, post). Luc: "de
+telefoon wordt alleen ingame gebruikt, dus alleen info die relevant is tijdens
+het rijden moet in de telefoon, de rest kan in de app". Dus:
+- **Post staat in Mijn bedrijf** (tabblad Post, `BedrijfPost.tsx`, met een
+  teller in de zijbalk). Lezen via `bedrijf:post` (id, of zonder id alles).
+- **Het postvak** (`Bedrijf.post`, `Bericht`, `meld`, `leesPost`): een bericht
+  is een soort met waarden, de tekst staat in de vertalingen (`tb.msg.*`), dus
+  het profiel wisselt niet mee met de taal. Berichten komen bij oprichten, bij
+  een eigen dienst, en bij het afsluiten van de dag: dagrapport, ziekmelding,
+  vertrek, ontevreden (alleen op het moment dat iemand onder 35 zakt),
+  concessie loopt over drie dagen af (met of hij bij de reputatie van nu
+  verlengd wordt), verlengd, vervallen, bus terug uit de werkplaats, bus onder
+  staat 40, rood staan, opleiding klaar en nieuw niveau. Zestig bewaard.
+- **Op de telefoon** alleen een kaart bovenaan de rit-app (`BedrijfKaart` in
+  `telefoonBedrijf.tsx`), en alleen als de rit die nu loopt op een lijn van je
+  eigen bedrijf ligt: hoeveel tijdhaltes op tijd, te vroeg en te laat met wat
+  elk oplevert of kost, wat de dienst tot nu toe oplevert, je reputatie (rood
+  onder de verlenggrens), hoeveel dagen de concessie nog loopt, en de staat en
+  schade van de eigen bus waarin je zit. Geen eigen app en geen knop erbij.
+- **De telling** komt uit dezelfde som als de boeking (`eigenDienstTelling`,
+  ook gebruikt door `boekEigenDienst`), dus wat de telefoon zegt is wat er
+  straks geboekt wordt (proef). Het hoofdproces leest het spoor alleen opnieuw
+  als de meetlus er iets aan toevoegt (`lopendeStaat`), niet elke tik, en
+  `ritVoorBedrijf` wordt alleen opnieuw gerekend als bedrijf, dienst of telling
+  veranderen. Het gaat mee in het beeld van de overlay en de tablet.
+- Proef: `probe-bedrijf.ts` (post, kaart, telling gelijk aan boeking). De
+  telefoon en het postvak op beeld in een proefopstelling buiten het project;
+  `probe-apparaat.cjs` (Electron) is hier niet gedraaid.
+
+**Stap 6: onderweg -- flitspalen, controleurs en gebeurtenissen** (28-09-2026).
+Alles in `core/onderweg.ts`; de app kan in OMSI niets neerzetten, dus alles is
+gebouwd op wat al gemeten wordt. De meldkamer is er niet bij: die had Luc
+eerder afgewezen.
+- **Flitspalen**: een vaste keuze van 15 % van de echte snelheidsborden op de
+  kaart (dezelfde borden als de snelheid in de navigatie), per kaart altijd
+  dezelfde. De meetlus kijkt elke seconde of de bus langs een paal kwam aan de
+  kant waar het bord voor geldt (rechts van de rijrichting, dezelfde regel als
+  `signsAlong` in RouteMap), en of hij na 3 km/u correctie te hard reed. Boete
+  20 euro plus 6 per km/u. Een flits gaat als regel in het spoor
+  (`t: 'flits'`), komt bij de halte in de rittenstaat, en ligt een halve minuut
+  als rode melding bovenin de telefoon.
+- **Gebeurtenissen** (`gebeurtenisVoor`): 60 % van de diensten, geen bij een
+  examen, uit een zaad van profiel + aannametijd + dienst, dus na een herstart
+  dezelfde. Stiptheidsactie (1 euro per tijdhalte op tijd, eraf voor te vroeg
+  of te laat), comfortcontrole (hoogstens 2 keer hard remmen of optrekken: 15
+  euro), schadevrije dienst (10 euro), flitsactie (45 % van de borden flitst)
+  en controleurs. De eerste vier staan bij de dienstopdracht op de telefoon;
+  tijdens de rit staat er een kaart met de tussenstand boven de rit-app.
+- **Controleurs**: echte kaartcontrole (zwartrijders) kan niet -- OMSI weet
+  niet wie een kaartje heeft. Ze controleren daarom de chauffeur, zoals een
+  meerijder van de opdrachtgever: ze stappen onaangekondigd in op een rit met
+  genoeg haltes en rijden drie tot zes haltes mee; de kaart verschijnt pas als
+  ze aan boord zijn. Ze noteren te vroeg vertrekken, hard remmen of optrekken,
+  aanrijdingen en flitsen (dubbel) en te weinig wisselgeld. Rapport: 0 fouten
+  +20, 1-2 +5, 3-4 niets, 5 of meer -15.
+- **Wisselgeld** telt `telVerkoop` (een verkoop waarbij `ticketSlecht` ooit
+  aan stond); de meetlus schrijft het verschil als `t: 'wisselgeld'` in het
+  spoor. Let op: `telVerkoop` draait in `pushFrame`, dus alleen zolang de
+  overlay of een tablet meekijkt -- de kaartverkoop zit in de overlay.
+- **Afrekening**: `onderwegVan` bij het afronden (beide wegen), in
+  `CareerEntry.onderweg`; het bedrag zit in `pay`, zodat het loon is wat je
+  overhoudt (een boete kan het loon van een korte dienst overtreffen). In het
+  logboek staat een regel met flitsen, boetes en de uitslag. Wat niet gemeten
+  is (geen rittenstaat, geen tellers), telt niet voor en niet tegen.
+- Proef: `scripts/probe-onderweg.ts`. Niet in OMSI gezien: of de kant van het
+  bord en het bereik van 14 m kloppen op een echte kaart, en of `ticketSlecht`
+  bij een verkoop betrouwbaar aan gaat.
+
+**Stap 7: de add-on-manager** (28-09-2026). Knop "Add-ons" in het hoofdmenu,
+eigen scherm (`Addons.tsx`, opbouw uit bedrijf.css) met Installeren,
+Geïnstalleerd en Foutcontrole. Geen downloadlijst: je installeert wat je zelf
+gedownload hebt (Luc koos optie 1; veel makers verbieden verspreiden).
+- **Zip** (`core/zip.ts`): eigen lezer op zlib, geen afhankelijkheid erbij.
+  Leest alleen de inhoudsopgave en daarna één bestand tegelijk (een kaart kan
+  gigabytes zijn), namen in cp437 of UTF-8, crc wordt nagekeken. Geen zip64,
+  geen wachtwoord, geen rar/7z -- dan zegt het venster: pak zelf uit en kies
+  de map. Een map slepen of kiezen kan altijd.
+- **Waar hoort het** (`plaatsVan` in `core/addon.ts`): een bekende OMSI-map
+  in het pad (`Vehicles`, `maps`, `Sceneryobjects`, `Splines`, `Fonts`,
+  `Texture`, ...) wordt het begin, wat ervoor staat (`OMSI 2/`, `Mijn bus
+  v2/`) valt weg; een losse map met een `.bus`/`.ovh` gaat naar `Vehicles`,
+  een met `global.cfg` naar `maps` -- die regel gaat voor, anders zou de
+  `Texture`-map ín een bus naar OMSI's `Texture` gaan. Wat nergens past
+  (leesmij, plaatjes) wordt niet geplaatst en staat apart in het plan.
+- **Plan en installeren**: per bestand nieuw / staat er al precies zo / wordt
+  overschreven (met de add-on waar het nu van is). Overschrijven maakt eerst
+  een reservekopie in `%APPDATA%\omsi-enhancer\addon-reserve\<id>`. Het
+  register is `addons.json`: per bestand het pad, de sha1 en hoe het was
+  (`nieuw`, `gelijk`, `overschreven`). Niet als OMSI draait.
+- **Verwijderen**: aangepast sinds de installatie → blijft (en wordt
+  genoemd); overschreven → reserve terug; stond er al, of een andere add-on
+  heeft het ook → blijft; anders weg, en lege mappen erachteraan, nooit de
+  OMSI-mappen zelf.
+- **Foutcontrole** (`core/addoncheck.ts`): per busmap alle `.bus`/`.ovh`:
+  model.cfg, o3d's, texturen (via `leesBusModel`), scripts en varlists,
+  `[paths]`/`[passengercabin]`, sound.cfg en de wav's erin. Per kaart: alle
+  objecten en splines op de tegels (met hoe vaak), en in elk object dat er is
+  zijn `[mesh]` en `[matl]`/`[texture]`; voertuigen uit `ailists.cfg`; de
+  kaartset. Hoofdletters maken niet uit (`opSchijf`). Wat niet genoemd wordt,
+  wordt niet gezocht: een lege lijst is "niets gevonden", geen garantie.
+- Lange klussen lopen in stukjes in het hoofdproces met een pauze elke 25 ms
+  (`inStukjes`), één tegelijk, met `addon:voortgang` naar het venster. Na
+  installeren of verwijderen gaan de kaart- en bussencaches weg
+  (`vergeetKaarten`).
+- Meegenomen: in `busmodel.ts` splitste `/[\/]/` alleen op `/`; texturen die
+  als `Repaints\x.bmp` genoemd worden, werden daardoor niet gevonden (ook op
+  Windows, bij de busfoto's). Nu `/[\\/]/`.
+- Proef: `scripts/probe-addon.ts` (zip, plaatsing, plan, installeren,
+  verwijderen, foutcontrole op een nagebouwde OMSI-map). Niet gedaan: een echte
+  add-on van een paar gigabyte, en de foutcontrole op een echte kaart --
+  vooral of objecten hun `model/` en `texture/` echt zo vinden.
+
+**Navigatie: doorzichtig, vaste zoom, en haltenamen die niet meer wegvallen**
+(28-09-2026). Drie vragen van gebruikers, via Luc.
+- **Achtergrond uit** (`PanelState.glas`, knop met een vierkantje in de
+  titelbalk van de navigatie): het paneel, het waas, de rand en de
+  kaartondergrond verdwijnen; de route, de borden en de namen blijven vol, met
+  een dikkere donkere rand om de namen. Wat je leest -- manoeuvrebalk,
+  snelheid, voetregel, knoppen, het balkje onderin, de schermen van de apps --
+  krijgt een eigen vaste ondergrond. De schuif regelt in die stand alleen het
+  wegennet. Alleen bij de navigatie; het dienstpaneel is tekst. Let op: de
+  schuif doet in de gewone stand nog steeds alleen `.panel-body`; de
+  `--glas-overlay`-kleuren in theme.css rekenen met `--fade` op `.overlay-body`,
+  waar hij niet gezet is, dus het glas zelf vervaagt niet (was al zo).
+- **Zoom automatisch of vast** (`PanelState.zoomVast`, `NavZoom` in RouteMap,
+  knop "A" / blok bij de plus en min): automatisch is zoals het was
+  (`liveZoom`, verder uit naarmate je harder rijdt); vast houdt de stand, en
+  plus, min, het wieltje en knijpen verzetten dan de vaste stand in plaats van
+  na zes tellen terug te veren (bewaard een halve tel nadat je stopt). De
+  overlay bewaart het in de indeling, de tablet in zijn eigen localStorage.
+- **Haltenamen**: de namen werden in dienstvolgorde over alle ritten geplaatst,
+  alleen rechts van het bord; een gehad perron of een halte van de rit terug
+  aan de overkant won het van de halte waar je heen rijdt ("ik mis soms
+  haltes"). Nu eerst de volgende halte, dan de rest van deze rit, dan het
+  begin, dan de rest; rechts, links, boven, onder; en als het niet past zonder
+  de plaatsnaam ("Ortsm M P1"). Waar de balk, de snelheid, de schaalbalk en de
+  knoppen over de kaart liggen (`bezetOpDeKaart` in navigatie.tsx) komt geen
+  naam. Een halte die niet op de kaart gevonden wordt, krijgt nog steeds geen
+  bord, maar staat nu één keer per dienst in het logboek ("navigatie: ...
+  niet op de kaart gevonden"); dan is `probe-stopobjects.ts` de volgende stap.
+- Nagekeken in een proefopstelling met een nagebouwd perroncluster; niet in
+  OMSI. `screenshotNav.cjs` en `probe-zoom.cjs`: de laatste draait en klopt.
+
 Proef in het spel die de open vragen beantwoordt: OMSI 2.3.004, dienstregeling
 via het menu, drie haltes: A 60 s voor de plantijd weg, B 30 s na, C
 doorrijden. Daarna het spoor in de map `ritten` naast de rittenstaat leggen.
@@ -1618,7 +1789,13 @@ Er staan probes in `scripts/`:
   vertrek of OMSI de halte nu bij aankomst, bij vertrek of bij de paal laat
   verspringen; doorrijden, tellers die teruglopen, geschatte tijden zonder oordeel.
 - `probe-bedrijf.ts` — de regels van het busbedrijf: inschrijven, dag
-  afsluiten, eigen dienst, verlengen en vervallen, hele centen.
+  afsluiten, eigen dienst, verlengen en vervallen, hele centen; bussen,
+  personeel, niveaus, opleidingen, bijscholing en zelf onderhouden, het
+  postvak en de kaart voor de telefoon.
+- `probe-addon.ts` — de add-on-manager op een nagebouwde OMSI-map: zip lezen,
+  waar alles hoort, plan, installeren met reserve, verwijderen, foutcontrole.
+- `probe-onderweg.ts` — flitspalen (welke borden, welke kant, boete),
+  gebeurtenissen, het rapport van de controleurs en wat er van het loon af gaat.
 - `probe-kaartmogelijkheden.ts` — proef 0 voor een busbedrijf-modus, alleen
   lezen: per kaart de soort ritten (.ttr / typ2 / oud), `StnLinks.cfg` ruw,
   haltes met meer dan één opvolger, KI-groepen per lijn, de wagenparklijsten

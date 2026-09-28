@@ -614,7 +614,7 @@
 
 .bd-mensen li {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) 130px 130px 110px 120px 250px;
+  grid-template-columns: 40px minmax(0, 1fr) 130px 130px 110px 120px 360px;
   align-items: center;
   gap: 14px;
   padding: 10px 0;
@@ -647,6 +647,204 @@
   color: var(--vel-zacht);
   font-size: 11px;
   font-weight: 500;
+}
+
+/* ---- niveau, opleidingen en de werkplaats zelf ---- */
+
+.bd-meter.dun {
+  height: 3px;
+  margin-top: 5px;
+}
+
+.bd-knop.zelf {
+  border-color: color-mix(in srgb, #8b5cf6 55%, transparent);
+  color: #8b5cf6;
+}
+
+.bd-niveaukop {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.bd-niveaukop > span:last-child {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bd-niveaukop b {
+  font-size: 18px;
+}
+
+.bd-niveaukop small {
+  color: var(--vel-zacht);
+}
+
+.bd-niveaugetal {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, var(--route), #8b5cf6);
+  color: #ffffff;
+  font-size: 30px;
+  font-weight: 800;
+}
+
+.bd-voordelen {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bd-voordelen li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 10px;
+  padding: 10px 12px;
+  border: 1px dashed var(--vel-lijn);
+  border-radius: 10px;
+  color: var(--vel-zacht);
+  font-size: 13px;
+}
+
+.bd-voordelen li small {
+  grid-column: 2;
+  font-size: 11.5px;
+}
+
+.bd-voordelen li.aan {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--optijd) 45%, transparent);
+  color: var(--vel-ink);
+}
+
+.bd-voordelen li.aan small {
+  color: var(--optijd);
+}
+
+.bd-kaart.klaar {
+  border-color: color-mix(in srgb, var(--optijd) 45%, transparent);
+}
+
+.bd-spelvenster {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.bd-spel {
+  width: min(760px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+
+.bd-spelbalk {
+  display: flex;
+  justify-content: space-between;
+  margin: 12px 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.bd-onderdelen {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.bd-onderdelen button {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 12px;
+  border: 1px solid var(--vel-lijn);
+  border-radius: 10px;
+  background: var(--vel-hover);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bd-onderdelen button:hover:not(:disabled) {
+  border-color: var(--route);
+}
+
+.bd-onderdelen button small {
+  color: var(--vel-zacht);
+}
+
+.bd-onderdelen button.defect {
+  border-color: var(--laat);
+  background: color-mix(in srgb, var(--laat) 14%, transparent);
+}
+
+.bd-onderdelen button.defect small {
+  color: var(--laat);
+}
+
+.bd-onderdelen button.goed {
+  border-color: color-mix(in srgb, var(--optijd) 45%, transparent);
+}
+
+.bd-onderdelen button.goed small {
+  color: var(--optijd);
+}
+
+.bd-stappen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 30px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  counter-reset: stap;
+}
+
+.bd-stappen li {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--optijd) 16%, transparent);
+  color: var(--optijd);
+  font-size: 12.5px;
+  font-weight: 600;
+  counter-increment: stap;
+}
+
+.bd-stappen li::before {
+  content: counter(stap) '. ';
+}
+
+.bd-uitslag {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--vel-lijn);
+}
+
+.bd-uitslag b {
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.bd-uitslag span {
+  flex: 1;
+  color: var(--vel-zacht);
 }
 
 /* ---- tweedehandsmarkt: kaarten ---- */
@@ -928,7 +1126,7 @@
  * Daaronder twee regels: wie, ervaring en tevredenheid boven; knoppen, loon en
  * status eronder.
  */
-@media (max-width: 1320px) {
+@media (max-width: 1500px) {
   .bd-mensen li {
     grid-template-columns: 40px minmax(0, 1fr) 120px 120px;
   }
@@ -953,5 +1151,117 @@
 @media (max-width: 1400px) {
   .bd-tegels {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/*
+ * HET POSTVAK (BedrijfPost.tsx)
+ *
+ * Een lijst zoals elk postvak: afzender, onderwerp, dag; ongelezen vet met een
+ * gekleurde stip (groen goed nieuws, rood slecht, blauw gewoon). Klik om te
+ * lezen; de tekst klapt eronder open.
+ */
+.bd-teller {
+  margin-left: auto;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--laat);
+  color: #ffffff;
+  font-size: 11px;
+  font-style: normal;
+  line-height: 20px;
+  text-align: center;
+}
+
+.bd-post {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bd-post li + li {
+  border-top: 1px solid var(--vel-rand, rgba(127, 127, 127, 0.18));
+}
+
+.bd-post button {
+  display: grid;
+  grid-template-columns: 12px 190px 1fr auto;
+  align-items: baseline;
+  column-gap: 14px;
+  width: 100%;
+  padding: 12px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--vel-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bd-post button:hover,
+.bd-post button.open {
+  background: var(--vel-hover);
+}
+
+.bd-poststip {
+  align-self: center;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  opacity: 0.35;
+}
+
+.bd-post .nieuw .bd-poststip {
+  opacity: 1;
+}
+
+.bd-poststip.goed {
+  background: var(--optijd);
+}
+
+.bd-poststip.slecht {
+  background: var(--laat);
+}
+
+.bd-poststip.gewoon {
+  background: var(--route);
+}
+
+.bd-postvan,
+.bd-postdag {
+  color: var(--vel-zacht);
+  font-size: 13px;
+}
+
+.bd-post b {
+  font-weight: 500;
+}
+
+.bd-post .nieuw b,
+.bd-post .nieuw .bd-postvan {
+  color: var(--vel-ink);
+  font-weight: 700;
+}
+
+.bd-post p {
+  grid-column: 3 / -1;
+  margin: 6px 0 2px;
+  color: var(--vel-zacht);
+  line-height: 1.5;
+}
+
+@media (max-width: 1100px) {
+  .bd-post button {
+    grid-template-columns: 12px 1fr auto;
+  }
+
+  .bd-postvan {
+    grid-column: 2 / -1;
+  }
+
+  .bd-post p {
+    grid-column: 2 / -1;
   }
 }

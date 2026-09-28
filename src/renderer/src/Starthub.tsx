@@ -36,6 +36,8 @@ interface Props {
   onStaatVanDienst: () => void;
   /** Naar het eigen busbedrijf; zie Bedrijf.tsx. */
   onBedrijf: () => void;
+  /** Naar de add-on-manager; zie Addons.tsx. */
+  onAddons: () => void;
   onInstellingen: () => void;
   onChauffeur: () => void;
   /** Het logboek van de app in de verkenner tonen. */
@@ -103,6 +105,7 @@ export function Starthub({
   onModus,
   onStaatVanDienst,
   onBedrijf,
+  onAddons,
   onInstellingen,
   onChauffeur,
   onLogboek,
@@ -347,6 +350,11 @@ export function Starthub({
           </button>
 
           <div className="hub-knoppen">
+            {/* Het busbedrijf staat als grote tegel hierboven; de add-ons wel hier. */}
+            <button type="button" className="hub-knop" onClick={onAddons}>
+              <Icoon naam="kaartje" />
+              {t(language, "ad.title")}
+            </button>
             <button type="button" className="hub-knop" onClick={onInstellingen}>
               <Icoon naam="stuur" />
               {t(language, "setup.omsiSettings")}

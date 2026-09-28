@@ -1,3 +1,4 @@
+import type { Flits } from './onderweg'
 import type { Duty } from './types'
 
 /*
@@ -58,6 +59,8 @@ export interface Meting {
   optrekken: number
   /** Ontbreekt als OMSI geen aanrijdingen doorgeeft; dan telt er ook niets. */
   klappen?: number
+  /** Verkopen met te weinig wisselgeld, opgeteld; zie `telVerkoop` in main. */
+  wisselgeld?: number
 }
 
 /** Eén regel in het spoor. `k` is de klok van het spel in minuten. */
@@ -66,7 +69,9 @@ export type SpoorRegel =
   | { t: 'halte'; k: number; rit: number; van: number; naar: number; naarRit: number; reizigers: number }
   | { t: 'stil'; k: number }
   | { t: 'weg'; k: number }
-  | { t: 'rem' | 'optrek' | 'klap'; k: number; rit: number; halte?: number; n: number }
+  | { t: 'rem' | 'optrek' | 'klap' | 'wisselgeld'; k: number; rit: number; halte?: number; n: number }
+  /** Geflitst; zie core/onderweg.ts. De boete staat erbij, want die geldt zoals hij toen was. */
+  | { t: 'flits'; k: number; rit: number; halte?: number; paal: number; kmh: number; limiet: number; boete: number }
 
 /** Wat de meetlus tussen twee metingen onthoudt. */
 export interface MeetStand {
@@ -77,6 +82,7 @@ export interface MeetStand {
   remmen: number
   optrekken: number
   klappen?: number
+  wisselgeld?: number
 }
 
 /** Onder deze snelheid staat de bus stil, boven de tweede rijdt hij weer. */
@@ -103,7 +109,8 @@ export function volgSpoor(
     stil,
     remmen: nu.remmen,
     optrekken: nu.optrekken,
-    klappen: nu.klappen
+    klappen: nu.klappen,
+    wisselgeld: nu.wisselgeld
   }
   if (!vorige) return { stand, regels: [] }
 
@@ -136,7 +143,7 @@ export function volgSpoor(
     })
   }
 
-  const erbij = (soort: 'rem' | 'optrek' | 'klap', oud: number | undefined, nieuw: number | undefined): void => {
+  const erbij = (soort: 'rem' | 'optrek' | 'klap' | 'wisselgeld', oud: number | undefined, nieuw: number | undefined): void => {
     if (oud === undefined || nieuw === undefined) return
     const n = Math.round(nieuw - oud)
     if (n > 0) regels.push({ t: soort, k, rit: nu.rit, halte: nu.uitMenu ? nu.halte : undefined, n })
@@ -144,6 +151,7 @@ export function volgSpoor(
   erbij('rem', vorige.remmen, nu.remmen)
   erbij('optrek', vorige.optrekken, nu.optrekken)
   erbij('klap', vorige.klappen, nu.klappen)
+  erbij('wisselgeld', vorige.wisselgeld, nu.wisselgeld)
   return { stand, regels }
 }
 
@@ -167,6 +175,9 @@ export interface HalteStaat {
   remmen?: number
   optrekken?: number
   klappen?: number
+  /** Verkopen met te weinig wisselgeld, en flitsen, op weg naar deze halte. */
+  wisselgeld?: number
+  flitsen?: Flits[]
 }
 
 export interface RitStaat {
@@ -186,6 +197,8 @@ export interface Rittenstaat {
   vastGemeten: number
   teVroeg: number
   teLaat: number
+  /** Alle flitsen van de dienst, ook waar de halte niet bekend was. */
+  flitsen?: Flits[]
 }
 
 /**
@@ -225,6 +238,7 @@ export function bouwRittenstaat(duty: Duty, regels: SpoorRegel[], norm = NORM): 
   let wegNaStil: number | undefined
   /** Een sprong waarbij de bus nog stilstond: het vertrek komt bij het eerstvolgende wegrijden. */
   let wachtOpWeg: HalteStaat | undefined
+  const flitsen: Flits[] = []
 
   for (const regel of regels) {
     switch (regel.t) {
@@ -266,11 +280,20 @@ export function bouwRittenstaat(duty: Duty, regels: SpoorRegel[], norm = NORM): 
       }
       case 'rem':
       case 'optrek':
-      case 'klap': {
+      case 'klap':
+      case 'wisselgeld': {
         const halte = halteVan(regel.rit, regel.halte)
         if (!halte) break
-        const veld = regel.t === 'rem' ? 'remmen' : regel.t === 'optrek' ? 'optrekken' : 'klappen'
+        const veld =
+          regel.t === 'rem' ? 'remmen' : regel.t === 'optrek' ? 'optrekken' : regel.t === 'klap' ? 'klappen' : 'wisselgeld'
         halte[veld] = (halte[veld] ?? 0) + regel.n
+        break
+      }
+      case 'flits': {
+        const flits: Flits = { paal: regel.paal, kmh: regel.kmh, limiet: regel.limiet, boete: regel.boete }
+        flitsen.push(flits)
+        const halte = halteVan(regel.rit, regel.halte)
+        if (halte) halte.flitsen = [...(halte.flitsen ?? []), flits]
         break
       }
     }
@@ -299,7 +322,16 @@ export function bouwRittenstaat(duty: Duty, regels: SpoorRegel[], norm = NORM): 
     }
   }
 
-  return { voorlopig: true, norm, ritten, gemeten, vastGemeten, teVroeg, teLaat }
+  return {
+    voorlopig: true,
+    norm,
+    ritten,
+    gemeten,
+    vastGemeten,
+    teVroeg,
+    teLaat,
+    ...(flitsen.length > 0 ? { flitsen } : {})
+  }
 }
 
 /** Een spoorbestand terug in regels; een halve laatste regel na een crash valt weg. */

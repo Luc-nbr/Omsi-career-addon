@@ -434,6 +434,33 @@
   font-size: 12.5px;
 }
 
+/* Onderweg (Onderweg.tsx): flitsen, boetes en de gebeurtenis, onder de rittenstaat. */
+.profiel-logboek .ow-vak {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 12.5px;
+}
+
+.ow-regel {
+  margin: 0;
+  color: var(--vel-zacht);
+}
+
+.ow-regel b {
+  color: var(--vel-ink);
+  font-weight: 600;
+}
+
+.ow-regel.goed {
+  color: var(--optijd);
+}
+
+.ow-regel.slecht {
+  color: var(--laat);
+}
+
 .rittenstaat summary {
   display: flex;
   flex-wrap: wrap;
