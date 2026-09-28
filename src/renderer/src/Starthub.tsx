@@ -10,6 +10,7 @@ import { dagdeel, kantel, kantelLos, useOptellen } from "./beweging";
 import carriereFoto from "./assets/modi/carriere.webp";
 import dienstFoto from "./assets/modi/dienst.webp";
 import vrijFoto from "./assets/modi/vrij.webp";
+import bedrijfFoto from "./assets/modi/bedrijf.webp";
 
 interface Props {
   /**
@@ -59,6 +60,11 @@ const MODI: GameMode[] = ["career", "service", "free"];
  * remise voor de loopbaan, de klok boven de stad voor een dienst, het groene
  * land voor vrij rijden. Het zijn brede banners; welk deel in de tegel komt,
  * staat in de CSS bij `data-modus`.
+ */
+/*
+ * Het busbedrijf heeft er een eigen tegel naast, met een eigen foto: de bus op
+ * de busbaan bij de halte, uitgesneden uit de dagfoto van de app en wat voller
+ * van kleur gemaakt, zodat hij naast de andere drie niet verbleekt.
  */
 const FOTO: Record<GameMode, string> = {
   career: carriereFoto,
@@ -206,7 +212,13 @@ export function Starthub({
           </div>
         )}
 
-        {/* De hoofdkeuze: drie tegels, en niets anders even groot. */}
+        {/*
+          De hoofdkeuze: de drie manieren van rijden, en je eigen busbedrijf.
+          Dat bedrijf stond eerst als klein knopje onderaan, tussen de
+          instellingen en het wisselen van chauffeur. Luc: "dat moet een grote
+          tegel worden" -- het is een eigen app met een dashboard, geen
+          instelling, en hoort dus tussen de dingen die je komt doen.
+        */}
         <div
           className="hub-tegels"
           onPointerMove={(event) => kantel(event, ".hub-tegel", 7)}
@@ -268,6 +280,33 @@ export function Starthub({
               </span>
             </button>
           ))}
+          {/*
+            Geen modus maar een eigen app: hij staat nooit "aan", dus zonder
+            aria-pressed. Zelfde tegel verder, zodat het er een van de vier is en
+            niet een uitzondering.
+          */}
+          <button
+            type="button"
+            className="hub-tegel"
+            data-modus="bedrijf"
+            style={{ "--i": MODI.length } as CSSProperties}
+            onClick={onBedrijf}
+          >
+            <img
+              className="hub-tegel-foto"
+              src={bedrijfFoto}
+              alt=""
+              draggable={false}
+            />
+            <span className="hub-tegel-glans" aria-hidden="true" />
+            <span className="hub-tegel-tekst">
+              <span className="hub-tegel-icoon">
+                <Icoon naam="thuis" />
+              </span>
+              <span className="hub-tegel-naam">{t(language, "bd.title")}</span>
+              <span className="hub-tegel-uitleg">{t(language, "bd.intro")}</span>
+            </span>
+          </button>
         </div>
 
         <div className="hub-onder">
@@ -308,10 +347,6 @@ export function Starthub({
           </button>
 
           <div className="hub-knoppen">
-            <button type="button" className="hub-knop" onClick={onBedrijf}>
-              <Icoon naam="thuis" />
-              {t(language, "bd.hub")}
-            </button>
             <button type="button" className="hub-knop" onClick={onInstellingen}>
               <Icoon naam="stuur" />
               {t(language, "setup.omsiSettings")}
