@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type {
   BusfotoStand,
   CareerApi,
@@ -145,6 +145,19 @@ const api: CareerApi = {
   bedrijfBijscholing: (id) => ipcRenderer.invoke('bedrijf:bijscholing', id),
   bedrijfZelf: (nummer, wat, score) => ipcRenderer.invoke('bedrijf:zelf', nummer, wat, score),
   bedrijfPost: (id) => ipcRenderer.invoke('bedrijf:post', id),
+  addonKies: (soort) => ipcRenderer.invoke('addon:kies', soort),
+  addonPad: (bestand) => webUtils.getPathForFile(bestand),
+  addonPlan: (pad) => ipcRenderer.invoke('addon:plan', pad),
+  addonInstalleer: (pad, naam) => ipcRenderer.invoke('addon:installeer', pad, naam),
+  addonLijst: () => ipcRenderer.invoke('addon:lijst'),
+  addonVerwijder: (id) => ipcRenderer.invoke('addon:verwijder', id),
+  addonInhoud: () => ipcRenderer.invoke('addon:inhoud'),
+  addonControleer: (soort, naam) => ipcRenderer.invoke('addon:controleer', soort, naam),
+  opAddonVoortgang: (luisteraar) => {
+    const heen = (_gebeurtenis: unknown, stand: { fase: string; n: number }): void => luisteraar(stand)
+    ipcRenderer.on('addon:voortgang', heen)
+    return () => ipcRenderer.removeListener('addon:voortgang', heen)
+  },
   omsiState: () => ipcRenderer.invoke('omsi:state'),
   confirmOmsi: (path) => ipcRenderer.invoke('omsi:confirm', path),
   browseOmsi: () => ipcRenderer.invoke('omsi:browse'),

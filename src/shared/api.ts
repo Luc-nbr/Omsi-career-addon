@@ -1,3 +1,4 @@
+import type { Controle } from '../core/addoncheck'
 import type { Schermvorm } from './scherm'
 import type { Busanalyse, Busmap } from '../core/busklaar'
 import type { Aanbod, MarktBus, OpleidingId } from '../core/bedrijf'
@@ -793,6 +794,17 @@ export interface CareerApi {
   bedrijfZelf(nummer: number, wat: 'onderhoud' | 'reparatie', score: number): Promise<{ payload: CareerPayload; fout?: string }>
   /** Een bericht in het postvak gelezen; zonder id het hele postvak. */
   bedrijfPost(id?: number): Promise<CareerPayload>
+  /** De add-on-manager (stap 7); zie core/addon.ts. Een fout komt als `{ fout }` terug. */
+  addonKies(soort: 'zip' | 'map'): Promise<string | undefined>
+  /** Het pad van een bestand dat in het venster is losgelaten. */
+  addonPad(bestand: File): string
+  addonPlan(pad: string): Promise<{ plan: AddonPlan } | AddonFout>
+  addonInstalleer(pad: string, naam?: string): Promise<{ id: string; geschreven: number; overschreven: number } | AddonFout>
+  addonLijst(): Promise<AddonOverzicht[]>
+  addonVerwijder(id: string): Promise<{ verwijderd: number; teruggezet: number; gebleven: number; gewijzigd: string[] } | AddonFout>
+  addonInhoud(): Promise<{ bussen: string[]; kaarten: string[] }>
+  addonControleer(soort: 'bus' | 'kaart', naam: string): Promise<Controle | AddonFout>
+  opAddonVoortgang(luisteraar: (stand: { fase: string; n: number }) => void): () => void
   bedrijfWerkplaats(
     nummer: number,
     wat: 'onderhoud' | 'reparatie'
@@ -866,4 +878,36 @@ export const TIME_WINDOWS: Record<DutyRequest['window'], { label: string; from?:
   middag: { label: 'Middag', from: 11 * 60, to: 16 * 60 },
   avond: { label: 'Avond', from: 16 * 60, to: 22 * 60 },
   nacht: { label: 'Nacht', from: 22 * 60, to: 30 * 60 }
+}
+
+/** Een klus van de add-on-manager die niet lukte; `melding` is de tekst van de fout, als die er is. */
+export interface AddonFout {
+  fout: 'bezig' | 'omsi' | 'plan' | 'weg' | 'fout' | 'geen-zip' | 'zip64' | 'versleuteld' | 'methode' | 'kapot'
+  melding?: string
+}
+
+/** Een installatieplan zoals het venster het ziet: tellingen en de eerste regels. */
+export interface AddonPlan {
+  naam: string
+  nieuw: number
+  gelijk: number
+  /** Wat overschreven wordt (de eerste 200), met de add-on waar het nu van is. */
+  anders: Array<{ doel: string; van?: string }>
+  andersAantal: number
+  overig: string[]
+  overigAantal: number
+  plekken: Array<{ plek: string; bestanden: number; bytes: number }>
+  bussen: string[]
+  kaarten: string[]
+  bytes: number
+}
+
+export interface AddonOverzicht {
+  id: string
+  naam: string
+  geinstalleerd: string
+  bestanden: number
+  overschreven: number
+  bussen: string[]
+  kaarten: string[]
 }

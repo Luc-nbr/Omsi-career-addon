@@ -1546,6 +1546,50 @@ eerder afgewezen.
   bord en het bereik van 14 m kloppen op een echte kaart, en of `ticketSlecht`
   bij een verkoop betrouwbaar aan gaat.
 
+**Stap 7: de add-on-manager** (28-09-2026). Knop "Add-ons" in het hoofdmenu,
+eigen scherm (`Addons.tsx`, opbouw uit bedrijf.css) met Installeren,
+Geïnstalleerd en Foutcontrole. Geen downloadlijst: je installeert wat je zelf
+gedownload hebt (Luc koos optie 1; veel makers verbieden verspreiden).
+- **Zip** (`core/zip.ts`): eigen lezer op zlib, geen afhankelijkheid erbij.
+  Leest alleen de inhoudsopgave en daarna één bestand tegelijk (een kaart kan
+  gigabytes zijn), namen in cp437 of UTF-8, crc wordt nagekeken. Geen zip64,
+  geen wachtwoord, geen rar/7z -- dan zegt het venster: pak zelf uit en kies
+  de map. Een map slepen of kiezen kan altijd.
+- **Waar hoort het** (`plaatsVan` in `core/addon.ts`): een bekende OMSI-map
+  in het pad (`Vehicles`, `maps`, `Sceneryobjects`, `Splines`, `Fonts`,
+  `Texture`, ...) wordt het begin, wat ervoor staat (`OMSI 2/`, `Mijn bus
+  v2/`) valt weg; een losse map met een `.bus`/`.ovh` gaat naar `Vehicles`,
+  een met `global.cfg` naar `maps` -- die regel gaat voor, anders zou de
+  `Texture`-map ín een bus naar OMSI's `Texture` gaan. Wat nergens past
+  (leesmij, plaatjes) wordt niet geplaatst en staat apart in het plan.
+- **Plan en installeren**: per bestand nieuw / staat er al precies zo / wordt
+  overschreven (met de add-on waar het nu van is). Overschrijven maakt eerst
+  een reservekopie in `%APPDATA%\omsi-enhancer\addon-reserve\<id>`. Het
+  register is `addons.json`: per bestand het pad, de sha1 en hoe het was
+  (`nieuw`, `gelijk`, `overschreven`). Niet als OMSI draait.
+- **Verwijderen**: aangepast sinds de installatie → blijft (en wordt
+  genoemd); overschreven → reserve terug; stond er al, of een andere add-on
+  heeft het ook → blijft; anders weg, en lege mappen erachteraan, nooit de
+  OMSI-mappen zelf.
+- **Foutcontrole** (`core/addoncheck.ts`): per busmap alle `.bus`/`.ovh`:
+  model.cfg, o3d's, texturen (via `leesBusModel`), scripts en varlists,
+  `[paths]`/`[passengercabin]`, sound.cfg en de wav's erin. Per kaart: alle
+  objecten en splines op de tegels (met hoe vaak), en in elk object dat er is
+  zijn `[mesh]` en `[matl]`/`[texture]`; voertuigen uit `ailists.cfg`; de
+  kaartset. Hoofdletters maken niet uit (`opSchijf`). Wat niet genoemd wordt,
+  wordt niet gezocht: een lege lijst is "niets gevonden", geen garantie.
+- Lange klussen lopen in stukjes in het hoofdproces met een pauze elke 25 ms
+  (`inStukjes`), één tegelijk, met `addon:voortgang` naar het venster. Na
+  installeren of verwijderen gaan de kaart- en bussencaches weg
+  (`vergeetKaarten`).
+- Meegenomen: in `busmodel.ts` splitste `/[\/]/` alleen op `/`; texturen die
+  als `Repaints\x.bmp` genoemd worden, werden daardoor niet gevonden (ook op
+  Windows, bij de busfoto's). Nu `/[\\/]/`.
+- Proef: `scripts/probe-addon.ts` (zip, plaatsing, plan, installeren,
+  verwijderen, foutcontrole op een nagebouwde OMSI-map). Niet gedaan: een echte
+  add-on van een paar gigabyte, en de foutcontrole op een echte kaart --
+  vooral of objecten hun `model/` en `texture/` echt zo vinden.
+
 Proef in het spel die de open vragen beantwoordt: OMSI 2.3.004, dienstregeling
 via het menu, drie haltes: A 60 s voor de plantijd weg, B 30 s na, C
 doorrijden. Daarna het spoor in de map `ritten` naast de rittenstaat leggen.
@@ -1630,6 +1674,8 @@ Er staan probes in `scripts/`:
   afsluiten, eigen dienst, verlengen en vervallen, hele centen; bussen,
   personeel, niveaus, opleidingen, bijscholing en zelf onderhouden, het
   postvak en de kaart voor de telefoon.
+- `probe-addon.ts` — de add-on-manager op een nagebouwde OMSI-map: zip lezen,
+  waar alles hoort, plan, installeren met reserve, verwijderen, foutcontrole.
 - `probe-onderweg.ts` — flitspalen (welke borden, welke kant, boete),
   gebeurtenissen, het rapport van de controleurs en wat er van het loon af gaat.
 - `probe-kaartmogelijkheden.ts` — proef 0 voor een busbedrijf-modus, alleen

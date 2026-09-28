@@ -1,0 +1,238 @@
+/*
+ * De add-on-manager (Addons.tsx). De opbouw -- zijbalk, panelen, knoppen --
+ * komt uit bedrijf.css; hier alleen wat dit scherm extra heeft. Rood is "hier
+ * gaat iets weg of ontbreekt", groen "alles gevonden", zoals overal in de app.
+ */
+
+.bd-logo svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* De plek om een zip of map los te laten. */
+.ad-sleep {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 36px 24px;
+  border: 2px dashed var(--vel-rand);
+  text-align: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.ad-sleep.boven {
+  border-color: var(--route);
+  background: color-mix(in srgb, var(--route) 8%, transparent);
+}
+
+.ad-sleep h2 {
+  margin: 4px 0 0;
+  font-size: 18px;
+}
+
+.ad-sleep p {
+  margin: 0;
+  max-width: 560px;
+}
+
+.ad-sleepicoon {
+  width: 40px;
+  height: 40px;
+  color: var(--route);
+}
+
+.ad-knoppen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.ad-naam {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 420px;
+  margin-bottom: 14px;
+  color: var(--vel-zacht);
+  font-size: 13px;
+}
+
+.ad-naam input {
+  padding: 8px 10px;
+  border: 1px solid var(--vel-rand);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--vel-ink);
+  font: inherit;
+  font-size: 15px;
+}
+
+/* Vijf tellers op een rij, zoals de tegels op het dashboard maar kleiner. */
+.ad-tellers {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.ad-tellers > div {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--vel-hover);
+}
+
+.ad-tellers b {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ad-tellers span {
+  color: var(--vel-zacht);
+  font-size: 12px;
+}
+
+.ad-tellers .let-op b {
+  color: var(--laat);
+}
+
+.ad-gevonden {
+  margin: 0 0 8px;
+  color: var(--vel-zacht);
+}
+
+.ad-lijst,
+.ad-addons,
+.ad-controles,
+.ad-ontbrekend {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ad-lijst li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 14px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--vel-rand);
+  font-size: 13px;
+}
+
+.ad-lijst li:last-child,
+.ad-addons li:last-child,
+.ad-controles > li:last-child {
+  border-bottom: 0;
+}
+
+.ad-pad {
+  overflow: hidden;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ad-overig summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.ad-addons li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--vel-rand);
+}
+
+.ad-addonnaam {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ad-addonnaam small {
+  color: var(--vel-zacht);
+}
+
+.bd-knop.gevaar {
+  border-color: var(--laat);
+  background: var(--laat);
+  color: #ffffff;
+}
+
+.ad-controles > li {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--vel-rand);
+}
+
+.ad-rij {
+  display: grid;
+  /* Vaste kolom voor de uitslag, zodat de knoppen onder elkaar staan. */
+  grid-template-columns: minmax(0, 1fr) 150px auto;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.ad-goed {
+  color: var(--optijd);
+  font-weight: 600;
+}
+
+.ad-slecht {
+  color: var(--laat);
+  font-weight: 600;
+}
+
+.ad-uitslag {
+  margin-top: 8px;
+}
+
+.ad-uitslag p {
+  margin: 0 0 6px;
+}
+
+.ad-ontbrekend {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--vel-hover);
+}
+
+.ad-ontbrekend li {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: 2px 10px;
+  padding: 5px 0;
+  font-size: 12.5px;
+}
+
+.ad-ontbrekend small {
+  grid-column: 2;
+}
+
+.ad-soort {
+  color: var(--laat);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 1100px) {
+  .ad-tellers {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.ad-rij > span:nth-child(2) {
+  text-align: right;
+}

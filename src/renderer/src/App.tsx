@@ -44,6 +44,7 @@ import { Flag } from "./Flag";
 import { GameSetup } from "./GameSetup";
 import { Profiel } from "./Profiel";
 import { BedrijfApp } from "./Bedrijf";
+import { AddonsApp } from "./Addons";
 import { RunningDuty } from "./RunningDuty";
 import {
   Setup,
@@ -198,7 +199,8 @@ type Screen =
   | "game"
   | "profiel"
   | "bussen"
-  | "bedrijf";
+  | "bedrijf"
+  | "addons";
 
 /*
  * De stand van de plugin werd hier als los regeltje getoond, in vier smaken --
@@ -2285,6 +2287,15 @@ export function App(): JSX.Element {
     );
   }
 
+  // De add-on-manager, ook een eigen scherm; zie Addons.tsx.
+  if (screen === "addons") {
+    return (
+      <LanguageProvider language={language}>
+        <AddonsApp onTerug={() => setScreen("modes")} />
+      </LanguageProvider>
+    );
+  }
+
   if (screen === "modes" && career?.state) {
     return (
       <LanguageProvider language={language}>
@@ -2311,6 +2322,7 @@ export function App(): JSX.Element {
           }}
           onStaatVanDienst={() => setScreen("profiel")}
           onBedrijf={() => setScreen("bedrijf")}
+          onAddons={() => setScreen("addons")}
           onInstellingen={() => setScreen("game")}
           onChauffeur={() => setScreen("profiles")}
           onLogboek={() => void window.career.logboekOpenen()}

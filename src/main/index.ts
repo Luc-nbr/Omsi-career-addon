@@ -134,6 +134,19 @@ import {
   type SpoorRegel
 } from '../core/rittenstaat'
 import {
+  installeerStappen,
+  leesRegister,
+  openBron,
+  planStappen,
+  reserveMap,
+  schrijfRegister,
+  verwijderStappen,
+  type Plan
+} from '../core/addon'
+import { controleerBus, controleerKaart, type Controle } from '../core/addoncheck'
+import { ZipFout } from '../core/zip'
+import type { AddonOverzicht, AddonPlan } from '../shared/api'
+import {
   FLITS,
   controleAanBoord,
   flitsControle,
@@ -4827,6 +4840,163 @@ function registerHandlers(): void {
     if (!career?.bedrijf) return careerPayload()
     return persist({ ...career, bedrijf: sluitDagAf(career.bedrijf) })
   })
+
+  /*
+   * DE ADD-ON-MANAGER (stap 7); de regels staan in core/addon.ts en
+   * core/addoncheck.ts. Eén klus tegelijk, en in stukjes met een pauze
+   * ertussen: een kaart van duizenden bestanden mag het venster niet
+   * stilzetten. Hoe ver hij is, gaat als `addon:voortgang` naar het venster.
+   */
+  let addonBezig = false
+  let addonPlan: { pad: string; plan: Plan } | undefined
+  const inStukjes = async <T>(
+    stappen: Generator<number, T>,
+    afzender: Electron.WebContents,
+    fase: string
+  ): Promise<T> => {
+    let sinds = Date.now()
+    for (;;) {
+      const stap = stappen.next()
+      if (stap.done) return stap.value
+      if (Date.now() - sinds > 25) {
+        if (!afzender.isDestroyed()) afzender.send('addon:voortgang', { fase, n: stap.value })
+        await new Promise((klaar) => setImmediate(klaar))
+        sinds = Date.now()
+      }
+    }
+  }
+  const eenTegelijk = async <T>(klus: () => Promise<T>): Promise<T | { fout: string }> => {
+    if (addonBezig) return { fout: 'bezig' }
+    addonBezig = true
+    try {
+      return await klus()
+    } catch (fout) {
+      logFout('add-on-manager', fout)
+      return { fout: fout instanceof ZipFout ? fout.soort : 'fout', melding: fout instanceof Error ? fout.message : String(fout) } as {
+        fout: string
+      }
+    } finally {
+      addonBezig = false
+    }
+  }
+  /** Wat het venster van een plan te zien krijgt: tellingen en de eerste regels, niet twintigduizend. */
+  const planVoorVenster = (plan: Plan): AddonPlan => ({
+    naam: plan.naam,
+    nieuw: plan.regels.filter((r) => r.staat === 'nieuw').length,
+    gelijk: plan.regels.filter((r) => r.staat === 'gelijk').length,
+    anders: plan.regels.filter((r) => r.staat === 'anders').slice(0, 200).map((r) => ({ doel: r.doel, van: r.van })),
+    andersAantal: plan.regels.filter((r) => r.staat === 'anders').length,
+    overig: plan.overig.slice(0, 100),
+    overigAantal: plan.overig.length,
+    plekken: plan.plekken.slice(0, 60),
+    bussen: plan.bussen,
+    kaarten: plan.kaarten,
+    bytes: plan.regels.reduce((som, r) => som + r.grootte, 0)
+  })
+
+  handle('addon:kies', async (_event, soort: 'zip' | 'map') => {
+    const keuze = await dialog.showOpenDialog({
+      title: soort === 'zip' ? 'Kies een add-on (zip)' : 'Kies een uitgepakte add-on',
+      properties: soort === 'zip' ? ['openFile'] : ['openDirectory'],
+      filters: soort === 'zip' ? [{ name: 'Zip', extensions: ['zip'] }] : undefined
+    })
+    return keuze.canceled ? undefined : keuze.filePaths[0]
+  })
+  handle('addon:plan', (event, pad: string) =>
+    eenTegelijk(async () => {
+      const bron = openBron(String(pad))
+      try {
+        const plan = await inStukjes(planStappen(bron, omsi(), leesRegister(userData())), event.sender, 'plan')
+        addonPlan = { pad: String(pad), plan }
+        return { plan: planVoorVenster(plan) }
+      } finally {
+        bron.sluit()
+      }
+    })
+  )
+  handle('addon:installeer', (event, pad: string, naam?: string) =>
+    eenTegelijk(async () => {
+      // Bestanden overschrijven die OMSI open heeft, gaat mis of half.
+      if (await isOmsiRunning()) return { fout: 'omsi' }
+      if (addonPlan?.pad !== String(pad)) return { fout: 'plan' }
+      const plan = { ...addonPlan.plan, naam: String(naam ?? '').trim().slice(0, 80) || addonPlan.plan.naam }
+      const bron = openBron(String(pad))
+      try {
+        const uit = await inStukjes(installeerStappen(bron, plan, omsi(), userData()), event.sender, 'installeer')
+        const register = leesRegister(userData())
+        schrijfRegister(userData(), { addons: [...register.addons, uit.addon] })
+        log(`Add-on geïnstalleerd: ${uit.addon.naam} (${uit.geschreven} bestanden, ${uit.overschreven} overschreven)`)
+        addonPlan = undefined
+        // Er kunnen bussen en kaarten bij zijn: de lijsten opnieuw lezen.
+        vergeetKaarten()
+        vehicleTrackers.clear()
+        return { id: uit.addon.id, geschreven: uit.geschreven, overschreven: uit.overschreven }
+      } finally {
+        bron.sluit()
+      }
+    })
+  )
+  handle('addon:lijst', (): AddonOverzicht[] =>
+    leesRegister(userData())
+      .addons.map((a) => ({
+        id: a.id,
+        naam: a.naam,
+        geinstalleerd: a.geinstalleerd,
+        bestanden: a.bestanden.length,
+        overschreven: a.bestanden.filter((b) => b.was === 'overschreven').length,
+        bussen: a.bussen,
+        kaarten: a.kaarten
+      }))
+      .reverse()
+  )
+  handle('addon:verwijder', (event, id: string) =>
+    eenTegelijk(async () => {
+      if (await isOmsiRunning()) return { fout: 'omsi' }
+      const register = leesRegister(userData())
+      const addon = register.addons.find((a) => a.id === String(id))
+      if (!addon) return { fout: 'weg' }
+      const uit = await inStukjes(verwijderStappen(addon, register, omsi(), userData()), event.sender, 'verwijder')
+      schrijfRegister(userData(), { addons: register.addons.filter((a) => a.id !== addon.id) })
+      rmSync(reserveMap(userData(), addon.id), { recursive: true, force: true })
+      log(`Add-on verwijderd: ${addon.naam} (${uit.verwijderd} weg, ${uit.teruggezet} terug, ${uit.gewijzigd.length} aangepast en blijven staan)`)
+      vergeetKaarten()
+      vehicleTrackers.clear()
+      return { verwijderd: uit.verwijderd, teruggezet: uit.teruggezet, gebleven: uit.gebleven, gewijzigd: uit.gewijzigd.slice(0, 50) }
+    })
+  )
+  /** Welke bussen en kaarten er staan, voor de foutcontrole. */
+  handle('addon:inhoud', () => {
+    const mappen = (sub: string, test: (map: string) => boolean): string[] => {
+      try {
+        const basis = join(omsi(), sub)
+        return readdirSync(basis, { withFileTypes: true })
+          .filter((d) => d.isDirectory() && test(join(basis, d.name)))
+          .map((d) => d.name)
+          .sort((a, b) => a.localeCompare(b))
+      } catch {
+        return []
+      }
+    }
+    return {
+      bussen: mappen('Vehicles', (m) => {
+        try {
+          return readdirSync(m).some((n) => /\.(bus|ovh)$/i.test(n))
+        } catch {
+          return false
+        }
+      }),
+      kaarten: mappen('maps', (m) => existsSync(join(m, 'global.cfg')))
+    }
+  })
+  handle('addon:controleer', (event, soort: 'bus' | 'kaart', naam: string): Promise<Controle | { fout: string }> =>
+    eenTegelijk(() =>
+      inStukjes(
+        soort === 'kaart' ? controleerKaart(omsi(), String(naam)) : controleerBus(omsi(), String(naam)),
+        event.sender,
+        'controle'
+      )
+    )
+  )
 
   handle('career:rename', (_event, name: string) => {
     if (!career) return careerPayload()
