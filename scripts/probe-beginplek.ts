@@ -14,8 +14,11 @@
  * Daarna het schrijven, in een tijdelijke map en nooit in de spelmap:
  * - het `[vehicle]`-blok draagt precies het quaternion van het inzetpunt;
  * - het sjabloon slaat de situaties van de app zelf over;
- * - een oud weerbestand wordt opgeruimd als er geen nieuw weer is, ook naast
- *   `laststn.osn` (presetStartup, op een nagemaakte OMSI-map).
+ * - weer dat de app bij een vorige rit koos ("OMSI Enhancer - ..." in
+ *   `[name]`, `isEigenWeer`) wordt opgeruimd als er geen nieuw weer is, ook
+ *   naast `laststn.osn` (presetStartup, op een nagemaakte OMSI-map);
+ * - het weer van de kaart zelf blijft daar staan, en gaat mee in een nieuwe
+ *   situatie (c383b86: "zoals de kaart" blijft het weer van de kaart).
  */
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -129,7 +132,13 @@ for (const folder of listMaps(omsi)) {
     ])
   writeFileSync(join(nep, 'maps', kaart, 'laststn.osn'), osn('OMSI Enhancer — vrij rijden', 2031))
   writeFileSync(join(nep, 'maps', kaart, 'laststn.osn.voor-omsi-enhancer'), osn('Door OMSI', 1994))
-  writeFileSync(join(nep, 'maps', kaart, 'laststn.osn.owt'), 'oud weer')
+  /*
+   * Het oude weer is weer dat de app koos: zo heet het na een rit met de app
+   * (writeWeather). Weer zonder die naam is sinds c383b86 het weer van de
+   * kaart, en dat blijft -- daar gaat het laatste stuk hieronder over.
+   */
+  const eigenWeer = ['[name]', 'OMSI Enhancer - Regen', ''].join('\r\n')
+  writeFileSync(join(nep, 'maps', kaart, 'laststn.osn.owt'), eigenWeer)
   writeFileSync(join(nep, 'options.cfg'), '[last_map]\r\nmaps\\Ergens\\global.cfg\r\n', 'latin1')
   const zonder = findTemplate(nep, kaart, { zonderEigen: true })
   const met = findTemplate(nep, kaart)
@@ -138,7 +147,7 @@ for (const folder of listMaps(omsi)) {
 
   const into = join(werk, 'situaties')
   mkdirSync(into, { recursive: true })
-  writeFileSync(join(into, 'OMSI Enhancer.osn.owt'), 'oud weer')
+  writeFileSync(join(into, 'OMSI Enhancer.osn.owt'), eigenWeer)
   const result = writeSituation(nep, {
     mapFolder: kaart,
     name: 'proef',
@@ -163,6 +172,25 @@ for (const folder of listMaps(omsi)) {
   writeSituation(nep, { mapFolder: kaart, name: 'proef', description: '', year: 1994, dayOfYear: 120, minutes: 480, into })
   const meegenomen = existsSync(join(into, 'OMSI Enhancer.osn.owt')) && readFileSync(join(into, 'OMSI Enhancer.osn.owt'), 'utf8') === 'weer van de kaart'
   if (!meegenomen) meld('het weer van het sjabloon ging niet mee')
+
+  /*
+   * Het weer van de kaart naast `laststn.osn` (OMSI schreef het na het
+   * afsluiten) blijft staan als de nieuwe situatie geen eigen weer heeft, en
+   * wordt eerst naast de kopie veiliggesteld.
+   */
+  rmSync(join(into, 'OMSI Enhancer.osn.owt'), { force: true })
+  rmSync(join(nep, 'maps', kaart, 'laststn.osn.voor-omsi-enhancer.owt'), { force: true })
+  writeFileSync(join(nep, 'maps', kaart, 'laststn.osn.owt'), 'weer van de kaart')
+  presetStartup(nep, kaart, result.file)
+  const kaartWeerBlijft =
+    existsSync(join(nep, 'maps', kaart, 'laststn.osn.owt')) &&
+    readFileSync(join(nep, 'maps', kaart, 'laststn.osn.owt'), 'utf8') === 'weer van de kaart'
+  const veiliggesteld =
+    existsSync(join(nep, 'maps', kaart, 'laststn.osn.voor-omsi-enhancer.owt')) &&
+    readFileSync(join(nep, 'maps', kaart, 'laststn.osn.voor-omsi-enhancer.owt'), 'utf8') === 'weer van de kaart'
+  if (!kaartWeerBlijft) meld('het weer van de kaart naast laststn.osn ging weg')
+  if (!veiliggesteld) meld('het weer van de kaart staat niet naast de kopie van laststn.osn')
+  console.log(`weer van de kaart: blijft ${kaartWeerBlijft}, veiliggesteld ${veiliggesteld}`)
   void copyFileSync
 }
 
