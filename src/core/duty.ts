@@ -1,4 +1,4 @@
-import { buildNetwork, continuationsOf, WEEKDAY_MASK, type Network, type TripRun } from './network'
+import { buildNetwork, continuationsOf, PERIOD_MASK, WEEKDAY_MASK, type Network, type TripRun } from './network'
 import { stopOffsets, vasteVertrektijden } from './timetable'
 import { formatDuration, formatTime } from '../shared/format'
 import type { Duty, DutyLeg, OmsiMap } from './types'
@@ -330,6 +330,44 @@ export function generateDuties(
     if (!found.has(key)) found.set(key, duty)
   }
   return [...found.values()].sort((a, b) => a.start - b.start)
+}
+
+/**
+ * De dienst bij een stuk van een omloop uit het plan van het busbedrijf.
+ *
+ * Het plan (bedrijfsplan.ts) knipt een omloop in diensten en noemt de ritten
+ * die tellen bij hun sleutel `tripfile@vertrek`. Hier worden precies die
+ * ritten uit het net gehaald: dezelfde lijn, hetzelfde omloopnummer, dezelfde
+ * dagen en periode. Op sleutel en niet op "aankomst vóór het einde": 265
+ * ritten op lijn 109 hebben een aankomst met een breuk, en die zou er dan
+ * net buiten vallen.
+ */
+export function dutyVanRitten(
+  map: OmsiMap,
+  network: Network,
+  deel: { lineFile: string; tourNumber: string; days: number; ritten: string[] }
+): Duty | undefined {
+  const lijn = deel.lineFile.toLowerCase()
+  const gezocht = new Set(deel.ritten.map((r) => r.toLowerCase()))
+  const gezien = new Set<string>()
+  const legs = [...network.departingFrom.values()]
+    .flat()
+    .filter(
+      (run) =>
+        run.lineFile.toLowerCase() === lijn &&
+        run.tourNumber === deel.tourNumber &&
+        run.days === (deel.days & WEEKDAY_MASK) &&
+        run.period === (deel.days & PERIOD_MASK) &&
+        gezocht.has(`${run.tripFile}@${run.departure}`)
+    )
+    .sort((a, b) => a.departure - b.departure)
+    .filter((run) => {
+      const sleutel = `${run.tripFile}@${run.departure}`
+      if (gezien.has(sleutel)) return false
+      gezien.add(sleutel)
+      return true
+    })
+  return legs.length > 0 ? toDuty(map, legs) : undefined
 }
 
 /** "TTData\\92 Fd-Sg.ttp" en "92 Fd-Sg" zijn dezelfde rit. */

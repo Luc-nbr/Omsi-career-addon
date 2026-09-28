@@ -11,6 +11,11 @@ export interface Vehicle {
   /** Standaardkleurstelling; OMSI noemt dit de "Anstrich". */
   paint: string
   folder: string
+  /**
+   * De aanhanger (`[couple_back]`), leeg als er geen is. Ontbreekt bij een
+   * voertuig uit een cache van voor dit veld; dan geldt de naam.
+   */
+  aanhanger?: string
 }
 
 /** Volledige naam voor in de lijst. */
@@ -69,6 +74,11 @@ function tag(line: string): string {
   return line.trim().replace(/^\[+/, '[')
 }
 
+function aanhangerVan(lines: string[]): string {
+  const at = lines.findIndex((line) => tag(line) === '[couple_back]')
+  return at < 0 ? '' : str(lines[at + 1])
+}
+
 function readVehicle(omsiPath: string, file: string): Vehicle | undefined {
   let lines: string[]
   try {
@@ -93,7 +103,13 @@ function readVehicle(omsiPath: string, file: string): Vehicle | undefined {
     manufacturer: str(lines[index + 1]),
     type: str(lines[index + 2]),
     paint: str(lines[index + 3]),
-    folder
+    folder,
+    /*
+     * Wat er achter hangt (de regel na `[couple_back]`), of leeg als er niets
+     * achter hangt. Het bestand ligt hier toch al open; de busvorm (busvorm.ts)
+     * leest eraan af of het een gelede bus is, en dat is zekerder dan de naam.
+     */
+    aanhanger: aanhangerVan(lines)
   }
 }
 
