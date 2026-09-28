@@ -1761,9 +1761,12 @@ ronde faalt en nu slaagt (nagedraaid op een kopie van `b7f3d7b`).
   `probe-veiligschrijven.ts`, `probe-versiewacht.ts`, en in Electron
   `probe-bouwstempel.cjs` en `probe-alleenbekijken.cjs`; `schermafdruk-addons.cjs`
   laat het plan zien. Gedeeld gereedschap in `scripts/proefhulp.ts`; met
-  `PROEF_MAP=<map>` werken ze in een eigen map. Niet gedaan: de draagbare exe
-  zelf gestart om "draagbaar" in het stempel te zien (alleen de regel is
-  nagekeken), en de vraag van de versiewacht met eigen ogen als venster.
+  `PROEF_MAP=<map>` werken ze in een eigen map. De gebouwde draagbare exe is
+  met een eigen `--user-data-dir` en een nagebouwde OMSI-map gestart: de
+  eerste logregel zei `bouw cd06dcd · ... · draagbaar`. Niet gedaan: de vraag
+  van de versiewacht met eigen ogen als venster (de proef beantwoordt hem
+  zonder venster), en de installer uit deze tak in `release/` gezet -- die
+  hoort daar pas na het samenvoegen met de lopende bouw.
 
 **Navigatie: doorzichtig, vaste zoom, en haltenamen die niet meer wegvallen**
 (28-09-2026). Drie vragen van gebruikers, via Luc.
