@@ -441,6 +441,8 @@ export interface Prognose {
   openDiensten: number
   /** Uren met eigen chauffeurs (en jijzelf). */
   chauffeurUren: number
+  /** Wat van jouw invaluren vandaag echt een open stuk dekte. */
+  zelfUren: number
   materieelBesparing: number
   personeelBesparing: number
   lonen: number
@@ -466,16 +468,28 @@ export function dagprognose(bedrijf: Bedrijf): Prognose {
   const benodigd = bedrijf.concessies.reduce((som, c) => som + c.omlopen, 0)
   const inzetbaar = (bedrijf.bussen ?? []).filter((b) => isInzetbaar(b, bedrijf.dag)).length
   const dekking = benodigd === 0 ? 0 : Math.min(1, inzetbaar / benodigd)
-  const uren = bedrijf.concessies.reduce((som, c) => som + c.urenPerDag, 0)
+  /*
+   * Op een tiende uur, zoals elke concessie: 8,8 + 11,9 + 3,3 is in drijvende
+   * komma 24,000000000000004, en dat werd een vierde dienst die nooit te
+   * vullen was -- met "onderbezet" en dalende tevredenheid als gevolg.
+   */
+  const uren = Math.round(bedrijf.concessies.reduce((som, c) => som + c.urenPerDag, 0) * 10) / 10
   const vergoeding = bedrijf.concessies.reduce((som, c) => som + dagresultaat(c, bedrijf.reputatie).vergoeding, 0)
 
+  /*
+   * Het rooster in uren: eerst de eigen chauffeurs, dan wat jij zelf reed, en
+   * wat overblijft is open. Andersom -- jouw uren eerst, als hele diensten --
+   * zette een half uur invallen een betaalde chauffeur thuis en werd de rest
+   * van zijn dienst stil ingehuurd, terwijl het rooster "0 open" liet zien.
+   */
   const chauffeurs = aanHetWerk(bedrijf, 'chauffeur').length
-  const zelfUren = Math.min(uren, bedrijf.zelfUren ?? 0)
   const diensten = Math.ceil(uren / REGELS.urenPerDienst)
-  const zelfDiensten = Math.min(diensten, Math.ceil(zelfUren / REGELS.urenPerDienst))
-  const eigenDiensten = Math.min(diensten - zelfDiensten, chauffeurs)
-  const openDiensten = Math.max(0, diensten - zelfDiensten - eigenDiensten)
-  const chauffeurUren = Math.min(uren, zelfUren + eigenDiensten * REGELS.urenPerDienst)
+  const eigenDiensten = Math.min(diensten, chauffeurs)
+  const eigenUren = Math.min(uren, eigenDiensten * REGELS.urenPerDienst)
+  const zelfUren = Math.min(uren - eigenUren, bedrijf.zelfUren ?? 0)
+  const chauffeurUren = Math.round((eigenUren + zelfUren) * 10) / 10
+  const openDiensten = Math.ceil(Math.round((uren - chauffeurUren) * 10) / 10 / REGELS.urenPerDienst)
+  const zelfDiensten = Math.max(0, diensten - eigenDiensten - openDiensten)
 
   const materieelBesparing = Math.round(uren * dekking * (REGELS.inhuurMaterieelPerUur - REGELS.eigenBusPerUur))
   const personeelBesparing = Math.round(chauffeurUren * REGELS.inhuurChauffeurPerUur)
@@ -493,6 +507,7 @@ export function dagprognose(bedrijf: Bedrijf): Prognose {
     zelfDiensten,
     openDiensten,
     chauffeurUren,
+    zelfUren,
     materieelBesparing,
     personeelBesparing,
     lonen
@@ -754,16 +769,25 @@ export function boekEigenDienst(
   duty: Duty,
   staat: Rittenstaat | undefined,
   /** De bus waarmee gereden is; is dat een eigen bus, dan krijgt die de schade. */
-  busPad?: string
+  busPad?: string,
+  /** Hoeveel haltes er gehaald zijn, zoals het loon het telt (`partialPay`). */
+  stopsDone?: number
 ): Bedrijf {
   /*
    * Invallen: wat je zelf op een concessielijn reed, dekt vandaag een open
    * dienst -- ook zonder rittenstaat, want gereden is gereden. Alleen het
    * oordeel over stiptheid vraagt een meting.
+   *
+   * Naar rato van de gehaalde haltes, net als het loon: een dienst starten en
+   * meteen afronden dekte eerst acht uur, en zo waren alle open diensten
+   * gratis te vullen. Zonder telling (oudere plugin) telt hij voor vol.
    */
-  const zelf = duty.legs
-    .filter((leg) => heeftConcessie(bedrijf, duty.mapFolder, leg.lineFile))
-    .reduce((som, leg) => som + leg.minutes / 60, 0)
+  const deel =
+    stopsDone === undefined || !(duty.totalStops > 0) ? 1 : Math.min(1, Math.max(0, stopsDone / duty.totalStops))
+  const zelf =
+    duty.legs
+      .filter((leg) => heeftConcessie(bedrijf, duty.mapFolder, leg.lineFile))
+      .reduce((som, leg) => som + leg.minutes / 60, 0) * deel
   if (zelf > 0) bedrijf = { ...bedrijf, zelfUren: Math.round(((bedrijf.zelfUren ?? 0) + zelf) * 10) / 10 }
   if (!staat) return bedrijf
   bedrijf = schadeVanDienst(bedrijf, staat, busPad)

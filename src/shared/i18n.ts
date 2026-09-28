@@ -3226,6 +3226,7 @@ const TEXT = {
   'bd.kind.loon': { en: 'Wages', de: 'Löhne', fr: 'Salaires', nl: 'Lonen' },
   'bd.kind.ontslag': { en: 'Severance', de: 'Abfindung', fr: 'Indemnité', nl: 'Ontslagvergoeding' },
   'bd.kind.vertrek': { en: 'Resigned', de: 'Gekündigt', fr: 'Démission', nl: 'Vertrokken' },
+  'bd.hoursYou': { en: 'h driven by you', de: 'Std selbst gefahren', fr: 'h conduites par vous', nl: 'u zelf gereden' },
   'bd.hub': { en: 'My company', de: 'Mein Betrieb', fr: 'Mon entreprise', nl: 'Mijn bedrijf' },
   'bd.title': { en: 'My bus company', de: 'Mein Busbetrieb', fr: 'Mon entreprise de bus', nl: 'Mijn busbedrijf' },
   'bd.intro': {

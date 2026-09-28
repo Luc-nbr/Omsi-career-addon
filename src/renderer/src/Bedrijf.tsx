@@ -792,7 +792,16 @@ function Personeel({ bedrijf, handel }: { bedrijf: BedrijfStaat; handel: Handel 
   const mensen = bedrijf.personeel ?? []
   const vandaag = sollicitanten(bedrijf)
   const monteurs = aanHetWerk(bedrijf, 'monteur').length
-  const deel = (n: number): string => `${prognose.diensten ? (n / prognose.diensten) * 100 : 0}%`
+  const [bezig, setBezig] = useState(false)
+  const doe = (actie: Promise<{ payload: CareerPayload; fout?: string } | CareerPayload>): void => {
+    setBezig(true)
+    void handel(actie).finally(() => setBezig(false))
+  }
+  /* De balk in uren, want dat is wat er geboekt wordt; jouw invaluren zijn zelden een hele dienst. */
+  const eigenUren = prognose.chauffeurUren - prognose.zelfUren
+  const openUren = Math.max(0, prognose.uren - prognose.chauffeurUren)
+  const deel = (uren: number): string => `${prognose.uren ? (uren / prognose.uren) * 100 : 0}%`
+  const u = (uren: number): string => `${Math.round(uren * 10) / 10}`
   return (
     <div className="bd-kolom">
       <Paneel titel={tr('bd.rosterToday', { day: bedrijf.dag })}>
@@ -802,9 +811,9 @@ function Personeel({ bedrijf, handel }: { bedrijf: BedrijfStaat; handel: Handel 
           <>
             <div className="bd-rooster" aria-hidden="true">
               {/* Alleen wat er is: een leeg stuk zou toch een kier achterlaten. */}
-              {prognose.eigenDiensten > 0 && <i className="eigen" style={{ width: deel(prognose.eigenDiensten) }} />}
-              {prognose.zelfDiensten > 0 && <i className="zelf" style={{ width: deel(prognose.zelfDiensten) }} />}
-              {prognose.openDiensten > 0 && <i className="open" style={{ width: deel(prognose.openDiensten) }} />}
+              {eigenUren > 0 && <i className="eigen" style={{ width: deel(eigenUren) }} />}
+              {prognose.zelfUren > 0 && <i className="zelf" style={{ width: deel(prognose.zelfUren) }} />}
+              {openUren > 0 && <i className="open" style={{ width: deel(openUren) }} />}
             </div>
             <div className="bd-roostercijfers">
               <span>
@@ -818,8 +827,8 @@ function Personeel({ bedrijf, handel }: { bedrijf: BedrijfStaat; handel: Handel 
               </span>
               <span>
                 <i className="zelf" />
-                <b>{prognose.zelfDiensten}</b>
-                {tr('bd.shiftsYou')}
+                <b>{u(prognose.zelfUren)}</b>
+                {tr('bd.hoursYou')}
               </span>
               <span>
                 <i className="open" />
@@ -838,7 +847,7 @@ function Personeel({ bedrijf, handel }: { bedrijf: BedrijfStaat; handel: Handel 
         ) : (
           <ul className="bd-mensen">
             {mensen.map((m) => (
-              <MedewerkerRij key={m.id} m={m} dag={bedrijf.dag} handel={handel} />
+              <MedewerkerRij key={m.id} m={m} dag={bedrijf.dag} bezig={bezig} doe={doe} />
             ))}
           </ul>
         )}
@@ -874,7 +883,8 @@ function Personeel({ bedrijf, handel }: { bedrijf: BedrijfStaat; handel: Handel 
                   <button
                     type="button"
                     className="bd-knop hoofd"
-                    onClick={() => void handel(window.career.bedrijfAannemen(s.nr))}
+                    disabled={bezig}
+                    onClick={() => doe(window.career.bedrijfAannemen(s.nr))}
                   >
                     {tr('bd.hire')}
                   </button>
@@ -888,7 +898,18 @@ function Personeel({ bedrijf, handel }: { bedrijf: BedrijfStaat; handel: Handel 
   )
 }
 
-function MedewerkerRij({ m, dag, handel }: { m: Medewerker; dag: number; handel: Handel }): JSX.Element {
+function MedewerkerRij({
+  m,
+  dag,
+  bezig,
+  doe
+}: {
+  m: Medewerker
+  dag: number
+  /* Eén handeling tegelijk: een dubbelklik gaf "dat lukte niet" terwijl het wel lukte. */
+  bezig: boolean
+  doe: (actie: Promise<{ payload: CareerPayload; fout?: string } | CareerPayload>) => void
+}): JSX.Element {
   const tr = useT()
   const geld = useGeld()
   const ziek = m.ziekTot !== undefined && m.ziekTot >= dag
@@ -919,15 +940,16 @@ function MedewerkerRij({ m, dag, handel }: { m: Medewerker; dag: number; handel:
         {ziek ? tr('bd.sickUntil', { day: m.ziekTot ?? dag }) : tr('bd.working')}
       </span>
       <span className="bd-acties">
-        <button type="button" className="bd-knop" onClick={() => void handel(window.career.bedrijfOpslag(m.id))}>
+        <button type="button" className="bd-knop" disabled={bezig} onClick={() => doe(window.career.bedrijfOpslag(m.id))}>
           {tr('bd.raise', { money: geld(Math.round((m.loon * REGELS.opslagFactor) / 100) * 100 - m.loon) })}
         </button>
         <button
           type="button"
           className="bd-knop zacht"
+          disabled={bezig}
           onClick={() => {
             if (!window.confirm(tr('bd.fireAsk', { name: m.naam, money: geld(m.loon * REGELS.ontslagDagen) }))) return
-            void handel(window.career.bedrijfOntslaan(m.id))
+            doe(window.career.bedrijfOntslaan(m.id))
           }}
         >
           {tr('bd.fire')}

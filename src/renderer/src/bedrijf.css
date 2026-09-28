@@ -920,9 +920,33 @@
   .bd-rij:has(.bd-paneel.breed) {
     grid-template-columns: 1fr;
   }
+}
 
+/*
+ * De personeelslijst heeft zeven kolommen en vraagt zonder naam al 864 px; in
+ * het venster waarmee de app opent (1240 px) bleef er voor de naam niets over.
+ * Daaronder twee regels: wie, ervaring en tevredenheid boven; knoppen, loon en
+ * status eronder.
+ */
+@media (max-width: 1320px) {
   .bd-mensen li {
     grid-template-columns: 40px minmax(0, 1fr) 120px 120px;
+  }
+
+  .bd-mensen .bd-acties {
+    grid-row: 2;
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+
+  .bd-mensen .bd-bedrag {
+    grid-row: 2;
+    grid-column: 3;
+  }
+
+  .bd-mensen .bd-status {
+    grid-row: 2;
+    grid-column: 4;
   }
 }
 

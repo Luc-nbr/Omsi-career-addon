@@ -1126,7 +1126,9 @@ function sluitLopendeDienstAf(): void {
   const gemeten = sessieGegevens()
   const staat = rittenstaatVanDienst(duty)
   const busPad = lopend.vehicleOverride || bus?.relativePath
-  const bedrijf = career.bedrijf ? boekEigenDienst(career.bedrijf, duty, staat, busPad) : undefined
+  const bedrijf = career.bedrijf
+    ? boekEigenDienst(career.bedrijf, duty, staat, busPad, gemeten.stopsDone)
+    : undefined
   career = completeDuty({ ...career, bedrijf }, duty, naam, {
     stopsDone: gemeten.stopsDone,
     drivenKm: gemeten.drivenKm,
@@ -4503,12 +4505,21 @@ function registerHandlers(): void {
     overlayDuty = undefined
     overlayIbis = undefined
     if (!career) return careerPayload()
+    /*
+     * Eén dienst wordt één keer geboekt. De knop "afronden" en de automatische
+     * afronding (elke vijf tellen) kunnen allebei komen; de tweede vond hier
+     * geen dienst meer, maar boekte hem toch -- twee logboekregels, en in het
+     * busbedrijf twee keer invaluren.
+     */
+    if (!career.activeDuty) return careerPayload()
     const staat = rittenstaatVanDienst(duty)
     // Een dienst op een lijn van je eigen bedrijf telt ook daar; zie core/bedrijf.ts.
     const lopend = career.activeDuty
     const busPad =
       lopend?.vehicleOverride || (lopend?.assignment as Assignment | undefined)?.vehicle?.relativePath
-    const bedrijf = career.bedrijf ? boekEigenDienst(career.bedrijf, duty, staat, busPad) : undefined
+    const bedrijf = career.bedrijf
+      ? boekEigenDienst(career.bedrijf, duty, staat, busPad, measured?.stopsDone)
+      : undefined
     return persist(completeDuty({ ...career, bedrijf }, duty, vehicle, measured, staat))
   })
 

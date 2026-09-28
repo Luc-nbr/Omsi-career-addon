@@ -1426,11 +1426,15 @@ Luc: "het busbedrijf moet zijn eigen UI krijgen en een uitgebreid dashboard".
 
 **Stap 3: personeel** (28-09-2026). Tabblad Personeel en een tegel op het
 dashboard.
-- **Rooster** (`dagprognose`): de dienstregelingsuren van alle concessies in
-  diensten van 8 uur; eigen chauffeurs die werken (niet ziek) rijden er zoveel
-  als er zijn, wat je zelf reed dekt er ook (`Bedrijf.zelfUren`, opgehoogd in
-  `boekEigenDienst` -- ook zonder rittenstaat, want gereden is gereden), de rest
-  is open en wordt ingehuurd. `dagprognose` is nu de enige plek waar de dag
+- **Rooster** (`dagprognose`), in uren: eerst de eigen chauffeurs die werken
+  (niet ziek, 8 u per dienst), dan wat je zelf reed (`Bedrijf.zelfUren`,
+  opgehoogd in `boekEigenDienst` naar rato van de gehaalde haltes, zoals het
+  loon -- zonder rittenstaat telt het ook, want gereden is gereden), en wat
+  overblijft is open en wordt ingehuurd. Eerst stond jij vooraan met hele
+  diensten: een half uur invallen zette dan een betaalde chauffeur thuis. De
+  uren van alle concessies samen worden op een tiende afgerond (drijvende komma
+  gaf anders een spookdienst). `career:complete` boekt alleen zolang er een
+  dienst loopt, zodat één dienst niet twee keer telt. `dagprognose` is nu de enige plek waar de dag
   wordt uitgerekend; `sluitDagAf` boekt precies wat die zegt (proef).
 - **Geld**: de inhuur (86/u) is materieel 48 + chauffeur 38. Een eigen chauffeur
   bespaart 8 × 38 per dienst tegen een dagloon van 190 + 0,80 per

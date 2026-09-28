@@ -182,7 +182,23 @@ klopt('een chauffeur tegen marktloon verdient zich terug', REGELS.urenPerDienst 
 // Invallen: een eigen dienst van 2 × 60 min op lijn 35 dekt een open dienst.
 const inval = { mapFolder: 'Rheinhausen', legs: [{ lineFile: 'Linie_35', lineNumber: '35', minutes: 60 }, { lineFile: 'Linie_35', lineNumber: '35', minutes: 60 }] } as unknown as Duty
 const pz = boekEigenDienst(p, inval, undefined)
-klopt('zelf invallen zonder rittenstaat telt als gereden: 2 uur', pz.zelfUren === 2 && dagprognose(pz).zelfDiensten === 1 && dagprognose(pz).openDiensten === 2)
+const pzp = dagprognose(pz)
+klopt('zelf invallen zonder rittenstaat telt als gereden: 2 uur bovenop 16', pz.zelfUren === 2 && pzp.zelfUren === 2 && pzp.chauffeurUren === 18 && pzp.openDiensten === 3)
+klopt('invallen maakt de dag nooit duurder', pzp.kosten < met2.kosten)
+// Uit de review: met genoeg chauffeurs mag een half uur invallen niemand thuis zetten.
+const vol: Bedrijf = { ...p, concessies: [{ ...p.concessies[0], urenPerDag: 16 }] }
+const volZelf = boekEigenDienst(vol, { mapFolder: 'Rheinhausen', legs: [{ lineFile: 'Linie_35', lineNumber: '35', minutes: 30 }] } as unknown as Duty, undefined)
+klopt('16 u, 2 chauffeurs, 0,5 u zelf: beide chauffeurs rijden, kosten gelijk', dagprognose(volZelf).eigenDiensten === 2 && dagprognose(volZelf).kosten === dagprognose(vol).kosten)
+// Uit de review: invallen telt naar gehaalde haltes, zoals het loon.
+const metHaltes = { ...inval, totalStops: 20 } as unknown as Duty
+klopt('meteen afronden (0 haltes) dekt niets', boekEigenDienst(p, metHaltes, undefined, undefined, 0).zelfUren === (p.zelfUren ?? 0))
+klopt('de helft van de haltes dekt de helft van de uren', boekEigenDienst(p, metHaltes, undefined, undefined, 10).zelfUren === 1)
+// Uit de review: 8,8 + 11,9 + 3,3 is 24 uur, geen 24,000000000000004 met een spookdienst.
+const drie: Bedrijf = {
+  ...p,
+  concessies: [8.8, 11.9, 3.3].map((u, i) => ({ ...p.concessies[0], lineFile: `L${i}`, urenPerDag: u }))
+}
+klopt('drie concessies van samen 24 u zijn drie diensten', dagprognose(drie).diensten === 3)
 
 const ervaringVoor = aanHetWerk(p, 'chauffeur')[0].ervaring
 const kasVoorDag = p.kas
