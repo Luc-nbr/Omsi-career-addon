@@ -1399,6 +1399,31 @@ flitsers, controleurs, gebeurtenissen en meldkamer → add-on-manager.
 - Eén munt voor het hele bedrijf, getoond als euro, ook voor DM-kaarten.
 - Proef: `scripts/probe-bedrijf.ts`.
 
+**Stap 2: bussen, werkplaats, en een eigen app met dashboard** (28-09-2026).
+Luc: "het busbedrijf moet zijn eigen UI krijgen en een uitgebreid dashboard".
+- **Eigen scherm** (`BedrijfApp` in `Bedrijf.tsx`): venstervullend, zijbalk met
+  Dashboard / Concessies / Wagenpark / Busmarkt / Boekingen, "dag afsluiten"
+  onderaan. Geen stap van het opzetscherm meer; `App.tsx` geeft het terug vóór
+  het hoofdmenu. Kleuren van `.hub`, dus beide thema's.
+- **Dashboard**: zes tegels (kas, resultaat vandaag, reputatie met de
+  verlenggrens, concessies, wagenpark, aandeel eigen bussen), grafieken van kas,
+  resultaat en reputatie per bedrijfsdag (`BedrijfGrafiek.tsx`, eigen SVG, één
+  reeks en één as per grafiek, kruisdraad bij aanwijzen), "aandacht nodig",
+  staat van het wagenpark en de laatste boekingen. De grafieken komen uit
+  `Bedrijf.historie`, dat `sluitDagAf` elke dag aanvult; het resultaat per dag
+  telt investeringen (startkapitaal, bussen kopen en verkopen) niet mee.
+- **Bussen** (`core/bedrijf.ts`): nieuw uit de geïnstalleerde bussen (prijs per
+  vorm, uit de naam: midi/solo/geleed/dubbel), tweedehands vier per bedrijfsdag
+  met een vaste toevalsreeks per dag. Een bus heeft km, staat en schade; hij
+  slijt met de uren die hij rijdt, onderhoud en reparatie kosten een dag in de
+  werkplaats, verkopen levert 85 % van de waarde. Het wagenpark is één poel:
+  zoveel omlopen als er inzetbare bussen zijn rijden goedkoper (alleen de
+  materieelkosten vallen weg; de chauffeur blijft ingehuurd tot stap 3). Welke
+  vorm een omloop vraagt telt nog niet mee.
+- **Schade uit je eigen rit**: aanrijdingen uit de rittenstaat komen op de eigen
+  bus waarmee je reed (op pad van de bus, `boekEigenDienst(…, busPad)`).
+- Startkapitaal 150.000; alle bedragen blijven in `REGELS`.
+
 Proef in het spel die de open vragen beantwoordt: OMSI 2.3.004, dienstregeling
 via het menu, drie haltes: A 60 s voor de plantijd weg, B 30 s na, C
 doorrijden. Daarna het spoor in de map `ritten` naast de rittenstaat leggen.

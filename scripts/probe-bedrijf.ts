@@ -10,6 +10,16 @@
 import {
   REGELS,
   boekEigenDienst,
+  dagprognose,
+  isInzetbaar,
+  koopNieuw,
+  koopTweedehands,
+  naarWerkplaats,
+  tweedehandsAanbod,
+  verkoop,
+  vormVanNaam,
+  waardeVan,
+  type MarktBus,
   dagresultaat,
   richtBedrijfOp,
   schrijfIn,
@@ -82,6 +92,59 @@ klopt('goede reputatie: verlengd', goed.concessies.length === 1 && goed.boekinge
 klopt('slechte reputatie: vervallen', slecht.concessies.length === 0 && slecht.boekingen.some((x) => x.soort === 'vervallen'))
 klopt('boekingen blijven begrensd', goed.boekingen.length <= REGELS.boekingenBewaard)
 klopt('bedragen blijven hele centen', goed.boekingen.every((x) => Number.isInteger(x.bedrag)) && Number.isInteger(goed.kas))
+
+// ---- het wagenpark ----
+console.log('')
+const markt: MarktBus[] = [
+  { relativePath: 'Vehicles\\MAN_NL\\NL202.bus', naam: 'MAN NL202', vorm: 'solo' },
+  { relativePath: 'Vehicles\\MAN_NG\\NG272.bus', naam: 'MAN NG272', vorm: 'geleed' }
+]
+klopt('vorm uit de naam: Gelenkbus is geleed, O530K is midi', vormVanNaam('MAN Gelenkbus NG272') === 'geleed' && vormVanNaam('Citaro O530K') === 'midi')
+let w = richtBedrijfOp('Wagenpark')
+const ins = schrijfIn(w, kaart, lijn)
+if ('bedrijf' in ins) w = ins.bedrijf
+const zonder = dagprognose(w)
+const k1 = koopNieuw(w, markt[0])
+klopt('nieuwe solo kopen', 'bedrijf' in k1)
+if ('bedrijf' in k1) w = k1.bedrijf
+klopt('nieuwe bus: wagennummer 101, staat 100, prijs eraf', w.bussen![0].nummer === 101 && w.bussen![0].staat === 100 && w.kas === REGELS.startkapitaal - kosten - REGELS.nieuwprijs.solo)
+const met = dagprognose(w)
+klopt('één bus op zes omlopen: dekking 1/6, en goedkoper dan zonder', Math.abs(met.dekking - 1 / 6) < 1e-9 && met.kosten < zonder.kosten)
+
+const markt1 = tweedehandsAanbod(w, markt)
+klopt('tweedehandsmarkt: vier aanbiedingen, dezelfde bij opnieuw vragen', markt1.length === REGELS.tweedehandsPerDag && JSON.stringify(markt1) === JSON.stringify(tweedehandsAanbod(w, markt)))
+const k2 = koopTweedehands(w, markt1[0])
+if ('bedrijf' in k2) w = k2.bedrijf
+klopt('tweedehands gekocht, en daarna weg van de markt', w.bussen!.length === 2 && tweedehandsAanbod(w, markt).length === REGELS.tweedehandsPerDag - 1)
+klopt('dezelfde aanbieding twee keer kopen kan niet', 'fout' in koopTweedehands(w, markt1[0]))
+
+const staatVoor = w.bussen![0].staat
+w = sluitDagAf(w)
+klopt('na een dag: km erbij en staat eraf', w.bussen![0].km > 0 && w.bussen![0].staat < staatVoor)
+klopt('de markt is de volgende dag weer vol', tweedehandsAanbod(w, markt).length === REGELS.tweedehandsPerDag)
+klopt('historie: één dag vastgelegd met kas en dekking', w.historie!.length === 1 && w.historie![0].kas === w.kas && w.historie![0].dekking > 0)
+
+const o = naarWerkplaats(w, 101, 'onderhoud')
+if ('bedrijf' in o) w = o.bedrijf
+klopt('onderhoud: staat 100, vandaag niet inzetbaar', w.bussen![0].staat === 100 && !isInzetbaar(w.bussen![0], w.dag))
+w = sluitDagAf(w)
+klopt('de dag erna weer inzetbaar', isInzetbaar(w.bussen![0], w.dag))
+
+// Schade uit een eigen dienst met bus 101.
+const klapStaat = {
+  ritten: [{ haltes: [{ oordeel: 'goed', klappen: 2 }, { oordeel: 'goed' }] }]
+} as unknown as Rittenstaat
+w = boekEigenDienst(w, duty, klapStaat, 'vehicles\\man_nl\\nl202.bus')
+klopt('twee aanrijdingen: schade op de eigen bus', w.bussen![0].schade === 2 * REGELS.schadePerKlap)
+const waardeMetSchade = waardeVan(w.bussen![0])
+const r2 = naarWerkplaats(w, 101, 'reparatie')
+if ('bedrijf' in r2) w = r2.bedrijf
+klopt('reparatie haalt de schade weg en de waarde stijgt', w.bussen![0].schade === 0 && waardeVan(w.bussen![0]) > waardeMetSchade)
+const kasVoorVerkoop = w.kas
+const waarde = waardeVan(w.bussen![0])
+w = verkoop(w, 101)
+klopt('verkopen levert 85 % van de waarde', w.kas - kasVoorVerkoop === Math.round(waarde * REGELS.verkoopFactor) && w.bussen!.length === 1)
+klopt('alles blijft hele centen', Number.isInteger(w.kas) && w.boekingen.every((x) => Number.isInteger(x.bedrag)))
 
 console.log(fouten ? `\n${fouten} fout(en)` : '\nalles klopt')
 process.exit(fouten ? 1 : 0)

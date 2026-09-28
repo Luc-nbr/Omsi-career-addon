@@ -55,6 +55,11 @@ export type BoekingSoort =
   | 'eigen-dienst'
   | 'verlenging'
   | 'vervallen'
+  | 'bus-koop'
+  | 'bus-verkoop'
+  | 'onderhoud'
+  | 'reparatie'
+  | 'eigen-materieel'
 
 /** Eén regel in de boeken. */
 export interface Boeking {
@@ -66,6 +71,63 @@ export interface Boeking {
   wat: string
   /** Uit je eigen gemeten rit (true) of uit het rekenmodel (false). */
   gemeten: boolean
+}
+
+/** De vorm van een bus, uit zijn naam; bepaalt de prijs. */
+export type Busvorm = 'midi' | 'solo' | 'geleed' | 'dubbel'
+
+/** Een bus zoals hij te koop staat: een geïnstalleerde bus uit de Vehicles-map. */
+export interface MarktBus {
+  relativePath: string
+  naam: string
+  vorm: Busvorm
+}
+
+/** Een bus van het eigen wagenpark. */
+export interface EigenBus {
+  /** Uniek binnen het bedrijf; ook het wagennummer op het scherm. */
+  nummer: number
+  relativePath: string
+  naam: string
+  vorm: Busvorm
+  /** Wat ervoor betaald is, en op welke bedrijfsdag. */
+  aankoop: number
+  gekochtOp: number
+  km: number
+  /** Onderhoudsstaat, 100 is net uit de werkplaats. */
+  staat: number
+  /** Schade uit aanrijdingen, 0 is geen. */
+  schade: number
+  /** Tot en met deze bedrijfsdag in de werkplaats. */
+  werkplaatsTot?: number
+}
+
+/** Een tweedehands aanbieding op de markt van vandaag. */
+export interface Aanbod {
+  nr: number
+  bus: MarktBus
+  km: number
+  staat: number
+  prijs: number
+}
+
+/** Hoe een dag afliep; voor de grafieken op het dashboard. */
+export interface DagStaat {
+  dag: number
+  kas: number
+  inkomsten: number
+  uitgaven: number
+  /**
+   * Het exploitatieresultaat: inkomsten min uitgaven zonder investeringen
+   * (startkapitaal, bussen kopen en verkopen). Een busaankoop is geen slechte
+   * dag; wie dat in één staafje stopt, ziet alleen de aankopen.
+   */
+  resultaat?: number
+  reputatie: number
+  bussen: number
+  inzetbaar: number
+  /** Aandeel van de benodigde omlopen dat met eigen bussen gereden werd, 0 tot 1. */
+  dekking: number
 }
 
 export interface Bedrijf {
@@ -80,11 +142,17 @@ export interface Bedrijf {
   concessies: Concessie[]
   /** De laatste boekingen, nieuwste eerst. */
   boekingen: Boeking[]
+  /** Het eigen wagenpark. Ontbreekt bij een bedrijf van voor de bussen. */
+  bussen?: EigenBus[]
+  /** Welke tweedehands aanbiedingen van vandaag al verkocht zijn. */
+  aanbodWeg?: number[]
+  /** Per afgesloten dag de stand; de oudste valt eraf na een jaar. */
+  historie?: DagStaat[]
 }
 
 /** Wat de regels van het bedrijf zijn. Eén plek, zodat een balans niet over de code verspreid raakt. */
 export const REGELS = {
-  startkapitaal: 50_000_00,
+  startkapitaal: 150_000_00,
   /** Inschrijven op een concessie: vast bedrag plus per omloop. */
   inschrijvingVast: 2_000_00,
   inschrijvingPerOmloop: 500_00,
@@ -96,6 +164,33 @@ export const REGELS = {
    * maken het later goedkoper; dat is de reden om ze aan te schaffen.
    */
   inhuurPerUur: 86_00,
+  /**
+   * Hoe die inhuur is opgebouwd. Met een eigen bus betaal je het materieel niet
+   * meer aan de onderaannemer maar alleen je eigen brandstof en verzekering; de
+   * chauffeur blijft ingehuurd tot er eigen personeel is (stap 3).
+   */
+  inhuurMaterieelPerUur: 48_00,
+  eigenBusPerUur: 10_00,
+  /** Hoeveel km een bus per dienstregelingsuur rijdt, en hoeveel staat dat kost. */
+  kmPerUur: 22,
+  slijtagePerUur: 0.4,
+  nieuwprijs: { midi: 45_000_00, solo: 60_000_00, geleed: 85_000_00, dubbel: 95_000_00 } as Record<Busvorm, number>,
+  /** Na zoveel km is een bus nog maar zijn restwaarde waard. */
+  afschrijvingKm: 900_000,
+  restwaarde: 0.15,
+  /** Wat een handelaar biedt, als deel van de waarde. */
+  verkoopFactor: 0.85,
+  /** Onder deze staat, of boven deze schade, rijdt een bus niet meer uit. */
+  inzetbaarVanafStaat: 25,
+  inzetbaarTotSchade: 50,
+  onderhoudVast: 600_00,
+  onderhoudPerPunt: 25_00,
+  reparatiePerPunt: 120_00,
+  /** Schade per aanrijding in een dienst die je zelf met een eigen bus reed. */
+  schadePerKlap: 12,
+  /** Aanbiedingen op de tweedehandsmarkt per dag. */
+  tweedehandsPerDag: 4,
+  historieBewaard: 365,
   looptijdDagen: 28,
   /** Onder deze reputatie wordt een concessie aan het eind niet verlengd. */
   verlengVanaf: 45,
@@ -115,6 +210,178 @@ function boek(bedrijf: Bedrijf, boeking: Omit<Boeking, 'dag'>): Bedrijf {
   }
 }
 
+/** De vorm van een bus uit zijn naam; OMSI zegt het nergens anders. */
+export function vormVanNaam(tekst: string): Busvorm {
+  const laag = tekst.toLowerCase()
+  if (/gelenk|artic|18c|19c|\bg\b/.test(laag)) return 'geleed'
+  if (/doppeldeck|double ?deck|\bdd\b/.test(laag)) return 'dubbel'
+  if (/midi|10c|o530k|kurz/.test(laag)) return 'midi'
+  return 'solo'
+}
+
+/** Wat een bus nu waard is: nieuwprijs, afgeschreven op km, met staat en schade erbij. */
+export function waardeVan(bus: Pick<EigenBus, 'vorm' | 'km' | 'staat' | 'schade'>): number {
+  const km = Math.max(REGELS.restwaarde, 1 - bus.km / REGELS.afschrijvingKm)
+  const staat = 0.6 + 0.4 * (bus.staat / 100)
+  const schade = 1 - bus.schade / 200
+  return Math.round(REGELS.nieuwprijs[bus.vorm] * km * staat * schade)
+}
+
+export function isInzetbaar(bus: EigenBus, dag: number): boolean {
+  return (
+    (bus.werkplaatsTot === undefined || bus.werkplaatsTot < dag) &&
+    bus.staat >= REGELS.inzetbaarVanafStaat &&
+    bus.schade < REGELS.inzetbaarTotSchade
+  )
+}
+
+export function onderhoudskosten(bus: EigenBus): number {
+  return REGELS.onderhoudVast + Math.round((100 - bus.staat) * REGELS.onderhoudPerPunt)
+}
+
+export function reparatiekosten(bus: EigenBus): number {
+  return Math.round(bus.schade * REGELS.reparatiePerPunt)
+}
+
+/** Een voorspelbare toevalsreeks: dezelfde dag geeft dezelfde markt, ook na een herstart. */
+function reeks(zaad: number): () => number {
+  let a = zaad >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/**
+ * De tweedehandsmarkt van vandaag, uit de bussen die geïnstalleerd zijn.
+ *
+ * Per bedrijfsdag een paar aanbiedingen, steeds dezelfde voor dezelfde dag --
+ * wie de app herstart, krijgt niet ineens een betere markt. Wat vandaag
+ * verkocht is, staat in `aanbodWeg`.
+ */
+export function tweedehandsAanbod(bedrijf: Bedrijf, markt: MarktBus[]): Aanbod[] {
+  if (markt.length === 0) return []
+  const kans = reeks(bedrijf.dag * 7919 + bedrijf.naam.length)
+  const weg = new Set(bedrijf.aanbodWeg ?? [])
+  const uit: Aanbod[] = []
+  for (let nr = 0; nr < REGELS.tweedehandsPerDag; nr++) {
+    const bus = markt[Math.floor(kans() * markt.length)]
+    const km = Math.round((120_000 + kans() * 560_000) / 1000) * 1000
+    const staat = Math.round(40 + kans() * 50)
+    const prijs = Math.round((waardeVan({ vorm: bus.vorm, km, staat, schade: 0 }) * 1.05) / 100_00) * 100_00
+    if (!weg.has(nr)) uit.push({ nr, bus, km, staat, prijs })
+  }
+  return uit
+}
+
+function volgendNummer(bedrijf: Bedrijf): number {
+  return Math.max(100, ...(bedrijf.bussen ?? []).map((b) => b.nummer)) + 1
+}
+
+export type Kooputslag = { bedrijf: Bedrijf } | { fout: 'kas' | 'weg' }
+
+export function koopNieuw(bedrijf: Bedrijf, bus: MarktBus): Kooputslag {
+  const prijs = REGELS.nieuwprijs[bus.vorm]
+  if (bedrijf.kas < prijs) return { fout: 'kas' }
+  const eigen: EigenBus = {
+    nummer: volgendNummer(bedrijf),
+    relativePath: bus.relativePath,
+    naam: bus.naam,
+    vorm: bus.vorm,
+    aankoop: prijs,
+    gekochtOp: bedrijf.dag,
+    km: 0,
+    staat: 100,
+    schade: 0
+  }
+  const met = { ...bedrijf, bussen: [...(bedrijf.bussen ?? []), eigen] }
+  return { bedrijf: boek(met, { soort: 'bus-koop', bedrag: -prijs, wat: `${eigen.nummer} · ${bus.naam} (nieuw)`, gemeten: false }) }
+}
+
+export function koopTweedehands(bedrijf: Bedrijf, aanbod: Aanbod): Kooputslag {
+  if ((bedrijf.aanbodWeg ?? []).includes(aanbod.nr)) return { fout: 'weg' }
+  if (bedrijf.kas < aanbod.prijs) return { fout: 'kas' }
+  const eigen: EigenBus = {
+    nummer: volgendNummer(bedrijf),
+    relativePath: aanbod.bus.relativePath,
+    naam: aanbod.bus.naam,
+    vorm: aanbod.bus.vorm,
+    aankoop: aanbod.prijs,
+    gekochtOp: bedrijf.dag,
+    km: aanbod.km,
+    staat: aanbod.staat,
+    schade: 0
+  }
+  const met = {
+    ...bedrijf,
+    bussen: [...(bedrijf.bussen ?? []), eigen],
+    aanbodWeg: [...(bedrijf.aanbodWeg ?? []), aanbod.nr]
+  }
+  return {
+    bedrijf: boek(met, {
+      soort: 'bus-koop',
+      bedrag: -aanbod.prijs,
+      wat: `${eigen.nummer} · ${aanbod.bus.naam} (${Math.round(aanbod.km / 1000)}k km)`,
+      gemeten: false
+    })
+  }
+}
+
+export function verkoop(bedrijf: Bedrijf, nummer: number): Bedrijf {
+  const bus = (bedrijf.bussen ?? []).find((b) => b.nummer === nummer)
+  if (!bus) return bedrijf
+  const opbrengst = Math.round(waardeVan(bus) * REGELS.verkoopFactor)
+  const zonder = { ...bedrijf, bussen: (bedrijf.bussen ?? []).filter((b) => b.nummer !== nummer) }
+  return boek(zonder, { soort: 'bus-verkoop', bedrag: opbrengst, wat: `${bus.nummer} · ${bus.naam}`, gemeten: false })
+}
+
+/**
+ * Naar de werkplaats: onderhoud zet de staat terug op 100, reparatie haalt de
+ * schade weg. Allebei een dag: de bus rijdt vandaag niet mee.
+ */
+export function naarWerkplaats(bedrijf: Bedrijf, nummer: number, wat: 'onderhoud' | 'reparatie'): Kooputslag {
+  const bus = (bedrijf.bussen ?? []).find((b) => b.nummer === nummer)
+  if (!bus) return { fout: 'weg' }
+  const kosten = wat === 'onderhoud' ? onderhoudskosten(bus) : reparatiekosten(bus)
+  if (bedrijf.kas < kosten) return { fout: 'kas' }
+  const klaar: EigenBus = {
+    ...bus,
+    staat: wat === 'onderhoud' ? 100 : bus.staat,
+    schade: wat === 'reparatie' ? 0 : bus.schade,
+    werkplaatsTot: bedrijf.dag
+  }
+  const met = { ...bedrijf, bussen: (bedrijf.bussen ?? []).map((b) => (b.nummer === nummer ? klaar : b)) }
+  return { bedrijf: boek(met, { soort: wat, bedrag: -kosten, wat: `${bus.nummer} · ${bus.naam}`, gemeten: false }) }
+}
+
+/**
+ * Wat een dag zou opleveren met het wagenpark van nu: per concessie, en hoeveel
+ * omlopen er met eigen bussen gereden worden.
+ *
+ * Het wagenpark is één poel voor alle concessies: een bus rijdt waar hij nodig
+ * is. Welke bus welke omloop rijdt (geleed of solo) telt nog niet mee.
+ */
+export function dagprognose(bedrijf: Bedrijf): {
+  vergoeding: number
+  kosten: number
+  benodigd: number
+  inzetbaar: number
+  dekking: number
+  uren: number
+} {
+  const benodigd = bedrijf.concessies.reduce((som, c) => som + c.omlopen, 0)
+  const inzetbaar = (bedrijf.bussen ?? []).filter((b) => isInzetbaar(b, bedrijf.dag)).length
+  const dekking = benodigd === 0 ? 0 : Math.min(1, inzetbaar / benodigd)
+  const uren = bedrijf.concessies.reduce((som, c) => som + c.urenPerDag, 0)
+  const vergoeding = bedrijf.concessies.reduce((som, c) => som + dagresultaat(c, bedrijf.reputatie).vergoeding, 0)
+  const besparing = Math.round(uren * dekking * (REGELS.inhuurMaterieelPerUur - REGELS.eigenBusPerUur))
+  const kosten = Math.round(uren * REGELS.inhuurPerUur) - besparing
+  return { vergoeding, kosten, benodigd, inzetbaar, dekking, uren }
+}
+
 export function richtBedrijfOp(naam: string, nu = new Date()): Bedrijf {
   const bedrijf: Bedrijf = {
     naam: naam.trim() || 'Mijn busbedrijf',
@@ -123,7 +390,10 @@ export function richtBedrijfOp(naam: string, nu = new Date()): Bedrijf {
     kas: 0,
     reputatie: 50,
     concessies: [],
-    boekingen: []
+    boekingen: [],
+    bussen: [],
+    aanbodWeg: [],
+    historie: []
   }
   return boek(bedrijf, { soort: 'oprichting', bedrag: REGELS.startkapitaal, wat: 'Startkapitaal', gemeten: false })
 }
@@ -215,8 +485,15 @@ export function lijnnaam(c: Pick<Concessie, 'lineNumbers' | 'lineFile'>): string
  * De reputatie beweegt met het aandeel tijdhaltes op tijd: helemaal goed geeft
  * +2, helemaal fout −4. Klein per dienst, want één rit maakt geen naam.
  */
-export function boekEigenDienst(bedrijf: Bedrijf, duty: Duty, staat: Rittenstaat | undefined): Bedrijf {
+export function boekEigenDienst(
+  bedrijf: Bedrijf,
+  duty: Duty,
+  staat: Rittenstaat | undefined,
+  /** De bus waarmee gereden is; is dat een eigen bus, dan krijgt die de schade. */
+  busPad?: string
+): Bedrijf {
   if (!staat) return bedrijf
+  bedrijf = schadeVanDienst(bedrijf, staat, busPad)
   let opTijd = 0
   let vroeg = 0
   let laat = 0
@@ -247,10 +524,36 @@ export function boekEigenDienst(bedrijf: Bedrijf, duty: Duty, staat: Rittenstaat
 }
 
 /**
- * De dag afsluiten: per concessie de vergoeding en de kosten van de dag, en
- * concessies die vandaag aflopen verlengen of laten vervallen.
+ * Aanrijdingen in een dienst die je zelf reed, op de eigen bus waarmee je reed.
+ * Staan er meer bussen van hetzelfde type, dan de eerste die inzetbaar is.
+ */
+function schadeVanDienst(bedrijf: Bedrijf, staat: Rittenstaat, busPad?: string): Bedrijf {
+  if (!busPad || !bedrijf.bussen?.length) return bedrijf
+  const klappen = staat.ritten.reduce(
+    (som, rit) => som + rit.haltes.reduce((s, h) => s + (h.klappen ?? 0), 0),
+    0
+  )
+  if (klappen === 0) return bedrijf
+  const pad = busPad.toLowerCase()
+  const bus =
+    bedrijf.bussen.find((b) => b.relativePath.toLowerCase() === pad && isInzetbaar(b, bedrijf.dag)) ??
+    bedrijf.bussen.find((b) => b.relativePath.toLowerCase() === pad)
+  if (!bus) return bedrijf
+  return {
+    ...bedrijf,
+    bussen: bedrijf.bussen.map((b) =>
+      b.nummer === bus.nummer ? { ...b, schade: Math.min(100, b.schade + klappen * REGELS.schadePerKlap) } : b
+    )
+  }
+}
+
+/**
+ * De dag afsluiten: per concessie de vergoeding, de kosten van de ritten --
+ * met eigen bussen goedkoper dan ingehuurd -- de slijtage van het wagenpark,
+ * en concessies die vandaag aflopen verlengen of laten vervallen.
  */
 export function sluitDagAf(bedrijf: Bedrijf): Bedrijf {
+  const prognose = dagprognose(bedrijf)
   let uit = bedrijf
   for (const c of bedrijf.concessies) {
     const { vergoeding, kosten } = dagresultaat(c, bedrijf.reputatie)
@@ -258,6 +561,30 @@ export function sluitDagAf(bedrijf: Bedrijf): Bedrijf {
     uit = boek(uit, { soort: 'vergoeding', bedrag: vergoeding, wat: naam, gemeten: false })
     uit = boek(uit, { soort: 'exploitatie', bedrag: -kosten, wat: naam, gemeten: false })
   }
+  // Wat eigen bussen besparen op de inhuur, en wat ze zelf kosten.
+  const eigenUren = prognose.uren * prognose.dekking
+  if (eigenUren > 0) {
+    uit = boek(uit, {
+      soort: 'eigen-materieel',
+      bedrag: Math.round(eigenUren * (REGELS.inhuurMaterieelPerUur - REGELS.eigenBusPerUur)),
+      wat: `${prognose.inzetbaar} bussen · ${Math.round(eigenUren)} u`,
+      gemeten: false
+    })
+  }
+
+  // Slijtage: de inzetbare bussen delen de uren die ze reden.
+  const inzet = (uit.bussen ?? []).filter((b) => isInzetbaar(b, uit.dag))
+  const urenPerBus = inzet.length > 0 ? Math.min(eigenUren / inzet.length, 20) : 0
+  const bussen = (uit.bussen ?? []).map((b) =>
+    inzet.includes(b)
+      ? {
+          ...b,
+          km: b.km + Math.round(urenPerBus * REGELS.kmPerUur),
+          staat: Math.max(0, Math.round((b.staat - urenPerBus * REGELS.slijtagePerUur) * 10) / 10)
+        }
+      : b
+  )
+  uit = { ...uit, bussen }
 
   const blijven: Concessie[] = []
   for (const c of uit.concessies) {
@@ -270,5 +597,32 @@ export function sluitDagAf(bedrijf: Bedrijf): Bedrijf {
       uit = boek(uit, { soort: 'vervallen', bedrag: 0, wat: `${lijnnaam(c)} · ${c.mapName}`, gemeten: false })
     }
   }
-  return { ...uit, concessies: blijven, dag: uit.dag + 1 }
+  const inkomsten = uit.boekingen
+    .filter((b) => b.dag === bedrijf.dag && b.bedrag > 0)
+    .reduce((som, b) => som + b.bedrag, 0)
+  const uitgaven = uit.boekingen
+    .filter((b) => b.dag === bedrijf.dag && b.bedrag < 0)
+    .reduce((som, b) => som - b.bedrag, 0)
+  const investering = new Set<BoekingSoort>(['oprichting', 'bus-koop', 'bus-verkoop'])
+  const resultaat = uit.boekingen
+    .filter((b) => b.dag === bedrijf.dag && !investering.has(b.soort))
+    .reduce((som, b) => som + b.bedrag, 0)
+  const dagstaat: DagStaat = {
+    dag: bedrijf.dag,
+    kas: uit.kas,
+    inkomsten,
+    uitgaven,
+    resultaat,
+    reputatie: uit.reputatie,
+    bussen: bussen.length,
+    inzetbaar: prognose.inzetbaar,
+    dekking: prognose.dekking
+  }
+  return {
+    ...uit,
+    concessies: blijven,
+    dag: uit.dag + 1,
+    aanbodWeg: [],
+    historie: [...(uit.historie ?? []), dagstaat].slice(-REGELS.historieBewaard)
+  }
 }

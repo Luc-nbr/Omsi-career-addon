@@ -1,5 +1,6 @@
 import type { Schermvorm } from './scherm'
 import type { Busanalyse, Busmap } from '../core/busklaar'
+import type { Aanbod, MarktBus } from '../core/bedrijf'
 import type { ActiveDuty, CareerState, CareerSummary, GameMode } from '../core/career'
 import type { LineSummary } from '../core/duty'
 import type { ExamMeasurement } from '../core/exam'
@@ -777,6 +778,16 @@ export interface CareerApi {
   ): Promise<{ payload: CareerPayload; fout?: 'kas' | 'al' | 'lijn' | 'geen' }>
   bedrijfOpzeggen(mapFolder: string, lineFile: string): Promise<CareerPayload>
   bedrijfDagAf(): Promise<CareerPayload>
+  bedrijfMarkt(): Promise<{ nieuw: MarktBus[]; tweedehands: Aanbod[] }>
+  bedrijfKoop(
+    soort: 'nieuw' | 'tweedehands',
+    wat: string | number
+  ): Promise<{ payload: CareerPayload; fout?: 'kas' | 'weg' | 'geen' }>
+  bedrijfVerkoop(nummer: number): Promise<CareerPayload>
+  bedrijfWerkplaats(
+    nummer: number,
+    wat: 'onderhoud' | 'reparatie'
+  ): Promise<{ payload: CareerPayload; fout?: 'kas' | 'weg' | 'geen' }>
   /**
    * Welke bussen de kaart van deze dienst niet kennen, en wat eraan te doen is.
    * Leest alleen; er wordt pas iets neergezet als de chauffeur dat vraagt.

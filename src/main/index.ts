@@ -100,7 +100,20 @@ import {
   type WisselAanbod
 } from '../shared/telefoon'
 import { runsOn } from '../core/calendar'
-import { boekEigenDienst, richtBedrijfOp, schrijfIn, sluitDagAf, zegOp } from '../core/bedrijf'
+import {
+  boekEigenDienst,
+  koopNieuw,
+  koopTweedehands,
+  naarWerkplaats,
+  richtBedrijfOp,
+  schrijfIn,
+  sluitDagAf,
+  tweedehandsAanbod,
+  verkoop,
+  vormVanNaam,
+  zegOp,
+  type MarktBus
+} from '../core/bedrijf'
 import {
   bouwRittenstaat,
   leesSpoor,
@@ -1109,7 +1122,8 @@ function sluitLopendeDienstAf(): void {
   const naam = bus ? `${bus.manufacturer} ${bus.type}` : lopend.vehicleOverride
   const gemeten = sessieGegevens()
   const staat = rittenstaatVanDienst(duty)
-  const bedrijf = career.bedrijf ? boekEigenDienst(career.bedrijf, duty, staat) : undefined
+  const busPad = lopend.vehicleOverride || bus?.relativePath
+  const bedrijf = career.bedrijf ? boekEigenDienst(career.bedrijf, duty, staat, busPad) : undefined
   career = completeDuty({ ...career, bedrijf }, duty, naam, {
     stopsDone: gemeten.stopsDone,
     drivenKm: gemeten.drivenKm,
@@ -4488,7 +4502,10 @@ function registerHandlers(): void {
     if (!career) return careerPayload()
     const staat = rittenstaatVanDienst(duty)
     // Een dienst op een lijn van je eigen bedrijf telt ook daar; zie core/bedrijf.ts.
-    const bedrijf = career.bedrijf ? boekEigenDienst(career.bedrijf, duty, staat) : undefined
+    const lopend = career.activeDuty
+    const busPad =
+      lopend?.vehicleOverride || (lopend?.assignment as Assignment | undefined)?.vehicle?.relativePath
+    const bedrijf = career.bedrijf ? boekEigenDienst(career.bedrijf, duty, staat, busPad) : undefined
     return persist(completeDuty({ ...career, bedrijf }, duty, vehicle, measured, staat))
   })
 
@@ -4514,6 +4531,57 @@ function registerHandlers(): void {
   handle('bedrijf:opzeggen', (_event, mapFolder: string, lineFile: string) => {
     if (!career?.bedrijf) return careerPayload()
     return persist({ ...career, bedrijf: zegOp(career.bedrijf, mapFolder, lineFile) })
+  })
+  /*
+   * De busmarkt: nieuw is elke bus die geïnstalleerd is en die je zelf kunt
+   * rijden, tweedehands een handvol daarvan per bedrijfsdag. Kopen gaat op pad
+   * of op aanbodnummer; de prijs rekent het hoofdproces opnieuw uit.
+   */
+  const marktbussen = async (): Promise<MarktBus[]> => {
+    let lijst: Vehicle[]
+    try {
+      lijst = await werkerVraag<Vehicle[]>({ soort: 'voertuigen' })
+    } catch {
+      lijst = laag().voertuigen()
+    }
+    const gezien = new Set<string>()
+    return lijst
+      .map((v) => {
+        const naam = [v.manufacturer, v.type].filter(Boolean).join(' ') || v.folder
+        return { relativePath: v.relativePath, naam, vorm: vormVanNaam(`${naam} ${v.relativePath}`) }
+      })
+      .filter((b) => (gezien.has(b.naam) ? false : (gezien.add(b.naam), true)))
+      .sort((a, b) => a.naam.localeCompare(b.naam))
+  }
+  handle('bedrijf:markt', async () => {
+    const nieuw = await marktbussen()
+    return { nieuw, tweedehands: career?.bedrijf ? tweedehandsAanbod(career.bedrijf, nieuw) : [] }
+  })
+  handle('bedrijf:koop', async (_event, soort: 'nieuw' | 'tweedehands', wat: string | number) => {
+    if (!career?.bedrijf) return { payload: careerPayload(), fout: 'geen' }
+    const markt = await marktbussen()
+    const uit =
+      soort === 'nieuw'
+        ? (() => {
+            const bus = markt.find((b) => b.relativePath === wat)
+            return bus ? koopNieuw(career!.bedrijf!, bus) : ({ fout: 'weg' } as const)
+          })()
+        : (() => {
+            const aanbod = tweedehandsAanbod(career!.bedrijf!, markt).find((a) => a.nr === Number(wat))
+            return aanbod ? koopTweedehands(career!.bedrijf!, aanbod) : ({ fout: 'weg' } as const)
+          })()
+    if ('fout' in uit) return { payload: careerPayload(), fout: uit.fout }
+    return { payload: persist({ ...career, bedrijf: uit.bedrijf }) }
+  })
+  handle('bedrijf:verkoop', (_event, nummer: number) => {
+    if (!career?.bedrijf) return careerPayload()
+    return persist({ ...career, bedrijf: verkoop(career.bedrijf, Number(nummer)) })
+  })
+  handle('bedrijf:werkplaats', (_event, nummer: number, wat: 'onderhoud' | 'reparatie') => {
+    if (!career?.bedrijf) return { payload: careerPayload(), fout: 'geen' }
+    const uit = naarWerkplaats(career.bedrijf, Number(nummer), wat === 'reparatie' ? 'reparatie' : 'onderhoud')
+    if ('fout' in uit) return { payload: careerPayload(), fout: uit.fout }
+    return { payload: persist({ ...career, bedrijf: uit.bedrijf }) }
   })
   handle('bedrijf:dagAf', () => {
     if (!career?.bedrijf) return careerPayload()

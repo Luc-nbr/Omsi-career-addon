@@ -43,7 +43,7 @@ import { DutyCard } from "./DutyCard";
 import { Flag } from "./Flag";
 import { GameSetup } from "./GameSetup";
 import { Profiel } from "./Profiel";
-import { Bedrijf } from "./Bedrijf";
+import { BedrijfApp } from "./Bedrijf";
 import { RunningDuty } from "./RunningDuty";
 import {
   Setup,
@@ -2270,6 +2270,21 @@ export function App(): JSX.Element {
    * binnenkomen hoort staat eromheen: je staat van dienst, de instellingen van
    * OMSI en wie er rijdt.
    */
+  /*
+   * Het busbedrijf is een eigen app, venstervullend met een zijbalk en een
+   * dashboard -- geen stap op weg naar een dienst. Luc: "het busbedrijf moet
+   * zijn eigen UI krijgen en een uitgebreid dashboard".
+   */
+  if (screen === "bedrijf" && career?.state) {
+    return (
+      <BedrijfApp
+        bedrijf={career.state.bedrijf}
+        onCareer={setCareer}
+        onTerug={() => setScreen("modes")}
+      />
+    );
+  }
+
   if (screen === "modes" && career?.state) {
     return (
       <LanguageProvider language={language}>
@@ -3009,7 +3024,7 @@ export function App(): JSX.Element {
     const opzetStap: Stap =
       eersteStart || screen === "profiles" || screen === "profiel"
         ? "profile"
-        : screen === "modes" || screen === "game" || screen === "bedrijf"
+        : screen === "modes" || screen === "game"
           ? "mode"
           : stap;
 
@@ -3331,21 +3346,6 @@ export function App(): JSX.Element {
             if (gekozenProfiel) void chooseProfile(gekozenProfiel.id);
           },
           knop: t(language, "setup.next"),
-        };
-      }
-      /* Het busbedrijf: vrije inhoud op het vel, net als de instellingen van OMSI. */
-      if (opzetStap === "mode" && screen === "bedrijf") {
-        return {
-          stap: "mode" as Stap,
-          titel: t(language, "bd.title"),
-          onderschrift: t(language, "bd.intro"),
-          koppen: ["", "", ""] as [string, string, string],
-          rijen: [],
-          index: 0,
-          kies: () => {},
-          voet: "",
-          verder: () => setScreen("modes"),
-          knop: t(language, "setup.back"),
         };
       }
       if (opzetStap === "mode" && screen === "game") {
@@ -4658,8 +4658,7 @@ export function App(): JSX.Element {
               />
             ) : screen === "profiel" && career?.state && career.summary ? (
               <Profiel state={career.state} summary={career.summary} />
-            ) : screen === "bedrijf" && career?.state ? (
-              <Bedrijf bedrijf={career.state.bedrijf} onCareer={setCareer} />
+
             ) : (
               vel.vrij
             )
