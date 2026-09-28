@@ -80,6 +80,8 @@ const OPDRACHTSOORTEN: Record<TelefoonOpdracht['wat'], true> = {
   aanmelden: true,
   overslaan: true,
   aanvaard: true,
+  aanbod: true,
+  wissel: true,
   pauze: true,
   ibis: true,
   toets: true,
@@ -88,7 +90,17 @@ const OPDRACHTSOORTEN: Record<TelefoonOpdracht['wat'], true> = {
 }
 
 export interface TelefoonOpdracht {
-  wat: 'aanmelden' | 'overslaan' | 'aanvaard' | 'pauze' | 'ibis' | 'toets' | 'busknoppen' | 'module'
+  wat:
+    | 'aanmelden'
+    | 'overslaan'
+    | 'aanvaard'
+    | 'aanbod'
+    | 'wissel'
+    | 'pauze'
+    | 'ibis'
+    | 'toets'
+    | 'busknoppen'
+    | 'module'
   nummer?: string
   pin?: string
   vanaf?: number
@@ -98,6 +110,8 @@ export interface TelefoonOpdracht {
   /** Welk apparaat erbij of weg moet, en of het erbij is; zie core/busmodule.ts. */
   module?: string
   aan?: boolean
+  /** Welke dienst uit het aanbod; zie `WisselAanbod` in shared/telefoon.ts. */
+  nr?: number
 }
 
 /** Een eigen poort, zodat een bladwijzer op de telefoon blijft werken. */
@@ -358,7 +372,8 @@ async function behandel(vraag: IncomingMessage, antwoord: ServerResponse): Promi
       antwoord.writeHead(400, VEILIG)
       return void antwoord.end()
     }
-    return stuurJson(vraag, antwoord, bronnen.telefoon(opdracht) ?? { ok: true })
+    // Het aanbod aan diensten wordt uitgerekend; dat antwoord komt later.
+    return stuurJson(vraag, antwoord, (await bronnen.telefoon(opdracht)) ?? { ok: true })
   }
   if (methode !== 'GET' && methode !== 'HEAD') return nietGevonden(antwoord)
 

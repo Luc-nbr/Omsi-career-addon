@@ -1,6 +1,16 @@
 import { spawn } from 'node:child_process'
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, net, protocol, screen, shell } from 'electron'
-import { cpSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import {
+  appendFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
 import { dirname, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Worker } from 'node:worker_threads'
@@ -66,6 +76,7 @@ import {
   zetBustoetsen
 } from '../core/bustoetsen'
 import {
+  aanrijdingenGezien,
   describeLive,
   leesSchermen,
   VRAGEN_MAX,
@@ -88,11 +99,39 @@ import {
   LEGE_TELEFOON,
   OMSI_TOETSEN,
   aanmeldSleutelVan,
+  dienstSleutelVan,
   dutyKeyOf,
   type AanmeldUitslag,
   type OmsiToets,
-  type TelefoonStand
+  type TelefoonStand,
+  type WisselAanbod
 } from '../shared/telefoon'
+import { runsOn } from '../core/calendar'
+import {
+  boekEigenDienst,
+  geefOpslag,
+  koopNieuw,
+  neemAan,
+  ontsla,
+  koopTweedehands,
+  naarWerkplaats,
+  richtBedrijfOp,
+  schrijfIn,
+  sluitDagAf,
+  tweedehandsAanbod,
+  verkoop,
+  vormVanNaam,
+  zegOp,
+  type MarktBus
+} from '../core/bedrijf'
+import {
+  bouwRittenstaat,
+  leesSpoor,
+  volgSpoor,
+  type MeetStand,
+  type Rittenstaat,
+  type SpoorRegel
+} from '../core/rittenstaat'
 import {
   apparaatBeeld,
   apparaatKijkt,
@@ -1218,7 +1257,12 @@ function sluitLopendeDienstAf(): void {
   const bus = (lopend.assignment as Assignment | undefined)?.vehicle
   const naam = bus ? `${bus.manufacturer} ${bus.type}` : lopend.vehicleOverride
   const gemeten = sessieGegevens()
-  career = completeDuty(career, duty, naam, {
+  const staat = rittenstaatVanDienst(duty)
+  const busPad = lopend.vehicleOverride || bus?.relativePath
+  const bedrijf = career.bedrijf
+    ? boekEigenDienst(career.bedrijf, duty, staat, busPad, gemeten.stopsDone)
+    : undefined
+  career = completeDuty({ ...career, bedrijf }, duty, naam, {
     stopsDone: gemeten.stopsDone,
     drivenKm: gemeten.drivenKm,
     delayMinutes: gemeten.delayMinutes,
@@ -1227,8 +1271,129 @@ function sluitLopendeDienstAf(): void {
     tickets: gemeten.tickets,
     collisions: gemeten.collisions,
     fuelUsed: gemeten.fuelUsed
-  })
+  }, staat)
   writeProfile(userData(), career)
+}
+
+/*
+ * DE MEETLUS
+ *
+ * Elke seconde, zolang er een dienst rijdt, wat de plugin doorgeeft vastleggen
+ * voor de rittenstaat (zie core/rittenstaat.ts). Los van `pushFrame`: die
+ * draait alleen als de overlay open is of een toestel meekijkt, en een dienst
+ * zonder overlay hoort net zo goed gemeten te worden. Om dezelfde reden valt
+ * hier ook de nulmeting, die anders op het volgende beeld van de overlay wachtte.
+ *
+ * Het spoor gaat regel voor regel naar een bestand per dienst, zodat een crash
+ * van de app niets weggooit; de stand tussen twee metingen staat alleen in het
+ * geheugen, en na een herstart begint die gewoon opnieuw.
+ */
+let spoor: { sleutel: string; stand?: MeetStand } | undefined
+let spoorFoutGemeld = false
+
+/** Hoeveel sporen er bewaard blijven; genoeg om een proefrit na te lezen. */
+const SPOREN_BEWAARD = 20
+
+/** Het spoor van de dienst die loopt: per profiel en per keer aannemen. */
+function spoorSleutel(): string | undefined {
+  const actief = career?.activeDuty
+  if (!career || !actief?.startedAt) return undefined
+  return `${career.id ?? 'profiel'}-${actief.confirmedAt}`.replace(/[^\w-]/g, '-')
+}
+
+function spoorPad(sleutel: string): string {
+  return join(userData(), 'ritten', `${sleutel}.jsonl`)
+}
+
+/**
+ * De klok van het spel over middernacht doorgeteld, zoals de dienst hem kent:
+ * een rit die om 01:10 aankomt staat als 1510 in de dienstregeling.
+ */
+function klokVoorDienst(klok: number, duty: Duty): number {
+  const laatste = duty.legs[duty.legs.length - 1]?.arrival ?? 0
+  return laatste > 1440 && klok + 1440 <= laatste + 60 ? klok + 1440 : klok
+}
+
+function meet(): void {
+  const sleutel = spoorSleutel()
+  const duty = (career?.activeDuty?.assignment as Assignment | undefined)?.duty
+  if (!sleutel || !duty) {
+    spoor = undefined
+    return
+  }
+  const live = freshLive()
+  if (!live) return
+  captureBaseline(live)
+  if (spoor?.sleutel !== sleutel) spoor = { sleutel }
+
+  const status = describeLive(live, duty)
+  const uitMenu = status.fromTimetable && status.halteOpNaam !== undefined
+  const { stand, regels } = volgSpoor(spoor.stand, {
+    klok: klokVoorDienst(status.clockMinutes, duty),
+    rit: Math.max(0, status.legIndex),
+    halte: uitMenu ? status.halteOpNaam : undefined,
+    uitMenu,
+    snelheid: live.velocity,
+    reizigers: live.passengers,
+    remmen: live.harshBrakes,
+    optrekken: live.harshAccels,
+    klappen: aanrijdingenGezien(live) ? live.collisions : undefined
+  })
+  const nieuw: SpoorRegel[] = spoor.stand
+    ? regels
+    : [{ t: 'begin', k: klokVoorDienst(status.clockMinutes, duty), dienst: dutyKeyOf(duty) }]
+  spoor.stand = stand
+  if (nieuw.length === 0) return
+  try {
+    const pad = spoorPad(sleutel)
+    mkdirSync(dirname(pad), { recursive: true })
+    appendFileSync(pad, nieuw.map((regel) => JSON.stringify(regel)).join('\n') + '\n')
+  } catch (fout) {
+    // Eén keer melden: een volle schijf hoort niet elke seconde in het logboek.
+    if (!spoorFoutGemeld) logFout('spoor van de dienst', fout)
+    spoorFoutGemeld = true
+  }
+}
+
+/**
+ * De rittenstaat van de dienst die nu afgerond wordt, uit zijn spoor.
+ *
+ * Alleen als het spoor bij deze dienst hoort: na een wissel via de telefoon is
+ * er een nieuw spoor, en de ritten van de oude dienst horen daar niet in.
+ */
+function rittenstaatVanDienst(duty: Duty): Rittenstaat | undefined {
+  const sleutel = spoorSleutel()
+  if (!sleutel) return undefined
+  try {
+    const pad = spoorPad(sleutel)
+    if (!existsSync(pad)) return undefined
+    const regels = leesSpoor(readFileSync(pad, 'utf8'))
+    const begin = regels.find((regel) => regel.t === 'begin')
+    if (begin && begin.t === 'begin' && begin.dienst !== dutyKeyOf(duty)) return undefined
+    return bouwRittenstaat(duty, regels)
+  } catch (fout) {
+    logFout('rittenstaat', fout)
+    return undefined
+  } finally {
+    ruimSporenOp()
+  }
+}
+
+/** De oudste sporen weg; de laatste blijven staan om een proefrit na te lezen. */
+function ruimSporenOp(): void {
+  try {
+    const map = join(userData(), 'ritten')
+    const sporen = readdirSync(map)
+      .filter((naam) => naam.endsWith('.jsonl'))
+      .map((naam) => ({ naam, tijd: statSync(join(map, naam)).mtimeMs }))
+      .sort((a, b) => a.tijd - b.tijd)
+      .map(({ naam }) => naam)
+    for (const naam of sporen.slice(0, Math.max(0, sporen.length - SPOREN_BEWAARD))) {
+      rmSync(join(map, naam), { force: true })
+    }
+  } catch {
+    // Opruimen is geen zaak om een dienst voor te laten mislukken.
+  }
 }
 
 /**
@@ -1546,7 +1711,8 @@ function telefoonBeeld(): TelefoonStand {
     pauzeVanaf: telefoon.pauzeVanaf,
     ibisReady: telefoon.ibisReady,
     nummerLengte: career?.personeelsnummer?.length ?? 0,
-    pinLengte: career?.pincode?.length ?? 0
+    pinLengte: career?.pincode?.length ?? 0,
+    wisselbaar: wisselbareDienst() !== undefined
   }
 }
 
@@ -1555,6 +1721,182 @@ function telefoonGewijzigd(): void {
   bewaarTelefoon()
   lastFrame = undefined
   pushFrame()
+}
+
+/**
+ * Het laatste aanbod aan andere diensten, zoals de telefoon het te zien kreeg.
+ *
+ * De telefoon kiest er met een volgnummer uit en stuurt geen dienst terug: een
+ * tablet op het netwerk kan zo niets anders laten aannemen dan wat hier stond.
+ */
+let wisselAanbod: { sleutel: string; diensten: Assignment[] } | undefined
+
+/** Hoeveel diensten de telefoon aanbiedt; meer past niet op het scherm zonder zoeken. */
+const WISSEL_AANTAL = 6
+
+/**
+ * De aangenomen dienst, als de chauffeur die hier mag ruilen. Niet bij een
+ * examen -- dat hoort bij één lijn -- en niet als de overlay iets anders rijdt
+ * dan wat er aangenomen is: dan is er niets om tegen te ruilen.
+ */
+function wisselbareDienst(): Assignment | undefined {
+  const actief = career?.activeDuty
+  if (!actief || actief.exam) return undefined
+  const aangenomen = actief.assignment as Assignment | undefined
+  if (!aangenomen?.duty) return undefined
+  const lopend = currentDuty()
+  if (lopend && aanmeldSleutelVan(lopend) !== aanmeldSleutelVan(aangenomen.duty)) return undefined
+  return aangenomen
+}
+
+/**
+ * Andere diensten die nu nog te rijden zijn, terwijl OMSI al draait.
+ *
+ * WAAROM DIT ER IS
+ * Een gebruiker: "wenn man eine Fahrt ändern möchte, wäre es praktisch, wenn
+ * man direkt im Menü eine andere Tour auswählen bzw. annehmen könnte, ohne
+ * dafür jedes Mal OMSI beenden und neu starten zu müssen." Het kon al --
+ * annuleren, een nieuwe kiezen, "meerijden" -- maar dat liep over drie
+ * schermen van de app, terwijl je in de bus zit met de telefoon voor je neus.
+ *
+ * WAT HET AANBOD BEPAALT
+ * Het spel loopt al, dus de klok en de datum liggen vast. Een omloop die
+ * vandaag niet rijdt staat niet in het dienstregelingsmenu van OMSI, en een
+ * dienst die al vertrokken is, is geen keuze meer. Vandaar: vertrek vanaf de
+ * klok van het spel tot twee uur later, op de dag die OMSI nu speelt, op
+ * dezelfde kaart en ongeveer even lang als de dienst die er nu staat. In de
+ * carrière alleen op lijnen met een vergunning, net als in het keuzescherm.
+ */
+async function dienstAanbod(): Promise<WisselAanbod> {
+  const aangenomen = wisselbareDienst()
+  if (!aangenomen) return { diensten: [], reden: 'niet' }
+  const oud = aangenomen.duty
+  const folder = oud.mapFolder
+
+  const live = freshLive()
+  const speelt = live?.alive === true && live.year > 0 && live.month > 0 && live.day > 0
+  const klok = speelt ? Math.floor(live.time / 60) : undefined
+  const datum = speelt
+    ? new Date(Date.UTC(live.year, live.month - 1, live.day))
+    : aangenomen.date?.iso
+      ? new Date(`${aangenomen.date.iso}T00:00:00Z`)
+      : undefined
+
+  const request: DutyRequest = {
+    mapFolder: folder,
+    targetMinutes: Math.max(30, oud.end - oud.start),
+    window: 'heledag',
+    // Zonder klok van het spel: rond de dienst die er stond.
+    earliestStart: klok ?? oud.start - 60,
+    latestStart: (klok ?? oud.start) + 120,
+    lineFiles:
+      career?.activeDuty?.mode === 'career'
+        ? (career.licences ?? [])
+            .filter((vergunning) => vergunning.mapFolder === folder)
+            .map((vergunning) => vergunning.lineFile)
+        : undefined
+  }
+
+  let gevonden: Assignment[]
+  try {
+    gevonden = await werkerVraag<Assignment[]>({ soort: 'diensten', request })
+  } catch (fout) {
+    logFout('andere diensten via de werker', fout)
+    gevonden = laag().diensten(request)
+  }
+
+  const kalender = laag().kalender(folder)
+  const huidig = dienstSleutelVan(oud)
+  const diensten = gevonden
+    .filter(({ duty }) => dienstSleutelVan(duty) !== huidig)
+    .filter(({ duty }) => !datum || runsOn(duty.days | duty.period, datum, kalender))
+    .sort((a, b) => a.duty.start - b.duty.start)
+    .slice(0, WISSEL_AANTAL)
+
+  wisselAanbod = { sleutel: aanmeldSleutelVan(oud), diensten }
+  log(
+    `andere diensten voor ${folder}: ${diensten.length} van ${gevonden.length}` +
+      (klok !== undefined ? ` vanaf ${formatTime(klok)}` : ' (geen klok van OMSI)')
+  )
+  return {
+    diensten: diensten.map(({ duty }, nr) => ({
+      nr,
+      lijnen: duty.lineNumbers.join(' / ') || duty.legs[0]?.lineNumber || '',
+      omloop: duty.tourNumber,
+      start: duty.start,
+      eind: duty.end,
+      ritten: duty.legs.length,
+      vanaf: duty.legs[0]?.stops[0] ?? ''
+    })),
+    reden: diensten.length === 0 ? 'geen' : undefined
+  }
+}
+
+/**
+ * Een dienst uit het aanbod aannemen in plaats van de huidige.
+ *
+ * Het is geannuleerd en opnieuw aangenomen in één handeling, met "meerijden"
+ * erachter: OMSI draait al, dus er wordt niets klaargezet, en de chauffeur
+ * kiest de omloop zelf in het dienstregelingsmenu -- de telefoon zegt welke.
+ * Wat er van de oude dienst gereden is, wordt niet geboekt, net als bij
+ * annuleren. De bus blijft dezelfde: daar zit je in.
+ *
+ * Aangemeld blijf je, want je bent dezelfde chauffeur in dezelfde bus. Tekenen
+ * moet opnieuw: het is een andere opdracht.
+ */
+function wisselDienst(nr: number): boolean {
+  const aangenomen = wisselbareDienst()
+  const actief = career?.activeDuty
+  if (!career || !actief || !aangenomen) return false
+  if (!wisselAanbod || wisselAanbod.sleutel !== aanmeldSleutelVan(aangenomen.duty)) return false
+  const nieuw = Number.isInteger(nr) ? wisselAanbod.diensten[nr] : undefined
+  if (!nieuw) return false
+
+  const busPad =
+    actief.vehicleOverride || aangenomen.vehicle?.relativePath || nieuw.vehicle?.relativePath || ''
+  let ibis: IbisPlan | undefined
+  if (busPad) {
+    try {
+      ibis = buildIbisPlan(omsi(), busPad, nieuw.duty, era(nieuw.duty.mapFolder).year, overlayIbis?.yard)
+    } catch (fout) {
+      logFout('IBIS-codes voor de andere dienst', fout)
+    }
+  }
+
+  const nu = new Date().toISOString()
+  persist({
+    ...career,
+    activeDuty: {
+      assignment: nieuw,
+      vehicleOverride: busPad,
+      confirmedAt: nu,
+      mode: actief.mode,
+      // Er wordt al gereden; de nulmeting komt bij de volgende verse stand.
+      startedAt: actief.startedAt ? nu : undefined
+    }
+  })
+  captureBaseline()
+
+  overlayDuty = nieuw.duty
+  overlayIbis = ibis
+  wisselAanbod = undefined
+  // Zoals bij meerijden: wat er voor de oude dienst klaarstond, geldt niet meer.
+  klaargezet = undefined
+
+  const aangemeld = telefoon.aangemeld
+  telefoon = telefoonVoor(telefoonSleutel())
+  telefoon.aangemeld = aangemeld
+  telefoonGewijzigd()
+
+  log(
+    `Andere dienst via de telefoon: omloop ${aangenomen.duty.tourNumber} ` +
+      `(${formatTime(aangenomen.duty.start)}) wordt ${nieuw.duty.tourNumber} ` +
+      `(${formatTime(nieuw.duty.start)}) op ${nieuw.duty.mapFolder}`
+  )
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('dienst:gewisseld', careerPayload())
+  }
+  return true
 }
 
 /**
@@ -2931,6 +3273,10 @@ function apparaatBronnen(): ApparaatBronnen {
           telefoon.aanvaard = true
           telefoonGewijzigd()
           return { ok: true }
+        case 'aanbod':
+          return dienstAanbod()
+        case 'wissel':
+          return { ok: wisselDienst(Number(opdracht.nr)) }
         case 'pauze':
           telefoon.pauzeVanaf =
             typeof opdracht.vanaf === 'number' && Number.isFinite(opdracht.vanaf)
@@ -3373,6 +3719,8 @@ function registerHandlers(): void {
     telefoonGewijzigd()
   })
   handle('telefoon:toets', (_event, actie: OmsiToets) => omsiToets(actie))
+  handle('telefoon:aanbod', () => dienstAanbod())
+  handle('telefoon:wissel', (_event, nr: number) => wisselDienst(Number(nr)))
   handle('telefoon:knoppen', () => zetBusknoppenAan())
 
   /*
@@ -4365,7 +4713,116 @@ function registerHandlers(): void {
     overlayDuty = undefined
     overlayIbis = undefined
     if (!career) return careerPayload()
-    return persist(completeDuty(career, duty, vehicle, measured))
+    /*
+     * Eén dienst wordt één keer geboekt. De knop "afronden" en de automatische
+     * afronding (elke vijf tellen) kunnen allebei komen; de tweede vond hier
+     * geen dienst meer, maar boekte hem toch -- twee logboekregels, en in het
+     * busbedrijf twee keer invaluren.
+     */
+    if (!career.activeDuty) return careerPayload()
+    const staat = rittenstaatVanDienst(duty)
+    // Een dienst op een lijn van je eigen bedrijf telt ook daar; zie core/bedrijf.ts.
+    const lopend = career.activeDuty
+    const busPad =
+      lopend?.vehicleOverride || (lopend?.assignment as Assignment | undefined)?.vehicle?.relativePath
+    const bedrijf = career.bedrijf
+      ? boekEigenDienst(career.bedrijf, duty, staat, busPad, measured?.stopsDone)
+      : undefined
+    return persist(completeDuty({ ...career, bedrijf }, duty, vehicle, measured, staat))
+  })
+
+  /*
+   * Het busbedrijf; de regels staan in core/bedrijf.ts. Een lijn komt hier
+   * niet als object uit het venster maar wordt opnieuw uit de kaart gelezen:
+   * wat je betaalt en wat de concessie waard is, rekent het hoofdproces.
+   */
+  handle('bedrijf:oprichten', (_event, naam: string) => {
+    if (!career || career.bedrijf) return careerPayload()
+    log(`Busbedrijf opgericht: ${String(naam).slice(0, 60)}`)
+    return persist({ ...career, bedrijf: richtBedrijfOp(String(naam ?? '').slice(0, 60)) })
+  })
+  handle('bedrijf:inschrijven', (_event, mapFolder: string, lineFile: string) => {
+    if (!career?.bedrijf) return { payload: careerPayload(), fout: 'geen' }
+    const kaart = map(mapFolder)
+    const lijn = listLines(kaart, network(mapFolder)).find((l) => l.lineFile === lineFile)
+    if (!lijn) return { payload: careerPayload(), fout: 'lijn' }
+    const uit = schrijfIn(career.bedrijf, { folder: kaart.folder, name: kaart.name }, lijn)
+    if ('fout' in uit) return { payload: careerPayload(), fout: uit.fout }
+    return { payload: persist({ ...career, bedrijf: uit.bedrijf }) }
+  })
+  handle('bedrijf:opzeggen', (_event, mapFolder: string, lineFile: string) => {
+    if (!career?.bedrijf) return careerPayload()
+    return persist({ ...career, bedrijf: zegOp(career.bedrijf, mapFolder, lineFile) })
+  })
+  /*
+   * De busmarkt: nieuw is elke bus die geïnstalleerd is en die je zelf kunt
+   * rijden, tweedehands een handvol daarvan per bedrijfsdag. Kopen gaat op pad
+   * of op aanbodnummer; de prijs rekent het hoofdproces opnieuw uit.
+   */
+  const marktbussen = async (): Promise<MarktBus[]> => {
+    let lijst: Vehicle[]
+    try {
+      lijst = await werkerVraag<Vehicle[]>({ soort: 'voertuigen' })
+    } catch {
+      lijst = laag().voertuigen()
+    }
+    const gezien = new Set<string>()
+    return lijst
+      .map((v) => {
+        const naam = [v.manufacturer, v.type].filter(Boolean).join(' ') || v.folder
+        return { relativePath: v.relativePath, naam, vorm: vormVanNaam(`${naam} ${v.relativePath}`) }
+      })
+      .filter((b) => (gezien.has(b.naam) ? false : (gezien.add(b.naam), true)))
+      .sort((a, b) => a.naam.localeCompare(b.naam))
+  }
+  handle('bedrijf:markt', async () => {
+    const nieuw = await marktbussen()
+    return { nieuw, tweedehands: career?.bedrijf ? tweedehandsAanbod(career.bedrijf, nieuw) : [] }
+  })
+  handle('bedrijf:koop', async (_event, soort: 'nieuw' | 'tweedehands', wat: string | number) => {
+    if (!career?.bedrijf) return { payload: careerPayload(), fout: 'geen' }
+    const markt = await marktbussen()
+    const uit =
+      soort === 'nieuw'
+        ? (() => {
+            const bus = markt.find((b) => b.relativePath === wat)
+            return bus ? koopNieuw(career!.bedrijf!, bus) : ({ fout: 'weg' } as const)
+          })()
+        : (() => {
+            const aanbod = tweedehandsAanbod(career!.bedrijf!, markt).find((a) => a.nr === Number(wat))
+            return aanbod ? koopTweedehands(career!.bedrijf!, aanbod) : ({ fout: 'weg' } as const)
+          })()
+    if ('fout' in uit) return { payload: careerPayload(), fout: uit.fout }
+    return { payload: persist({ ...career, bedrijf: uit.bedrijf }) }
+  })
+  handle('bedrijf:verkoop', (_event, nummer: number) => {
+    if (!career?.bedrijf) return careerPayload()
+    return persist({ ...career, bedrijf: verkoop(career.bedrijf, Number(nummer)) })
+  })
+  handle('bedrijf:werkplaats', (_event, nummer: number, wat: 'onderhoud' | 'reparatie') => {
+    if (!career?.bedrijf) return { payload: careerPayload(), fout: 'geen' }
+    const uit = naarWerkplaats(career.bedrijf, Number(nummer), wat === 'reparatie' ? 'reparatie' : 'onderhoud')
+    if ('fout' in uit) return { payload: careerPayload(), fout: uit.fout }
+    return { payload: persist({ ...career, bedrijf: uit.bedrijf }) }
+  })
+  /* Personeel: de sollicitanten van vandaag rekent core/bedrijf.ts, hier en in het venster hetzelfde. */
+  handle('bedrijf:aannemen', (_event, nr: number) => {
+    if (!career?.bedrijf) return { payload: careerPayload(), fout: 'geen' }
+    const uit = neemAan(career.bedrijf, Number(nr))
+    if ('fout' in uit) return { payload: careerPayload(), fout: uit.fout }
+    return { payload: persist({ ...career, bedrijf: uit.bedrijf }) }
+  })
+  handle('bedrijf:ontslaan', (_event, id: number) => {
+    if (!career?.bedrijf) return careerPayload()
+    return persist({ ...career, bedrijf: ontsla(career.bedrijf, Number(id)) })
+  })
+  handle('bedrijf:opslag', (_event, id: number) => {
+    if (!career?.bedrijf) return careerPayload()
+    return persist({ ...career, bedrijf: geefOpslag(career.bedrijf, Number(id)) })
+  })
+  handle('bedrijf:dagAf', () => {
+    if (!career?.bedrijf) return careerPayload()
+    return persist({ ...career, bedrijf: sluitDagAf(career.bedrijf) })
   })
 
   handle('career:rename', (_event, name: string) => {
@@ -4666,6 +5123,15 @@ if (!app.requestSingleInstanceLock()) {
     meldPluginLogboek('de vorige keer dat OMSI draaide')
     // De wacht over OMSI tijdens een dienst; zie `bewaakOmsi`.
     setInterval(() => void bewaakOmsi(), 10000).unref?.()
+    // De meetlus voor de rittenstaat; zie `meet`.
+    setInterval(() => {
+      try {
+        meet()
+      } catch (fout) {
+        if (!spoorFoutGemeld) logFout('meetlus', fout)
+        spoorFoutGemeld = true
+      }
+    }, 1000).unref?.()
     career = resolveActive(userData())
     registerHandlers()
     createWindow()

@@ -51,6 +51,38 @@ export interface TelefoonStand {
    */
   nummerLengte: number
   pinLengte: number
+  /**
+   * Mag de chauffeur hier een andere dienst kiezen? Alleen bij een aangenomen
+   * dienst die geen examen is: een examen hoort bij één lijn, en bij vrij
+   * rijden is er niets aangenomen om te ruilen.
+   */
+  wisselbaar?: boolean
+}
+
+/**
+ * Een dienst die de remise aanbiedt in plaats van de huidige.
+ *
+ * Alleen wat de telefoon toont, en een volgnummer. De dienst zelf blijft in het
+ * hoofdproces: een tablet op het netwerk kiest uit het aanbod en stuurt geen
+ * dienst terug die hij zelf in elkaar heeft gezet.
+ */
+export interface DienstAanbod {
+  nr: number
+  lijnen: string
+  omloop: string
+  /** Vertrek en einde in minuten na middernacht. */
+  start: number
+  eind: number
+  ritten: number
+  /** De halte waar de dienst begint. */
+  vanaf: string
+}
+
+/** Het aanbod, of waarom er geen is. */
+export interface WisselAanbod {
+  diensten: DienstAanbod[]
+  /** `niet`: hier valt niets te wisselen; `geen`: er is op dit moment niets te vinden. */
+  reden?: 'niet' | 'geen'
 }
 
 /**

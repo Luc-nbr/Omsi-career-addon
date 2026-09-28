@@ -1,5 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { BusfotoStand, CareerApi, DutyRequest, KaartenStand, OmsiMelding } from '../shared/api'
+import type {
+  BusfotoStand,
+  CareerApi,
+  CareerPayload,
+  DutyRequest,
+  KaartenStand,
+  OmsiMelding
+} from '../shared/api'
 
 /**
  * De renderer praat alleen via deze brug met het bestandssysteem; er staat geen
@@ -74,6 +81,13 @@ const api: CareerApi = {
   telefoonOverslaan: () => ipcRenderer.invoke('telefoon:overslaan'),
   telefoonAanvaard: () => ipcRenderer.invoke('telefoon:aanvaard'),
   telefoonPauze: (vanaf) => ipcRenderer.invoke('telefoon:pauze', vanaf),
+  telefoonAanbod: () => ipcRenderer.invoke('telefoon:aanbod'),
+  telefoonWissel: (nr) => ipcRenderer.invoke('telefoon:wissel', nr),
+  onDienstGewisseld: (handler) => {
+    const listener = (_event: unknown, payload: CareerPayload): void => handler(payload)
+    ipcRenderer.on('dienst:gewisseld', listener)
+    return () => ipcRenderer.removeListener('dienst:gewisseld', listener)
+  },
   telefoonIbis: (tripKey) => ipcRenderer.invoke('telefoon:ibis', tripKey),
   telefoonToets: (actie) => ipcRenderer.invoke('telefoon:toets', actie),
   telefoonKnoppen: () => ipcRenderer.invoke('telefoon:knoppen'),
@@ -124,6 +138,17 @@ const api: CareerApi = {
   completeDuty: (duty, vehicle, measured) =>
     ipcRenderer.invoke('career:complete', duty, vehicle, measured),
   renameDriver: (name) => ipcRenderer.invoke('career:rename', name),
+  bedrijfOprichten: (naam) => ipcRenderer.invoke('bedrijf:oprichten', naam),
+  bedrijfInschrijven: (mapFolder, lineFile) => ipcRenderer.invoke('bedrijf:inschrijven', mapFolder, lineFile),
+  bedrijfOpzeggen: (mapFolder, lineFile) => ipcRenderer.invoke('bedrijf:opzeggen', mapFolder, lineFile),
+  bedrijfDagAf: () => ipcRenderer.invoke('bedrijf:dagAf'),
+  bedrijfMarkt: () => ipcRenderer.invoke('bedrijf:markt'),
+  bedrijfKoop: (soort, wat) => ipcRenderer.invoke('bedrijf:koop', soort, wat),
+  bedrijfVerkoop: (nummer) => ipcRenderer.invoke('bedrijf:verkoop', nummer),
+  bedrijfWerkplaats: (nummer, wat) => ipcRenderer.invoke('bedrijf:werkplaats', nummer, wat),
+  bedrijfAannemen: (nr) => ipcRenderer.invoke('bedrijf:aannemen', nr),
+  bedrijfOntslaan: (id) => ipcRenderer.invoke('bedrijf:ontslaan', id),
+  bedrijfOpslag: (id) => ipcRenderer.invoke('bedrijf:opslag', id),
   omsiState: () => ipcRenderer.invoke('omsi:state'),
   confirmOmsi: (path) => ipcRenderer.invoke('omsi:confirm', path),
   browseOmsi: () => ipcRenderer.invoke('omsi:browse'),

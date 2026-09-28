@@ -1246,12 +1246,16 @@
   background: var(--route);
 }
 
-/* De lijn begint bij de eerste punt en houdt op bij de laatste. */
-.app-lijst.met-rail .app-rit:first-child .app-punt::before {
+/*
+ * De lijn begint bij de eerste punt en houdt op bij de laatste. `of-type` en
+ * niet `child`: onder de ritten kan nog een knop staan (een andere dienst
+ * kiezen), en dan was de laatste rit geen laatste kind meer.
+ */
+.app-lijst.met-rail .app-rit:first-of-type .app-punt::before {
   top: 14px;
 }
 
-.app-lijst.met-rail .app-rit:last-child .app-punt::before {
+.app-lijst.met-rail .app-rit:last-of-type .app-punt::before {
   bottom: calc(100% - 14px);
 }
 
@@ -2425,6 +2429,98 @@
 }
 
 /* ---- de dienstopdracht ---- */
+
+/*
+ * Een andere dienst kiezen. Elke dienst is één knop over de hele breedte: je
+ * tikt hem aan in de bus, soms met de muis van een tweede scherm, en dan hoort
+ * het vlak groot te zijn. Vertrek links in cijfers, want daarop kies je.
+ */
+.wissel-uitleg,
+.wissel-leeg {
+  margin: 0;
+  color: var(--vel-zacht);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.wissel-lijst {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wissel-dienst {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--vel-overlay-rand);
+  border-radius: var(--radius-klein);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wissel-dienst:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.wissel-dienst:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.wissel-tijd {
+  display: flex;
+  flex-direction: column;
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.wissel-tijd small,
+.wissel-wat small {
+  color: var(--vel-zacht);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.wissel-wat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.wissel-wat b,
+.wissel-wat small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Onder de ritten in de dienst-app: rustig, want je rijdt meestal gewoon door. */
+.wissel-open {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--vel-overlay-rand);
+  border-radius: var(--radius-klein);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.wissel-open:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
 
 .opdracht-naam {
   margin: 0;

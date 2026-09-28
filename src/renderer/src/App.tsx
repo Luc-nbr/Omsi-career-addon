@@ -44,6 +44,7 @@ import { DutyCard } from "./DutyCard";
 import { Flag } from "./Flag";
 import { GameSetup } from "./GameSetup";
 import { Profiel } from "./Profiel";
+import { BedrijfApp } from "./Bedrijf";
 import { RunningDuty } from "./RunningDuty";
 import {
   Setup,
@@ -192,7 +193,14 @@ const STAPPEN_VRIJ: readonly Stap[] = STAPPEN.filter(
  * Welk scherm er staat. De app begint altijd bij de chauffeur en gaat dan naar
  * de modus; daarna pas komt het rijden in beeld.
  */
-type Screen = "profiles" | "modes" | "drive" | "game" | "profiel" | "bussen";
+type Screen =
+  | "profiles"
+  | "modes"
+  | "drive"
+  | "game"
+  | "profiel"
+  | "bussen"
+  | "bedrijf";
 
 /*
  * De stand van de plugin werd hier als los regeltje getoond, in vier smaken --
@@ -786,6 +794,22 @@ export function App(): JSX.Element {
   const confirmed = Boolean(active);
   const exam = active?.exam;
   const activeKey = active ? `${career?.state?.id}|${active.confirmedAt}` : "";
+  /*
+   * De telefoon kan een andere dienst aannemen terwijl er gereden wordt (zie
+   * `wisselDienst` in main). Dat is een nieuwe dienst met een nieuw moment van
+   * aannemen, en daarop springt het effect hieronder -- maar het is geen
+   * dienst die "openstond": wie rijdt, hoort op het rijscherm te blijven en
+   * niet in het hoofdmenu de vraag te krijgen of hij verder wil.
+   */
+  const gewisseldRef = useRef(false);
+  useEffect(
+    () =>
+      window.career.onDienstGewisseld((payload) => {
+        gewisseldRef.current = true;
+        setCareer(payload);
+      }),
+    [],
+  );
   useEffect(() => {
     /*
      * Geen lopende dienst -- een verse chauffeur, of net geannuleerd -- dan
@@ -830,7 +854,11 @@ export function App(): JSX.Element {
      * of je verder wilt. Wie in deze sessie zelf op START drukt gaat er wel
      * meteen heen; dat staat in `begin`, want daar valt niets te vragen.
      */
-    if (active.startedAt) {
+    if (gewisseldRef.current) {
+      gewisseldRef.current = false;
+      setHervatVraag(false);
+      setNote(t(language, "start.riding"));
+    } else if (active.startedAt) {
       setScreen("modes");
       setHervatVraag(true);
     } else {
@@ -2321,6 +2349,21 @@ export function App(): JSX.Element {
    * binnenkomen hoort staat eromheen: je staat van dienst, de instellingen van
    * OMSI en wie er rijdt.
    */
+  /*
+   * Het busbedrijf is een eigen app, venstervullend met een zijbalk en een
+   * dashboard -- geen stap op weg naar een dienst. Luc: "het busbedrijf moet
+   * zijn eigen UI krijgen en een uitgebreid dashboard".
+   */
+  if (screen === "bedrijf" && career?.state) {
+    return (
+      <BedrijfApp
+        bedrijf={career.state.bedrijf}
+        onCareer={setCareer}
+        onTerug={() => setScreen("modes")}
+      />
+    );
+  }
+
   if (screen === "modes" && career?.state) {
     return (
       <LanguageProvider language={language}>
@@ -2346,6 +2389,7 @@ export function App(): JSX.Element {
             setScreen("drive");
           }}
           onStaatVanDienst={() => setScreen("profiel")}
+          onBedrijf={() => setScreen("bedrijf")}
           onInstellingen={() => setScreen("game")}
           onChauffeur={() => setScreen("profiles")}
           onLogboek={() => void window.career.logboekOpenen()}
@@ -4792,6 +4836,7 @@ export function App(): JSX.Element {
               />
             ) : screen === "profiel" && career?.state && career.summary ? (
               <Profiel state={career.state} summary={career.summary} />
+
             ) : (
               vel.vrij
             )

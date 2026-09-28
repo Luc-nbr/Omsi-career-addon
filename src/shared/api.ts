@@ -1,5 +1,6 @@
 import type { Schermvorm } from './scherm'
 import type { Busanalyse, Busmap } from '../core/busklaar'
+import type { Aanbod, MarktBus } from '../core/bedrijf'
 import type { ActiveDuty, CareerState, CareerSummary, GameMode } from '../core/career'
 import type { LineSummary } from '../core/duty'
 import type { ExamMeasurement } from '../core/exam'
@@ -12,7 +13,7 @@ import type { HalteInfo } from '../core/haltes'
 import type { WeatherKind } from './weather'
 import type { TripRoute } from '../core/routing'
 import type { PluginStatus } from '../core/pluginInstall'
-import type { AanmeldUitslag } from './telefoon'
+import type { AanmeldUitslag, WisselAanbod } from './telefoon'
 import type { Duty } from '../core/types'
 import type { Vehicle } from '../core/vehicles'
 import type { LiveStatus } from '../core/live'
@@ -155,6 +156,13 @@ export interface DutyRequest {
    * die verzameling gewoon overheen mag lopen.
    */
   lineFiles?: string[]
+  /**
+   * Vroegste en laatste vertrek in minuten na middernacht; gaat voor `window`.
+   * Voor een andere dienst terwijl OMSI al draait: de klok van het spel loopt
+   * dan al, en een dienst die om zes uur begon is om tien uur geen keuze meer.
+   */
+  earliestStart?: number
+  latestStart?: number
 }
 
 /**
@@ -521,6 +529,15 @@ export interface CareerApi {
   telefoonPauze(vanaf?: number): Promise<void>
   /** "IBIS ingevoerd" voor deze rit. */
   telefoonIbis(tripKey: string): Promise<void>
+  /** Andere diensten die nu in OMSI te rijden zijn, in plaats van de aangenomen. */
+  telefoonAanbod(): Promise<WisselAanbod>
+  /** Er een uit dat aanbod aannemen; `false` als het aanbod intussen niet meer geldt. */
+  telefoonWissel(nr: number): Promise<boolean>
+  /**
+   * De telefoon heeft een andere dienst aangenomen. Het hoofdvenster hoort dat
+   * van buiten, want het koos die dienst niet zelf. Geeft een afmelder terug.
+   */
+  onDienstGewisseld(handler: (payload: CareerPayload) => void): () => void
   /**
    * Een toets van OMSI laten indrukken: het kaartje geven of het wisselgeld
    * teruggeven. Geeft terug of de opdracht weggeschreven is; of hij ook
@@ -765,6 +782,27 @@ export interface CareerApi {
     }
   ): Promise<CareerPayload>
   renameDriver(name: string): Promise<CareerPayload>
+  /** Het busbedrijf; zie core/bedrijf.ts. */
+  bedrijfOprichten(naam: string): Promise<CareerPayload>
+  bedrijfInschrijven(
+    mapFolder: string,
+    lineFile: string
+  ): Promise<{ payload: CareerPayload; fout?: 'kas' | 'al' | 'lijn' | 'geen' }>
+  bedrijfOpzeggen(mapFolder: string, lineFile: string): Promise<CareerPayload>
+  bedrijfDagAf(): Promise<CareerPayload>
+  bedrijfMarkt(): Promise<{ nieuw: MarktBus[]; tweedehands: Aanbod[] }>
+  bedrijfKoop(
+    soort: 'nieuw' | 'tweedehands',
+    wat: string | number
+  ): Promise<{ payload: CareerPayload; fout?: 'kas' | 'weg' | 'geen' }>
+  bedrijfVerkoop(nummer: number): Promise<CareerPayload>
+  bedrijfAannemen(nr: number): Promise<{ payload: CareerPayload; fout?: 'weg' | 'geen' }>
+  bedrijfOntslaan(id: number): Promise<CareerPayload>
+  bedrijfOpslag(id: number): Promise<CareerPayload>
+  bedrijfWerkplaats(
+    nummer: number,
+    wat: 'onderhoud' | 'reparatie'
+  ): Promise<{ payload: CareerPayload; fout?: 'kas' | 'weg' | 'geen' }>
   /**
    * Welke bussen de kaart van deze dienst niet kennen, en wat eraan te doen is.
    * Leest alleen; er wordt pas iets neergezet als de chauffeur dat vraagt.

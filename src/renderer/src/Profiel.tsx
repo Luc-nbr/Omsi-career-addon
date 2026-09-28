@@ -3,6 +3,7 @@ import type { CareerEntry, CareerState, CareerSummary } from '../../core/career'
 import { formatDuration } from '../../shared/format'
 import type { TextKey } from '../../shared/i18n'
 import { useLanguage, useT } from './language'
+import { RittenstaatVak } from './Rittenstaat'
 import './profiel.css'
 
 interface Props {
@@ -27,6 +28,10 @@ interface Props {
  * staat erbij hoeveel diensten het dan betreft. Een gemiddelde over drie van de
  * negentien diensten is iets anders dan een gemiddelde, en dat hoort te zien te
  * zijn.
+ *
+ * De enige uitzondering staat in de rittenstaat onder een dienst: daar heeft
+ * een halte zonder vaste tijd in de dienstregeling een geplande tijd die uit de
+ * rijtijd is verdeeld. Die staat er met "geschat" bij en krijgt geen oordeel.
  *
  * VORM
  * Dezelfde wereld als de rest van het opzetscherm: hetzelfde vel, dezelfde
@@ -323,6 +328,7 @@ export function Profiel({ state, summary }: Props): JSX.Element {
                         ? `${(entry.delayMinutes as number) > 0 ? '+' : ''}${(entry.delayMinutes as number).toFixed(0)}`
                         : '—'}
                     </span>
+                    {entry.rittenstaat && <RittenstaatVak staat={entry.rittenstaat} />}
                   </li>
                 ))}
             </ul>

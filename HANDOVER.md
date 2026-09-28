@@ -1402,6 +1402,145 @@ die OMSI moet inlezen. De vraag komt daar dus niet en de oude melding klopt.
 **De app sluit OMSI niet af** om het opnieuw te kunnen starten. Dat is het spel
 van de gebruiker, met een rit erin die misschien nog loopt.
 
+**Een andere dienst kiezen kan op de telefoon** (sinds 27-09-2026). Een
+gebruiker vroeg of hij een andere omloop kon aannemen zonder OMSI opnieuw te
+starten. Dat kon al via annuleren + nieuwe dienst + meerijden, maar over drie
+schermen van de app. Nu staat er op de dienstopdracht en onderaan de dienst-app
+een knop "andere dienst kiezen" (`AndereDienst` in `telefoon.tsx`):
+
+- Het aanbod rekent het hoofdproces uit (`dienstAanbod` in `main/index.ts`):
+  dezelfde kaart, ongeveer dezelfde lengte, vertrek vanaf de klok van OMSI tot
+  twee uur later (`DutyRequest.earliestStart/latestStart`), en alleen omlopen die
+  rijden op de datum die het spel speelt (`runsOn`) -- anders staan ze niet in
+  het dienstregelingsmenu. In de carrière alleen vergunde lijnen. Zonder verse
+  live.json valt het terug op de tijd en datum van de huidige dienst.
+- De telefoon kiest met een volgnummer uit het aanbod en stuurt geen dienst
+  terug; een tablet op het netwerk kan dus niets anders laten aannemen.
+- `wisselDienst` is annuleren en aannemen in één: de oude dienst wordt niet
+  geboekt, de bus blijft dezelfde (`vehicleOverride`), er wordt niets klaargezet
+  (`klaargezet` gaat weg, zoals bij meerijden), en de nulmeting begint opnieuw.
+  Aangemeld blijf je; tekenen moet opnieuw, want het is een andere opdracht.
+- Het hoofdvenster hoort het via `dienst:gewisseld` en blijft op het rijscherm
+  (`gewisseldRef` in `App.tsx`); zonder dat zou het nieuwe `confirmedAt` de
+  vraag "verder rijden of verwijderen" oproepen.
+- Niet bij een examen en niet bij vrij rijden: `TelefoonStand.wisselbaar`.
+
+Nog niet in het spel nagekeken; alleen het scherm is met nepgegevens bekeken.
+
+**De rittenstaat: per halte gepland tegenover werkelijk vertrek** (sinds
+28-09-2026). Fase 1 van het busbedrijf-plan, en op zichzelf al nuttig: tot nu
+toe telde alleen de vertraging aan het eind, en wie de hele rit te vroeg reed en
+aan het eind wachtte was "op tijd".
+
+- **De meetlus** (`meet` in `main/index.ts`) draait elke seconde zolang
+  `activeDuty.startedAt` staat, los van `pushFrame` -- die liep alleen met de
+  overlay open of een toestel erbij. Hij valt nu ook de nulmeting
+  (`captureBaseline`). Het spoor gaat regel voor regel naar
+  `%APPDATA%\omsi-enhancer\ritten\<profiel>-<aangenomen>.jsonl`; de laatste
+  twintig blijven staan, om een proefrit na te kunnen lezen.
+- **Wat een vertrek is** (`core/rittenstaat.ts`): het wegrijden rond het moment
+  dat OMSI de volgende halte laat verspringen. Wanneer OMSI dat doet (aankomst,
+  deur dicht, wegrijden) is **niet in het spel nagekeken**; de regel geeft in
+  alle drie de gevallen hetzelfde vertrek (`probe-rittenstaat.ts`). Tot het in
+  het spel bevestigd is, staat er "voorlopig".
+- **Alleen met de dienstregeling uit het menu, en de halte op naam**
+  (`LiveStatus.halteOpNaam`). De terugval van `stopIndex` op de klok is goed om
+  te tonen, niet om op te meten. Dus alleen op 2.3.004; anders geen rittenstaat,
+  en nooit een nul.
+- **Oordeel alleen bij een vaste tijd** (`DutyLeg.stopVast`, uit
+  `vasteVertrektijden`: vertrek, anders aankomst, uit het rijtijdprofiel; het
+  beginpunt ligt altijd vast). Andere haltes tonen de verdeelde tijd met
+  "geschat" en krijgen geen oordeel. Diensten die al in een profiel stonden
+  hebben geen `stopVast`; daar is alleen het beginpunt vast.
+- **De norm is voorlopig**: meer dan 30 s te vroeg of 3 min te laat (`NORM`).
+  Luc kiest de definitieve. Op het scherm staan de tijden op de minuut
+  (Luc: "de seconden mogen weg"); het oordeel rekent wel op de seconde. De
+  rittenstaat verandert nog niets aan loon,
+  examen of rang; hij staat in `CareerEntry.rittenstaat` en is uit te klappen
+  onder de laatste diensten op de staat van dienst (`Rittenstaat.tsx`).
+- Na een wissel via de telefoon begint een nieuw spoor; de ritten van de oude
+  dienst tellen niet mee (`rittenstaatVanDienst` kijkt naar de dienstsleutel
+  in de eerste regel).
+
+**Het busbedrijf, stap 1: de kern** (sinds 28-09-2026). Luc wil alles uit de
+Bus Company Simulator en de meldkamer-add-on, behalve 3D en multiplayer
+("laat de multiplayer maar los, de rest wel"). Volgorde: kern → bussen en
+onderhoud → personeel en rooster → opleidingen en levels → telefoon-apps →
+flitsers, controleurs, gebeurtenissen en meldkamer → add-on-manager.
+
+- **Regels in `core/bedrijf.ts`**, zonder schijf en zonder Electron; bedragen
+  in hele centen, alle getallen in `REGELS`. Het bedrijf staat in het profiel
+  (`CareerState.bedrijf`), het scherm is `Bedrijf.tsx` (knop "Mijn bedrijf" in
+  het hoofdmenu, `screen === "bedrijf"`).
+- **Concessies op bestaande lijnen** (vrij tekenen kan in OMSI niet). Inschrijven
+  kost 2000 + 500 per omloop; een concessie loopt 28 bedrijfsdagen en wordt
+  verlengd bij reputatie ≥ 45. Het hoofdproces leest de lijn zelf uit de kaart
+  (`bedrijf:inschrijven`), het venster stuurt alleen kaart en lijnbestand.
+- **De bedrijfsdag is een knop** ("dag afsluiten"): per concessie de vergoeding
+  (95/uur, ±10 % met de reputatie) en de inhuur (86/uur -- tot er eigen bussen
+  en personeel zijn). Dienstregelingsuren = ritvertrekken × gemiddelde rittijd
+  uit `listLines`; dat telt alle dagsoorten mee, dus het is ruim. Gerekend.
+- **Je eigen dienst telt gemeten mee** (`boekEigenDienst`): per tijdhalte op een
+  lijn van je concessies een bonus of malus uit de rittenstaat, en de reputatie
+  beweegt met het aandeel op tijd. Zonder rittenstaat boekt een dienst niets.
+- Eén munt voor het hele bedrijf, getoond als euro, ook voor DM-kaarten.
+- Proef: `scripts/probe-bedrijf.ts`.
+
+**Stap 2: bussen, werkplaats, en een eigen app met dashboard** (28-09-2026).
+Luc: "het busbedrijf moet zijn eigen UI krijgen en een uitgebreid dashboard".
+- **Eigen scherm** (`BedrijfApp` in `Bedrijf.tsx`): venstervullend, zijbalk met
+  Dashboard / Concessies / Wagenpark / Busmarkt / Boekingen, "dag afsluiten"
+  onderaan. Geen stap van het opzetscherm meer; `App.tsx` geeft het terug vóór
+  het hoofdmenu. Kleuren van `.hub`, dus beide thema's.
+- **Dashboard**: zes tegels (kas, resultaat vandaag, reputatie met de
+  verlenggrens, concessies, wagenpark, aandeel eigen bussen), grafieken van kas,
+  resultaat en reputatie per bedrijfsdag (`BedrijfGrafiek.tsx`, eigen SVG, één
+  reeks en één as per grafiek, kruisdraad bij aanwijzen), "aandacht nodig",
+  staat van het wagenpark en de laatste boekingen. De grafieken komen uit
+  `Bedrijf.historie`, dat `sluitDagAf` elke dag aanvult; het resultaat per dag
+  telt investeringen (startkapitaal, bussen kopen en verkopen) niet mee.
+- **Bussen** (`core/bedrijf.ts`): nieuw uit de geïnstalleerde bussen (prijs per
+  vorm, uit de naam: midi/solo/geleed/dubbel), tweedehands vier per bedrijfsdag
+  met een vaste toevalsreeks per dag. Een bus heeft km, staat en schade; hij
+  slijt met de uren die hij rijdt, onderhoud en reparatie kosten een dag in de
+  werkplaats, verkopen levert 85 % van de waarde. Het wagenpark is één poel:
+  zoveel omlopen als er inzetbare bussen zijn rijden goedkoper (alleen de
+  materieelkosten vallen weg; de chauffeur blijft ingehuurd tot stap 3). Welke
+  vorm een omloop vraagt telt nog niet mee.
+- **Schade uit je eigen rit**: aanrijdingen uit de rittenstaat komen op de eigen
+  bus waarmee je reed (op pad van de bus, `boekEigenDienst(…, busPad)`).
+- Startkapitaal 150.000; alle bedragen blijven in `REGELS`.
+
+**Stap 3: personeel** (28-09-2026). Tabblad Personeel en een tegel op het
+dashboard.
+- **Rooster** (`dagprognose`), in uren: eerst de eigen chauffeurs die werken
+  (niet ziek, 8 u per dienst), dan wat je zelf reed (`Bedrijf.zelfUren`,
+  opgehoogd in `boekEigenDienst` naar rato van de gehaalde haltes, zoals het
+  loon -- zonder rittenstaat telt het ook, want gereden is gereden), en wat
+  overblijft is open en wordt ingehuurd. Eerst stond jij vooraan met hele
+  diensten: een half uur invallen zette dan een betaalde chauffeur thuis. De
+  uren van alle concessies samen worden op een tiende afgerond (drijvende komma
+  gaf anders een spookdienst). `career:complete` boekt alleen zolang er een
+  dienst loopt, zodat één dienst niet twee keer telt. `dagprognose` is nu de enige plek waar de dag
+  wordt uitgerekend; `sluitDagAf` boekt precies wat die zegt (proef).
+- **Geld**: de inhuur (86/u) is materieel 48 + chauffeur 38. Een eigen chauffeur
+  bespaart 8 × 38 per dienst tegen een dagloon van 190 + 0,80 per
+  ervaringspunt; een monteur kost 210 + 0,90 per punt en maakt onderhoud 15 %
+  goedkoper en slijtage 10 % trager per monteur (tot 45 % en 40 %).
+- **Mensen** (`Medewerker`): ervaring groeit met gewerkte dagen, tevredenheid
+  beweegt naar een doel (60 bij marktloon, hoger bij meer betalen, lager als
+  chauffeurs het werk niet rond krijgen), 2 % kans per dag op ziekte van 1-3
+  dagen, onder 25 tevredenheid 10 % kans per dag op vertrek. Ervaren chauffeurs
+  duwen de reputatie met een kans omhoog, beginners omlaag. Alle toeval komt uit
+  een vaste reeks per dag: dezelfde dag geeft dezelfde uitkomst.
+- **Sollicitanten**: drie per dag, meer beginners dan ervaren; het venster en het
+  hoofdproces rekenen ze allebei met `sollicitanten()`. Ontslag kost vijf
+  dagen loon en drie punten tevredenheid bij de rest; opslag is 10 %.
+
+Proef in het spel die de open vragen beantwoordt: OMSI 2.3.004, dienstregeling
+via het menu, drie haltes: A 60 s voor de plantijd weg, B 30 s na, C
+doorrijden. Daarna het spoor in de map `ritten` naast de rittenstaat leggen.
+
 **Bij het openen kom je in het hoofdmenu** (sinds 22-09-2026), en stond er nog
 een dienst open, dan vraagt de app of je verder wilt (`HervatDialog.tsx`).
 Verder rijden brengt je naar het rijscherm; **Verwijderen** (sinds 26-09-2026,
@@ -1475,6 +1614,15 @@ Er staan probes in `scripts/`:
 - `probe-objjoin.ts` — draairichting van objecten, aan de aansluiting gemeten.
 - `probe-tracks.ts` — routes uit `.ttr`: aansluiting, haltes, rijrichting.
 - `probe-routing.ts` — de routeplanner, en hoe dicht hij bij OMSI's routes blijft.
+- `probe-rittenstaat.ts` — de rittenstaat op nagebootste ritten: hetzelfde
+  vertrek of OMSI de halte nu bij aankomst, bij vertrek of bij de paal laat
+  verspringen; doorrijden, tellers die teruglopen, geschatte tijden zonder oordeel.
+- `probe-bedrijf.ts` — de regels van het busbedrijf: inschrijven, dag
+  afsluiten, eigen dienst, verlengen en vervallen, hele centen.
+- `probe-kaartmogelijkheden.ts` — proef 0 voor een busbedrijf-modus, alleen
+  lezen: per kaart de soort ritten (.ttr / typ2 / oud), `StnLinks.cfg` ruw,
+  haltes met meer dan één opvolger, KI-groepen per lijn, de wagenparklijsten
+  (ook `#low` en Chrono) en wat `global.cfg` over geld en reizigers zegt.
 - `render-roads.ts`, `render-area.ts` + `rasterize.cjs` — het wegennet of een
   uitsnede met rijrichtingen als plaatje, om een haperende plek te bekijken.
 - `screenshotMap.cjs` — de kaart in de echte app op een gekozen kaart, met
