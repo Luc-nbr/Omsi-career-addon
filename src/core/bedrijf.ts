@@ -1072,23 +1072,10 @@ export function boekEigenDienst(
   if (zelf > 0) bedrijf = { ...bedrijf, zelfUren: Math.round(((bedrijf.zelfUren ?? 0) + zelf) * 10) / 10 }
   if (!staat) return bedrijf
   bedrijf = schadeVanDienst(bedrijf, staat, busPad)
-  let opTijd = 0
-  let vroeg = 0
-  let laat = 0
-  let telt = false
-  duty.legs.forEach((leg, index) => {
-    if (!heeftConcessie(bedrijf, duty.mapFolder, leg.lineFile)) return
-    telt = true
-    for (const halte of staat.ritten[index]?.haltes ?? []) {
-      if (halte.oordeel === 'goed') opTijd++
-      else if (halte.oordeel === 'vroeg') vroeg++
-      else if (halte.oordeel === 'laat') laat++
-    }
-  })
+  const telling = eigenDienstTelling(bedrijf, duty, staat)
+  if (!telling) return bedrijf
+  const { opTijd, vroeg, laat, bedrag } = telling
   const beoordeeld = opTijd + vroeg + laat
-  if (!telt || beoordeeld === 0) return bedrijf
-
-  const bedrag = opTijd * REGELS.bonusOpTijd - vroeg * REGELS.malusTeVroeg - laat * REGELS.malusTeLaat
   const aandeel = opTijd / beoordeeld
   const stap = aandeel >= 0.9 ? 2 : aandeel >= 0.7 ? 1 : aandeel >= 0.5 ? 0 : aandeel >= 0.3 ? -2 : -4
   const lijnen = [...new Set(duty.legs.filter((l) => heeftConcessie(bedrijf, duty.mapFolder, l.lineFile)).map((l) => l.lineNumber))]
@@ -1110,6 +1097,47 @@ export function boekEigenDienst(
 }
 
 /**
+ * De tijdhaltes van een eigen dienst op de concessielijnen, en wat ze
+ * opleveren. Leeg als er niets van het bedrijf bij zat of niets beoordeeld is.
+ * Eén plek, want de telefoon toont tijdens de dienst wat hier straks geboekt
+ * wordt, en die twee horen niet uit elkaar te lopen.
+ */
+export function eigenDienstTelling(
+  bedrijf: Bedrijf,
+  duty: Duty,
+  staat: Rittenstaat
+): { opTijd: number; vroeg: number; laat: number; bedrag: number } | undefined {
+  let opTijd = 0
+  let vroeg = 0
+  let laat = 0
+  duty.legs.forEach((leg, index) => {
+    if (!heeftConcessie(bedrijf, duty.mapFolder, leg.lineFile)) return
+    for (const halte of staat.ritten[index]?.haltes ?? []) {
+      if (halte.oordeel === 'goed') opTijd++
+      else if (halte.oordeel === 'vroeg') vroeg++
+      else if (halte.oordeel === 'laat') laat++
+    }
+  })
+  if (opTijd + vroeg + laat === 0) return undefined
+  return {
+    opTijd,
+    vroeg,
+    laat,
+    bedrag: opTijd * REGELS.bonusOpTijd - vroeg * REGELS.malusTeVroeg - laat * REGELS.malusTeLaat
+  }
+}
+
+/** De eigen bus met dit pad: bij voorkeur een die inzetbaar is. */
+function eigenBusMetPad(bedrijf: Bedrijf, busPad?: string): EigenBus | undefined {
+  if (!busPad || !bedrijf.bussen?.length) return undefined
+  const pad = busPad.toLowerCase()
+  return (
+    bedrijf.bussen.find((b) => b.relativePath.toLowerCase() === pad && isInzetbaar(b, bedrijf.dag)) ??
+    bedrijf.bussen.find((b) => b.relativePath.toLowerCase() === pad)
+  )
+}
+
+/**
  * Aanrijdingen in een dienst die je zelf reed, op de eigen bus waarmee je reed.
  * Staan er meer bussen van hetzelfde type, dan de eerste die inzetbaar is.
  */
@@ -1120,10 +1148,7 @@ function schadeVanDienst(bedrijf: Bedrijf, staat: Rittenstaat, busPad?: string):
     0
   )
   if (klappen === 0) return bedrijf
-  const pad = busPad.toLowerCase()
-  const bus =
-    bedrijf.bussen.find((b) => b.relativePath.toLowerCase() === pad && isInzetbaar(b, bedrijf.dag)) ??
-    bedrijf.bussen.find((b) => b.relativePath.toLowerCase() === pad)
+  const bus = eigenBusMetPad(bedrijf, busPad)
   if (!bus) return bedrijf
   return {
     ...bedrijf,
@@ -1300,86 +1325,49 @@ export function sluitDagAf(bedrijf: Bedrijf): Bedrijf {
 /* ---- de telefoon ---- */
 
 /**
- * Wat de telefoon van het bedrijf te zien krijgt.
+ * Wat de telefoon van het bedrijf te zien krijgt: alleen wat tijdens het rijden
+ * telt, en alleen als je nu voor je eigen bedrijf rijdt.
  *
- * Een samenvatting en niet het hele bedrijf: dit gaat elke tik mee in het beeld
- * voor de overlay en over het netwerk naar een tablet, en daar hoort geen jaar
- * historie en tweehonderd boekingen bij. Alle sommen gebeuren hier, zodat de
- * telefoon dezelfde getallen toont als het eigen scherm van het bedrijf.
+ * WAAROM ZO WEINIG
+ * Luc: "de telefoon wordt alleen ingame gebruikt, dus alleen info die relevant
+ * is tijdens het rijden moet in de telefoon, de rest kan in de app". Kas,
+ * boekingen, personeel en post horen in Mijn bedrijf. In de bus wil je weten:
+ * rijd ik nu een lijn van mezelf, wat levert op tijd rijden op, hoe sta ik er
+ * deze dienst voor, en hoe is het met de bus waar ik in zit.
  */
-export interface BedrijfBeeld {
+export interface BedrijfRit {
   naam: string
-  dag: number
-  kas: number
   reputatie: number
-  niveau: number
-  xp: number
-  /** Hoever het volgende niveau is, 0 tot 1; 1 op het hoogste niveau. */
-  xpDeel: number
-  vandaag: {
-    vergoeding: number
-    kosten: number
-    resultaat: number
-    uren: number
-    diensten: number
-    openDiensten: number
-    dekking: number
-  }
-  concessies: Array<{ lijn: string; kaart: string; dagenOver: number }>
-  bussen: { totaal: number; inzetbaar: number; werkplaats: number; aandacht: number }
-  personeel: { chauffeurs: number; monteurs: number; ziek: number; cursus: number }
-  /** Het resultaat van de laatste zeven afgesloten dagen, oudste eerst. */
-  week: Array<{ dag: number; resultaat: number }>
-  boekingen: Boeking[]
-  post: Bericht[]
-  ongelezen: number
+  /** Onder deze reputatie wordt een concessie niet verlengd. */
+  verlengVanaf: number
+  /** De lijnen van deze dienst die van het bedrijf zijn. */
+  lijnen: Array<{ lineFile: string; lijn: string; dagenOver: number }>
+  /** Wat een tijdhalte oplevert of kost, in centen. */
+  tarief: { opTijd: number; teVroeg: number; teLaat: number }
+  /** Hoe deze dienst er tot nu toe voor staat, uit de rittenstaat. */
+  telling?: { opTijd: number; vroeg: number; laat: number; bedrag: number }
+  /** De eigen bus waarin je rijdt, als het er een is. */
+  bus?: { nummer: number; staat: number; schade: number }
 }
 
-export function bedrijfBeeld(bedrijf: Bedrijf): BedrijfBeeld {
-  const p = dagprognose(bedrijf)
-  const niveau = niveauVan(bedrijf)
-  const xp = bedrijf.xp ?? 0
-  const huidig = NIVEAUS[niveau - 1]?.xp ?? 0
-  const volgend = NIVEAUS[niveau]?.xp
-  const bussen = bedrijf.bussen ?? []
-  const personeel = bedrijf.personeel ?? []
+export function ritVoorBedrijf(
+  bedrijf: Bedrijf,
+  duty: Duty,
+  busPad?: string,
+  staat?: Rittenstaat
+): BedrijfRit | undefined {
+  const lijnen = bedrijf.concessies
+    .filter((c) => c.mapFolder === duty.mapFolder && duty.legs.some((leg) => leg.lineFile.toLowerCase() === c.lineFile.toLowerCase()))
+    .map((c) => ({ lineFile: c.lineFile, lijn: lijnnaam(c), dagenOver: c.tot - bedrijf.dag }))
+  if (lijnen.length === 0) return undefined
+  const bus = eigenBusMetPad(bedrijf, busPad)
   return {
     naam: bedrijf.naam,
-    dag: bedrijf.dag,
-    kas: bedrijf.kas,
     reputatie: bedrijf.reputatie,
-    niveau,
-    xp,
-    xpDeel: volgend === undefined ? 1 : Math.max(0, Math.min(1, (xp - huidig) / (volgend - huidig))),
-    vandaag: {
-      vergoeding: p.vergoeding,
-      kosten: p.kosten,
-      resultaat: p.vergoeding - p.kosten,
-      uren: p.uren,
-      diensten: p.diensten,
-      openDiensten: p.openDiensten,
-      dekking: p.dekking
-    },
-    concessies: bedrijf.concessies.map((c) => ({
-      lijn: lijnnaam(c),
-      kaart: c.mapName,
-      dagenOver: c.tot - bedrijf.dag
-    })),
-    bussen: {
-      totaal: bussen.length,
-      inzetbaar: bussen.filter((b) => isInzetbaar(b, bedrijf.dag)).length,
-      werkplaats: bussen.filter((b) => b.werkplaatsTot !== undefined && b.werkplaatsTot >= bedrijf.dag).length,
-      aandacht: bussen.filter((b) => b.staat < REGELS.slijtageMelding || b.schade > 0).length
-    },
-    personeel: {
-      chauffeurs: personeel.filter((m) => m.rol === 'chauffeur').length,
-      monteurs: personeel.filter((m) => m.rol === 'monteur').length,
-      ziek: personeel.filter((m) => m.ziekTot !== undefined && m.ziekTot >= bedrijf.dag).length,
-      cursus: personeel.filter((m) => m.cursusTot !== undefined && m.cursusTot >= bedrijf.dag).length
-    },
-    week: (bedrijf.historie ?? []).slice(-7).map((d) => ({ dag: d.dag, resultaat: d.resultaat ?? d.inkomsten - d.uitgaven })),
-    boekingen: bedrijf.boekingen.slice(0, 12),
-    post: (bedrijf.post ?? []).slice(0, 30),
-    ongelezen: ongelezen(bedrijf)
+    verlengVanaf: REGELS.verlengVanaf,
+    lijnen,
+    tarief: { opTijd: REGELS.bonusOpTijd, teVroeg: REGELS.malusTeVroeg, teLaat: REGELS.malusTeLaat },
+    telling: staat ? eigenDienstTelling(bedrijf, duty, staat) : undefined,
+    bus: bus ? { nummer: bus.nummer, staat: Math.round(bus.staat), schade: Math.round(bus.schade) } : undefined
   }
 }

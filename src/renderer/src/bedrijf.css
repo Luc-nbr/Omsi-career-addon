@@ -1153,3 +1153,115 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+/*
+ * HET POSTVAK (BedrijfPost.tsx)
+ *
+ * Een lijst zoals elk postvak: afzender, onderwerp, dag; ongelezen vet met een
+ * gekleurde stip (groen goed nieuws, rood slecht, blauw gewoon). Klik om te
+ * lezen; de tekst klapt eronder open.
+ */
+.bd-teller {
+  margin-left: auto;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--laat);
+  color: #ffffff;
+  font-size: 11px;
+  font-style: normal;
+  line-height: 20px;
+  text-align: center;
+}
+
+.bd-post {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bd-post li + li {
+  border-top: 1px solid var(--vel-rand, rgba(127, 127, 127, 0.18));
+}
+
+.bd-post button {
+  display: grid;
+  grid-template-columns: 12px 190px 1fr auto;
+  align-items: baseline;
+  column-gap: 14px;
+  width: 100%;
+  padding: 12px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--vel-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bd-post button:hover,
+.bd-post button.open {
+  background: var(--vel-hover);
+}
+
+.bd-poststip {
+  align-self: center;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  opacity: 0.35;
+}
+
+.bd-post .nieuw .bd-poststip {
+  opacity: 1;
+}
+
+.bd-poststip.goed {
+  background: var(--optijd);
+}
+
+.bd-poststip.slecht {
+  background: var(--laat);
+}
+
+.bd-poststip.gewoon {
+  background: var(--route);
+}
+
+.bd-postvan,
+.bd-postdag {
+  color: var(--vel-zacht);
+  font-size: 13px;
+}
+
+.bd-post b {
+  font-weight: 500;
+}
+
+.bd-post .nieuw b,
+.bd-post .nieuw .bd-postvan {
+  color: var(--vel-ink);
+  font-weight: 700;
+}
+
+.bd-post p {
+  grid-column: 3 / -1;
+  margin: 6px 0 2px;
+  color: var(--vel-zacht);
+  line-height: 1.5;
+}
+
+@media (max-width: 1100px) {
+  .bd-post button {
+    grid-template-columns: 12px 1fr auto;
+  }
+
+  .bd-postvan {
+    grid-column: 2 / -1;
+  }
+
+  .bd-post p {
+    grid-column: 2 / -1;
+  }
+}

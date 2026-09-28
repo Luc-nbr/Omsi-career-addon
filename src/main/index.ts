@@ -120,9 +120,9 @@ import {
   verkoop,
   vormVanNaam,
   zegOp,
-  bedrijfBeeld,
   leesPost,
-  type BedrijfBeeld,
+  ritVoorBedrijf,
+  type BedrijfRit,
   type MarktBus
 } from '../core/bedrijf'
 import {
@@ -1223,6 +1223,12 @@ function meet(): void {
     const pad = spoorPad(sleutel)
     mkdirSync(dirname(pad), { recursive: true })
     appendFileSync(pad, nieuw.map((regel) => JSON.stringify(regel)).join('\n') + '\n')
+    /*
+     * Er is iets gebeurd (een halte, een vertrek): de telling voor de telefoon
+     * bijwerken. Alleen dan, want het spoor lezen is een bestand lezen, en
+     * alleen als er een bedrijf is dat die telling nodig heeft.
+     */
+    if (career?.bedrijf) lopendeStaat = { sleutel, staat: rittenstaatVanDienst(duty, false) }
   } catch (fout) {
     // Eén keer melden: een volle schijf hoort niet elke seconde in het logboek.
     if (!spoorFoutGemeld) logFout('spoor van de dienst', fout)
@@ -1236,7 +1242,7 @@ function meet(): void {
  * Alleen als het spoor bij deze dienst hoort: na een wissel via de telefoon is
  * er een nieuw spoor, en de ritten van de oude dienst horen daar niet in.
  */
-function rittenstaatVanDienst(duty: Duty): Rittenstaat | undefined {
+function rittenstaatVanDienst(duty: Duty, opruimen = true): Rittenstaat | undefined {
   const sleutel = spoorSleutel()
   if (!sleutel) return undefined
   try {
@@ -1250,9 +1256,12 @@ function rittenstaatVanDienst(duty: Duty): Rittenstaat | undefined {
     logFout('rittenstaat', fout)
     return undefined
   } finally {
-    ruimSporenOp()
+    if (opruimen) ruimSporenOp()
   }
 }
+
+/** De rittenstaat van de lopende dienst tot nu toe, voor de telling op de telefoon. */
+let lopendeStaat: { sleutel: string; staat?: Rittenstaat } | undefined
 
 /** De oudste sporen weg; de laatste blijven staan om een proefrit na te lezen. */
 function ruimSporenOp(): void {
@@ -2574,7 +2583,7 @@ function pushFrame(): void {
       : undefined,
     // Aanmelden, tekenen, pauze en IBIS; zie "DE STAND VAN DE TELEFOON".
     telefoon: telefoonBeeld(),
-    // De bedrijfsapp op de telefoon: een samenvatting, zie `bedrijfBeeld`.
+    // Rijd je voor je eigen bedrijf, dan staat dat op de telefoon; zie `ritVoorBedrijf`.
     bedrijf: bedrijfVoorTelefoon(),
     editing: overlayEditing
   }
@@ -2606,7 +2615,7 @@ function frameVoorApparaat(frame: {
   panelen?: unknown
   busmodules?: unknown
   telefoon: TelefoonStand
-  bedrijf?: BedrijfBeeld
+  bedrijf?: BedrijfRit
 }): unknown {
   return {
     connected: frame.connected,
@@ -2627,36 +2636,43 @@ function frameVoorApparaat(frame: {
     panelen: frame.panelen,
     busmodules: frame.busmodules,
     telefoon: frame.telefoon,
-    /*
-     * Het bedrijf mag mee: geld en post van een spel, niets van de chauffeur
-     * zelf. Wie op de tablet rijdt, wil daar ook zijn postvak.
-     */
+    // Het bedrijf mag mee: een lijn en een telling uit een spel, niets van de chauffeur zelf.
     bedrijf: frame.bedrijf
   }
 }
 
 /**
- * De samenvatting van het bedrijf voor de telefoon, alleen opnieuw gerekend
- * als het bedrijf veranderd is: het beeld gaat een paar keer per tel uit, en
- * het bedrijf verandert alleen als je iets doet.
+ * Wat de telefoon van het bedrijf ziet: alleen tijdens een dienst op een lijn
+ * van het eigen bedrijf, zie `ritVoorBedrijf`. Opnieuw gerekend als het
+ * bedrijf, de dienst of de telling een ander object is; het beeld gaat een
+ * paar keer per tel uit.
  */
-let bedrijfBeeldVan: { bron: NonNullable<CareerState['bedrijf']>; beeld: BedrijfBeeld } | undefined
-function bedrijfVoorTelefoon(): BedrijfBeeld | undefined {
-  const bron = career?.bedrijf
-  if (!bron) return undefined
-  if (bedrijfBeeldVan?.bron !== bron) bedrijfBeeldVan = { bron, beeld: bedrijfBeeld(bron) }
-  return bedrijfBeeldVan.beeld
+let ritBeeldVan:
+  | { bron: object; duty: Duty; staat?: Rittenstaat; beeld?: BedrijfRit }
+  | undefined
+function bedrijfVoorTelefoon(): BedrijfRit | undefined {
+  const bedrijf = career?.bedrijf
+  const lopend = career?.activeDuty
+  const assignment = lopend?.assignment as Assignment | undefined
+  const duty = assignment?.duty
+  if (!bedrijf || !lopend || !duty) return undefined
+  const sleutel = spoorSleutel()
+  /*
+   * Eén keer inlezen als er nog geen telling voor dit spoor is -- na een
+   * herstart midden in een dienst stond er anders nul tot de volgende halte.
+   */
+  if (sleutel && lopendeStaat?.sleutel !== sleutel) {
+    lopendeStaat = { sleutel, staat: rittenstaatVanDienst(duty, false) }
+  }
+  const staat = lopendeStaat && lopendeStaat.sleutel === sleutel ? lopendeStaat.staat : undefined
+  if (ritBeeldVan?.bron !== bedrijf || ritBeeldVan.duty !== duty || ritBeeldVan.staat !== staat) {
+    const busPad = lopend.vehicleOverride || assignment?.vehicle?.relativePath
+    ritBeeldVan = { bron: bedrijf, duty, staat, beeld: ritVoorBedrijf(bedrijf, duty, busPad, staat) }
+  }
+  return ritBeeldVan.beeld
 }
 
-/** Een bericht in het postvak gelezen, of zonder id alles; van de telefoon of het toestel. */
-function postGelezen(id?: number): void {
-  // Een nummer dat geen nummer is, is geen "alles": dan gebeurt er niets.
-  if (!career?.bedrijf || (id !== undefined && !Number.isFinite(id))) return
-  const bedrijf = leesPost(career.bedrijf, id)
-  if (bedrijf === career.bedrijf) return
-  persist({ ...career, bedrijf })
-  pushFrame()
-}
+
 
 /**
  * Waar de overlay mag komen: het hele scherm.
@@ -3140,9 +3156,6 @@ function apparaatBronnen(): ApparaatBronnen {
           return dienstAanbod()
         case 'wissel':
           return { ok: wisselDienst(Number(opdracht.nr)) }
-        case 'post':
-          postGelezen(opdracht.nr === undefined ? undefined : Number(opdracht.nr))
-          return { ok: true }
         case 'pauze':
           telefoon.pauzeVanaf =
             typeof opdracht.vanaf === 'number' && Number.isFinite(opdracht.vanaf)
@@ -3588,7 +3601,6 @@ function registerHandlers(): void {
   handle('telefoon:aanbod', () => dienstAanbod())
   handle('telefoon:wissel', (_event, nr: number) => wisselDienst(Number(nr)))
   handle('telefoon:knoppen', () => zetBusknoppenAan())
-  handle('telefoon:post', (_event, id?: number) => postGelezen(id === undefined ? undefined : Number(id)))
 
   /*
    * BUSSEN KLAARMAKEN, VANUIT DE APP
@@ -4674,6 +4686,15 @@ function registerHandlers(): void {
     if (!career?.bedrijf) return { payload: careerPayload(), fout: 'geen' }
     const doen = wat === 'reparatie' ? zelfRepareren : zelfOnderhoud
     return metUitslag(doen(career.bedrijf, Number(nummer), Number(score)))
+  })
+  /* Het postvak: een bericht gelezen, of zonder id alles. */
+  handle('bedrijf:post', (_event, id?: number) => {
+    if (!career?.bedrijf) return careerPayload()
+    const nr = id === undefined || id === null ? undefined : Number(id)
+    // Een nummer dat geen nummer is, is geen "alles": dan gebeurt er niets.
+    if (nr !== undefined && !Number.isFinite(nr)) return careerPayload()
+    const bedrijf = leesPost(career.bedrijf, nr)
+    return bedrijf === career.bedrijf ? careerPayload() : persist({ ...career, bedrijf })
   })
   handle('bedrijf:dagAf', () => {
     if (!career?.bedrijf) return careerPayload()

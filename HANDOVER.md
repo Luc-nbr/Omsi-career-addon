@@ -1477,18 +1477,12 @@ Opleidingen; niveau en XP-balk in de zijbalk.
   er aan staat ontbreekt, reparatie 30-100 % van de schade. Het hoofdproces
   klemt de score, dus een vreemde waarde uit het venster doet niets geks.
 
-**Stap 5: het bedrijf op de telefoon** (28-09-2026). Een knop met een busje in
-het balkje van de telefoon (overlay én tablet), alleen als er een bedrijf is,
-met een stip bij ongelezen post. Eén app met drie tabbladen -- Bedrijf, Geld,
-Post -- en niet drie apps: het balkje heeft al zes knoppen op 330 punten.
-- **Alleen kijken.** Beslissen (kopen, aannemen, inschrijven) blijft op het
-  eigen scherm; op de telefoon lees je alleen, en het enige dat je doet is post
-  als gelezen merken (`telefoon:post`, en `wat: 'post'` via `api/telefoon`).
-- **Het beeld** (`bedrijfBeeld` in core/bedrijf.ts): een samenvatting van ~4 kB
-  -- kas, niveau, prognose van vandaag, concessies met dagen over, wagenpark,
-  personeel, zeven dagen resultaat, twaalf boekingen, dertig berichten. Gaat
-  mee in het beeld van de overlay en van de tablet (`frameVoorApparaat`), en
-  wordt alleen opnieuw gerekend als het bedrijf een ander object is.
+**Stap 5: post in de app, en je eigen lijn op de telefoon** (28-09-2026).
+Eerst stond er een bedrijfsapp op de telefoon (overzicht, geld, post). Luc: "de
+telefoon wordt alleen ingame gebruikt, dus alleen info die relevant is tijdens
+het rijden moet in de telefoon, de rest kan in de app". Dus:
+- **Post staat in Mijn bedrijf** (tabblad Post, `BedrijfPost.tsx`, met een
+  teller in de zijbalk). Lezen via `bedrijf:post` (id, of zonder id alles).
 - **Het postvak** (`Bedrijf.post`, `Bericht`, `meld`, `leesPost`): een bericht
   is een soort met waarden, de tekst staat in de vertalingen (`tb.msg.*`), dus
   het profiel wisselt niet mee met de taal. Berichten komen bij oprichten, bij
@@ -1497,9 +1491,21 @@ Post -- en niet drie apps: het balkje heeft al zes knoppen op 330 punten.
   concessie loopt over drie dagen af (met of hij bij de reputatie van nu
   verlengd wordt), verlengd, vervallen, bus terug uit de werkplaats, bus onder
   staat 40, rood staan, opleiding klaar en nieuw niveau. Zestig bewaard.
-- Proef: `probe-bedrijf.ts` (post en beeld); de telefoon op beeld in een
-  proefopstelling buiten het project. `probe-apparaat.cjs` (Electron) is hier
-  niet gedraaid.
+- **Op de telefoon** alleen een kaart bovenaan de rit-app (`BedrijfKaart` in
+  `telefoonBedrijf.tsx`), en alleen als de rit die nu loopt op een lijn van je
+  eigen bedrijf ligt: hoeveel tijdhaltes op tijd, te vroeg en te laat met wat
+  elk oplevert of kost, wat de dienst tot nu toe oplevert, je reputatie (rood
+  onder de verlenggrens), hoeveel dagen de concessie nog loopt, en de staat en
+  schade van de eigen bus waarin je zit. Geen eigen app en geen knop erbij.
+- **De telling** komt uit dezelfde som als de boeking (`eigenDienstTelling`,
+  ook gebruikt door `boekEigenDienst`), dus wat de telefoon zegt is wat er
+  straks geboekt wordt (proef). Het hoofdproces leest het spoor alleen opnieuw
+  als de meetlus er iets aan toevoegt (`lopendeStaat`), niet elke tik, en
+  `ritVoorBedrijf` wordt alleen opnieuw gerekend als bedrijf, dienst of telling
+  veranderen. Het gaat mee in het beeld van de overlay en de tablet.
+- Proef: `probe-bedrijf.ts` (post, kaart, telling gelijk aan boeking). De
+  telefoon en het postvak op beeld in een proefopstelling buiten het project;
+  `probe-apparaat.cjs` (Electron) is hier niet gedraaid.
 
 Proef in het spel die de open vragen beantwoordt: OMSI 2.3.004, dienstregeling
 via het menu, drie haltes: A 60 s voor de plantijd weg, B 30 s na, C
@@ -1584,7 +1590,7 @@ Er staan probes in `scripts/`:
 - `probe-bedrijf.ts` — de regels van het busbedrijf: inschrijven, dag
   afsluiten, eigen dienst, verlengen en vervallen, hele centen; bussen,
   personeel, niveaus, opleidingen, bijscholing en zelf onderhouden, het
-  postvak en het beeld voor de telefoon.
+  postvak en de kaart voor de telefoon.
 - `probe-kaartmogelijkheden.ts` — proef 0 voor een busbedrijf-modus, alleen
   lezen: per kaart de soort ritten (.ttr / typ2 / oud), `StnLinks.cfg` ruw,
   haltes met meer dan één opvolger, KI-groepen per lijn, de wagenparklijsten

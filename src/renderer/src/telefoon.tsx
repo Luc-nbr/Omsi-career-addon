@@ -26,8 +26,8 @@ import { Apparaatscherm } from "./apparaatscherm";
 import type { Schermvorm } from "../../shared/scherm";
 import type { Profielknop } from "../../core/busprofiel";
 import type { Manoeuvre } from "./RouteMap";
-import type { BedrijfBeeld } from "../../core/bedrijf";
-import { BedrijfTelefoon } from "./telefoonBedrijf";
+import type { BedrijfRit } from "../../core/bedrijf";
+import { BedrijfKaart } from "./telefoonBedrijf";
 
 /*
  * De telefoon: het toestel in de bus, los van het venster waarin hij staat.
@@ -54,7 +54,6 @@ export type TelefoonApp =
   | "pauze"
   | "rit"
   | "kaartjes"
-  | "bedrijf"
   | "apparaat";
 
 /** Een app die er alleen in de overlay bij staat: "Bekijk op apparaat". */
@@ -101,16 +100,14 @@ export interface TelefoonActies {
    * alleen plaatjes die bij een apparaat van de huidige bus horen.
    */
   textuurAdres(id: string): string;
-  /** Een bericht in het postvak van het bedrijf gelezen; zonder id alles. */
-  postGelezen(id?: number): void;
 }
 
 /** Wat de telefoon van het beeld nodig heeft. */
 export interface TelefoonFrame extends NavFrame {
   chauffeur?: { naam: string; personeelsnummer?: string; pincode?: string };
   telefoon?: TelefoonStand;
-  /** Het busbedrijf, als de chauffeur er een heeft; zie `bedrijfBeeld`. */
-  bedrijf?: BedrijfBeeld;
+  /** Alleen tijdens een dienst op een lijn van je eigen bedrijf; zie `ritVoorBedrijf`. */
+  bedrijf?: BedrijfRit;
 }
 
 
@@ -255,16 +252,10 @@ export function Telefoon({
               acties={acties}
               language={language}
             />
-          ) : app === "bedrijf" && frame.bedrijf ? (
-            <BedrijfTelefoon
-              beeld={frame.bedrijf}
-              language={language}
-              onGelezen={acties.postGelezen}
-            />
           ) : extra && app === extra.id ? (
             extra.scherm
           ) : (
-            <RitApp status={frame.status} language={language} />
+            <RitApp status={frame.status} bedrijf={frame.bedrijf} language={language} />
           )}
         </div>
       ) : (
@@ -288,7 +279,6 @@ export function Telefoon({
         language={language}
         pauze={stand.pauzeVanaf !== undefined}
         extra={extra}
-        bedrijf={frame.bedrijf}
       />
     </>
   );
@@ -444,7 +434,6 @@ function Dock({
   language,
   pauze,
   extra,
-  bedrijf,
 }: {
   app: TelefoonApp;
   onApp(app: TelefoonApp): void;
@@ -452,8 +441,6 @@ function Dock({
   pauze: boolean;
   /** Een app die er alleen in de overlay bij staat; zie `Telefoon`. */
   extra?: ExtraApp;
-  /** Alleen wie een bedrijf heeft krijgt die knop; ongelezen post is een stip. */
-  bedrijf?: BedrijfBeeld;
 }): JSX.Element {
   const apps: Array<{
     id: TelefoonApp;
@@ -493,14 +480,6 @@ function Dock({
       pad: "M3 6.5h18v4a2 2 0 0 0 0 3.8v4H3v-4a2 2 0 0 0 0-3.8ZM5 8.5v1.1a4 4 0 0 1 0 5.4v1.1h14v-1.1a4 4 0 0 1 0-5.4V8.5Zm4 1.6h1.6v4.6H9Zm4 0h1.6v4.6H13Z",
     },
   ];
-  if (bedrijf) {
-    apps.push({
-      id: "bedrijf",
-      label: "ovl.appCompany",
-      // Een bus van opzij: het bedrijf, en niet weer een grafiekje.
-      pad: "M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a1 1 0 0 1-1 1h-1v1.5a1.5 1.5 0 0 1-3 0V18H9v1.5a1.5 1.5 0 0 1-3 0V18H5a1 1 0 0 1-1-1V5Zm2 1v5h12V6H6Zm1 7.5a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5Zm10 0a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5Z",
-    });
-  }
   if (extra) apps.push({ id: extra.id, label: extra.label, pad: extra.pad });
   return (
     <nav className="dock" data-hit>
@@ -518,7 +497,6 @@ function Dock({
             <path d={item.pad} fill="currentColor" fillRule="evenodd" />
           </svg>
           {((item.id === "pauze" && pauze) ||
-            (item.id === "bedrijf" && (bedrijf?.ongelezen ?? 0) > 0) ||
             (item.id === extra?.id && extra?.stip)) && (
             <i className="dock-stip" aria-hidden="true" />
           )}
@@ -721,9 +699,11 @@ function PauzeApp({
  */
 function RitApp({
   status,
+  bedrijf,
   language,
 }: {
   status?: LiveStatus;
+  bedrijf?: BedrijfRit;
   language: Language;
 }): JSX.Element {
   if (!status) return <div className="empty">{t(language, "ovl.noData")}</div>;
@@ -735,6 +715,9 @@ function RitApp({
   const at = status.stopIndex;
   return (
     <div className="app-ritscherm" data-hit>
+      {bedrijf && (
+        <BedrijfKaart rit={bedrijf} lineFile={leg?.lineFile} language={language} />
+      )}
       <div className="app-tegels">
         <div className="breed">
           <b className={klasse}>

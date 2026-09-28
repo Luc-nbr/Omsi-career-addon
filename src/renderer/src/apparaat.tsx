@@ -108,8 +108,6 @@ function Apparaat(): JSX.Element {
         haal<Schermvorm>(`api/scherm/${id}`).catch(() => null),
       /* Relatief, zodat de sleutel in het adres meegaat. */
       textuurAdres: (id) => `textuur/${id}`,
-      postGelezen: (id) =>
-        void stuur({ wat: "post", nr: id }).catch(() => undefined),
     }),
     [],
   );

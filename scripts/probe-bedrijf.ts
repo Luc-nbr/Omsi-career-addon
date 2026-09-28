@@ -38,7 +38,7 @@ import {
   ontsla,
   sollicitanten,
   dagresultaat,
-  bedrijfBeeld,
+  ritVoorBedrijf,
   leesPost,
   ongelezen,
   richtBedrijfOp,
@@ -331,12 +331,23 @@ if ('bedrijf' in kb5) {
 // Honderd dagen: het postvak blijft binnen de grens, en de ziekmeldingen komen erin.
 let p9 = lang
 klopt('100 dagen: postvak begrensd', (p9.post ?? []).length <= REGELS.postBewaard)
-p9 = sluitDagAf(p9)
-const beeld = bedrijfBeeld(p9)
-klopt('het beeld voor de telefoon: resultaat is vergoeding min kosten', beeld.vandaag.resultaat === dagprognose(p9).vergoeding - dagprognose(p9).kosten)
-klopt('het beeld: hoogstens zeven dagen en dertig berichten', beeld.week.length <= 7 && beeld.post.length <= 30)
-klopt('het beeld is klein genoeg om elke tik mee te sturen (< 12 kB)', JSON.stringify(beeld).length < 12_000)
-console.log(`   (beeld ${JSON.stringify(beeld).length} tekens, ${beeld.ongelezen} ongelezen)`)
+
+// ---- de telefoon: alleen tijdens een dienst op een eigen lijn ----
+const rv = ritVoorBedrijf(p5, duty, undefined, staat)
+klopt('op een eigen lijn: de kaart met de telling van de eigen dienst', rv?.lijnen[0].lineFile === 'Linie_35' && rv.telling?.opTijd === 3 && rv.telling.vroeg === 1)
+klopt('de telling op de telefoon is wat er straks geboekt wordt', (() => {
+  const na = boekEigenDienst(p5, duty, staat)
+  return rv?.telling?.bedrag === na.kas - p5.kas
+})())
+const vreemd = { mapFolder: 'Rheinhausen', legs: [{ lineFile: 'Linie_99', lineNumber: '99' }] } as unknown as Duty
+klopt('op een lijn van een ander: niets op de telefoon', ritVoorBedrijf(p5, vreemd, undefined, staat) === undefined)
+klopt('hoofdletters in de lijnnaam maken niet uit', ritVoorBedrijf(p5, { ...duty, legs: [{ lineFile: 'LINIE_35', lineNumber: '35' }] } as unknown as Duty) !== undefined)
+if ('bedrijf' in kb5) {
+  const metBus = ritVoorBedrijf(kb5.bedrijf, duty, markt[0].relativePath.toUpperCase())
+  klopt('in een eigen bus: nummer en staat op de telefoon', metBus?.bus?.nummer === kb5.bedrijf.bussen![0].nummer && metBus.bus.staat === 100)
+  klopt('in een andere bus: geen bus op de telefoon', ritVoorBedrijf(kb5.bedrijf, duty, 'Vehicles\\Ander\\x.bus')?.bus === undefined)
+}
+klopt('klein genoeg om elke tik mee te sturen (< 1 kB)', JSON.stringify(rv).length < 1000)
 
 console.log(fouten ? `\n${fouten} fout(en)` : '\nalles klopt')
 process.exit(fouten ? 1 : 0)

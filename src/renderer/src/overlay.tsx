@@ -190,7 +190,6 @@ function Overlay(): JSX.Element | null {
       toets: (actie) => void window.career.telefoonToets(actie),
       knoppenAan: () => void window.career.telefoonKnoppen(),
       module: (id, aan) => void window.career.telefoonModule(id, aan),
-      postGelezen: (id) => void window.career.telefoonPost(id),
       schermvorm: (id) => window.career.schermvorm(id),
       /* Een eigen protocol, zoals omsikaart en omsibus; zie main/index.ts. */
       textuurAdres: (id) => `omsischerm://t/${id}`,

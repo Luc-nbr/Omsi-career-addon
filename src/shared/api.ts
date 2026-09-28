@@ -546,8 +546,6 @@ export interface CareerApi {
   telefoonToets(actie: string): Promise<boolean>
   /** De knoppen van de apparaten in de bus bijschrijven; zie core/bustoetsen.ts. */
   telefoonKnoppen(): Promise<{ toegevoegd: number; geenPlek: number } | undefined>
-  /** Een bericht in het postvak van het bedrijf gelezen; zonder id het hele postvak. */
-  telefoonPost(id?: number): Promise<void>
   /** Een apparaat uit deze bus in de telefoon zetten of eruit halen. */
   telefoonModule(id: string, aan: boolean): Promise<void>
   /**
@@ -793,6 +791,8 @@ export interface CareerApi {
   bedrijfBijscholing(id: number): Promise<{ payload: CareerPayload; fout?: string }>
   /** Zelf in de werkplaats, met de score van de minigame (0 tot 1). */
   bedrijfZelf(nummer: number, wat: 'onderhoud' | 'reparatie', score: number): Promise<{ payload: CareerPayload; fout?: string }>
+  /** Een bericht in het postvak gelezen; zonder id het hele postvak. */
+  bedrijfPost(id?: number): Promise<CareerPayload>
   bedrijfWerkplaats(
     nummer: number,
     wat: 'onderhoud' | 'reparatie'

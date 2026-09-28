@@ -37,9 +37,8 @@ import type { ApparaatStand } from '../shared/api'
  *   naar de pc, en die kijkt na (`telefoonAanmelden`), met een rem op het
  *   aantal pogingen.
  * - Veranderen kan alleen via `POST api/telefoon`, en alleen de vijf dingen die
- *   op de telefoon zitten: aanmelden, overslaan, tekenen, pauze en IBIS, en
- *   een bericht in het postvak van het bedrijf als gelezen merken. Er is geen
- *   adres dat verder aan je profiel, je kaarten of OMSI komt.
+ *   op de telefoon zitten: aanmelden, overslaan, tekenen, pauze en IBIS. Er is
+ *   geen adres dat aan je profiel, je kaarten of OMSI komt.
  */
 
 /** Wat de server van het hoofdproces nodig heeft. */
@@ -87,8 +86,7 @@ const OPDRACHTSOORTEN: Record<TelefoonOpdracht['wat'], true> = {
   ibis: true,
   toets: true,
   busknoppen: true,
-  module: true,
-  post: true
+  module: true
 }
 
 export interface TelefoonOpdracht {
@@ -103,7 +101,6 @@ export interface TelefoonOpdracht {
     | 'toets'
     | 'busknoppen'
     | 'module'
-    | 'post'
   nummer?: string
   pin?: string
   vanaf?: number
@@ -113,10 +110,7 @@ export interface TelefoonOpdracht {
   /** Welk apparaat erbij of weg moet, en of het erbij is; zie core/busmodule.ts. */
   module?: string
   aan?: boolean
-  /**
-   * Welke dienst uit het aanbod (zie `WisselAanbod` in shared/telefoon.ts), of
-   * bij `post` welk bericht gelezen is; zonder nummer is dat het hele postvak.
-   */
+  /** Welke dienst uit het aanbod; zie `WisselAanbod` in shared/telefoon.ts. */
   nr?: number
 }
 

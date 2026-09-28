@@ -3110,324 +3110,84 @@
 }
 
 /*
- * DE BEDRIJFSAPP (telefoonBedrijf.tsx)
+ * JE EIGEN LIJN (telefoonBedrijf.tsx)
  *
- * Alles uit wat de telefoon al draagt: de tegels van de ritapp, de lijst met
- * een rand eronder, de blauwe van de route voor wat gekozen is. Rood en groen
- * alleen voor geld dat weggaat of binnenkomt, zoals in de boeken.
+ * Een kaart bovenaan de rit-app, alleen als je voor je eigen bedrijf rijdt.
+ * Dezelfde tegelvulling als eronder, zodat het één scherm blijft; groen en
+ * rood alleen voor wat geld oplevert of kost, zoals in de boeken.
  */
-.tb {
+.tb-kaart {
   display: flex;
   flex-direction: column;
-  /*
-   * Het navigatiepaneel heeft geen binnenmarge (de kaart vult hem); zonder
-   * deze paar punten liep de tabbalk in de ronde hoek.
-   */
-  padding: 4px 4px 0;
-}
-
-.tb-tabs {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 2px;
-  margin-bottom: 10px;
-  padding: 2px;
-  border-radius: var(--radius-klein);
-  background: var(--vel-hover);
-}
-
-.tb-tabs button {
-  position: relative;
-  padding: 7px 4px;
-  border: 0;
-  border-radius: var(--radius-klein);
-  background: transparent;
-  color: var(--vel-zacht);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.tb-tabs button[aria-selected='true'] {
-  background: var(--route);
-  color: #ffffff;
-}
-
-.tb-teller {
-  display: inline-block;
-  min-width: 16px;
-  margin-left: 5px;
-  padding: 0 4px;
-  border-radius: 8px;
-  background: #ff5f57;
-  color: #ffffff;
-  font-size: 10px;
-  font-style: normal;
-  line-height: 16px;
-}
-
-.tb-kop {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-bottom: 8px;
-}
-
-.tb-kop b {
-  font-size: 16px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tb-kop span {
-  color: var(--vel-zacht);
-  font-size: 12px;
-}
-
-.tb-meter {
-  display: block;
-  height: 3px;
-  margin-top: 4px;
-  border-radius: 2px;
-  background: var(--vel-hover);
-  overflow: hidden;
-}
-
-.tb-meter > i {
-  display: block;
-  height: 100%;
-  background: var(--route);
-}
-
-.tb-sectie {
-  margin: 14px 0 4px;
-}
-
-.tb-noot,
-.tb-regel,
-.tb-leeg {
-  margin: 4px 0 0;
-  font-size: 12.5px;
-}
-
-.tb-noot,
-.tb-leeg {
-  color: var(--vel-zacht);
-}
-
-.tb-regel em {
-  color: #ffb340;
-  font-style: normal;
-}
-
-/* Een regel met iets vooraan, een omschrijving en een bedrag of termijn achteraan. */
-.tb-rij {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: baseline;
   gap: 8px;
-  padding: 7px 2px;
-  border-bottom: 1px solid var(--vel-overlay-rand);
-  font-size: 12.5px;
-  font-variant-numeric: tabular-nums lining-nums;
-}
-
-.tb-lijn {
-  min-width: 22px;
-  font-weight: 700;
-}
-
-.tb-wat {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  color: var(--vel-zacht);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tb-wat b {
-  color: var(--vel-ink);
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.tb-wat small {
-  font-size: 10.5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.tb-bedrag {
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.tb-bedrag.plus {
-  color: #37d67a;
-}
-
-.tb-bedrag.min,
-.tb-staat b.min {
-  color: #ff5f57;
-}
-
-.tb-staat {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 6px 10px;
-  margin-top: 4px;
-  font-size: 12.5px;
-  font-variant-numeric: tabular-nums lining-nums;
-}
-
-.tb-staat span {
-  color: var(--vel-zacht);
-}
-
-.tb-staat b {
-  text-align: right;
-}
-
-/* De laatste dagen: winst omhoog, verlies omlaag vanaf een nullijn. */
-.tb-week {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  gap: 6px;
-  height: 82px;
-  padding-bottom: 14px;
-}
-
-.tb-week > div {
-  position: relative;
-  border-bottom: 0;
-  background: linear-gradient(var(--vel-overlay-rand), var(--vel-overlay-rand)) center / 100% 1px no-repeat;
-}
-
-.tb-week i {
-  position: absolute;
-  left: 18%;
-  right: 18%;
-  border-radius: 2px;
-}
-
-.tb-week i.plus {
-  background: #37d67a;
-}
-
-.tb-week i.min {
-  background: #ff5f57;
-}
-
-.tb-week small {
-  position: absolute;
-  bottom: -14px;
-  left: 0;
-  right: 0;
-  color: var(--vel-zacht);
-  font-size: 9.5px;
-  text-align: center;
-}
-
-.tb-allesgelezen {
-  align-self: flex-end;
-  margin-bottom: 4px;
-  padding: 2px 0;
-  border: 0;
-  background: none;
-  color: var(--route);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.tb-post {
-  display: flex;
-  flex-direction: column;
-}
-
-/* Een bericht: tik om te lezen. Ongelezen staat vet, zoals in elk postvak. */
-.tb-bericht {
-  display: grid;
-  grid-template-columns: 10px 1fr;
-  column-gap: 8px;
-  row-gap: 1px;
-  padding: 9px 2px;
-  border: 0;
-  border-bottom: 1px solid var(--vel-overlay-rand);
-  background: none;
-  color: var(--vel-ink);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.tb-bericht.open {
-  background: var(--vel-hover);
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--vel-overlay-rand);
   border-radius: var(--radius-klein);
-  padding-inline: 8px;
+  background: var(--vel-hover);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
-.tb-stip {
-  grid-row: 1 / span 2;
-  align-self: center;
-  width: 7px;
-  height: 7px;
-  border-radius: var(--radius-rond);
-  background: var(--vel-zacht);
-  opacity: 0.35;
-}
-
-.tb-bericht.nieuw .tb-stip {
-  opacity: 1;
-}
-
-.tb-stip.goed {
-  background: #37d67a;
-}
-
-.tb-stip.slecht {
-  background: #ff5f57;
-}
-
-.tb-stip.gewoon {
-  background: var(--route);
-}
-
-.tb-van {
+.tb-kaartkop,
+.tb-kaartvoet {
   display: flex;
   justify-content: space-between;
+  gap: 8px;
+}
+
+.tb-kaartkop {
   color: var(--vel-zacht);
   font-size: 10.5px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
-.tb-van small {
-  font-size: 10.5px;
-  text-transform: none;
+.tb-kaartvoet {
+  color: var(--vel-zacht);
 }
 
-.tb-bericht b {
-  grid-column: 2;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.tb-bericht.nieuw b {
+.tb-kaartvoet b {
+  color: var(--vel-ink);
   font-weight: 700;
 }
 
-.tb-bericht p {
-  grid-column: 2;
-  margin: 5px 0 0;
+.tb-oordelen {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  text-align: center;
+}
+
+.tb-oordelen > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.tb-oordelen b {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.tb-oordelen span {
   color: var(--vel-zacht);
-  font-size: 12.5px;
-  line-height: 1.4;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tb-oordelen small {
+  color: var(--vel-zacht);
+  font-size: 10.5px;
+}
+
+.tb-kaart .plus,
+.tb-kaartvoet b.plus {
+  color: #37d67a;
+}
+
+.tb-kaart .min,
+.tb-kaartvoet b.min {
+  color: #ff5f57;
 }

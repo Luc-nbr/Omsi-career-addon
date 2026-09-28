@@ -12,6 +12,7 @@ import {
   isInzetbaar,
   lijnnaam,
   onderhoudskosten,
+  ongelezen,
   reparatiekosten,
   urenVanLijn,
   waardeVan,
@@ -29,6 +30,7 @@ import { Icoon, type Icoonnaam } from './Icoon'
 import { useLanguage, useT } from './language'
 import { Grafiek } from './BedrijfGrafiek'
 import { Opleidingen, WerkplaatsSpel, niveauVoortgang } from './BedrijfOpleiding'
+import { Postvak } from './BedrijfPost'
 import './bedrijf.css'
 
 /*
@@ -45,10 +47,11 @@ import './bedrijf.css'
  * donker en licht volgen vanzelf.
  */
 
-type Tab = 'dashboard' | 'concessies' | 'wagenpark' | 'markt' | 'personeel' | 'opleidingen' | 'boeken'
+type Tab = 'dashboard' | 'post' | 'concessies' | 'wagenpark' | 'markt' | 'personeel' | 'opleidingen' | 'boeken'
 
 const TABS: Array<{ tab: Tab; icoon: Icoonnaam; tekst: TextKey }> = [
   { tab: 'dashboard', icoon: 'record', tekst: 'bd.nav.dashboard' },
+  { tab: 'post', icoon: 'post', tekst: 'bd.nav.mail' },
   { tab: 'concessies', icoon: 'line', tekst: 'bd.nav.concessions' },
   { tab: 'wagenpark', icoon: 'bus', tekst: 'bd.nav.fleet' },
   { tab: 'markt', icoon: 'kaartje', tekst: 'bd.nav.market' },
@@ -120,6 +123,7 @@ export function BedrijfApp({ bedrijf, onCareer, onTerug }: Props): JSX.Element {
             >
               <Icoon naam={t.icoon} />
               {tr(t.tekst)}
+              {t.tab === 'post' && ongelezen(bedrijf) > 0 && <i className="bd-teller">{ongelezen(bedrijf)}</i>}
             </button>
           ))}
         </nav>
@@ -148,6 +152,7 @@ export function BedrijfApp({ bedrijf, onCareer, onTerug }: Props): JSX.Element {
           </p>
         )}
         {tab === 'dashboard' && <Dashboard bedrijf={bedrijf} naar={setTab} />}
+        {tab === 'post' && <Postvak bedrijf={bedrijf} onCareer={onCareer} />}
         {tab === 'concessies' && <Concessies bedrijf={bedrijf} handel={handel} />}
         {tab === 'wagenpark' && <Wagenpark bedrijf={bedrijf} handel={handel} />}
         {tab === 'markt' && <Markt bedrijf={bedrijf} handel={handel} />}
