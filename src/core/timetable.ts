@@ -316,7 +316,13 @@ export function listMaps(omsiPath: string): string[] {
   return readdirSync(mapsPath)
     .filter((entry) => {
       const full = join(mapsPath, entry)
-      return statSync(full).isDirectory() && existsSync(join(full, 'TTData'))
+      // Een junction naar een weggehaalde map geeft ENOENT; die kaart is er
+      // dan niet, de rest wel.
+      try {
+        return statSync(full).isDirectory() && existsSync(join(full, 'TTData'))
+      } catch {
+        return false
+      }
     })
     .sort((a, b) => a.localeCompare(b))
 }

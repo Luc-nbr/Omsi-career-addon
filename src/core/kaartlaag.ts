@@ -1,10 +1,10 @@
-import { readdirSync } from 'node:fs'
+import { readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { dateForMask, dayKind, readCalendar, type Calendar } from './calendar'
 import { generateDuties, buildNetwork, dutyVanRitten, type Network } from './duty'
 import { kaartDag, lijnWeek } from './bedrijfsplan'
 import { bouwLijnplan } from './lijnplan'
-import { lijnSleutel } from './bedrijfsklok'
+import { lijnSleutel, type LijnPlek } from './bedrijfsklok'
 import type { KaartDag, LijnPlan, LijnWeek } from './planTypen'
 import {
   buildFleetIndex,
@@ -147,7 +147,19 @@ export interface Kaartlaag {
    * Luc: 48 van de 52 lijnnamen van HafenCity staan ook op een andere kaart,
    * dus een lijnnaam alleen wijst zelden één kaart aan.
    */
-  kaartenMetLijn(lijn: string): string[]
+  kaartenMetLijn(lijn: string): LijnPlek[]
+}
+
+/*
+ * De volgorde waarin OMSI de lijnen van een kaart in zijn lijst zet
+ * (`mem.line` is de plek daarin): die van de map op NTFS, dat de namen in
+ * hoofdletters vergelijkt. Bij Luc was dat op alle 14 kaarten gelijk aan de
+ * volgorde van readdir.
+ */
+function ntfsVolgorde(a: string, b: string): number {
+  const x = a.toUpperCase()
+  const y = b.toUpperCase()
+  return x < y ? -1 : x > y ? 1 : 0
 }
 
 function diepBevroren<T>(x: T): T {
@@ -177,7 +189,7 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
   const aanbodCache = new Map<string, BusHofState[]>()
   const kaartDagCache = new Map<string, KaartDag>()
   const lijnWeekCache = new Map<string, Record<string, LijnWeek>>()
-  let lijnIndex: Map<string, string[]> | undefined
+  let lijnIndex: { lijnen: Map<string, LijnPlek[]>; mapsTijd: number; gebouwd: number } | undefined
 
   const kaartPad = (folder: string): string => join(omsiPath, 'maps', folder)
 
@@ -614,24 +626,43 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
       return uit
     },
 
+    /*
+     * Opnieuw opgebouwd als de map maps/ veranderd is (er kwam een kaart bij,
+     * bijvoorbeeld een DLC die Steam installeert terwijl de app draait), en in
+     * elk geval na vijf minuten: Verkenner maakt de kaartmap aan voor TTData
+     * erin gekopieerd is. De tijd van maps/ opvragen kost 0,1 ms; opbouwen
+     * 15-26 ms bij Luc (14 kaarten, 312 lijnbestanden).
+     */
     kaartenMetLijn(lijn) {
-      if (!lijnIndex) {
-        lijnIndex = new Map()
+      let mapsTijd = 0
+      try {
+        mapsTijd = statSync(join(omsiPath, 'maps')).mtimeMs
+      } catch {
+        // Zonder maps/ geen kaarten; de lege index hieronder zegt dat al.
+      }
+      const nu = Date.now()
+      if (!lijnIndex || lijnIndex.mapsTijd !== mapsTijd || nu - lijnIndex.gebouwd > 5 * 60_000) {
+        // Eerst helemaal opbouwen, dan pas vastleggen: een fout halverwege
+        // liet anders de hele sessie een lege of halve index achter.
+        const lijnen = new Map<string, LijnPlek[]>()
         for (const folder of listMaps(omsiPath)) {
-          let namen: string[] = []
+          let namen: string[]
           try {
             namen = readdirSync(join(kaartPad(folder), 'TTData'))
           } catch {
             continue
           }
-          for (const naam of namen) {
-            if (!/\.ttl$/i.test(naam)) continue
+          const ttl = namen.filter((n) => /\.ttl$/i.test(n)).sort(ntfsVolgorde)
+          ttl.forEach((naam, plek) => {
             const sleutel = lijnSleutel(naam)
-            lijnIndex.set(sleutel, [...(lijnIndex.get(sleutel) ?? []), folder])
-          }
+            const al = lijnen.get(sleutel) ?? []
+            // "Lead.ttl" en " Lead.ttl" op één kaart zijn voor de klok één lijn.
+            if (!al.some((p) => p.folder === folder)) lijnen.set(sleutel, [...al, { folder, plek }])
+          })
         }
+        lijnIndex = { lijnen, mapsTijd, gebouwd: nu }
       }
-      return lijnIndex.get(lijnSleutel(lijn)) ?? []
+      return lijnIndex.lijnen.get(lijnSleutel(lijn)) ?? []
     },
 
     dienstDuty(folder, deel) {

@@ -5277,12 +5277,16 @@ function registerHandlers(): void {
    * kaart rijdt: de laatst geladen kaart (readLastMap) is pas bekend als OMSI
    * dicht is en zegt dus niets over nu.
    */
+  let lijnIndexFoutGemeld = false
   handle('bedrijf:klok', (_event, mapFolder: string): BedrijfKlokStand => {
     const dienst = (career?.activeDuty?.assignment as Assignment | undefined)?.duty
     return bedrijfsklok(freshLive(), String(mapFolder ?? ''), dienst?.mapFolder ?? vrijeRit?.mapFolder, (lijn) => {
       try {
         return laag().kaartenMetLijn(lijn)
-      } catch {
+      } catch (fout) {
+        // Eén keer melden: de vlootkaart vraagt elke twee tellen.
+        if (!lijnIndexFoutGemeld) logFout('lijnindex', fout)
+        lijnIndexFoutGemeld = true
         return []
       }
     })
