@@ -1366,7 +1366,9 @@ aan het eind wachtte was "op tijd".
   "geschat" en krijgen geen oordeel. Diensten die al in een profiel stonden
   hebben geen `stopVast`; daar is alleen het beginpunt vast.
 - **De norm is voorlopig**: meer dan 30 s te vroeg of 3 min te laat (`NORM`).
-  Luc kiest de definitieve. De rittenstaat verandert nog niets aan loon,
+  Luc kiest de definitieve. Op het scherm staan de tijden op de minuut
+  (Luc: "de seconden mogen weg"); het oordeel rekent wel op de seconde. De
+  rittenstaat verandert nog niets aan loon,
   examen of rang; hij staat in `CareerEntry.rittenstaat` en is uit te klappen
   onder de laatste diensten op de staat van dienst (`Rittenstaat.tsx`).
 - Na een wissel via de telefoon begint een nieuw spoor; de ritten van de oude

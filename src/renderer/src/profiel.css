@@ -454,60 +454,180 @@
   font-size: 11px;
 }
 
-.rittenstaat .vroeg,
-.rs-rit .verschil.vroeg {
+.rittenstaat .vroeg {
   color: var(--vroeg);
 }
 
-.rittenstaat .laat,
-.rs-rit .verschil.laat {
+.rittenstaat .laat {
   color: var(--laat);
 }
 
-.rs-rit .verschil.optijd {
-  color: var(--optijd);
-}
-
-.rs-uitleg {
-  margin: 8px 0;
-  color: var(--vel-zacht);
-  line-height: 1.45;
-}
-
+/*
+ * Een rit als kaartje: kop met vertrektijd en richting, daaronder de haltes
+ * aan een lijn met stippen -- dezelfde vorm als de dienst-app op de telefoon.
+ * Niet over de hele breedte: op een breed scherm staan de tijden anders zo ver
+ * van de haltenaam dat je de regel niet meer volgt.
+ */
 .rs-rit {
+  max-width: 760px;
+  margin: 12px 0 4px;
+  border: 1px solid var(--vel-lijn);
+  border-radius: 12px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--vel-lijn) 35%, transparent);
+}
+
+.rs-kop {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--vel-lijn);
+  font-size: 13.5px;
+}
+
+.rs-kop b {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.rs-kop span {
+  color: var(--vel-zacht);
+}
+
+.rs-rit table {
   width: 100%;
-  margin: 10px 0 4px;
   border-collapse: collapse;
   font-variant-numeric: tabular-nums lining-nums;
 }
 
-.rs-rit caption {
-  padding-bottom: 4px;
-  font-weight: 600;
-  text-align: left;
-}
-
 .rs-rit th {
+  padding: 8px 12px 6px 0;
   color: var(--vel-zacht);
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-align: left;
+  text-transform: uppercase;
 }
 
-.rs-rit th,
 .rs-rit td {
-  padding: 4px 8px 4px 0;
-  border-bottom: 1px solid var(--vel-lijn);
+  padding: 7px 12px 7px 0;
+  vertical-align: middle;
 }
 
-.rs-rit th:not(:first-child),
-.rs-rit td:not(:first-child) {
+.rs-rit th:nth-child(n + 3),
+.rs-rit td:nth-child(n + 3) {
   text-align: right;
   white-space: nowrap;
 }
 
-.rs-rit small,
+.rs-rit tbody tr:hover {
+  background: color-mix(in srgb, var(--route) 7%, transparent);
+}
+
+.rs-rit tr.ongemeten {
+  color: var(--vel-zacht);
+}
+
+.rs-naam small {
+  display: block;
+  margin-top: 1px;
+  color: var(--vel-zacht);
+  font-size: 11.5px;
+}
+
 .rs-rit .geschat {
   color: var(--vel-zacht);
+}
+
+.rs-rit .geschat small {
+  display: block;
+  font-size: 10.5px;
+}
+
+/* De lijn met stippen, die door de rijen heen loopt. */
+.rs-stip {
+  position: relative;
+  width: 34px;
+  padding: 0 !important;
+}
+
+.rs-stip::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 16px;
+  width: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--route) 26%, transparent);
+}
+
+.rs-rit tbody tr:first-child .rs-stip::before {
+  top: 50%;
+}
+
+.rs-rit tbody tr:last-child .rs-stip::before {
+  bottom: 50%;
+}
+
+.rs-stip i {
+  position: relative;
+  display: block;
+  width: 10px;
+  height: 10px;
+  margin-left: 13px;
+  border: 2px solid var(--vel-zacht);
+  border-radius: 50%;
+  background: var(--vel, #1b1f27);
+}
+
+.rs-stip i.optijd {
+  border-color: var(--optijd);
+  background: var(--optijd);
+}
+
+.rs-stip i.vroeg {
+  border-color: var(--vroeg);
+  background: var(--vroeg);
+}
+
+.rs-stip i.laat {
+  border-color: var(--laat);
+  background: var(--laat);
+}
+
+/* Het verschil als label; zonder oordeel (geschat) alleen grijze tekst. */
+.rs-label {
+  display: inline-block;
+  min-width: 64px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.rs-label.optijd {
+  color: var(--optijd);
+  background: color-mix(in srgb, var(--optijd) 14%, transparent);
+}
+
+.rs-label.vroeg {
+  color: var(--vroeg);
+  background: color-mix(in srgb, var(--vroeg) 14%, transparent);
+}
+
+.rs-label.laat {
+  color: var(--laat);
+  background: color-mix(in srgb, var(--laat) 14%, transparent);
+}
+
+.rs-label.geschat {
+  color: var(--vel-zacht);
+  font-weight: 500;
 }
 
 /* Wie beweging heeft uitgezet in Windows, krijgt de staafjes stil. */

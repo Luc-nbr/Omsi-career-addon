@@ -3132,16 +3132,12 @@ const TEXT = {
     fr: 'Provisoire',
     nl: 'Voorlopig'
   },
-  'rs.note': {
-    en: 'Judged only at stops with a fixed time in the timetable: more than {early} s early or {late} min late counts. Other times are estimated from the running time and never count as a mistake. Provisional until confirmed in the game when OMSI moves on to the next stop.',
-    de: 'Bewertet wird nur an Halten mit fester Zeit im Fahrplan: mehr als {early} s zu früh oder {late} Min zu spät zählt. Die übrigen Zeiten sind aus der Fahrzeit geschätzt und zählen nie als Fehler. Vorläufig, bis im Spiel bestätigt ist, wann OMSI zur nächsten Haltestelle weiterschaltet.',
-    fr: 'Seuls les arrêts à heure fixe dans l’horaire sont jugés : plus de {early} s d’avance ou {late} min de retard compte. Les autres heures sont estimées d’après le temps de parcours et ne comptent jamais comme une faute. Provisoire tant qu’on n’a pas vérifié en jeu quand OMSI passe à l’arrêt suivant.',
-    nl: 'Er wordt alleen geoordeeld bij haltes met een vaste tijd in de dienstregeling: meer dan {early} s te vroeg of {late} min te laat telt. De andere tijden zijn geschat uit de rijtijd en tellen nooit als fout. Voorlopig, tot in het spel is nagekeken wanneer OMSI naar de volgende halte springt.'
-  },
   'rs.stop': { en: 'Stop', de: 'Haltestelle', fr: 'Arrêt', nl: 'Halte' },
   'rs.planned': { en: 'Planned', de: 'Plan', fr: 'Prévu', nl: 'Gepland' },
   'rs.left': { en: 'Left', de: 'Abfahrt', fr: 'Départ', nl: 'Weg' },
   'rs.diff': { en: 'Diff.', de: 'Abw.', fr: 'Écart', nl: 'Verschil' },
+  'rs.minutes': { en: '{n} min', de: '{n} Min', fr: '{n} min', nl: '{n} min' },
+  'rs.onTime': { en: 'on time', de: 'pünktlich', fr: 'à l’heure', nl: 'op tijd' },
   'rs.estimated': {
     en: 'estimated',
     de: 'geschätzt',
@@ -3151,7 +3147,7 @@ const TEXT = {
   'rs.passed': { en: 'did not stop', de: 'durchgefahren', fr: 'sans arrêt', nl: 'doorgereden' },
   'rs.brakes': { en: '{count}× hard braking', de: '{count}× stark gebremst', fr: '{count}× freinage brusque', nl: '{count}× hard geremd' },
   'rs.collisions': { en: '{count}× collision', de: '{count}× Kollision', fr: '{count}× collision', nl: '{count}× aanrijding' },
-  'rs.trip': { en: '{time} · line {line} to {to}', de: '{time} · Linie {line} nach {to}', fr: '{time} · ligne {line} vers {to}', nl: '{time} · lijn {line} naar {to}' },
+  'rs.trip': { en: 'line {line} to {to}', de: 'Linie {line} nach {to}', fr: 'ligne {line} vers {to}', nl: 'lijn {line} naar {to}' },
   'setup.step.profile': { en: 'Profile', de: 'Profil', fr: 'Profil', nl: 'Profiel' },
   'setup.step.mode': { en: 'Mode', de: 'Modus', fr: 'Mode', nl: 'Modus' },
   'setup.step.map': { en: 'Map', de: 'Karte', fr: 'Carte', nl: 'Kaart' },
