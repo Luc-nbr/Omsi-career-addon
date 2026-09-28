@@ -1,3 +1,4 @@
+import type { Onderweg } from './onderweg'
 import { existsSync, readFileSync } from 'node:fs'
 import { schrijfVeilig } from './veilig'
 import type { ExamCriterion } from './exam'
@@ -78,6 +79,11 @@ export interface CareerEntry {
    * menu, of een andere OMSI-versie dan 2.3.004).
    */
   rittenstaat?: Rittenstaat
+  /**
+   * Flitsen, boetes en de gebeurtenis van de dienst; zie core/onderweg.ts.
+   * Het bedrag zit al in `pay`: het loon is wat je overhoudt.
+   */
+  onderweg?: Onderweg
 }
 
 /**
@@ -340,7 +346,8 @@ export function completeDuty(
     /** Brandstof bij het begin en aan het eind, als deel van 0 tot 1. */
     fuelUsed?: number
   },
-  rittenstaat?: Rittenstaat
+  rittenstaat?: Rittenstaat,
+  onderweg?: Onderweg
 ): CareerState {
   const entry: CareerEntry = {
     id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
@@ -354,7 +361,12 @@ export function completeDuty(
     legCount: duty.legs.length,
     stopCount: duty.totalStops,
     vehicle,
-    pay: partialPay(duty, measured?.stopsDone),
+    /*
+     * Het loon met wat er onderweg bij kwam of af ging. Een boete kan groter
+     * zijn dan het loon van een korte dienst; dan kost de dienst je geld, zoals
+     * een echte bekeuring dat ook doet.
+     */
+    pay: Math.round((partialPay(duty, measured?.stopsDone) + (onderweg?.bedrag ?? 0)) * 100) / 100,
     drivenKm: measured?.drivenKm,
     delayMinutes: measured?.delayMinutes,
     harshBrakes: measured?.harshBrakes,
@@ -363,7 +375,8 @@ export function completeDuty(
     collisions: measured?.collisions,
     fuelUsed: measured?.fuelUsed,
     // Zonder een enkele gemeten halte zegt de staat niets; dan liever geen.
-    rittenstaat: rittenstaat && rittenstaat.gemeten > 0 ? rittenstaat : undefined
+    rittenstaat: rittenstaat && rittenstaat.gemeten > 0 ? rittenstaat : undefined,
+    onderweg
   }
   // Afgerond is afgerond: de dienst laat het profiel los.
   return { ...state, entries: [entry, ...state.entries], activeDuty: undefined }

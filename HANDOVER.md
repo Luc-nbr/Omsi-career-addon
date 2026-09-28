@@ -1507,6 +1507,45 @@ het rijden moet in de telefoon, de rest kan in de app". Dus:
   telefoon en het postvak op beeld in een proefopstelling buiten het project;
   `probe-apparaat.cjs` (Electron) is hier niet gedraaid.
 
+**Stap 6: onderweg -- flitspalen, controleurs en gebeurtenissen** (28-09-2026).
+Alles in `core/onderweg.ts`; de app kan in OMSI niets neerzetten, dus alles is
+gebouwd op wat al gemeten wordt. De meldkamer is er niet bij: die had Luc
+eerder afgewezen.
+- **Flitspalen**: een vaste keuze van 15 % van de echte snelheidsborden op de
+  kaart (dezelfde borden als de snelheid in de navigatie), per kaart altijd
+  dezelfde. De meetlus kijkt elke seconde of de bus langs een paal kwam aan de
+  kant waar het bord voor geldt (rechts van de rijrichting, dezelfde regel als
+  `signsAlong` in RouteMap), en of hij na 3 km/u correctie te hard reed. Boete
+  20 euro plus 6 per km/u. Een flits gaat als regel in het spoor
+  (`t: 'flits'`), komt bij de halte in de rittenstaat, en ligt een halve minuut
+  als rode melding bovenin de telefoon.
+- **Gebeurtenissen** (`gebeurtenisVoor`): 60 % van de diensten, geen bij een
+  examen, uit een zaad van profiel + aannametijd + dienst, dus na een herstart
+  dezelfde. Stiptheidsactie (1 euro per tijdhalte op tijd, eraf voor te vroeg
+  of te laat), comfortcontrole (hoogstens 2 keer hard remmen of optrekken: 15
+  euro), schadevrije dienst (10 euro), flitsactie (45 % van de borden flitst)
+  en controleurs. De eerste vier staan bij de dienstopdracht op de telefoon;
+  tijdens de rit staat er een kaart met de tussenstand boven de rit-app.
+- **Controleurs**: echte kaartcontrole (zwartrijders) kan niet -- OMSI weet
+  niet wie een kaartje heeft. Ze controleren daarom de chauffeur, zoals een
+  meerijder van de opdrachtgever: ze stappen onaangekondigd in op een rit met
+  genoeg haltes en rijden drie tot zes haltes mee; de kaart verschijnt pas als
+  ze aan boord zijn. Ze noteren te vroeg vertrekken, hard remmen of optrekken,
+  aanrijdingen en flitsen (dubbel) en te weinig wisselgeld. Rapport: 0 fouten
+  +20, 1-2 +5, 3-4 niets, 5 of meer -15.
+- **Wisselgeld** telt `telVerkoop` (een verkoop waarbij `ticketSlecht` ooit
+  aan stond); de meetlus schrijft het verschil als `t: 'wisselgeld'` in het
+  spoor. Let op: `telVerkoop` draait in `pushFrame`, dus alleen zolang de
+  overlay of een tablet meekijkt -- de kaartverkoop zit in de overlay.
+- **Afrekening**: `onderwegVan` bij het afronden (beide wegen), in
+  `CareerEntry.onderweg`; het bedrag zit in `pay`, zodat het loon is wat je
+  overhoudt (een boete kan het loon van een korte dienst overtreffen). In het
+  logboek staat een regel met flitsen, boetes en de uitslag. Wat niet gemeten
+  is (geen rittenstaat, geen tellers), telt niet voor en niet tegen.
+- Proef: `scripts/probe-onderweg.ts`. Niet in OMSI gezien: of de kant van het
+  bord en het bereik van 14 m kloppen op een echte kaart, en of `ticketSlecht`
+  bij een verkoop betrouwbaar aan gaat.
+
 Proef in het spel die de open vragen beantwoordt: OMSI 2.3.004, dienstregeling
 via het menu, drie haltes: A 60 s voor de plantijd weg, B 30 s na, C
 doorrijden. Daarna het spoor in de map `ritten` naast de rittenstaat leggen.
@@ -1591,6 +1630,8 @@ Er staan probes in `scripts/`:
   afsluiten, eigen dienst, verlengen en vervallen, hele centen; bussen,
   personeel, niveaus, opleidingen, bijscholing en zelf onderhouden, het
   postvak en de kaart voor de telefoon.
+- `probe-onderweg.ts` — flitspalen (welke borden, welke kant, boete),
+  gebeurtenissen, het rapport van de controleurs en wat er van het loon af gaat.
 - `probe-kaartmogelijkheden.ts` — proef 0 voor een busbedrijf-modus, alleen
   lezen: per kaart de soort ritten (.ttr / typ2 / oud), `StnLinks.cfg` ruw,
   haltes met meer dan één opvolger, KI-groepen per lijn, de wagenparklijsten

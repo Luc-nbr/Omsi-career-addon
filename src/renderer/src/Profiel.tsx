@@ -4,6 +4,7 @@ import { formatDuration } from '../../shared/format'
 import type { TextKey } from '../../shared/i18n'
 import { useLanguage, useT } from './language'
 import { RittenstaatVak } from './Rittenstaat'
+import { OnderwegVak } from './Onderweg'
 import './profiel.css'
 
 interface Props {
@@ -329,6 +330,7 @@ export function Profiel({ state, summary }: Props): JSX.Element {
                         : '—'}
                     </span>
                     {entry.rittenstaat && <RittenstaatVak staat={entry.rittenstaat} />}
+                    {entry.onderweg && <OnderwegVak onderweg={entry.onderweg} />}
                   </li>
                 ))}
             </ul>

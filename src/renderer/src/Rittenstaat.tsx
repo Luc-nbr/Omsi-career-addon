@@ -53,12 +53,18 @@ export function RittenstaatVak({ staat }: { staat: Rittenstaat }): JSX.Element {
                     </td>
                     <td className="rs-naam">
                       {halte.naam}
-                      {(halte.doorgereden || (halte.remmen ?? 0) > 0 || (halte.klappen ?? 0) > 0) && (
+                      {(halte.doorgereden ||
+                        (halte.remmen ?? 0) > 0 ||
+                        (halte.klappen ?? 0) > 0 ||
+                        (halte.wisselgeld ?? 0) > 0 ||
+                        (halte.flitsen?.length ?? 0) > 0) && (
                         <small>
                           {[
                             halte.doorgereden ? tr('rs.passed') : '',
                             (halte.remmen ?? 0) > 0 ? tr('rs.brakes', { count: halte.remmen ?? 0 }) : '',
-                            (halte.klappen ?? 0) > 0 ? tr('rs.collisions', { count: halte.klappen ?? 0 }) : ''
+                            (halte.klappen ?? 0) > 0 ? tr('rs.collisions', { count: halte.klappen ?? 0 }) : '',
+                            (halte.wisselgeld ?? 0) > 0 ? tr('rs.change', { count: halte.wisselgeld ?? 0 }) : '',
+                            ...(halte.flitsen ?? []).map((f) => tr('rs.flashed', { kmh: f.kmh, limit: f.limiet }))
                           ]
                             .filter(Boolean)
                             .join(' · ')}
