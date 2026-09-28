@@ -130,6 +130,10 @@ const api: CareerApi = {
   completeDuty: (duty, vehicle, measured) =>
     ipcRenderer.invoke('career:complete', duty, vehicle, measured),
   renameDriver: (name) => ipcRenderer.invoke('career:rename', name),
+  bedrijfOprichten: (naam) => ipcRenderer.invoke('bedrijf:oprichten', naam),
+  bedrijfInschrijven: (mapFolder, lineFile) => ipcRenderer.invoke('bedrijf:inschrijven', mapFolder, lineFile),
+  bedrijfOpzeggen: (mapFolder, lineFile) => ipcRenderer.invoke('bedrijf:opzeggen', mapFolder, lineFile),
+  bedrijfDagAf: () => ipcRenderer.invoke('bedrijf:dagAf'),
   omsiState: () => ipcRenderer.invoke('omsi:state'),
   confirmOmsi: (path) => ipcRenderer.invoke('omsi:confirm', path),
   browseOmsi: () => ipcRenderer.invoke('omsi:browse'),

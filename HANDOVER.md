@@ -1375,6 +1375,30 @@ aan het eind wachtte was "op tijd".
   dienst tellen niet mee (`rittenstaatVanDienst` kijkt naar de dienstsleutel
   in de eerste regel).
 
+**Het busbedrijf, stap 1: de kern** (sinds 28-09-2026). Luc wil alles uit de
+Bus Company Simulator en de meldkamer-add-on, behalve 3D en multiplayer
+("laat de multiplayer maar los, de rest wel"). Volgorde: kern → bussen en
+onderhoud → personeel en rooster → opleidingen en levels → telefoon-apps →
+flitsers, controleurs, gebeurtenissen en meldkamer → add-on-manager.
+
+- **Regels in `core/bedrijf.ts`**, zonder schijf en zonder Electron; bedragen
+  in hele centen, alle getallen in `REGELS`. Het bedrijf staat in het profiel
+  (`CareerState.bedrijf`), het scherm is `Bedrijf.tsx` (knop "Mijn bedrijf" in
+  het hoofdmenu, `screen === "bedrijf"`).
+- **Concessies op bestaande lijnen** (vrij tekenen kan in OMSI niet). Inschrijven
+  kost 2000 + 500 per omloop; een concessie loopt 28 bedrijfsdagen en wordt
+  verlengd bij reputatie ≥ 45. Het hoofdproces leest de lijn zelf uit de kaart
+  (`bedrijf:inschrijven`), het venster stuurt alleen kaart en lijnbestand.
+- **De bedrijfsdag is een knop** ("dag afsluiten"): per concessie de vergoeding
+  (95/uur, ±10 % met de reputatie) en de inhuur (86/uur -- tot er eigen bussen
+  en personeel zijn). Dienstregelingsuren = ritvertrekken × gemiddelde rittijd
+  uit `listLines`; dat telt alle dagsoorten mee, dus het is ruim. Gerekend.
+- **Je eigen dienst telt gemeten mee** (`boekEigenDienst`): per tijdhalte op een
+  lijn van je concessies een bonus of malus uit de rittenstaat, en de reputatie
+  beweegt met het aandeel op tijd. Zonder rittenstaat boekt een dienst niets.
+- Eén munt voor het hele bedrijf, getoond als euro, ook voor DM-kaarten.
+- Proef: `scripts/probe-bedrijf.ts`.
+
 Proef in het spel die de open vragen beantwoordt: OMSI 2.3.004, dienstregeling
 via het menu, drie haltes: A 60 s voor de plantijd weg, B 30 s na, C
 doorrijden. Daarna het spoor in de map `ritten` naast de rittenstaat leggen.
@@ -1455,6 +1479,8 @@ Er staan probes in `scripts/`:
 - `probe-rittenstaat.ts` — de rittenstaat op nagebootste ritten: hetzelfde
   vertrek of OMSI de halte nu bij aankomst, bij vertrek of bij de paal laat
   verspringen; doorrijden, tellers die teruglopen, geschatte tijden zonder oordeel.
+- `probe-bedrijf.ts` — de regels van het busbedrijf: inschrijven, dag
+  afsluiten, eigen dienst, verlengen en vervallen, hele centen.
 - `probe-kaartmogelijkheden.ts` — proef 0 voor een busbedrijf-modus, alleen
   lezen: per kaart de soort ritten (.ttr / typ2 / oud), `StnLinks.cfg` ruw,
   haltes met meer dan één opvolger, KI-groepen per lijn, de wagenparklijsten

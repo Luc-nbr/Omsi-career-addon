@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { schrijfVeilig } from './veilig'
 import type { ExamCriterion } from './exam'
+import type { Bedrijf } from './bedrijf'
 import type { Rittenstaat } from './rittenstaat'
 import type { Duty } from './types'
 
@@ -198,6 +199,8 @@ export interface CareerState {
   activeDuty?: ActiveDuty
   /** Waar de chauffeur op mag rijden in de carrièremodus. */
   licences: Licence[]
+  /** Het eigen busbedrijf van deze chauffeur, als hij er een heeft opgericht; zie core/bedrijf.ts. */
+  bedrijf?: Bedrijf
   /** Alle examens die hij heeft afgelegd, ook de gezakte. */
   exams: ExamRecord[]
 }
@@ -285,7 +288,11 @@ function uitJson(parsed: Partial<CareerState>): CareerState {
         : undefined,
     // Profielen van voor de modi hebben deze lijsten nog niet.
     licences: Array.isArray(parsed.licences) ? parsed.licences : [],
-    exams: Array.isArray(parsed.exams) ? parsed.exams : []
+    exams: Array.isArray(parsed.exams) ? parsed.exams : [],
+    bedrijf:
+      parsed.bedrijf && typeof parsed.bedrijf === 'object' && Array.isArray(parsed.bedrijf.concessies)
+        ? parsed.bedrijf
+        : undefined
   }
 }
 

@@ -33,6 +33,8 @@ interface Props {
   lopend?: GameMode;
   onModus: (modus: GameMode) => void;
   onStaatVanDienst: () => void;
+  /** Naar het eigen busbedrijf; zie Bedrijf.tsx. */
+  onBedrijf: () => void;
   onInstellingen: () => void;
   onChauffeur: () => void;
   /** Het logboek van de app in de verkenner tonen. */
@@ -94,6 +96,7 @@ export function Starthub({
   lopend,
   onModus,
   onStaatVanDienst,
+  onBedrijf,
   onInstellingen,
   onChauffeur,
   onLogboek,
@@ -305,6 +308,10 @@ export function Starthub({
           </button>
 
           <div className="hub-knoppen">
+            <button type="button" className="hub-knop" onClick={onBedrijf}>
+              <Icoon naam="thuis" />
+              {t(language, "bd.hub")}
+            </button>
             <button type="button" className="hub-knop" onClick={onInstellingen}>
               <Icoon naam="stuur" />
               {t(language, "setup.omsiSettings")}

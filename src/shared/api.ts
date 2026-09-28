@@ -769,6 +769,14 @@ export interface CareerApi {
     }
   ): Promise<CareerPayload>
   renameDriver(name: string): Promise<CareerPayload>
+  /** Het busbedrijf; zie core/bedrijf.ts. */
+  bedrijfOprichten(naam: string): Promise<CareerPayload>
+  bedrijfInschrijven(
+    mapFolder: string,
+    lineFile: string
+  ): Promise<{ payload: CareerPayload; fout?: 'kas' | 'al' | 'lijn' | 'geen' }>
+  bedrijfOpzeggen(mapFolder: string, lineFile: string): Promise<CareerPayload>
+  bedrijfDagAf(): Promise<CareerPayload>
   /**
    * Welke bussen de kaart van deze dienst niet kennen, en wat eraan te doen is.
    * Leest alleen; er wordt pas iets neergezet als de chauffeur dat vraagt.

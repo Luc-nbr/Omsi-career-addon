@@ -100,6 +100,7 @@ import {
   type WisselAanbod
 } from '../shared/telefoon'
 import { runsOn } from '../core/calendar'
+import { boekEigenDienst, richtBedrijfOp, schrijfIn, sluitDagAf, zegOp } from '../core/bedrijf'
 import {
   bouwRittenstaat,
   leesSpoor,
@@ -1108,7 +1109,8 @@ function sluitLopendeDienstAf(): void {
   const naam = bus ? `${bus.manufacturer} ${bus.type}` : lopend.vehicleOverride
   const gemeten = sessieGegevens()
   const staat = rittenstaatVanDienst(duty)
-  career = completeDuty(career, duty, naam, {
+  const bedrijf = career.bedrijf ? boekEigenDienst(career.bedrijf, duty, staat) : undefined
+  career = completeDuty({ ...career, bedrijf }, duty, naam, {
     stopsDone: gemeten.stopsDone,
     drivenKm: gemeten.drivenKm,
     delayMinutes: gemeten.delayMinutes,
@@ -4484,7 +4486,38 @@ function registerHandlers(): void {
     overlayDuty = undefined
     overlayIbis = undefined
     if (!career) return careerPayload()
-    return persist(completeDuty(career, duty, vehicle, measured, rittenstaatVanDienst(duty)))
+    const staat = rittenstaatVanDienst(duty)
+    // Een dienst op een lijn van je eigen bedrijf telt ook daar; zie core/bedrijf.ts.
+    const bedrijf = career.bedrijf ? boekEigenDienst(career.bedrijf, duty, staat) : undefined
+    return persist(completeDuty({ ...career, bedrijf }, duty, vehicle, measured, staat))
+  })
+
+  /*
+   * Het busbedrijf; de regels staan in core/bedrijf.ts. Een lijn komt hier
+   * niet als object uit het venster maar wordt opnieuw uit de kaart gelezen:
+   * wat je betaalt en wat de concessie waard is, rekent het hoofdproces.
+   */
+  handle('bedrijf:oprichten', (_event, naam: string) => {
+    if (!career || career.bedrijf) return careerPayload()
+    log(`Busbedrijf opgericht: ${String(naam).slice(0, 60)}`)
+    return persist({ ...career, bedrijf: richtBedrijfOp(String(naam ?? '').slice(0, 60)) })
+  })
+  handle('bedrijf:inschrijven', (_event, mapFolder: string, lineFile: string) => {
+    if (!career?.bedrijf) return { payload: careerPayload(), fout: 'geen' }
+    const kaart = map(mapFolder)
+    const lijn = listLines(kaart, network(mapFolder)).find((l) => l.lineFile === lineFile)
+    if (!lijn) return { payload: careerPayload(), fout: 'lijn' }
+    const uit = schrijfIn(career.bedrijf, { folder: kaart.folder, name: kaart.name }, lijn)
+    if ('fout' in uit) return { payload: careerPayload(), fout: uit.fout }
+    return { payload: persist({ ...career, bedrijf: uit.bedrijf }) }
+  })
+  handle('bedrijf:opzeggen', (_event, mapFolder: string, lineFile: string) => {
+    if (!career?.bedrijf) return careerPayload()
+    return persist({ ...career, bedrijf: zegOp(career.bedrijf, mapFolder, lineFile) })
+  })
+  handle('bedrijf:dagAf', () => {
+    if (!career?.bedrijf) return careerPayload()
+    return persist({ ...career, bedrijf: sluitDagAf(career.bedrijf) })
   })
 
   handle('career:rename', (_event, name: string) => {

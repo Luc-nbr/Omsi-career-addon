@@ -43,6 +43,7 @@ import { DutyCard } from "./DutyCard";
 import { Flag } from "./Flag";
 import { GameSetup } from "./GameSetup";
 import { Profiel } from "./Profiel";
+import { Bedrijf } from "./Bedrijf";
 import { RunningDuty } from "./RunningDuty";
 import {
   Setup,
@@ -190,7 +191,14 @@ const STAPPEN_VRIJ: readonly Stap[] = STAPPEN.filter(
  * Welk scherm er staat. De app begint altijd bij de chauffeur en gaat dan naar
  * de modus; daarna pas komt het rijden in beeld.
  */
-type Screen = "profiles" | "modes" | "drive" | "game" | "profiel" | "bussen";
+type Screen =
+  | "profiles"
+  | "modes"
+  | "drive"
+  | "game"
+  | "profiel"
+  | "bussen"
+  | "bedrijf";
 
 /*
  * De stand van de plugin werd hier als los regeltje getoond, in vier smaken --
@@ -2287,6 +2295,7 @@ export function App(): JSX.Element {
             setScreen("drive");
           }}
           onStaatVanDienst={() => setScreen("profiel")}
+          onBedrijf={() => setScreen("bedrijf")}
           onInstellingen={() => setScreen("game")}
           onChauffeur={() => setScreen("profiles")}
           onLogboek={() => void window.career.logboekOpenen()}
@@ -3000,7 +3009,7 @@ export function App(): JSX.Element {
     const opzetStap: Stap =
       eersteStart || screen === "profiles" || screen === "profiel"
         ? "profile"
-        : screen === "modes" || screen === "game"
+        : screen === "modes" || screen === "game" || screen === "bedrijf"
           ? "mode"
           : stap;
 
@@ -3322,6 +3331,21 @@ export function App(): JSX.Element {
             if (gekozenProfiel) void chooseProfile(gekozenProfiel.id);
           },
           knop: t(language, "setup.next"),
+        };
+      }
+      /* Het busbedrijf: vrije inhoud op het vel, net als de instellingen van OMSI. */
+      if (opzetStap === "mode" && screen === "bedrijf") {
+        return {
+          stap: "mode" as Stap,
+          titel: t(language, "bd.title"),
+          onderschrift: t(language, "bd.intro"),
+          koppen: ["", "", ""] as [string, string, string],
+          rijen: [],
+          index: 0,
+          kies: () => {},
+          voet: "",
+          verder: () => setScreen("modes"),
+          knop: t(language, "setup.back"),
         };
       }
       if (opzetStap === "mode" && screen === "game") {
@@ -4634,6 +4658,8 @@ export function App(): JSX.Element {
               />
             ) : screen === "profiel" && career?.state && career.summary ? (
               <Profiel state={career.state} summary={career.summary} />
+            ) : screen === "bedrijf" && career?.state ? (
+              <Bedrijf bedrijf={career.state.bedrijf} onCareer={setCareer} />
             ) : (
               vel.vrij
             )
