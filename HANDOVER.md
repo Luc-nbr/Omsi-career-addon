@@ -1340,6 +1340,43 @@ een knop "andere dienst kiezen" (`AndereDienst` in `telefoon.tsx`):
 
 Nog niet in het spel nagekeken; alleen het scherm is met nepgegevens bekeken.
 
+**De rittenstaat: per halte gepland tegenover werkelijk vertrek** (sinds
+28-09-2026). Fase 1 van het busbedrijf-plan, en op zichzelf al nuttig: tot nu
+toe telde alleen de vertraging aan het eind, en wie de hele rit te vroeg reed en
+aan het eind wachtte was "op tijd".
+
+- **De meetlus** (`meet` in `main/index.ts`) draait elke seconde zolang
+  `activeDuty.startedAt` staat, los van `pushFrame` -- die liep alleen met de
+  overlay open of een toestel erbij. Hij valt nu ook de nulmeting
+  (`captureBaseline`). Het spoor gaat regel voor regel naar
+  `%APPDATA%\omsi-enhancer\ritten\<profiel>-<aangenomen>.jsonl`; de laatste
+  twintig blijven staan, om een proefrit na te kunnen lezen.
+- **Wat een vertrek is** (`core/rittenstaat.ts`): het wegrijden rond het moment
+  dat OMSI de volgende halte laat verspringen. Wanneer OMSI dat doet (aankomst,
+  deur dicht, wegrijden) is **niet in het spel nagekeken**; de regel geeft in
+  alle drie de gevallen hetzelfde vertrek (`probe-rittenstaat.ts`). Tot het in
+  het spel bevestigd is, staat er "voorlopig".
+- **Alleen met de dienstregeling uit het menu, en de halte op naam**
+  (`LiveStatus.halteOpNaam`). De terugval van `stopIndex` op de klok is goed om
+  te tonen, niet om op te meten. Dus alleen op 2.3.004; anders geen rittenstaat,
+  en nooit een nul.
+- **Oordeel alleen bij een vaste tijd** (`DutyLeg.stopVast`, uit
+  `vasteVertrektijden`: vertrek, anders aankomst, uit het rijtijdprofiel; het
+  beginpunt ligt altijd vast). Andere haltes tonen de verdeelde tijd met
+  "geschat" en krijgen geen oordeel. Diensten die al in een profiel stonden
+  hebben geen `stopVast`; daar is alleen het beginpunt vast.
+- **De norm is voorlopig**: meer dan 30 s te vroeg of 3 min te laat (`NORM`).
+  Luc kiest de definitieve. De rittenstaat verandert nog niets aan loon,
+  examen of rang; hij staat in `CareerEntry.rittenstaat` en is uit te klappen
+  onder de laatste diensten op de staat van dienst (`Rittenstaat.tsx`).
+- Na een wissel via de telefoon begint een nieuw spoor; de ritten van de oude
+  dienst tellen niet mee (`rittenstaatVanDienst` kijkt naar de dienstsleutel
+  in de eerste regel).
+
+Proef in het spel die de open vragen beantwoordt: OMSI 2.3.004, dienstregeling
+via het menu, drie haltes: A 60 s voor de plantijd weg, B 30 s na, C
+doorrijden. Daarna het spoor in de map `ritten` naast de rittenstaat leggen.
+
 **Bij het openen kom je in het hoofdmenu** (sinds 22-09-2026), en stond er nog
 een dienst open, dan vraagt de app of je verder wilt (`HervatDialog.tsx`).
 Verder rijden brengt je naar het rijscherm; **Verwijderen** (sinds 26-09-2026,
@@ -1413,6 +1450,13 @@ Er staan probes in `scripts/`:
 - `probe-objjoin.ts` — draairichting van objecten, aan de aansluiting gemeten.
 - `probe-tracks.ts` — routes uit `.ttr`: aansluiting, haltes, rijrichting.
 - `probe-routing.ts` — de routeplanner, en hoe dicht hij bij OMSI's routes blijft.
+- `probe-rittenstaat.ts` — de rittenstaat op nagebootste ritten: hetzelfde
+  vertrek of OMSI de halte nu bij aankomst, bij vertrek of bij de paal laat
+  verspringen; doorrijden, tellers die teruglopen, geschatte tijden zonder oordeel.
+- `probe-kaartmogelijkheden.ts` — proef 0 voor een busbedrijf-modus, alleen
+  lezen: per kaart de soort ritten (.ttr / typ2 / oud), `StnLinks.cfg` ruw,
+  haltes met meer dan één opvolger, KI-groepen per lijn, de wagenparklijsten
+  (ook `#low` en Chrono) en wat `global.cfg` over geld en reizigers zegt.
 - `render-roads.ts`, `render-area.ts` + `rasterize.cjs` — het wegennet of een
   uitsnede met rijrichtingen als plaatje, om een haperende plek te bekijken.
 - `screenshotMap.cjs` — de kaart in de echte app op een gekozen kaart, met

@@ -142,6 +142,26 @@ export function readTours(path: string): Tour[] {
 }
 
 /**
+ * Wanneer je volgens de dienstregeling bij elke halte hoort te VERTREKKEN, in
+ * minuten na het begin van de rit -- alleen waar de dienstregeling dat vastlegt.
+ *
+ * Voor de rittenstaat. Daar gaat het om het vertrek, want te vroeg wegrijden is
+ * de fout; `stopOffsets` hierboven neemt de aankomsttijd en vult de gaten met
+ * een verdeling naar rijtijd. Zo'n verdeelde tijd is een schatting, en een
+ * schatting mag nooit als fout tellen. Daarom hier `null` waar niets vastligt.
+ * Het beginpunt ligt altijd vast: dat is het vertrek van de rit zelf.
+ */
+export function vasteVertrektijden(trip: Trip | undefined, profileIndex: number): Array<number | null> {
+  if (!trip || trip.stops.length === 0) return []
+  const profile = trip.profiles[profileIndex] ?? trip.profiles[0]
+  return trip.stops.map((_stop, index) => {
+    if (index === 0) return 0
+    const value = profile?.departures?.get(index) ?? profile?.arrivals?.get(index)
+    return value !== undefined && Number.isFinite(value) ? value : null
+  })
+}
+
+/**
  * Wanneer je bij elke halte hoort te zijn, in minuten na het begin van de rit.
  *
  * De dienstregeling geeft vaste tijden voor een deel van de haltes -- op de ene

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { schrijfVeilig } from './veilig'
 import type { ExamCriterion } from './exam'
+import type { Rittenstaat } from './rittenstaat'
 import type { Duty } from './types'
 
 /**
@@ -70,6 +71,12 @@ export interface CareerEntry {
   collisions?: number
   /** Verbruikte brandstof, als deel van de tank. */
   fuelUsed?: number
+  /**
+   * Per halte gepland tegenover werkelijk vertrek; zie core/rittenstaat.ts.
+   * Ontbreekt als er niets gemeten kon worden (geen dienstregeling uit het
+   * menu, of een andere OMSI-versie dan 2.3.004).
+   */
+  rittenstaat?: Rittenstaat
 }
 
 /**
@@ -325,7 +332,8 @@ export function completeDuty(
     collisions?: number
     /** Brandstof bij het begin en aan het eind, als deel van 0 tot 1. */
     fuelUsed?: number
-  }
+  },
+  rittenstaat?: Rittenstaat
 ): CareerState {
   const entry: CareerEntry = {
     id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
@@ -346,7 +354,9 @@ export function completeDuty(
     harshAccels: measured?.harshAccels,
     tickets: measured?.tickets,
     collisions: measured?.collisions,
-    fuelUsed: measured?.fuelUsed
+    fuelUsed: measured?.fuelUsed,
+    // Zonder een enkele gemeten halte zegt de staat niets; dan liever geen.
+    rittenstaat: rittenstaat && rittenstaat.gemeten > 0 ? rittenstaat : undefined
   }
   // Afgerond is afgerond: de dienst laat het profiel los.
   return { ...state, entries: [entry, ...state.entries], activeDuty: undefined }

@@ -116,6 +116,12 @@ export interface DutyLeg {
    * rijtijd.
    */
   stopTimes: number[]
+  /**
+   * Het vaste vertrek per halte in minuten na middernacht, `null` waar de
+   * dienstregeling niets vastlegt; zie `vasteVertrektijden`. Ontbreekt bij een
+   * dienst die van voor de rittenstaat in het profiel staat.
+   */
+  stopVast?: Array<number | null>
 }
 
 /** De dienst die de speler krijgt toegewezen. */

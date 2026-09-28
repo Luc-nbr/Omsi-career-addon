@@ -271,6 +271,14 @@ function has(data: LiveData, bit: number): boolean {
  * niet, dus dan is het antwoord nee -- en niet "we weten het niet", want daar
  * kan de interface niets mee.
  */
+/**
+ * Geeft OMSI de aanrijdingen door? Zonder dat is nul aanrijdingen geen meting
+ * maar een leeg veld, en hoort het niet als "schadevrij" te tellen.
+ */
+export function aanrijdingenGezien(data: LiveData): boolean {
+  return hasSys(data, SYSBIT.collEnergy)
+}
+
 function hasSys(data: LiveData, bit: number): boolean {
   return ((( data.seenSys ?? 0) >>> bit) & 1) === 1
 }
@@ -482,6 +490,12 @@ export interface LiveStatus {
   odometerKm: number
   /** Hoeveelste halte van deze rit, als de bus dat doorgeeft. */
   stopIndex?: number
+  /**
+   * Dezelfde halte, maar alleen als OMSI hem uit het menu bij naam aanwees.
+   * `stopIndex` valt anders terug op een schatting naar de klok; dat is goed
+   * genoeg om te tonen, maar niet om een vertrek op te meten (rittenstaat).
+   */
+  halteOpNaam?: number
   stopsTotal: number
   /**
    * Geeft deze bus zijn halte door? De IBIS-variabelen vullen zich pas zodra de
@@ -1187,6 +1201,7 @@ export function describeLive(
     nextStop: fromMenu && data.mem ? data.mem.nextStop.trim() : data.busstop.trim(),
     odometerKm: data.km + data.metres / 1000,
     stopIndex,
+    halteOpNaam: byName,
     stopsTotal: leg?.stops.length ?? 0,
     reportsStops: fromMenu || data.busstop.trim() !== '',
     fromTimetable: fromMenu,

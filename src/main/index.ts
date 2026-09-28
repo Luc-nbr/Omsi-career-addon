@@ -1,6 +1,16 @@
 import { spawn } from 'node:child_process'
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, net, protocol, screen, shell } from 'electron'
-import { cpSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import {
+  appendFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
 import { dirname, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Worker } from 'node:worker_threads'
@@ -59,6 +69,7 @@ import { panelenVan, profielVanBus, type Busprofiel, type Paneel } from '../core
 import { modulesVanBus, paneelVanModule, type Busmodule } from '../core/busmodule'
 import { bruikbareToetsen, zetBustoetsen } from '../core/bustoetsen'
 import {
+  aanrijdingenGezien,
   describeLive,
   leesSchermen,
   VRAGEN_MAX,
@@ -89,6 +100,14 @@ import {
   type WisselAanbod
 } from '../shared/telefoon'
 import { runsOn } from '../core/calendar'
+import {
+  bouwRittenstaat,
+  leesSpoor,
+  volgSpoor,
+  type MeetStand,
+  type Rittenstaat,
+  type SpoorRegel
+} from '../core/rittenstaat'
 import {
   apparaatBeeld,
   apparaatKijkt,
@@ -1088,6 +1107,7 @@ function sluitLopendeDienstAf(): void {
   const bus = (lopend.assignment as Assignment | undefined)?.vehicle
   const naam = bus ? `${bus.manufacturer} ${bus.type}` : lopend.vehicleOverride
   const gemeten = sessieGegevens()
+  const staat = rittenstaatVanDienst(duty)
   career = completeDuty(career, duty, naam, {
     stopsDone: gemeten.stopsDone,
     drivenKm: gemeten.drivenKm,
@@ -1097,8 +1117,129 @@ function sluitLopendeDienstAf(): void {
     tickets: gemeten.tickets,
     collisions: gemeten.collisions,
     fuelUsed: gemeten.fuelUsed
-  })
+  }, staat)
   writeProfile(userData(), career)
+}
+
+/*
+ * DE MEETLUS
+ *
+ * Elke seconde, zolang er een dienst rijdt, wat de plugin doorgeeft vastleggen
+ * voor de rittenstaat (zie core/rittenstaat.ts). Los van `pushFrame`: die
+ * draait alleen als de overlay open is of een toestel meekijkt, en een dienst
+ * zonder overlay hoort net zo goed gemeten te worden. Om dezelfde reden valt
+ * hier ook de nulmeting, die anders op het volgende beeld van de overlay wachtte.
+ *
+ * Het spoor gaat regel voor regel naar een bestand per dienst, zodat een crash
+ * van de app niets weggooit; de stand tussen twee metingen staat alleen in het
+ * geheugen, en na een herstart begint die gewoon opnieuw.
+ */
+let spoor: { sleutel: string; stand?: MeetStand } | undefined
+let spoorFoutGemeld = false
+
+/** Hoeveel sporen er bewaard blijven; genoeg om een proefrit na te lezen. */
+const SPOREN_BEWAARD = 20
+
+/** Het spoor van de dienst die loopt: per profiel en per keer aannemen. */
+function spoorSleutel(): string | undefined {
+  const actief = career?.activeDuty
+  if (!career || !actief?.startedAt) return undefined
+  return `${career.id ?? 'profiel'}-${actief.confirmedAt}`.replace(/[^\w-]/g, '-')
+}
+
+function spoorPad(sleutel: string): string {
+  return join(userData(), 'ritten', `${sleutel}.jsonl`)
+}
+
+/**
+ * De klok van het spel over middernacht doorgeteld, zoals de dienst hem kent:
+ * een rit die om 01:10 aankomt staat als 1510 in de dienstregeling.
+ */
+function klokVoorDienst(klok: number, duty: Duty): number {
+  const laatste = duty.legs[duty.legs.length - 1]?.arrival ?? 0
+  return laatste > 1440 && klok + 1440 <= laatste + 60 ? klok + 1440 : klok
+}
+
+function meet(): void {
+  const sleutel = spoorSleutel()
+  const duty = (career?.activeDuty?.assignment as Assignment | undefined)?.duty
+  if (!sleutel || !duty) {
+    spoor = undefined
+    return
+  }
+  const live = freshLive()
+  if (!live) return
+  captureBaseline(live)
+  if (spoor?.sleutel !== sleutel) spoor = { sleutel }
+
+  const status = describeLive(live, duty)
+  const uitMenu = status.fromTimetable && status.halteOpNaam !== undefined
+  const { stand, regels } = volgSpoor(spoor.stand, {
+    klok: klokVoorDienst(status.clockMinutes, duty),
+    rit: Math.max(0, status.legIndex),
+    halte: uitMenu ? status.halteOpNaam : undefined,
+    uitMenu,
+    snelheid: live.velocity,
+    reizigers: live.passengers,
+    remmen: live.harshBrakes,
+    optrekken: live.harshAccels,
+    klappen: aanrijdingenGezien(live) ? live.collisions : undefined
+  })
+  const nieuw: SpoorRegel[] = spoor.stand
+    ? regels
+    : [{ t: 'begin', k: klokVoorDienst(status.clockMinutes, duty), dienst: dutyKeyOf(duty) }]
+  spoor.stand = stand
+  if (nieuw.length === 0) return
+  try {
+    const pad = spoorPad(sleutel)
+    mkdirSync(dirname(pad), { recursive: true })
+    appendFileSync(pad, nieuw.map((regel) => JSON.stringify(regel)).join('\n') + '\n')
+  } catch (fout) {
+    // Eén keer melden: een volle schijf hoort niet elke seconde in het logboek.
+    if (!spoorFoutGemeld) logFout('spoor van de dienst', fout)
+    spoorFoutGemeld = true
+  }
+}
+
+/**
+ * De rittenstaat van de dienst die nu afgerond wordt, uit zijn spoor.
+ *
+ * Alleen als het spoor bij deze dienst hoort: na een wissel via de telefoon is
+ * er een nieuw spoor, en de ritten van de oude dienst horen daar niet in.
+ */
+function rittenstaatVanDienst(duty: Duty): Rittenstaat | undefined {
+  const sleutel = spoorSleutel()
+  if (!sleutel) return undefined
+  try {
+    const pad = spoorPad(sleutel)
+    if (!existsSync(pad)) return undefined
+    const regels = leesSpoor(readFileSync(pad, 'utf8'))
+    const begin = regels.find((regel) => regel.t === 'begin')
+    if (begin && begin.t === 'begin' && begin.dienst !== dutyKeyOf(duty)) return undefined
+    return bouwRittenstaat(duty, regels)
+  } catch (fout) {
+    logFout('rittenstaat', fout)
+    return undefined
+  } finally {
+    ruimSporenOp()
+  }
+}
+
+/** De oudste sporen weg; de laatste blijven staan om een proefrit na te lezen. */
+function ruimSporenOp(): void {
+  try {
+    const map = join(userData(), 'ritten')
+    const sporen = readdirSync(map)
+      .filter((naam) => naam.endsWith('.jsonl'))
+      .map((naam) => ({ naam, tijd: statSync(join(map, naam)).mtimeMs }))
+      .sort((a, b) => a.tijd - b.tijd)
+      .map(({ naam }) => naam)
+    for (const naam of sporen.slice(0, Math.max(0, sporen.length - SPOREN_BEWAARD))) {
+      rmSync(join(map, naam), { force: true })
+    }
+  } catch {
+    // Opruimen is geen zaak om een dienst voor te laten mislukken.
+  }
 }
 
 /**
@@ -4343,7 +4484,7 @@ function registerHandlers(): void {
     overlayDuty = undefined
     overlayIbis = undefined
     if (!career) return careerPayload()
-    return persist(completeDuty(career, duty, vehicle, measured))
+    return persist(completeDuty(career, duty, vehicle, measured, rittenstaatVanDienst(duty)))
   })
 
   handle('career:rename', (_event, name: string) => {
@@ -4637,6 +4778,15 @@ if (!app.requestSingleInstanceLock()) {
     meldPluginLogboek('de vorige keer dat OMSI draaide')
     // De wacht over OMSI tijdens een dienst; zie `bewaakOmsi`.
     setInterval(() => void bewaakOmsi(), 10000).unref?.()
+    // De meetlus voor de rittenstaat; zie `meet`.
+    setInterval(() => {
+      try {
+        meet()
+      } catch (fout) {
+        if (!spoorFoutGemeld) logFout('meetlus', fout)
+        spoorFoutGemeld = true
+      }
+    }, 1000).unref?.()
     career = resolveActive(userData())
     registerHandlers()
     createWindow()

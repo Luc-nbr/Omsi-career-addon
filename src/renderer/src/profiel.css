@@ -425,6 +425,91 @@
   color: var(--laat);
 }
 
+/*
+ * De rittenstaat onder een dienst in het logboek. Hij beslaat de hele regel:
+ * dichtgeklapt een telling, open een tabel per rit.
+ */
+.profiel-logboek .rittenstaat {
+  grid-column: 1 / -1;
+  font-size: 12.5px;
+}
+
+.rittenstaat summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  color: var(--vel-zacht);
+  cursor: pointer;
+}
+
+.rittenstaat summary b {
+  font-weight: 600;
+}
+
+.rittenstaat summary small {
+  padding: 1px 6px;
+  border: 1px solid var(--vel-lijn);
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.rittenstaat .vroeg,
+.rs-rit .verschil.vroeg {
+  color: var(--vroeg);
+}
+
+.rittenstaat .laat,
+.rs-rit .verschil.laat {
+  color: var(--laat);
+}
+
+.rs-rit .verschil.optijd {
+  color: var(--optijd);
+}
+
+.rs-uitleg {
+  margin: 8px 0;
+  color: var(--vel-zacht);
+  line-height: 1.45;
+}
+
+.rs-rit {
+  width: 100%;
+  margin: 10px 0 4px;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.rs-rit caption {
+  padding-bottom: 4px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.rs-rit th {
+  color: var(--vel-zacht);
+  font-weight: 500;
+  text-align: left;
+}
+
+.rs-rit th,
+.rs-rit td {
+  padding: 4px 8px 4px 0;
+  border-bottom: 1px solid var(--vel-lijn);
+}
+
+.rs-rit th:not(:first-child),
+.rs-rit td:not(:first-child) {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.rs-rit small,
+.rs-rit .geschat {
+  color: var(--vel-zacht);
+}
+
 /* Wie beweging heeft uitgezet in Windows, krijgt de staafjes stil. */
 @media (prefers-reduced-motion: reduce) {
   .profiel-balk span,
