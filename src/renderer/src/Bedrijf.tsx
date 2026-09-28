@@ -1,35 +1,19 @@
-import { useEffect, useMemo, useState, type JSX, type ReactNode } from 'react'
-import {
-  REGELS,
-  aanHetWerk,
-  opleidingKlaar,
-  dagprognose,
-  marktloon,
-  sollicitanten,
-  dagresultaat,
-  heeftConcessie,
-  inschrijfkosten,
-  isInzetbaar,
-  lijnnaam,
-  onderhoudskosten,
-  ongelezen,
-  reparatiekosten,
-  urenVanLijn,
-  waardeVan,
-  type Aanbod,
-  type Bedrijf as BedrijfStaat,
-  type EigenBus,
-  type MarktBus,
-  type Medewerker
-} from '../../core/bedrijf'
-import type { LineSummary } from '../../core/duty'
-import type { CareerPayload, MapSummary } from '../../shared/api'
+import { useState, type JSX } from 'react'
+import { REGELS, ongelezen, type Bedrijf as BedrijfStaat } from '../../core/bedrijf'
+import type { ActiveDuty } from '../../core/career'
+import { PLAN_ACTIEF } from '../../core/rooster'
+import type { CareerPayload } from '../../shared/api'
 import { formatMoney } from '../../shared/format'
 import { loose, type TextKey } from '../../shared/i18n'
 import { Icoon, type Icoonnaam } from './Icoon'
 import { useLanguage, useT } from './language'
-import { Grafiek } from './BedrijfGrafiek'
-import { Opleidingen, WerkplaatsSpel, niveauVoortgang } from './BedrijfOpleiding'
+import { Opleidingen, niveauVoortgang } from './BedrijfOpleiding'
+import { Boeken, KasChip, type Naar, type Tab } from './BedrijfDelen'
+import { Dashboard } from './BedrijfDashboard'
+import { Concessies } from './BedrijfConcessies'
+import { Markt, Wagenpark } from './BedrijfWagenpark'
+import { Personeel } from './BedrijfPersoneel'
+import { useDagplan } from './useDagplan'
 import { Postvak } from './BedrijfPost'
 import './bedrijf.css'
 
@@ -47,11 +31,11 @@ import './bedrijf.css'
  * donker en licht volgen vanzelf.
  */
 
-type Tab = 'dashboard' | 'post' | 'concessies' | 'wagenpark' | 'markt' | 'personeel' | 'opleidingen' | 'boeken'
-
 const TABS: Array<{ tab: Tab; icoon: Icoonnaam; tekst: TextKey }> = [
   { tab: 'dashboard', icoon: 'record', tekst: 'bd.nav.dashboard' },
   { tab: 'post', icoon: 'post', tekst: 'bd.nav.mail' },
+  { tab: 'planning', icoon: 'duty', tekst: 'bd.nav.planning' },
+  { tab: 'kaart', icoon: 'map', tekst: 'bd.nav.map' },
   { tab: 'concessies', icoon: 'line', tekst: 'bd.nav.concessions' },
   { tab: 'wagenpark', icoon: 'bus', tekst: 'bd.nav.fleet' },
   { tab: 'markt', icoon: 'kaartje', tekst: 'bd.nav.market' },
@@ -60,16 +44,40 @@ const TABS: Array<{ tab: Tab; icoon: Icoonnaam; tekst: TextKey }> = [
   { tab: 'boeken', icoon: 'logboek', tekst: 'bd.nav.books' }
 ]
 
+/*
+ * Planning en Kaart staan pas in de zijbalk als de planning aan staat
+ * (PLAN_ACTIEF, core/rooster.ts); tot dan zijn het lege tabs.
+ */
+const ZICHTBAAR = TABS.filter((t) => PLAN_ACTIEF || (t.tab !== 'planning' && t.tab !== 'kaart'))
+
 interface Props {
   bedrijf?: BedrijfStaat
+  /** De dienst die nu loopt; bij een bedrijfsrit staat daar `bedrijf` in. */
+  activeDuty?: ActiveDuty
+  /*
+   * De tab en de melding wonen in App, zodat ze een rit naar OMSI en terug
+   * overleven (ontwerp §3.2).
+   */
+  tab: Tab
+  onTab: (tab: Tab) => void
+  melding?: string
+  onMelding: (melding: string | undefined) => void
   onCareer: (payload: CareerPayload) => void
   onTerug: () => void
+  /** Zelf een dienst rijden (deel D); `later` zet hem klaar zonder te starten. */
+  onRijden?: (payload: CareerPayload, later?: boolean) => void
+  /** Naar het scherm van de lopende rit (deel D). */
+  onNaarRit?: () => void
 }
 
-export function BedrijfApp({ bedrijf, onCareer, onTerug }: Props): JSX.Element {
+export function BedrijfApp({ bedrijf, activeDuty, tab, onTab, melding, onMelding, onCareer, onTerug }: Props): JSX.Element {
   const tr = useT()
-  const [tab, setTab] = useState<Tab>('dashboard')
-  const [melding, setMelding] = useState<string>()
+  const taal = useLanguage()
+  const lopend = activeDuty?.bedrijf
+  // Eén keer per scherm; de tabs krijgen het plan door (deel A en verder).
+  useDagplan(bedrijf, bedrijf?.dag, lopend, onCareer)
+  const setTab: Naar = (t) => onTab(t)
+  const setMelding = onMelding
 
   if (!bedrijf) {
     return (
@@ -88,7 +96,13 @@ export function BedrijfApp({ bedrijf, onCareer, onTerug }: Props): JSX.Element {
     const uit = await doen
     if ('payload' in uit) {
       onCareer(uit.payload)
-      setMelding(uit.fout === 'kas' ? tr('bd.tooExpensive') : uit.fout ? tr('bd.failed') : undefined)
+      setMelding(
+        uit.fout === 'kas'
+          ? tr('bd.tooExpensive')
+          : uit.fout
+            ? loose(taal, `bd.fout.${uit.fout}`, tr('bd.failed'))
+            : undefined
+      )
     } else {
       onCareer(uit)
       setMelding(undefined)
@@ -113,7 +127,7 @@ export function BedrijfApp({ bedrijf, onCareer, onTerug }: Props): JSX.Element {
           </span>
         </div>
         <nav>
-          {TABS.map((t) => (
+          {ZICHTBAAR.map((t) => (
             <button
               key={t.tab}
               type="button"
@@ -153,6 +167,9 @@ export function BedrijfApp({ bedrijf, onCareer, onTerug }: Props): JSX.Element {
         )}
         {tab === 'dashboard' && <Dashboard bedrijf={bedrijf} naar={setTab} />}
         {tab === 'post' && <Postvak bedrijf={bedrijf} onCareer={onCareer} />}
+        {/* Slots voor deel A (Planning) en deel E (Vlootkaart); leeg zolang die er niet zijn. */}
+        {tab === 'planning' && null}
+        {tab === 'kaart' && null}
         {tab === 'concessies' && <Concessies bedrijf={bedrijf} handel={handel} />}
         {tab === 'wagenpark' && <Wagenpark bedrijf={bedrijf} handel={handel} />}
         {tab === 'markt' && <Markt bedrijf={bedrijf} handel={handel} />}
@@ -162,910 +179,6 @@ export function BedrijfApp({ bedrijf, onCareer, onTerug }: Props): JSX.Element {
       </main>
     </div>
   )
-}
-
-type Handel = (doen: Promise<{ payload: CareerPayload; fout?: string } | CareerPayload>) => Promise<void>
-
-function useGeld(): (centen: number, teken?: boolean) => string {
-  const taal = useLanguage()
-  return (centen, teken) => `${teken && centen > 0 ? '+' : ''}${formatMoney(centen / 100, taal)}`
-}
-
-function KasChip({ bedrijf }: { bedrijf: BedrijfStaat }): JSX.Element {
-  const tr = useT()
-  const geld = useGeld()
-  return (
-    <span className={`bd-kaschip ${bedrijf.kas < 0 ? 'laat' : ''}`}>
-      <small>{tr('bd.cash')}</small>
-      {geld(bedrijf.kas)}
-    </span>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/* Dashboard                                                          */
-/* ------------------------------------------------------------------ */
-
-function Dashboard({ bedrijf, naar }: { bedrijf: BedrijfStaat; naar: (tab: Tab) => void }): JSX.Element {
-  const tr = useT()
-  const geld = useGeld()
-  const taal = useLanguage()
-  /* Op de as kort: € 150k in plaats van € 151.678,02. */
-  const kort = (centen: number): string =>
-    new Intl.NumberFormat(taal === 'en' ? 'en-GB' : `${taal}-${taal.toUpperCase()}`, {
-      style: 'currency',
-      currency: 'EUR',
-      notation: 'compact',
-      maximumFractionDigits: 1
-    }).format(centen / 100)
-  const prognose = dagprognose(bedrijf)
-  const historie = bedrijf.historie ?? []
-  const gisteren = historie[historie.length - 1]
-  const eergisteren = historie[historie.length - 2]
-  const bussen = bedrijf.bussen ?? []
-  const resultaat = prognose.vergoeding - prognose.kosten
-  const vlootwaarde = bussen.reduce((som, b) => som + waardeVan(b), 0)
-  const inzetbaar = bussen.filter((b) => isInzetbaar(b, bedrijf.dag)).length
-
-  const aandacht = useMemo(() => {
-    const lijst: Array<{ soort: 'laat' | 'let'; tekst: string; tab: Tab }> = []
-    if (bedrijf.kas < 0) lijst.push({ soort: 'laat', tekst: tr('bd.alert.cash'), tab: 'boeken' })
-    for (const b of bussen) {
-      if (b.schade >= REGELS.inzetbaarTotSchade)
-        lijst.push({ soort: 'laat', tekst: tr('bd.alert.damaged', { bus: b.nummer }), tab: 'wagenpark' })
-      else if (b.staat < REGELS.inzetbaarVanafStaat)
-        lijst.push({ soort: 'laat', tekst: tr('bd.alert.worn', { bus: b.nummer }), tab: 'wagenpark' })
-      else if (b.staat < 50 || b.schade > 0)
-        lijst.push({ soort: 'let', tekst: tr('bd.alert.service', { bus: b.nummer }), tab: 'wagenpark' })
-    }
-    for (const c of bedrijf.concessies) {
-      const over = c.tot - bedrijf.dag
-      if (over <= 5)
-        lijst.push({
-          soort: bedrijf.reputatie < REGELS.verlengVanaf ? 'laat' : 'let',
-          tekst: tr(bedrijf.reputatie < REGELS.verlengVanaf ? 'bd.alert.expiresLost' : 'bd.alert.expires', {
-            line: lijnnaam(c),
-            days: Math.max(0, over)
-          }),
-          tab: 'concessies'
-        })
-    }
-    if (prognose.benodigd > 0 && prognose.dekking < 1)
-      lijst.push({
-        soort: 'let',
-        tekst: tr('bd.alert.coverage', { need: prognose.benodigd - prognose.inzetbaar }),
-        tab: 'markt'
-      })
-    if (prognose.openDiensten > 0)
-      lijst.push({
-        soort: 'let',
-        tekst: tr('bd.alert.openShifts', { n: prognose.openDiensten }),
-        tab: 'personeel'
-      })
-    for (const m of bedrijf.personeel ?? []) {
-      if (m.ziekTot !== undefined && m.ziekTot >= bedrijf.dag)
-        lijst.push({ soort: 'let', tekst: tr('bd.alert.sick', { name: m.naam, day: m.ziekTot }), tab: 'personeel' })
-      else if (m.tevredenheid < REGELS.vertrekOnder + 10)
-        lijst.push({ soort: 'laat', tekst: tr('bd.alert.unhappy', { name: m.naam }), tab: 'personeel' })
-    }
-    return lijst
-  }, [bedrijf])
-
-  return (
-    <div className="bd-dashboard">
-      <div className="bd-tegels">
-        <Tegel
-          titel={tr('bd.cash')}
-          waarde={geld(bedrijf.kas)}
-          sub={
-            gisteren && eergisteren
-              ? tr('bd.sinceYesterday', { money: geld(gisteren.kas - eergisteren.kas, true) })
-              : undefined
-          }
-          toon={bedrijf.kas < 0 ? 'laat' : undefined}
-        />
-        <Tegel
-          titel={tr('bd.today')}
-          waarde={geld(resultaat, true)}
-          sub={tr('bd.todaySub', { in: geld(prognose.vergoeding), out: geld(prognose.kosten) })}
-          toon={resultaat < 0 ? 'laat' : resultaat > 0 ? 'goed' : undefined}
-        />
-        <Tegel titel={tr('bd.reputation')} waarde={`${bedrijf.reputatie}`} sub="/ 100">
-          <span className="bd-meter">
-            <i style={{ width: `${bedrijf.reputatie}%` }} />
-            <b style={{ left: `${REGELS.verlengVanaf}%` }} title={tr('bd.renewLine')} />
-          </span>
-        </Tegel>
-        <Tegel
-          titel={tr('bd.concessions')}
-          waarde={`${bedrijf.concessies.length}`}
-          sub={tr('bd.toursHours', { tours: prognose.benodigd, hours: Math.round(prognose.uren) })}
-        />
-        <Tegel
-          titel={tr('bd.nav.fleet')}
-          waarde={`${inzetbaar} / ${bussen.length}`}
-          sub={tr('bd.fleetSub', {
-            share: prognose.benodigd ? Math.round(prognose.dekking * 100) : 0,
-            money: geld(vlootwaarde)
-          })}
-        >
-          <span className="bd-meter">
-            <i style={{ width: `${Math.round(prognose.dekking * 100)}%` }} />
-          </span>
-        </Tegel>
-        <Tegel
-          titel={tr('bd.nav.staff')}
-          waarde={`${prognose.eigenDiensten + prognose.zelfDiensten} / ${prognose.diensten}`}
-          sub={tr('bd.staffSub', {
-            open: prognose.openDiensten,
-            people: (bedrijf.personeel ?? []).length
-          })}
-          toon={prognose.diensten > 0 && prognose.openDiensten === 0 ? 'goed' : undefined}
-        >
-          <span className="bd-meter">
-            <i
-              style={{
-                width: `${prognose.diensten ? Math.round(((prognose.eigenDiensten + prognose.zelfDiensten) / prognose.diensten) * 100) : 0}%`
-              }}
-            />
-          </span>
-        </Tegel>
-      </div>
-
-      <div className="bd-rij">
-        <Paneel titel={tr('bd.chart.cash')} breed>
-          <Grafiek
-            soort="lijn"
-            punten={historie.map((h) => ({ x: h.dag, y: h.kas }))}
-            opmaak={(v) => geld(v)}
-            asOpmaak={kort}
-            xNaam={(x) => tr('bd.dayN', { day: x })}
-            leeg={tr('bd.chart.empty')}
-          />
-        </Paneel>
-        <Paneel titel={tr('bd.attention')}>
-          {aandacht.length === 0 ? (
-            <p className="bd-rustig">{tr('bd.allGood')}</p>
-          ) : (
-            <ul className="bd-aandacht">
-              {aandacht.slice(0, 7).map((a, i) => (
-                <li key={i}>
-                  <button type="button" onClick={() => naar(a.tab)}>
-                    <i className={a.soort} aria-hidden="true" />
-                    {a.tekst}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Paneel>
-      </div>
-
-      <div className="bd-rij">
-        <Paneel titel={tr('bd.chart.result')} breed>
-          <Grafiek
-            soort="staaf"
-            punten={historie.map((h) => ({ x: h.dag, y: h.resultaat ?? h.inkomsten - h.uitgaven }))}
-            opmaak={(v) => geld(v, true)}
-            asOpmaak={kort}
-            xNaam={(x) => tr('bd.dayN', { day: x })}
-            leeg={tr('bd.chart.empty')}
-          />
-        </Paneel>
-        <Paneel titel={tr('bd.chart.reputation')}>
-          <Grafiek
-            soort="lijn"
-            punten={historie.map((h) => ({ x: h.dag, y: h.reputatie }))}
-            opmaak={(v) => `${Math.round(v)}`}
-            xNaam={(x) => tr('bd.dayN', { day: x })}
-            leeg={tr('bd.chart.empty')}
-            bereik={[0, 100]}
-            klein
-          />
-        </Paneel>
-      </div>
-
-      <div className="bd-rij">
-        <Paneel titel={tr('bd.fleetState')} actie={{ tekst: tr('bd.nav.fleet'), doen: () => naar('wagenpark') }}>
-          {bussen.length === 0 ? (
-            <p className="bd-rustig">{tr('bd.noBuses')}</p>
-          ) : (
-            <ul className="bd-vlootstaat">
-              {[...bussen]
-                .sort((a, b) => a.staat - a.schade - (b.staat - b.schade))
-                .slice(0, 6)
-                .map((b) => (
-                  <li key={b.nummer}>
-                    <span className="bd-nummer">{b.nummer}</span>
-                    <span className="bd-wat">
-                      <b>{b.naam}</b>
-                    </span>
-                    <Staatbalk staat={b.staat} schade={b.schade} />
-                  </li>
-                ))}
-            </ul>
-          )}
-        </Paneel>
-        <Paneel titel={tr('bd.lastBooks')} actie={{ tekst: tr('bd.nav.books'), doen: () => naar('boeken') }}>
-          <Boeken bedrijf={bedrijf} />
-        </Paneel>
-      </div>
-    </div>
-  )
-}
-
-function Tegel({
-  titel,
-  waarde,
-  sub,
-  toon,
-  children
-}: {
-  titel: string
-  waarde: string
-  sub?: string
-  toon?: 'goed' | 'laat'
-  children?: ReactNode
-}): JSX.Element {
-  return (
-    <section className="bd-tegel">
-      <small>{titel}</small>
-      <b className={toon === 'goed' ? 'optijd' : toon ?? ''}>{waarde}</b>
-      {children}
-      {sub && <span className="bd-sub">{sub}</span>}
-    </section>
-  )
-}
-
-function Paneel({
-  titel,
-  breed,
-  actie,
-  children
-}: {
-  titel: string
-  breed?: boolean
-  actie?: { tekst: string; doen: () => void }
-  children: ReactNode
-}): JSX.Element {
-  return (
-    <section className={`bd-paneel ${breed ? 'breed' : ''}`}>
-      <div className="bd-paneelkop">
-        <h2>{titel}</h2>
-        {actie && (
-          <button type="button" className="bd-link" onClick={actie.doen}>
-            {actie.tekst} →
-          </button>
-        )}
-      </div>
-      {children}
-    </section>
-  )
-}
-
-/** Staat (hoe ver van onderhoud) en schade in één balk; de tekst zegt het ook. */
-function Staatbalk({ staat, schade }: { staat: number; schade: number }): JSX.Element {
-  const tr = useT()
-  const toon = staat < REGELS.inzetbaarVanafStaat || schade >= REGELS.inzetbaarTotSchade ? 'laat' : staat < 50 ? 'let' : 'goed'
-  return (
-    <span className="bd-staat">
-      <span className={`bd-meter ${toon}`}>
-        <i style={{ width: `${Math.max(0, Math.min(100, staat))}%` }} />
-      </span>
-      <small>
-        {tr('bd.condition', { n: Math.round(staat) })}
-        {schade > 0 ? ` · ${tr('bd.damage', { n: Math.round(schade) })}` : ''}
-      </small>
-    </span>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/* Concessies en aanbestedingen                                       */
-/* ------------------------------------------------------------------ */
-
-function Concessies({ bedrijf, handel }: { bedrijf: BedrijfStaat; handel: Handel }): JSX.Element {
-  const tr = useT()
-  const geld = useGeld()
-  return (
-    <div className="bd-kolom">
-      <Paneel titel={tr('bd.concessions')}>
-        {bedrijf.concessies.length === 0 ? (
-          <p className="bd-rustig">{tr('bd.noConcessions')}</p>
-        ) : (
-          <ul className="bd-lijst">
-            {bedrijf.concessies.map((c) => {
-              const r = dagresultaat(c, bedrijf.reputatie)
-              const over = c.tot - bedrijf.dag
-              return (
-                <li key={`${c.mapFolder}|${c.lineFile}`}>
-                  <span className="bd-lijn">{lijnnaam(c)}</span>
-                  <span className="bd-wat">
-                    <b>{c.mapName}</b>
-                    <small>{tr('bd.lineTours', { tours: c.omlopen, hours: c.urenPerDag })}</small>
-                  </span>
-                  <span className="bd-bedrag optijd">{geld(r.vergoeding, true)}</span>
-                  <span className={`bd-tot ${over <= 5 ? 'let' : ''}`}>{tr('bd.until', { day: c.tot })}</span>
-                  <button
-                    type="button"
-                    className="bd-knop"
-                    onClick={() => {
-                      if (!window.confirm(tr('bd.cancelAsk'))) return
-                      void handel(window.career.bedrijfOpzeggen(c.mapFolder, c.lineFile))
-                    }}
-                  >
-                    {tr('bd.cancel')}
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-      </Paneel>
-      <Aanbestedingen bedrijf={bedrijf} handel={handel} />
-    </div>
-  )
-}
-
-function Aanbestedingen({ bedrijf, handel }: { bedrijf: BedrijfStaat; handel: Handel }): JSX.Element {
-  const tr = useT()
-  const geld = useGeld()
-  const [kaarten, setKaarten] = useState<MapSummary[]>([])
-  const [kaart, setKaart] = useState('')
-  const [lijnen, setLijnen] = useState<LineSummary[]>()
-  const [bezig, setBezig] = useState(false)
-
-  useEffect(() => {
-    void window.career.maps().then((lijst) => {
-      setKaarten(lijst)
-      setKaart((huidig) => huidig || bedrijf.concessies[0]?.mapFolder || lijst[0]?.folder || '')
-    })
-  }, [])
-
-  useEffect(() => {
-    if (!kaart) return
-    let geldig = true
-    setLijnen(undefined)
-    void window.career
-      .lines(kaart)
-      .then((uit) => geldig && setLijnen(uit))
-      .catch(() => geldig && setLijnen([]))
-    return () => {
-      geldig = false
-    }
-  }, [kaart])
-
-  const gesorteerd = useMemo(() => [...(lijnen ?? [])].sort((a, b) => b.tours - a.tours), [lijnen])
-
-  return (
-    <section className="bd-paneel">
-      <div className="bd-paneelkop">
-        <h2>{tr('bd.market')}</h2>
-        <select value={kaart} onChange={(e) => setKaart(e.target.value)} aria-label={tr('bd.chooseMap')}>
-          {kaarten.map((k) => (
-            <option key={k.folder} value={k.folder}>
-              {k.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      {!lijnen ? (
-        <p className="bd-rustig">{tr('bd.loading')}</p>
-      ) : (
-        <ul className="bd-lijst">
-          {gesorteerd.map((lijn) => {
-            const kosten = inschrijfkosten(lijn)
-            const uren = urenVanLijn(lijn)
-            const dag = dagresultaat({ urenPerDag: uren }, bedrijf.reputatie)
-            return (
-              <li key={lijn.lineFile}>
-                <span className="bd-lijn">{lijnnaam(lijn)}</span>
-                <span className="bd-wat">
-                  <b>{lijn.lineFile}</b>
-                  <small>{tr('bd.lineTours', { tours: lijn.tours, hours: uren })}</small>
-                </span>
-                <span className="bd-bedrag optijd">{geld(dag.vergoeding, true)}</span>
-                <span />
-                {heeftConcessie(bedrijf, kaart, lijn.lineFile) ? (
-                  <span className="bd-eigen">{tr('bd.owned')}</span>
-                ) : (
-                  <button
-                    type="button"
-                    className="bd-knop"
-                    disabled={bezig || bedrijf.kas < kosten}
-                    title={bedrijf.kas < kosten ? tr('bd.tooExpensive') : undefined}
-                    onClick={() => {
-                      setBezig(true)
-                      void handel(window.career.bedrijfInschrijven(kaart, lijn.lineFile)).finally(() =>
-                        setBezig(false)
-                      )
-                    }}
-                  >
-                    {tr('bd.bid', { money: geld(kosten) })}
-                  </button>
-                )}
-              </li>
-            )
-          })}
-        </ul>
-      )}
-    </section>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/* Wagenpark en werkplaats                                            */
-/* ------------------------------------------------------------------ */
-
-function Wagenpark({ bedrijf, handel }: { bedrijf: BedrijfStaat; handel: Handel }): JSX.Element {
-  const tr = useT()
-  const geld = useGeld()
-  const bussen = bedrijf.bussen ?? []
-  /** De minigame die openstaat: zelf onderhoud of zelf repareren, aan welke bus. */
-  const [spel, setSpel] = useState<{ bus: EigenBus; soort: 'onderhoud' | 'reparatie' }>()
-  if (bussen.length === 0) {
-    return (
-      <Paneel titel={tr('bd.nav.fleet')}>
-        <p className="bd-rustig">{tr('bd.noBuses')}</p>
-      </Paneel>
-    )
-  }
-  return (
-    <Paneel titel={tr('bd.fleetCount', { n: bussen.length })}>
-      <ul className="bd-vloot">
-        {bussen.map((b) => (
-          <BusRij
-            key={b.nummer}
-            bus={b}
-            dag={bedrijf.dag}
-            geld={geld}
-            handel={handel}
-            kas={bedrijf.kas}
-            monteurs={aanHetWerk(bedrijf, 'monteur').length}
-            bedrijf={bedrijf}
-            onSpel={(soort) => setSpel({ bus: b, soort })}
-            tr={tr}
-          />
-        ))}
-      </ul>
-      {spel && (
-        <WerkplaatsSpel
-          soort={spel.soort}
-          busNummer={spel.bus.nummer}
-          staat={spel.bus.staat}
-          onAnnuleer={() => setSpel(undefined)}
-          onKlaar={(score) => {
-            const wat = spel
-            setSpel(undefined)
-            void handel(window.career.bedrijfZelf(wat.bus.nummer, wat.soort, score))
-          }}
-        />
-      )}
-    </Paneel>
-  )
-}
-
-function BusRij({
-  bus,
-  dag,
-  kas,
-  monteurs,
-  bedrijf,
-  onSpel,
-  geld,
-  handel,
-  tr
-}: {
-  bus: EigenBus
-  dag: number
-  monteurs: number
-  bedrijf: BedrijfStaat
-  /** Zelf aan de slag, na de opleiding: opent de minigame. */
-  onSpel: (soort: 'onderhoud' | 'reparatie') => void
-  kas: number
-  geld: (c: number, t?: boolean) => string
-  handel: Handel
-  tr: ReturnType<typeof useT>
-}): JSX.Element {
-  const taal = useLanguage()
-  const werkplaats = bus.werkplaatsTot !== undefined && bus.werkplaatsTot >= dag
-  const inzet = isInzetbaar(bus, dag)
-  const onderhoud = onderhoudskosten(bus, monteurs, bedrijf)
-  const reparatie = reparatiekosten(bus)
-  const zelfOnderhoud = Math.round(onderhoudskosten(bus, 0, bedrijf) * REGELS.zelfOnderdelen)
-  const zelfReparatie = Math.round(reparatie * REGELS.zelfOnderdelen)
-  return (
-    <li>
-      <span className="bd-nummer groot">{bus.nummer}</span>
-      <span className="bd-wat">
-        <b>{bus.naam}</b>
-        <small>
-          {loose(taal, `bd.shape.${bus.vorm}`, bus.vorm)} · {Math.round(bus.km / 1000)}k km ·{' '}
-          {tr('bd.value', { money: geld(waardeVan(bus)) })}
-        </small>
-      </span>
-      <Staatbalk staat={bus.staat} schade={bus.schade} />
-      <span className={`bd-status ${werkplaats ? 'let' : inzet ? 'optijd' : 'laat'}`}>
-        {tr(werkplaats ? 'bd.status.workshop' : inzet ? 'bd.status.active' : 'bd.status.parked')}
-      </span>
-      <span className="bd-acties">
-        <button
-          type="button"
-          className="bd-knop"
-          disabled={werkplaats || bus.staat >= 99 || kas < onderhoud}
-          onClick={() => void handel(window.career.bedrijfWerkplaats(bus.nummer, 'onderhoud'))}
-        >
-          {tr('bd.service', { money: geld(onderhoud) })}
-        </button>
-        {opleidingKlaar(bedrijf, 'werkplaats') && (
-          <button
-            type="button"
-            className="bd-knop zelf"
-            disabled={werkplaats || bus.staat >= 99 || kas < zelfOnderhoud}
-            onClick={() => onSpel('onderhoud')}
-          >
-            {tr('bd.selfService', { money: geld(zelfOnderhoud) })}
-          </button>
-        )}
-        {bus.schade > 0 && (
-          <button
-            type="button"
-            className="bd-knop"
-            disabled={werkplaats || kas < reparatie}
-            onClick={() => void handel(window.career.bedrijfWerkplaats(bus.nummer, 'reparatie'))}
-          >
-            {tr('bd.repair', { money: geld(reparatie) })}
-          </button>
-        )}
-        {bus.schade > 0 && opleidingKlaar(bedrijf, 'schadeherstel') && (
-          <button
-            type="button"
-            className="bd-knop zelf"
-            disabled={werkplaats || kas < zelfReparatie}
-            onClick={() => onSpel('reparatie')}
-          >
-            {tr('bd.selfRepair', { money: geld(zelfReparatie) })}
-          </button>
-        )}
-        <button
-          type="button"
-          className="bd-knop zacht"
-          onClick={() => {
-            if (!window.confirm(tr('bd.sellAsk', { money: geld(Math.round(waardeVan(bus) * REGELS.verkoopFactor)) })))
-              return
-            void handel(window.career.bedrijfVerkoop(bus.nummer))
-          }}
-        >
-          {tr('bd.sell')}
-        </button>
-      </span>
-    </li>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/* Busmarkt                                                           */
-/* ------------------------------------------------------------------ */
-
-function Markt({ bedrijf, handel }: { bedrijf: BedrijfStaat; handel: Handel }): JSX.Element {
-  const tr = useT()
-  const geld = useGeld()
-  const taal = useLanguage()
-  const [markt, setMarkt] = useState<{ nieuw: MarktBus[]; tweedehands: Aanbod[] }>()
-  const [zoek, setZoek] = useState('')
-  const [bezig, setBezig] = useState(false)
-
-  useEffect(() => {
-    void window.career.bedrijfMarkt().then(setMarkt)
-  }, [bedrijf.dag, bedrijf.aanbodWeg?.length])
-
-  const koop = (soort: 'nieuw' | 'tweedehands', wat: string | number): void => {
-    setBezig(true)
-    void handel(window.career.bedrijfKoop(soort, wat)).finally(() => setBezig(false))
-  }
-
-  const nieuw = (markt?.nieuw ?? []).filter((b) => b.naam.toLowerCase().includes(zoek.trim().toLowerCase()))
-
-  return (
-    <div className="bd-kolom">
-      <Paneel titel={tr('bd.usedToday', { day: bedrijf.dag })}>
-        {!markt ? (
-          <p className="bd-rustig">{tr('bd.loading')}</p>
-        ) : markt.tweedehands.length === 0 ? (
-          <p className="bd-rustig">{tr('bd.usedSoldOut')}</p>
-        ) : (
-          <div className="bd-aanbod">
-            {markt.tweedehands.map((a) => (
-              <article key={a.nr} className="bd-kaart">
-                <span className="bd-vorm">{loose(taal, `bd.shape.${a.bus.vorm}`, a.bus.vorm)}</span>
-                <b>{a.bus.naam}</b>
-                <small>{Math.round(a.km / 1000)}k km</small>
-                <Staatbalk staat={a.staat} schade={0} />
-                <span className="bd-prijs">{geld(a.prijs)}</span>
-                <button
-                  type="button"
-                  className="bd-knop hoofd"
-                  disabled={bezig || bedrijf.kas < a.prijs}
-                  onClick={() => koop('tweedehands', a.nr)}
-                >
-                  {tr('bd.buy')}
-                </button>
-              </article>
-            ))}
-          </div>
-        )}
-      </Paneel>
-      <section className="bd-paneel">
-        <div className="bd-paneelkop">
-          <h2>{tr('bd.newBuses')}</h2>
-          <input
-            className="bd-zoek"
-            value={zoek}
-            placeholder={tr('bd.search')}
-            onChange={(e) => setZoek(e.target.value)}
-          />
-        </div>
-        <ul className="bd-lijst nieuw">
-          {nieuw.slice(0, 60).map((b) => {
-            const prijs = REGELS.nieuwprijs[b.vorm]
-            return (
-              <li key={b.relativePath}>
-                <span className="bd-vorm">{loose(taal, `bd.shape.${b.vorm}`, b.vorm)}</span>
-                <span className="bd-wat">
-                  <b>{b.naam}</b>
-                  <small>{b.relativePath}</small>
-                </span>
-                <span className="bd-bedrag">{geld(prijs)}</span>
-                <button
-                  type="button"
-                  className="bd-knop"
-                  disabled={bezig || bedrijf.kas < prijs}
-                  onClick={() => koop('nieuw', b.relativePath)}
-                >
-                  {tr('bd.buy')}
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-        {nieuw.length > 60 && <p className="bd-rustig">{tr('bd.moreBuses', { n: nieuw.length - 60 })}</p>}
-      </section>
-    </div>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/* Personeel                                                          */
-/* ------------------------------------------------------------------ */
-
-/**
- * Het rooster van vandaag, de mensen in dienst en de sollicitanten. Het rooster
- * maakt de app zelf (zie `dagprognose`): hier zie je hoe het uitvalt, en wat je
- * eraan doet is mensen aannemen -- of zelf invallen.
- */
-function Personeel({ bedrijf, handel }: { bedrijf: BedrijfStaat; handel: Handel }): JSX.Element {
-  const tr = useT()
-  const geld = useGeld()
-  const prognose = dagprognose(bedrijf)
-  const mensen = bedrijf.personeel ?? []
-  const vandaag = sollicitanten(bedrijf)
-  const monteurs = aanHetWerk(bedrijf, 'monteur').length
-  const [bezig, setBezig] = useState(false)
-  const doe = (actie: Promise<{ payload: CareerPayload; fout?: string } | CareerPayload>): void => {
-    setBezig(true)
-    void handel(actie).finally(() => setBezig(false))
-  }
-  /* De balk in uren, want dat is wat er geboekt wordt; jouw invaluren zijn zelden een hele dienst. */
-  const eigenUren = prognose.chauffeurUren - prognose.zelfUren
-  const openUren = Math.max(0, prognose.uren - prognose.chauffeurUren)
-  const deel = (uren: number): string => `${prognose.uren ? (uren / prognose.uren) * 100 : 0}%`
-  const u = (uren: number): string => `${Math.round(uren * 10) / 10}`
-  return (
-    <div className="bd-kolom">
-      <Paneel titel={tr('bd.rosterToday', { day: bedrijf.dag })}>
-        {prognose.diensten === 0 ? (
-          <p className="bd-rustig">{tr('bd.rosterEmpty')}</p>
-        ) : (
-          <>
-            <div className="bd-rooster" aria-hidden="true">
-              {/* Alleen wat er is: een leeg stuk zou toch een kier achterlaten. */}
-              {eigenUren > 0 && <i className="eigen" style={{ width: deel(eigenUren) }} />}
-              {prognose.zelfUren > 0 && <i className="zelf" style={{ width: deel(prognose.zelfUren) }} />}
-              {openUren > 0 && <i className="open" style={{ width: deel(openUren) }} />}
-            </div>
-            <div className="bd-roostercijfers">
-              <span>
-                <b>{prognose.diensten}</b>
-                {tr('bd.shiftsNeeded', { hours: Math.round(prognose.uren) })}
-              </span>
-              <span>
-                <i className="eigen" />
-                <b>{prognose.eigenDiensten}</b>
-                {tr('bd.shiftsOwn')}
-              </span>
-              <span>
-                <i className="zelf" />
-                <b>{u(prognose.zelfUren)}</b>
-                {tr('bd.hoursYou')}
-              </span>
-              <span>
-                <i className="open" />
-                <b>{prognose.openDiensten}</b>
-                {tr('bd.shiftsOpen')}
-              </span>
-            </div>
-            <p className="bd-rustig bd-klein">{tr('bd.rosterNote')}</p>
-          </>
-        )}
-      </Paneel>
-
-      <Paneel titel={tr('bd.staffCount', { n: mensen.length, money: geld(prognose.lonen) })}>
-        {mensen.length === 0 ? (
-          <p className="bd-rustig">{tr('bd.noStaff')}</p>
-        ) : (
-          <ul className="bd-mensen">
-            {mensen.map((m) => (
-              <MedewerkerRij key={m.id} m={m} dag={bedrijf.dag} bezig={bezig} doe={doe} />
-            ))}
-          </ul>
-        )}
-        {monteurs > 0 && (
-          <p className="bd-rustig bd-klein">
-            {tr('bd.mechanicsEffect', {
-              service: Math.round(Math.min(REGELS.monteurOnderhoudMax, monteurs * REGELS.monteurOnderhoud) * 100),
-              wear: Math.round(Math.min(REGELS.monteurSlijtageMax, monteurs * REGELS.monteurSlijtage) * 100)
-            })}
-          </p>
-        )}
-      </Paneel>
-
-      <Paneel titel={tr('bd.applicants', { day: bedrijf.dag })}>
-        {vandaag.length === 0 ? (
-          <p className="bd-rustig">{tr('bd.noApplicants')}</p>
-        ) : (
-          <div className="bd-aanbod">
-            {vandaag.map((s) => {
-              const markt = marktloon(s.rol, s.ervaring)
-              return (
-                <article key={s.nr} className="bd-kaart">
-                  <span className="bd-vorm">{tr(s.rol === 'chauffeur' ? 'bd.role.driver' : 'bd.role.mechanic')}</span>
-                  <b>{s.naam}</b>
-                  <Meter waarde={s.ervaring} tekst={tr('bd.experience', { n: Math.round(s.ervaring) })} />
-                  <span className="bd-prijs">
-                    {geld(s.loon)}
-                    <small> {tr('bd.perDayShort')}</small>
-                  </span>
-                  <small className={s.loon > markt ? 'let' : ''}>
-                    {tr(s.loon > markt ? 'bd.aboveMarket' : 'bd.atMarket', { money: geld(markt) })}
-                  </small>
-                  <button
-                    type="button"
-                    className="bd-knop hoofd"
-                    disabled={bezig}
-                    onClick={() => doe(window.career.bedrijfAannemen(s.nr))}
-                  >
-                    {tr('bd.hire')}
-                  </button>
-                </article>
-              )
-            })}
-          </div>
-        )}
-      </Paneel>
-    </div>
-  )
-}
-
-function MedewerkerRij({
-  m,
-  dag,
-  bezig,
-  doe
-}: {
-  m: Medewerker
-  dag: number
-  /* Eén handeling tegelijk: een dubbelklik gaf "dat lukte niet" terwijl het wel lukte. */
-  bezig: boolean
-  doe: (actie: Promise<{ payload: CareerPayload; fout?: string } | CareerPayload>) => void
-}): JSX.Element {
-  const tr = useT()
-  const geld = useGeld()
-  const ziek = m.ziekTot !== undefined && m.ziekTot >= dag
-  const cursus = m.cursusTot !== undefined && m.cursusTot >= dag
-  return (
-    <li>
-      <span className="bd-avatar" aria-hidden="true">
-        {/* Voornaam en het laatste deel van de achternaam: "Frank de Vries" is FV, niet Fd. */}
-        {`${m.naam.split(' ')[0]?.[0] ?? ''}${m.naam.split(' ').slice(-1)[0]?.[0] ?? ''}`.toUpperCase()}
-      </span>
-      <span className="bd-wat">
-        <b>{m.naam}</b>
-        <small>
-          {tr(m.rol === 'chauffeur' ? 'bd.role.driver' : 'bd.role.mechanic')} ·{' '}
-          {tr('bd.since', { day: m.sinds })}
-        </small>
-      </span>
-      <Meter waarde={m.ervaring} tekst={tr('bd.experience', { n: Math.round(m.ervaring) })} />
-      <Meter
-        waarde={m.tevredenheid}
-        tekst={tr('bd.satisfaction', { n: Math.round(m.tevredenheid) })}
-        toon={m.tevredenheid < REGELS.vertrekOnder + 10 ? 'laat' : m.tevredenheid < 50 ? 'let' : 'goed'}
-      />
-      <span className="bd-bedrag">
-        {geld(m.loon)}
-        <small> {tr('bd.perDayShort')}</small>
-      </span>
-      <span className={`bd-status ${ziek || cursus ? 'let' : 'optijd'}`}>
-        {ziek ? tr('bd.sickUntil', { day: m.ziekTot ?? dag }) : cursus ? tr('bd.onCourse') : tr('bd.working')}
-      </span>
-      <span className="bd-acties">
-        <button
-          type="button"
-          className="bd-knop"
-          disabled={bezig || cursus || ziek || m.ervaring >= 100}
-          title={tr('bd.trainingTitle', { n: REGELS.bijscholingErvaring })}
-          onClick={() => doe(window.career.bedrijfBijscholing(m.id))}
-        >
-          {tr('bd.training', { money: geld(REGELS.bijscholingKosten) })}
-        </button>
-        <button type="button" className="bd-knop" disabled={bezig} onClick={() => doe(window.career.bedrijfOpslag(m.id))}>
-          {tr('bd.raise', { money: geld(Math.round((m.loon * REGELS.opslagFactor) / 100) * 100 - m.loon) })}
-        </button>
-        <button
-          type="button"
-          className="bd-knop zacht"
-          disabled={bezig}
-          onClick={() => {
-            if (!window.confirm(tr('bd.fireAsk', { name: m.naam, money: geld(m.loon * REGELS.ontslagDagen) }))) return
-            doe(window.career.bedrijfOntslaan(m.id))
-          }}
-        >
-          {tr('bd.fire')}
-        </button>
-      </span>
-    </li>
-  )
-}
-
-function Meter({ waarde, tekst, toon }: { waarde: number; tekst: string; toon?: 'goed' | 'let' | 'laat' }): JSX.Element {
-  return (
-    <span className="bd-staat">
-      <span className={`bd-meter ${toon ?? ''}`}>
-        <i style={{ width: `${Math.max(0, Math.min(100, waarde))}%` }} />
-      </span>
-      <small>{tekst}</small>
-    </span>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/* Boekingen                                                          */
-/* ------------------------------------------------------------------ */
-
-function Boeken({ bedrijf, alle }: { bedrijf: BedrijfStaat; alle?: boolean }): JSX.Element {
-  const tr = useT()
-  const taal = useLanguage()
-  const geld = useGeld()
-  const lijst = (
-    <ul className="bd-boeken">
-      {bedrijf.boekingen.slice(0, alle ? 200 : 6).map((b, i) => (
-        <li key={i}>
-          <span className="bd-dag">{b.dag}</span>
-          <span className="bd-wat">
-            <b>{loose(taal, `bd.kind.${b.soort}`, b.soort)}</b>
-            <small>{b.wat}</small>
-          </span>
-          <span className={`bd-bron ${b.gemeten ? 'gemeten' : ''}`}>
-            {tr(b.gemeten ? 'bd.measured' : 'bd.calculated')}
-          </span>
-          <span className={`bd-bedrag ${b.bedrag < 0 ? 'laat' : b.bedrag > 0 ? 'optijd' : ''}`}>
-            {b.bedrag === 0 ? '' : geld(b.bedrag, true)}
-          </span>
-        </li>
-      ))}
-    </ul>
-  )
-  return alle ? <Paneel titel={tr('bd.books')}>{lijst}</Paneel> : lijst
 }
 
 /* ------------------------------------------------------------------ */

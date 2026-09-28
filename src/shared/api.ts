@@ -1,3 +1,4 @@
+import type { BedrijfPlanApi } from './bedrijfApi'
 import type { Controle } from '../core/addoncheck'
 import type { Schermvorm } from './scherm'
 import type { Busanalyse, Busmap } from '../core/busklaar'
@@ -601,7 +602,7 @@ export interface ApparaatStand {
   fout?: string
 }
 
-export interface CareerApi {
+export interface CareerApi extends BedrijfPlanApi {
   status(): Promise<OmsiStatus>
   /**
    * De telefoon: aanmelden met je personeelsnummer en pincode.
@@ -888,7 +889,8 @@ export interface CareerApi {
     lineFile: string
   ): Promise<{ payload: CareerPayload; fout?: 'kas' | 'al' | 'lijn' | 'geen' }>
   bedrijfOpzeggen(mapFolder: string, lineFile: string): Promise<CareerPayload>
-  bedrijfDagAf(): Promise<CareerPayload>
+  /** Met `fout: 'rit'` zolang er een bedrijfsrit aangenomen is. */
+  bedrijfDagAf(): Promise<{ payload: CareerPayload; fout?: 'rit' } | CareerPayload>
   bedrijfMarkt(): Promise<{ nieuw: MarktBus[]; tweedehands: Aanbod[] }>
   bedrijfKoop(
     soort: 'nieuw' | 'tweedehands',

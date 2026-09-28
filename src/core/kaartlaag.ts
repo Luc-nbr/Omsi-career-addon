@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, statSync } from 'node:fs'
 import { extname, join } from 'node:path'
 import {
   kiesVertrekplek,
@@ -24,7 +24,11 @@ import { herkenKaart, type Herkenning, type Monster } from './kaartherkenning'
 import { bestemmingenVan } from './haltes'
 import { hofVoorKaart, listHofs, matchHof, type Hof } from './hof'
 import { spawnAtStop } from './spawn'
-import { generateDuties, buildNetwork, type Network } from './duty'
+import { generateDuties, buildNetwork, dutyVanRitten, type Network } from './duty'
+import { kaartDag, lijnWeek } from './bedrijfsplan'
+import { bouwLijnplan } from './lijnplan'
+import { lijnSleutel, type LijnPlek } from './bedrijfsklok'
+import type { KaartDag, LijnPlan, LijnWeek } from './planTypen'
 import {
   buildFleetIndex,
   maakBusGeheugen,
@@ -51,7 +55,7 @@ import {
   type BusHofState,
   type HofFile
 } from './hofTool'
-import type { OmsiMap } from './types'
+import type { Duty, OmsiMap } from './types'
 import {
   TIME_WINDOWS,
   type Assignment,
@@ -195,6 +199,32 @@ export interface Kaartlaag {
    * dienstregeling, en 22 wagenparken naast de MAN SG: 30 ms, ook warm).
    */
   vrijeWagenparken(folder: string, vehiclePath: string, year: number): YardOption[]
+  /*
+   * De planning van het busbedrijf (bedrijfsplan.ts). `kaartDag` blijft in het
+   * geheugen (hoogstens 64): het venster vraagt bij elke actie een paar dagen
+   * op, en warm kost het een paar ms.
+   */
+  kaartDag(folder: string, lineFiles: string[], anker: string, dag: number): KaartDag
+  lijnWeek(folder: string, anker: string, vanDag: number): Record<string, LijnWeek>
+  /** De dienst voor OMSI bij een stuk van een omloop uit het plan; zie `dutyVanRitten`. */
+  dienstDuty(folder: string, deel: { lineFile: string; tourNumber: string; days: number; ritten: string[] }): Duty | undefined
+  /** Het lijnplan voor de vlootkaart; zie lijnplan.ts. */
+  lijnplan(folder: string, lineFiles: string[], anker: string, dag: number): LijnPlan
+  /**
+   * Op welke geïnstalleerde kaarten een lijn (de naam van het .ttl-bestand,
+   * zonder .ttl, zoals OMSI hem in `mem.lineName` zet) voorkomt. Gemeten bij
+   * Luc: 48 van de 52 lijnnamen van HafenCity staan ook op een andere kaart,
+   * dus een lijnnaam alleen wijst zelden één kaart aan.
+   */
+  kaartenMetLijn(lijn: string): LijnPlek[]
+}
+
+function diepBevroren<T>(x: T): T {
+  if (x && typeof x === 'object' && !Object.isFrozen(x)) {
+    Object.freeze(x)
+    for (const v of Object.values(x)) diepBevroren(v)
+  }
+  return x
 }
 
 export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
@@ -221,6 +251,9 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
   let kaartlijst: { op: number; mappen: string[] } | undefined
 
   const aanbodCache = new Map<string, BusHofState[]>()
+  const kaartDagCache = new Map<string, KaartDag>()
+  const lijnWeekCache = new Map<string, Record<string, LijnWeek>>()
+  let lijnIndex: { lijnen: Map<string, LijnPlek[]>; mapsTijd: number; gebouwd: number } | undefined
 
   const kaartPad = (folder: string): string => join(omsiPath, 'maps', folder)
 
@@ -633,6 +666,89 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
         variabele: info.variabele,
         lijst: info.lijst.map(({ index, naam, setvars }) => ({ index, naam, setvars }))
       }
+    },
+
+    kaartDag(folder, lineFiles, anker, dag) {
+      const sleutel = `${folder}|${[...lineFiles].sort().join(',')}|${anker}|${dag}`
+      const bewaard = kaartDagCache.get(sleutel)
+      if (bewaard) return bewaard
+      // Bevroren: het geheugen deelt hetzelfde object met elke vraag, en wie het
+      // aanpast (deel A of B) zou de dag van alle volgende vragen veranderen.
+      const uit = diepBevroren(kaartDag(laag.map(folder), laag.kalender(folder), lineFiles, anker, dag))
+      kaartDagCache.set(sleutel, uit)
+      // De oudste eruit: een Map houdt de volgorde van toevoegen aan.
+      if (kaartDagCache.size > 64) kaartDagCache.delete(kaartDagCache.keys().next().value!)
+      return uit
+    },
+
+    /*
+     * Ook bewaard: dagAf en de migratie vragen hem elke keer, en een concessie
+     * waarvan de lijn niet in de dienstregeling staat, krijgt nooit een week en
+     * vroeg hem dus bij elke afsluiting opnieuw (7-14 ms per kaart bij Luc).
+     */
+    lijnWeek(folder, anker, vanDag) {
+      const sleutel = `${folder}|${anker}|${vanDag}`
+      const bewaard = lijnWeekCache.get(sleutel)
+      if (bewaard) return bewaard
+      const uit = diepBevroren(lijnWeek(laag.map(folder), laag.kalender(folder), anker, vanDag))
+      lijnWeekCache.set(sleutel, uit)
+      if (lijnWeekCache.size > 16) lijnWeekCache.delete(lijnWeekCache.keys().next().value!)
+      return uit
+    },
+
+    /*
+     * Opnieuw opgebouwd als de map maps/ veranderd is (er kwam een kaart bij,
+     * bijvoorbeeld een DLC die Steam installeert terwijl de app draait), en in
+     * elk geval na vijf minuten: Verkenner maakt de kaartmap aan voor TTData
+     * erin gekopieerd is. De tijd van maps/ opvragen kost 0,1 ms; opbouwen
+     * 15-26 ms bij Luc (14 kaarten, 312 lijnbestanden).
+     */
+    kaartenMetLijn(lijn) {
+      let mapsTijd = 0
+      try {
+        mapsTijd = statSync(join(omsiPath, 'maps')).mtimeMs
+      } catch {
+        // Zonder maps/ geen kaarten; de lege index hieronder zegt dat al.
+      }
+      // Niet Date.now(): wie de klok van de pc terugzet, zou het vernieuwen uitstellen.
+      const nu = performance.now()
+      if (!lijnIndex || lijnIndex.mapsTijd !== mapsTijd || nu - lijnIndex.gebouwd > 5 * 60_000) {
+        // Eerst helemaal opbouwen, dan pas vastleggen: een fout halverwege
+        // liet anders de hele sessie een lege of halve index achter.
+        const lijnen = new Map<string, LijnPlek[]>()
+        for (const folder of listMaps(omsiPath)) {
+          let namen: string[]
+          try {
+            namen = readdirSync(join(kaartPad(folder), 'TTData'))
+          } catch {
+            continue
+          }
+          /*
+           * In de volgorde van readdir, niet gesorteerd: OMSI sorteert ook niet
+           * maar neemt die van FindFirstFile (de lader op 0072D434), en libuv
+           * vraagt dezelfde lijst aan Windows. Op NTFS is dat alfabetisch in
+           * hoofdletters, op exFAT of een netwerkschijf niet per se.
+           */
+          const ttl = namen.filter((n) => /\.ttl$/i.test(n))
+          ttl.forEach((naam, plek) => {
+            const sleutel = lijnSleutel(naam)
+            const al = lijnen.get(sleutel) ?? []
+            // "Lead.ttl" en " Lead.ttl" op één kaart zijn voor de klok één lijn;
+            // in OMSI's lijst staan ze wel allebei, dus `lijnen` telt ze allebei.
+            if (!al.some((p) => p.folder === folder)) lijnen.set(sleutel, [...al, { folder, plek, lijnen: ttl.length }])
+          })
+        }
+        lijnIndex = { lijnen, mapsTijd, gebouwd: nu }
+      }
+      return lijnIndex.lijnen.get(lijnSleutel(lijn)) ?? []
+    },
+
+    dienstDuty(folder, deel) {
+      return dutyVanRitten(laag.map(folder), laag.net(folder), deel)
+    },
+
+    lijnplan(folder, lineFiles, anker, dag) {
+      return bouwLijnplan(laag.map(folder), (legs) => laag.routes(folder, legs), lineFiles, laag.kalender(folder), anker, dag)
     },
 
     routes(folder, legs) {

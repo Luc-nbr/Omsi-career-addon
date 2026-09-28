@@ -47,6 +47,12 @@ import {
   type Bedrijf
 } from '../src/core/bedrijf'
 import type { LineSummary } from '../src/core/duty'
+import type { PlanCijfers } from '../src/core/planTypen'
+import { fixtureBedrijf } from './fixtures/planfixture'
+import { migreer } from '../src/core/bedrijfsdag'
+import { legeVandaag } from '../src/core/uitval'
+import { busTellerVan, verwijderBus } from '../src/core/bedrijf'
+import type { Vehicle } from '../src/core/vehicles'
 import type { Rittenstaat } from '../src/core/rittenstaat'
 import type { Duty } from '../src/core/types'
 
@@ -348,6 +354,125 @@ if ('bedrijf' in kb5) {
   klopt('in een andere bus: geen bus op de telefoon', ritVoorBedrijf(kb5.bedrijf, duty, 'Vehicles\\Ander\\x.bus')?.bus === undefined)
 }
 klopt('klein genoeg om elke tik mee te sturen (< 1 kB)', JSON.stringify(rv).length < 1000)
+
+// ---- de planning: sluitDagAf met cijfers, tellers, ziekSinds (busbedrijf-planning §3.6) ----
+console.log('')
+{
+  const fb = fixtureBedrijf()
+  const cijfers: PlanCijfers = {
+    perConcessie: [
+      { mapFolder: 'Proefstad', lineFile: 'L1', naam: '1 · Proefstad', bron: 'plan', rituren: 150, uitgevallen: 5.5, vergoeding: 16_218_00, onderaannemer: 12_000_00 },
+      { mapFolder: 'Weg', lineFile: 'W', naam: 'W · Weg', bron: 'terugval', rituren: 10, uitgevallen: 0, vergoeding: 1_000_00, onderaannemer: 900_00 }
+    ],
+    vergoeding: 17_218_00,
+    onderaannemer: 12_900_00,
+    eigenBus: 68_00,
+    uitzend: { diensten: 1, kosten: 444_70 },
+    huurbus: { omlopen: 0, kosten: 0 },
+    overuren: { minuten: 37, kosten: 53_06 },
+    lonen: 1_380_00,
+    uitgevallen: { rituren: 5.5, ritten: 3, boete: 330_00, reputatie: 1 },
+    legacyZelf: 100_00,
+    kosten: 12_900_00 + 68_00 + 444_70 + 53_06 + 1_380_00 + 330_00,
+    gereden: 160,
+    werkend: [1, 2],
+    overwerkt: [2],
+    eigenAandeel: 0.1,
+    busUren: { 101: 6.8 },
+    omlopen: 22,
+    eigenOmlopen: 1,
+    diensten: 28,
+    eigenDiensten: 2,
+    jijDiensten: 0,
+    openDiensten: 1,
+    uitbesteed: 25
+  }
+  const met = { ...fb, zelfUren: 2, vandaag: { dag: fb.dag, uitval: [], invulling: {}, stukInvulling: {}, busInvulling: {}, gereden: {} } }
+  const na = sluitDagAf(met, cijfers)
+  const vandaagGeboekt = na.boekingen.filter((x) => x.dag === fb.dag)
+  klopt('met cijfers: alles in hele centen', vandaagGeboekt.every((x) => Number.isInteger(x.bedrag)))
+  klopt('met cijfers: de kas gaat met vergoeding − kosten + invaluren', na.kas - met.kas === cijfers.vergoeding - cijfers.kosten + cijfers.legacyZelf)
+  klopt('met cijfers: de terugval staat erbij als "zonder kaart"', vandaagGeboekt.some((x) => x.wat.endsWith('(zonder kaart)')))
+  klopt('met cijfers: boete, uitzend, overuren en eigen bus geboekt', ['boete', 'uitzend', 'overuren', 'eigen-bus'].every((s) => vandaagGeboekt.some((x) => x.soort === s)))
+  const staat = na.historie!.at(-1)!
+  klopt('dagstaat: uitgevallen en uitbesteed', staat.uitgevallen === 5.5 && staat.uitbesteed === 25 && staat.openDiensten === 1)
+  klopt('vandaag is weg en de invaluren op nul', na.vandaag === undefined && na.zelfUren === 0)
+  klopt('slijtage per bus: 101 reed 6,8 u, 102 niets', na.bussen!.find((x) => x.nummer === 101)!.km === 10_000 + Math.round(6.8 * REGELS.kmPerUur) && na.bussen!.find((x) => x.nummer === 102)!.km === 10_000)
+  klopt('xp: 1 per gereden rituur plus de winstdag', (na.xp ?? 0) - (met.xp ?? 0) >= 160)
+  klopt('een bericht over wat uitviel', na.post!.some((p) => p.soort === 'uitgevallen'))
+  const ervaring = (b: Bedrijf, id: number): number => b.personeel!.find((x) => x.id === id)?.ervaring ?? -1
+  klopt('werkend krijgt ervaring (chauffeur 1 en de monteur), wie niet werkte niet', ervaring(na, 1) > 10 && ervaring(na, 6) > 40 && ervaring(na, 3) === 50)
+  const zonderOverwerk = sluitDagAf(met, { ...cijfers, overwerkt: [] })
+  const blij = (b: Bedrijf, id: number): number => b.personeel!.find((x) => x.id === id)?.tevredenheid ?? -1
+  klopt('alleen wie overwerkt was wordt er minder blij van', blij(na, 2) < blij(zonderOverwerk, 2) && blij(na, 1) === blij(zonderOverwerk, 1))
+  klopt('zonder cijfers: het oude pad (geen boete-boeking)', !sluitDagAf(met).boekingen.some((x) => x.soort === 'boete'))
+
+  // Tellers: een verkocht nummer komt niet terug, en het rooster wordt opgeruimd.
+  let t: Bedrijf = { ...fb, kas: 1_000_000_00, rooster: { bussen: { 'o|1': 103 }, chauffeurs: { 'o|1|1': 6 } } }
+  t = verkoop(t, 103)
+  klopt('verkoop ruimt het rooster op', t.rooster!.bussen['o|1'] === undefined)
+  const gekocht = koopNieuw(t, markt[0])
+  klopt('na verkoop van 103 krijgt de volgende bus 104', 'bedrijf' in gekocht && gekocht.bedrijf.bussen!.at(-1)!.nummer === 104)
+  t = ontsla(t, 6)
+  klopt('ontslag ruimt het rooster op', t.rooster!.chauffeurs['o|1|1'] === undefined)
+  const aangenomen = neemAan(t, sollicitanten(t)[0].nr)
+  klopt('na ontslag van 6 krijgt de volgende 7', 'bedrijf' in aangenomen && aangenomen.bedrijf.personeel!.at(-1)!.id === 7)
+
+  // ziekSinds: de eerste dag van de ziekte, en weg zodra hij beter is.
+  let z: Bedrijf = { ...fb, personeel: fb.personeel!.map((m) => ({ ...m, ziekTot: undefined, ziekSinds: undefined })) }
+  let gezien = false
+  let gewist = false
+  for (let i = 0; i < 400 && !(gezien && gewist); i++) {
+    const voor = z
+    z = sluitDagAf(z)
+    for (const m of z.personeel!) {
+      const was = voor.personeel!.find((x) => x.id === m.id)
+      if (m.ziekTot !== undefined && was?.ziekTot === undefined && m.ziekSinds === voor.dag + 1) gezien = true
+      if (was?.ziekTot !== undefined && m.ziekTot === undefined && m.ziekSinds === undefined) gewist = true
+    }
+  }
+  klopt('ziekSinds is de dag na de afsluiting, en gaat samen met ziekTot weg', gezien && gewist)
+}
+
+/* Verzoeken uit het wagenparkontwerp (§F11) die nog in deel 0 horen. */
+{
+  // (a) De waarde verandert niet mee als de migratie de vorm uit OMSI haalt.
+  const fb = fixtureBedrijf()
+  const alsSolo = { ...fb, bussen: fb.bussen!.map((x) => (x.nummer === 101 ? { ...x, vorm: 'solo' as const } : x)) }
+  const voor = waardeVan(alsSolo.bussen!.find((x) => x.nummer === 101)!)
+  const sg = { relativePath: 'Vehicles\\SG292\\SG292.bus', manufacturer: 'MAN', type: 'SG292', aanhanger: 'x.bus' } as unknown as Vehicle
+  const na = migreer(alsSolo, [], {}, [sg]).bedrijf
+  const b101 = na.bussen!.find((x) => x.nummer === 101)!
+  klopt('migratie zet de vorm van de SG292 op geleed', b101.vorm === 'geleed')
+  klopt('en legt de nieuwprijs vast met de oude vorm', b101.nieuwwaarde === REGELS.nieuwprijs.solo)
+  klopt('dus de waarde blijft gelijk', waardeVan(b101) === voor)
+  const nieuw = koopNieuw({ ...richtBedrijfOp('Waarde'), kas: 10_000_000_00 }, { relativePath: 'a.bus', naam: 'A', vorm: 'solo' })
+  klopt('een nieuwe bus krijgt zijn nieuwprijs mee', 'bedrijf' in nieuw && nieuw.bedrijf.bussen![0].nieuwwaarde === REGELS.nieuwprijs.solo)
+
+  // (b) Een oud profiel zonder teller dat zijn hoogste bus al verkocht had.
+  let oud: Bedrijf = { ...richtBedrijfOp('Teller'), kas: 10_000_000_00 }
+  for (const n of ['A', 'B']) {
+    const k = koopNieuw(oud, { relativePath: `${n}.bus`, naam: n, vorm: 'solo' })
+    if ('bedrijf' in k) oud = k.bedrijf
+  }
+  oud = verkoop(oud, 102)
+  oud = { ...oud, busTeller: undefined }
+  klopt('de teller komt ook uit de boekingen', busTellerVan(oud) === 102)
+  const weer = koopNieuw(oud, { relativePath: 'C.bus', naam: 'C', vorm: 'solo' })
+  klopt('een verkocht nummer komt niet terug, ook zonder teller', 'bedrijf' in weer && weer.bedrijf.bussen!.at(-1)!.nummer === 103)
+
+  // (c) verwijderBus ruimt ook rooster en invulling op.
+  const met: Bedrijf = {
+    ...fb,
+    rooster: { bussen: { a: 101, b: 102 }, chauffeurs: {} },
+    vandaag: { ...legeVandaag(fb.dag), busInvulling: { c: { soort: 'eigen', nummer: 101 } } }
+  }
+  const zonder = verwijderBus(met, 101)
+  klopt('verwijderBus haalt de bus weg', !zonder.bussen!.some((x) => x.nummer === 101))
+  klopt('en uit het rooster', !Object.values(zonder.rooster!.bussen).includes(101) && zonder.rooster!.bussen.b === 102)
+  klopt('en uit de invulling van vandaag', Object.keys(zonder.vandaag!.busInvulling).length === 0)
+  klopt('en legt de teller vast', (zonder.busTeller ?? 0) >= 103)
+}
 
 console.log(fouten ? `\n${fouten} fout(en)` : '\nalles klopt')
 process.exit(fouten ? 1 : 0)

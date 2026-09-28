@@ -79,6 +79,9 @@ type Opdracht =
     }
   /* De wagenparken naast een bus bij vrij rijden: koud 63 tot 348 ms. */
   | { id: number; soort: 'vrijewagenparken'; folder: string; vehiclePath: string; year: number }
+  // De planning van het busbedrijf: de dienst voor OMSI en het lijnplan voor de vlootkaart.
+  | { id: number; soort: 'dienstduty'; folder: string; deel: { lineFile: string; tourNumber: string; days: number; ritten: string[] } }
+  | { id: number; soort: 'lijnplan'; folder: string; lineFiles: string[]; anker: string; dag: number }
 
 interface Antwoord {
   id: number
@@ -161,7 +164,12 @@ parentPort?.on('message', (opdracht: Opdracht) => {
       uitkomst = laag.elders(opdracht.folder, opdracht.keuze, opdracht.monsters)
     else if (opdracht.soort === 'vrijewagenparken')
       uitkomst = laag.vrijeWagenparken(opdracht.folder, opdracht.vehiclePath, opdracht.year)
-    else uitkomst = laag.routes(opdracht.folder, opdracht.legs)
+    else if (opdracht.soort === 'dienstduty') uitkomst = laag.dienstDuty(opdracht.folder, opdracht.deel)
+    else if (opdracht.soort === 'lijnplan')
+      uitkomst = laag.lijnplan(opdracht.folder, opdracht.lineFiles, opdracht.anker, opdracht.dag)
+    else if (opdracht.soort === 'routes') uitkomst = laag.routes(opdracht.folder, opdracht.legs)
+    // Een opdracht die hier niet staat, is een fout en geen stille route-aanvraag.
+    else throw new Error(`onbekende opdracht: ${(opdracht as { soort: string }).soort}`)
 
     const antwoord: Antwoord = { id: opdracht.id, ok: true, ms: Date.now() - begin, uitkomst, detail }
     parentPort?.postMessage(antwoord)

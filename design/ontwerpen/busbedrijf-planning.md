@@ -120,7 +120,7 @@ HafenCityHamburg, "Addon Tag und Nacht Li. 109", met de definitieve knipregel:
 
 - **Tijden:**
   - Vroegste vertrek −15,017 (55301), laatste aankomst 1506,4.
-  - 35 vertrekken liggen vóór 03:00. Zaterdag 55201 rijdt van 00:14 tot 08:11.
+  - 35 vertrekken liggen vóór 03:00. Zaterdag 55201 rijdt van 00:14 tot 08:26 (lokaal nagemeten 28-09-2026: de laatste rit, tot 08:26, is een leegrit van 2 haltes; die telt als werktijd, niet als rituur).
   - Van de 1217 ritten hebben er 533 twee haltes. Dat zijn Überliegeplatz- en LEE-ritten (t2.ts).
 
 ### 2.2 Tarieven
@@ -586,7 +586,7 @@ In de dispatch komen expliciete `else if`'s. De laatste tak `else uitkomst = laa
   - `bedrijf:kaart` — `werkerVraag({ soort: 'lijnplan', … }, 'voorgrond')`, met terugval op `laag().lijnplan`.
   - `bedrijf:klok`:
     - `freshLive()` (:1604);
-    - `kaartKlopt` is waar als de mapFolder van `activeDuty.assignment.duty` of van `vrijeRit` gelijk is aan de gevraagde kaart. Anders, als `live.alive` en `mem.lineName` bij een concessielijn van die kaart hoort: waar. In alle andere gevallen `{ bron: 'geen' }`. `readLastMap` wordt niet gebruikt, want dat is pas bekend als OMSI afgesloten is (startup.ts:95-105);
+    - `kaartKlopt` komt uit `core/bedrijfsklok.ts` (gebouwd in deel 0, na de lokale meting van 28-09-2026; de eerdere regel hier liet een dienst in de app winnen zonder naar OMSI te kijken, en een lijnnaam alleen wijst zelden één kaart aan: 48 van de 52 lijnen van HafenCity staan ook op een andere kaart). Staat de lijn van OMSI (`mem.lineName`, de .ttl-naam zonder .ttl) niet op deze kaart: `{ bron: 'omsi', kaartKlopt: false }`, zodat `bd.kaart.andereKaart` (§8.5) kan verschijnen. Staat hij alleen op deze kaart: waar. Op meer kaarten, of geen of een onbekende lijnnaam: de kaart van de dienst of vrije rit in de app beslist. Weet niets het: `{ bron: 'geen' }`. Een datum van nullen (OMSI in het menu) is ook `geen`. `readLastMap` wordt niet gebruikt, want dat is pas bekend als OMSI afgesloten is (startup.ts:95-105);
     - `minuten = live.time/60`, `datum = y-m-d uit live`.
   - `bedrijf:lijnWeek` — `laag().lijnWeek(folder, anker, b?.dag ?? 1)`.
   - `bedrijf:inschrijven` (:4940-4948) — `lijnWeek` voor die lijn berekenen, dan `schrijfIn(b, kaart, lijn, week)` en het anker vastleggen.
@@ -1493,7 +1493,8 @@ export function plekOpKlok(o: KaartOmloop, sporen: Map<string, Track>, stops: Ma
 export function vertragingVan(dag: number, omloop: OmloopSleutel, rit: number, ervaring?: number, staat?: number): number
 //   −1..8 min, reeks-zaad; hoger bij ervaring < 50 en staat < 80; alleen weergave
 export function klokUitOmsi(minuten: number, omsiDatum: string, bedrijfsdatum: string, plan: { van: number; tot: number }): number | undefined
-//   zelfde datum → minuten; datum = bedrijfsdatum + 1 en minuten + 1440 ≤ plan.tot → minuten + 1440; anders undefined
+//   zelfde datum → minuten; datum = bedrijfsdatum + 1 en minuten + 1440 ≤ plan.tot → minuten + 1440;
+//   datum = bedrijfsdatum − 1 en minuten − 1440 ≥ plan.van → minuten − 1440 (het begin op −15, 23:45 de avond ervoor); anders undefined
 ```
 
 - **Klok:** het bereik is `[plan.van, plan.tot]`. De regel 03:00–27:00 vervalt; `klokVoorDienst` (index.ts:1345-1347) is hier niet het goede voorbeeld.
@@ -1510,7 +1511,9 @@ export function useBedrijfsklok(mapFolder: string | undefined, plan: { van: numb
 ```
 
 - Peilt `bedrijfKlok` elke 2 s zolang het venster zichtbaar is.
-- Bij `omsi`, `kaartKlopt` en een `klokUitOmsi` die iets geeft: de OMSI-tijd, en daartussen ×1.
+- Bij `omsi`, `kaartKlopt` en een `klokUitOmsi` die iets geeft: de OMSI-tijd, en daartussen ×1. `minuten` heeft een breuk (865,5): voor de weergave "OMSI 14:25" naar beneden afronden.
+- Pauzeert OMSI, dan schrijft de plugin niet meer en wordt de stand na 15 s `geen`. Dan loopt de klok door vanaf de laatste OMSI-tijd, en niet terug naar de tijd van de pc.
+- Bij `omsi` met `kaartKlopt: false`: de melding `bd.kaart.andereKaart` en de eigen klok.
 - Anders een eigen klok via rAF, die begint bij de tijd van de pc of bij de waarde in `localStorage['bd.klok.'+kaart]` (in try/catch).
 
 ### 8.2 Scherm (tab "Kaart")
@@ -1771,7 +1774,7 @@ E bezit:
 - **Een dienst vlak na middernacht.** 55301 begint om −00:15 en 00:05, dus aanmelden valt op zaterdag 23:35 (situation.ts:210-211). Niet nagekeken of OMSI dan de zondagomloop in het menu toont.
 - **`vormVanVoertuig`.** Fietsaanhangers (TH S315 UL) worden via de naam uitgesloten. De 69 verschillen tussen naam en aanhanger zijn niet allemaal met de hand nagekeken (Kajosoft 628g, O530 GU).
 - **Tekenprestatie.** RouteMap met 22 bewegende markers en een zwevend kaartje bij ×60 is niet in de app gemeten.
-- **`kaartKlopt`.** Dat `live.year/month/day` en `mem.lineName` altijd gevuld zijn, is niet nagelopen in een echte live.json.
+- **`kaartKlopt`.** Nagelopen op 28-09-2026 in Lucs live.json: `mem.lineName` is de .ttl-naam zonder .ttl ("Freitag"), `time` heeft een breuk, en de datum is nul zolang OMSI in het menu staat.
 - **`lijnplan` op de voorgrondwerker.** Kan achter een trage `hofaanbod` wachten; één speler mat 27,7 s (kaartwerker.ts:77-82). De technische tegenlezer stelde de achtergrondwerker voor. Die sluit zich na het opwarmen en wacht tijdens het opwarmen achter het inlezen van de tegels (index.ts:451-540). Ik koos de voorgrond, met een terugval op main.
 - **Lucs eigen profiel** is niet gelezen: zijn dag, kas, het loon en de ervaring van zijn chauffeur. Of zijn chauffeur boven de 25 ervaring zit, maakt alleen uit voor de waarschuwing.
 - **Het vlootkaart-getal "33 routes, piek ongeveer 15 bussen om 14:25"** komt van de kaartlezer (probe-livekaart.ts) en is niet opnieuw gemeten.

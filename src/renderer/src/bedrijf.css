@@ -1103,9 +1103,25 @@
     border-bottom: 1px solid var(--vel-lijn);
   }
 
+  /*
+   * Met Planning en Kaart erbij zijn het tien tabs; afbreken gaf twee of drie
+   * rommelige regels. Nu één regel over de volle breedte die opzij schuift.
+   */
   .bd-zij nav {
+    order: 3;
+    flex: 1 0 100%;
     flex-direction: row;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
+  .bd-zij nav button {
+    flex: none;
+    gap: 6px;
+    padding: 7px 9px;
+    font-size: 13px;
+    white-space: nowrap;
   }
 
   .bd-zij-onder {

@@ -48,6 +48,7 @@ import { Flag } from "./Flag";
 import { GameSetup } from "./GameSetup";
 import { Profiel } from "./Profiel";
 import { BedrijfApp } from "./Bedrijf";
+import type { Tab as BedrijfTab } from "./BedrijfDelen";
 import { AddonsApp } from "./Addons";
 import { RunningDuty } from "./RunningDuty";
 import {
@@ -223,6 +224,9 @@ export function App(): JSX.Element {
   const [career, setCareer] = useState<CareerPayload>();
 
   const [screen, setScreen] = useState<Screen>("profiles");
+  // De tab en melding van de bedrijfsapp; hier, zodat ze een rit naar OMSI overleven.
+  const [bedrijfTab, setBedrijfTab] = useState<BedrijfTab>("dashboard");
+  const [bedrijfMelding, setBedrijfMelding] = useState<string>();
   const [mode, setMode] = useState<GameMode>("service");
 
   const [mapFolder, setMapFolder] = useState("");
@@ -2447,11 +2451,21 @@ export function App(): JSX.Element {
    */
   if (screen === "bedrijf" && career?.state) {
     return (
-      <BedrijfApp
-        bedrijf={career.state.bedrijf}
-        onCareer={setCareer}
-        onTerug={() => setScreen("modes")}
-      />
+      <LanguageProvider language={language}>
+        <BedrijfApp
+          bedrijf={career.state.bedrijf}
+          activeDuty={career.state.activeDuty}
+          tab={bedrijfTab}
+          onTab={setBedrijfTab}
+          melding={bedrijfMelding}
+          onMelding={setBedrijfMelding}
+          onCareer={setCareer}
+          onTerug={() => {
+            setBedrijfMelding(undefined);
+            setScreen("modes");
+          }}
+        />
+      </LanguageProvider>
     );
   }
 

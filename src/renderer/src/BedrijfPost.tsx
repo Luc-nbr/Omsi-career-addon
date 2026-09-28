@@ -31,11 +31,17 @@ const AFZENDER: Record<BerichtSoort, Afzender> = {
   ontevreden: 'personeelszaken',
   werkplaats: 'werkplaats',
   slijtage: 'werkplaats',
-  opleiding: 'opleidingen'
+  opleiding: 'opleidingen',
+  telaat: 'personeelszaken',
+  pech: 'werkplaats',
+  ochtend: 'directie',
+  uitgevallen: 'opdrachtgever',
+  rooster: 'directie',
+  vorm: 'werkplaats'
 }
 
 /** Waarden in centen: die worden een bedrag voordat ze in de tekst gaan. */
-const BEDRAGEN = new Set(['kas', 'resultaat', 'bedrag'])
+const BEDRAGEN = new Set(['kas', 'resultaat', 'bedrag', 'boete', 'kosten'])
 
 /**
  * Onderwerp en tekst van een bericht, in de taal van nu. Het bedrijf bewaart
@@ -51,6 +57,7 @@ export function berichtTekst(
     v[sleutel] = BEDRAGEN.has(sleutel) && typeof waarde === 'number' ? formatMoney(waarde / 100, language) : waarde
   }
   if (bericht.soort === 'opleiding') v.cursus = t(language, `bd.course.${bericht.v?.id}` as TextKey)
+  if (bericht.soort === 'vorm') v.vorm = t(language, `bd.vorm.${bericht.v?.vorm}` as TextKey)
   if (bericht.soort === 'rit') {
     const stap = Number(bericht.v?.stap ?? 0)
     v.stap = stap > 0 ? `+${stap}` : stap < 0 ? `${stap}` : '±0'
@@ -74,7 +81,11 @@ function toon(bericht: Bericht): 'goed' | 'slecht' | 'gewoon' {
     case 'vervallen':
     case 'ontevreden':
     case 'slijtage':
+    case 'pech':
+    case 'uitgevallen':
       return 'slecht'
+    case 'ochtend':
+      return Number(bericht.v?.open ?? 0) > 0 ? 'slecht' : 'gewoon'
     case 'afloop':
       return bericht.v?.verlengt ? 'gewoon' : 'slecht'
     case 'dagrapport':
@@ -85,6 +96,7 @@ function toon(bericht: Bericht): 'goed' | 'slecht' | 'gewoon' {
     case 'niveau':
     case 'verlengd':
     case 'werkplaats':
+    case 'rooster':
       return 'goed'
     default:
       return 'gewoon'

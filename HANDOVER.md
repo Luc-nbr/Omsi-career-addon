@@ -665,6 +665,81 @@ hoort niet onder je handen opnieuw op te komen (`probe-beweging.cjs`,
 
 ## 5. Openstaand werk
 
+### 5.00 De planning van het busbedrijf — deel 0 staat (28-09-2026)
+
+Ontwerp: `design/ontwerpen/busbedrijf-planning.md`. Deel 0 is het fundament
+waar de delen A-E op bouwen; **aan het spel verandert er nog niets**. De
+schakelaar is `PLAN_ACTIEF` in `src/core/rooster.ts` (onwaar):
+
+- zolang hij uit staat, sluit `bedrijf:dagAf` de dag af met de oude rekensom,
+  wordt er niet gemigreerd, gaat de week van een lijn niet mee bij het
+  inschrijven, en staan Planning en Kaart niet in de zijbalk;
+- deel A vult `dagplan`, `afrekening`, `vulAan` en `pasRoosterToe` echt in en
+  zet hem aan. Met de stubs van nu zou elke eigen bus en chauffeur niets meer
+  opleveren (alles "uitbesteed").
+
+Wat er staat:
+
+- **Pure kern, af:** `planTypen.ts` (letterlijk uit het ontwerp §3.1),
+  `bedrijfsplan.ts` (dagrooster uit de dienstregeling, knippen in diensten),
+  `planregels.ts`, `plantarief.ts`, `voertuigvorm.ts` (heet zo omdat
+  `busvorm.ts` al bestond), `bedrijfsdag.ts` (migreer, beginDag).
+- **Stubs met de vaste signatuur:** `rooster.ts`, `uitval.ts`, `invulling.ts`,
+  `bedrijfsrit.ts`, `lijnplan.ts`.
+- **Getallen om aan te draaien** staan bij elkaar in `REGELS.planning`
+  (`core/bedrijf.ts`): vergoeding per rituur, spoedtoeslag, werktijdgrenzen,
+  dienstlengte, knippauze.
+- **Main:** de kanalen `bedrijf:dagen`, `:rooster`, `:invullen`, `:rit`,
+  `:ritBus` (stub), `:kaart`, `:klok`, `:lijnWeek`. Alles wat het bedrijf
+  schrijft, ook `:koop` en `:inschrijven`, gaat door één slot (`inSlot`): een
+  handler met een await leest `career.bedrijf` pas na die await opnieuw.
+  `dagroostersVoor` leest per kaart; een kaart die niet te lezen is, krijgt
+  `fout: 'kaart'` en haalt de rest niet onderuit.
+- **Teksten:** `src/shared/tekst/` met een bestand per deel; `bd.fout.*` staat
+  alleen in `fundament.ts`. `scripts/probe-teksten.ts` bewaakt dubbele
+  sleutels, plaatshouders en de fouten.
+- **Venster:** `Bedrijf.tsx` is de schil; Dashboard, Concessies, Wagenpark
+  (met Markt) en Personeel staan in eigen bestanden, de bouwstenen in
+  `BedrijfDelen.tsx` (ook `Boeken`, anders ging het dashboard in een kring
+  naar de schil). Tab en melding wonen in App. `useDagplan.ts` haalt de
+  dagroosters op en rekent het plan (pas als PLAN_ACTIEF aan staat: anders
+  zou het openen van de app een kaart in main laden voor niets). De
+  schermafdrukken van voor en na de
+  splitsing zijn byte voor byte gelijk.
+- **Proeven:** `probe-planfixture.ts` (Proefstad, zonder OMSI),
+  `probe-bedrijf.ts` (met de nieuwe gevallen), `probe-teksten.ts`.
+
+Lokaal nagemeten op 28-09-2026 (HafenCity, lijn 109): de dagroosters, de week,
+de migratie en de klok kloppen; een koude kaartdag kost 43-165 ms per kaart,
+een warme 0,3-1,4 ms. De tien fouten uit die meting zijn gerepareerd:
+
+- een kaart die niet te lezen is, krijgt geen anker meer (het werd het jaar
+  van de pc, en de kaart rekende daar voorgoed mee);
+- `lijnWeek` staat in het geheugen van de kaartlaag, en `bedrijf:dagen`
+  rekent geen weken meer;
+- **`kaartDag` en `lijnWeek` uit de kaartlaag zijn bevroren** (Object.freeze,
+  diep): ze worden per verwijzing gedeeld. Deel A en B maken een kopie als ze
+  iets willen veranderen;
+- de klok (`core/bedrijfsklok.ts`, proef `probe-bedrijfsklok.ts`): een
+  lijnnaam telt alleen als bewijs voor een kaart als hij daar staat, en
+  `kaartKlopt: false` bestaat nu echt (OMSI rijdt aantoonbaar een andere
+  kaart). Geen crash zonder lijnnaam, geen datum van nullen;
+- tweede en derde ronde (na dfb9636 en a78cc19): de klok kijkt eerst naar de
+  plek van de lijn in OMSI's lijst (`mem.line`, de volgorde van readdir, die
+  OMSI ook gebruikt), en pas dan naar de rit in de app; die kan na een crash
+  oud zijn. Actieve chrono's laadt OMSI eerst en die schuiven de lijst op
+  (Hamburger Dom: 109 op 45 in plaats van 44). Daarom schrijft **plugin 14**
+  ook de lengte van de lijst (`mem.lines`), en telt de plek alleen op een
+  kaart met evenveel .ttl. Dat scheidt ook de twaalf lijnen die op meer
+  kaarten op dezelfde plek staan ("1"@0, "109"@1, "112"@2, 118/120/124@4-6,
+  179/183@7-8). Met een oudere plugin telt de plek zonder die controle. De
+  lijnindex bouwt opnieuw op als maps/ verandert of na vijf minuten. Lijnen
+  die alleen in Chrono/*/TTData staan, zitten er niet in (bij Luc geen
+  gevolgen: geen ervan heeft de naam van een basislijn elders);
+- de boekingen noemen de kaart bij naam, en het lijnplan de goede datum;
+- voor deel E staat in het ontwerp (§8.1) nu ook de avond ervoor (−15) in
+  `klokUitOmsi`, en dat de klok doorloopt als OMSI pauzeert.
+
 ### 5.0 Waar het nu staat (26-09-2026)
 
 **Het scherm van een apparaat staat nagebouwd in de overlay en op de tablet**
@@ -860,7 +935,10 @@ beginpunt (haltekeuze), die weer de versie met aangevinkte lijnen verving.
   `probe-koppelen.ts`). `dutyFromTour` (op de
   klok raden) is weg: dat was de "falsche Linien Route". Namen worden
   vergeleken via `vouw` (zonder pad, kleine letters, alles buiten ASCII als
-  '?'; "TTData 853_..." met de spatie van `copy_text` telt ook).
+  '?'; "TTData 853_..." met de spatie van `copy_text` telt ook). De plek
+  `line` telt alleen als terugval (OMSI gaf geen bruikbare lijnnaam), en
+  sinds plugin 14 alleen als OMSI's lijnlijst even lang is als de `.ttl` van
+  de kaart (`mem.lines`): een actieve chrono schuift de lijst op (zie 5.00).
 - **Elke volgende rit op nummer:** `legVolgensOmsi` (core/live.ts) wijst bij een
   op nummer gekoppelde dienst (`Duty.omsi`) de rit aan met `tourEntry`, en toetst
   lijn, omloop en rit. Klopt de rit niet, dan koppelt het volgen opnieuw met de

@@ -89,6 +89,14 @@ export interface OmsiKeuze {
   tour: number
   tourEntry: number
   trip: number
+  /**
+   * Hoe lang OMSI's lijnlijst is (`mem.lines`, sinds plugin 14). Een actieve
+   * chrono zet zijn lijnen vooraan en schuift `line` op (core/bedrijfsklok.ts);
+   * past de lengte niet bij de `.ttl` van de kaart, dan wijst `line` niet naar
+   * `ttlNamen`. Een oudere plugin geeft hem niet, en dan telt de plek zoals
+   * eerst.
+   */
+  lines?: number
   /** De klok van het spel, in minuten na middernacht. */
   klok: number
 }
@@ -224,7 +232,8 @@ export function koppelOmsiKeuze(map: OmsiMap, keuze: OmsiKeuze, opties: KoppelOp
     const gezocht = vouw(keuze.lineName)
     lineFile = lijnen.find((lijn) => vouw(lijn) === gezocht)
   }
-  if (!lineFile && keuze.line >= 0) {
+  const plekTelt = !(keuze.lines !== undefined && keuze.lines > 0 && keuze.lines !== opties.ttlNamen.length)
+  if (!lineFile && keuze.line >= 0 && plekTelt) {
     const opPlek = opties.ttlNamen[keuze.line]
     if (opPlek) lineFile = lijnen.find((lijn) => vouw(lijn) === vouw(opPlek))
   }

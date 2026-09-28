@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { schrijfVeilig } from './veilig'
 import type { ExamCriterion } from './exam'
 import type { Bedrijf } from './bedrijf'
+import type { LopendeRit } from './planTypen'
 import type { Rittenstaat } from './rittenstaat'
 import type { Duty } from './types'
 
@@ -110,6 +111,12 @@ export interface ActiveDuty {
   }
   /** Wanneer op "Dienst starten" is gedrukt; daarvoor is hij bevestigd maar niet begonnen. */
   startedAt?: string
+  /**
+   * Een bedrijfsrit: een dienst uit het plan van je eigen busbedrijf, aangenomen
+   * in Mijn bedrijf (ontwerp busbedrijf-planning §7). Bij het afronden telt wat
+   * je reed voor die dienst in het rooster van vandaag.
+   */
+  bedrijf?: LopendeRit
   /**
    * Wat er gereden was voordat OMSI opnieuw gestart werd.
    *

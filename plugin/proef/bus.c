@@ -641,7 +641,9 @@ int main(int argc, char **argv) {
     verwacht("plugin.log meldt dat meshes.json niet weg kon", lijst2, "meshes.json schrijven mislukt", 1);
   }
   lees_uit(map, L"live.json", live, sizeof(live));
-  verwacht("plugin 13", live, "\"plugin\":13,", 1);
+  verwacht("plugin 14", live, "\"plugin\":14,", 1);
+  /* Geen dienstregeling in deze proef: de lijnlijst (plugin 14) is dan 0 lang. */
+  verwacht("lengte van de lijnlijst", live, "\"lines\":0,", 1);
   verwacht("positie uit het geheugen (mem.ok)", live, "\"mem\":{\"ok\":1,", 1);
   char blok[1024];
   if (getalFout)
