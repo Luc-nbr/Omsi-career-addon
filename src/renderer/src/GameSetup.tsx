@@ -355,10 +355,58 @@ function redenTekst(language: Language, reden: OverlayReden | undefined): string
 }
 
 /**
- * Instellingen van de app zelf, niet van OMSI. Nu de animaties: zie
- * animaties.ts voor waarom je die los van Windows wilt kunnen kiezen.
+ * Instellingen van de app zelf, niet van OMSI: de animaties (zie animaties.ts
+ * voor waarom je die los van Windows wilt kunnen kiezen) en de schakelaar van
+ * de 3D-weergave.
  */
 function AppTab({ language }: { language: Language }): JSX.Element {
+  return (
+    <>
+      <AnimatiesKaart language={language} />
+      <Bus3dKaart language={language} />
+    </>
+  )
+}
+
+/**
+ * De schakelaar `bus3d` (bus3d-ontwerp §14): tot de ruststand via de scripts er
+ * is (F3) staat de 3D-weergave standaard uit. Aan zet hij de 3D-knop op de
+ * tegels van de buskeuze en tekent hij de busfoto's met de 3D-renderer (v4).
+ */
+function Bus3dKaart({ language }: { language: Language }): JSX.Element {
+  const [aan, setAan] = useState<boolean>()
+  useEffect(() => {
+    void window.career.settings().then((instellingen) => setAan(instellingen.bus3d === true))
+  }, [])
+  const kies = (nieuw: boolean): void => {
+    setAan(nieuw)
+    void window.career.saveSettings({ bus3d: nieuw })
+  }
+  return (
+    <section className="card">
+      <h2 className="section-title">{t(language, 'bv.settingTitle')}</h2>
+      <p className="note">{t(language, 'bv.settingIntro')}</p>
+      <div className="animatie-keuzes" role="radiogroup" aria-label={t(language, 'bv.settingTitle')}>
+        {[false, true].map((waarde) => (
+          <button
+            key={String(waarde)}
+            type="button"
+            role="radio"
+            aria-checked={aan === waarde}
+            className="animatie-keuze"
+            data-bus3d={waarde ? 'aan' : 'uit'}
+            disabled={aan === undefined}
+            onClick={() => kies(waarde)}
+          >
+            <b>{t(language, waarde ? 'bv.settingOn' : 'bv.settingOff')}</b>
+          </button>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function AnimatiesKaart({ language }: { language: Language }): JSX.Element {
   const [stand, setStand] = useState<Animaties>(animatiesStand())
   const windows = windowsRustig()
   const kies = (nieuw: Animaties): void => {

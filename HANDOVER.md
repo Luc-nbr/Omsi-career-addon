@@ -675,6 +675,370 @@ hoort niet onder je handen opnieuw op te komen (`probe-beweging.cjs`,
 
 ## 5. Openstaand werk
 
+### 5.000 Bus3D, de eigen 3D-weergave — stap 0, F0, F1 en F2 staan (29-09-2026)
+
+Ontwerp: `design/ontwerpen/bus3d.md` (met Lucs keuzes van 28-09). Tak
+`claude/bus3d`. **Voor de speler verandert er niets zolang de schakelaar uit
+staat** (Instellingen → App → "3D-weergave van de bussen (proef)", standaard
+uit tot F3), behalve de BMP-fix van stap 0. Met de schakelaar aan: een 3D-knop
+op de tegels van de buskeuze, het 3D-venster, en de busfoto v4 uit de
+3D-renderer. Zie "F2, tweede helft" hieronder.
+
+- **Stap 0, de BMP-fix in de busfoto:** de werker kiest op de inhoud
+  (`pakPlaatUit` in `core/busbeeld.ts`), het hoofdproces ook (`viaHoofdproces` in
+  `main/busfoto.ts`). Kleurstellingen met een grijze textuur: 547 → 0
+  (`scripts/probe-busfoto-bmp.ts`). De foto's staan nu in `busfotos/v3b`; `v4`
+  is voor de foto uit de 3D-renderer.
+- **Het pakket** (`core/bus3d.ts`, in de werker `'bus3d'`): per bus de geometrie
+  per (deel, o3d), de vermeldingen uit de model.cfg (lezer `schermcfg.ts`, nu
+  ook `[matl_noZcheck]`, `[matl_envmap_mask]`, `[matl_bumpmap]`,
+  `[scripttexture]`/`[useScriptTexture]`, `[texchanges]`), de materialen, en de
+  textuurlijst met alleen de KOPPEN (`textuurKop`/`ddsPlakken` in
+  `shared/beeldlezers.ts`). Texturen zoeken zoals OMSI: per map eerst exact, dan
+  dds/bmp/tga/jpg/png, dan de volgende map. De o3d's en koppen worden parallel
+  gelezen (8 tegelijk): een o3d openen kost op Windows 0,75 ms, ook warm.
+- **Schijfcache** `userData/bus3d/v1/` (`core/bus3dcache.ts`): `p/<id>.b3d`
+  (formaat in `shared/bus3dpak.ts`), `p/<id>.json` (alleen voor main: manifest,
+  bronnen, textuurpaden) en `bus/<sha1>`. LRU 1 GB. Geen textuurcache.
+- **Main** (`main/bus3d.ts`): register op id, het protocol `omsi3d://` (`p/`,
+  `t/` met Range, 409 na een gewijzigd bestand, 403 als een sleutel verdwijnt),
+  de rij per kanaal (nieuwste wint, `'vervangen'`), 20 s stilte = `'tijd'`, de
+  werker dicht na 120 s rust. IPC `bus:model3d` en `bus:lak3d` staan; de
+  preload komt in F2. In index.ts alleen: Werksoort `'bus3d'`, tussenberichten
+  van de werker (`{ id, tussen }`), het schema, en `vergeet` bij de add-on-manager.
+- **`shared/beeldlezers.ts`**: de uitpakkers van `core/textuur.ts` (DDS, TGA,
+  BMP) zonder `Buffer`, zodat de renderer-werker ze straks ook heeft.
+  `core/textuur.ts` geeft alles door; nagemeten op 12.057 bestanden onder
+  Vehicles: tot op de byte gelijk.
+
+**Versleutelde modellen (Lucs keuze 1): we tonen wat OMSI op deze pc toont.**
+Het woord in een o3d-kop is het artikelnummer van het add-on.
+`core/omsiregistratie.ts` leest `addons.ini` en `RegAddons\*.ini` en bevestigt
+een vermelding alleen als de `SteamArtNr` als geïnstalleerde DLC in
+`steamapps\appmanifest_252530.acf` staat (zonder Steam of zonder SteamArtNr:
+niet te bevestigen, dan alleen sleutel 0). `shared/o3dhussel.ts` ontwart in
+eigen code (idee uit openOMSI, nagelezen in Omsi.exe). Regels die niet mogen
+verschuiven:
+- een sleutel die niet geregistreerd is, ontwarren we NIET; >10% van de
+  buiten-o3d's weg = `'versleuteld'` (icoon);
+- het pakket bewaart elk hoekpuntblok byte voor byte zoals in het bronbestand;
+  ontwarren gebeurt alleen in het geheugen. `probe-bus3d.ts` (T-V5) controleert
+  dat er nooit ontwarde meetkunde op schijf staat;
+- de app schrijft niets in `addons.ini`, `RegAddons` of het Steam-manifest.
+
+**Tegenlezing F1 (29-09), gerepareerd; elk punt heeft een proef in
+`probe-bus3d.ts` (randgevallen) die op de code van 1592f14 faalt:**
+- Registratie: een dubbele `[addon.N]` wordt niet samengevoegd (Windows leest
+  alleen de eerste), en `ArtNr`/`SteamArtNr` tellen alleen tussen 1 en
+  2147483647 (Delphi's StrToInt); anders werd 4294979022 sleutel 11726.
+- `textuurPlan`: een DXT-textuur slaat alleen niveaus over tot een begin waarvan
+  beide zijden deelbaar zijn door 4 (`dxtMaxOverslaan`); WebGL weigert anders
+  het begin (250x250, 2x2: INVALID_OPERATION in Electron 33).
+- CTC ook op de texturen die de cfg noemt (transmap, masker, light- en nightmap):
+  de `_trans` van de NLC bij "Rheinhausen" enz. (318 vervangingen, 66 bussen).
+- Main: de rij is per venster (`WebContents`); het herbouwen na de controle is
+  een achtergrondbeurt die nooit een vraag van de speler verdringt; de rustklok
+  van 120 s loopt alleen als er geen werkervraag loopt; mislukt het herbouwen
+  van een verouderd pakket, dan wordt het vergeten en krijgt het venster
+  `bus3d:vervangen`. Nieuw: `bus:stuk3d` (het venster meldt een onleesbaar
+  pakket; main vergeet het).
+- Cache: het zijspoor noemt de grootte van het `.b3d` (afgekapt = opnieuw
+  bouwen), `fsync` vóór het hernoemen, en de werker houdt de grens van 1 GB ook
+  tijdens een sessie aan (voorheen 4,5 GB na een volle ronde).
+- Bronnen van een pakket: de mappen van alle `[mesh]`-regels, de gelezen `.dsc`'s
+  en de map van de .bus. `leesSchermcfg` onthoudt ook de tijden van de mappen
+  van de meshes (een o3d die later verschijnt), en `leesKleurstellingen` toetst
+  zijn geheugen aan de cfg, de CTC-map en elke .cti (hooguit 32 modellen).
+- `--alles` gebruikt `listVehicles` (de buskeuze) plus alle .bus met
+  `[friendlyname]`.
+
+**Proeven:** `scripts/probe-bus3d.ts` (proefset, T-G1, T-V1..T-V5, protocol,
+randgevallen; `--nulmeting`; `--alles [--diep]`), `scripts/probe-meshlijst.ts`,
+`scripts/probe-bus3d-exe.cjs` (voorbereid; `--dev` draait al),
+`scripts/bus3d-proefset.json`.
+
+**Open:** DISABLED-blokken (een meshes.json van een rit met de SL92 nodig);
+Luc bekijkt de GS GU240 (sleutel 12411) één keer in OMSI -- let op: dat is een
+KI-bus (M18 KI-Version); hij staat niet in de buskeuze, dus op deze pc is het
+icoon 'versleuteld' via de buskeuze niet te zien; de opentijd van het 3D-venster
+(F2); de exe-proef in de gebouwde exe (gedaan in de tegenlezing van F2,
+met `electron-builder --dir`); `bewaar: false` voor een fotoronde (F2,
+met foto v4).
+
+**F2, eerste helft: de renderer (29-09-2026).** Nog steeds niets voor de
+speler: er is een pagina `bus3d.html` met de viewer over het hele venster, maar
+nog geen venster in main, geen knop op de tegels en geen zijpaneel. Alles hangt
+achter de instelling `bus3d` (`Settings.bus3d`, standaard uit; main schrijft
+alleen een heldenbeeld als hij aan staat).
+
+- **De renderer-werker** (`renderer/src/bus3d/werker.ts`): één per venster,
+  een eigen `OffscreenCanvas` met één WebGL2-context (`alpha:false`, zonder
+  eigen MSAA en diepte: de tekenaar tekent in een eigen 4x-MSAA-framebuffer en
+  lost dat op; met `antialias:true` kostte een lege viewer 250 MB videogeheugen,
+  zo 150 MB). Elk beeld gaat met `transferToImageBitmap` naar het
+  `bitmaprenderer`-doek van de viewer (`bus3d/verbinding.ts`, een singleton per
+  venster); hooguit twee beelden onderweg. Er wordt alleen getekend als er iets
+  verandert. De ontleders (`bus3d/ontleder.ts`, 2-5 werkers, op Lucs pc 5)
+  pakken TGA, BMP32 en DXT zonder GPU-route uit met `shared/beeldlezers.ts`.
+- **Tekenen** (`bus3d/teken.ts`, shaders in `bus3d/shaders.ts`): het pakket komt
+  als stroom binnen; zodra de kop er is begint het textuurplan, dan worden de
+  gehusselde blokken in het geheugen ontward (stukken van 16 ms), de verschuiving
+  van de aanhanger erbij, en alles in één hoekpuntbuffer. Daarna houdt de werker
+  alleen de kop en de indices (voor een andere zichtbaarheid). Drie gangen:
+  dekkend en alfatest per materiaal samengevoegd (één tekenbeurt per materiaal,
+  NLC 18C 545 beurten in totaal), alfatest met alpha-to-coverage en een
+  verscherpte alfa, mengen per vermelding in cfg-volgorde (per deel van achter
+  naar voren, `[isshadow]` voorop op 60%). `frontFace(CW)`: de o3d is
+  linkshandig, de hoekpuntshader spiegelt x.
+- **Licht** zoals OMSI (zon, licht van boven, strooilicht), Blinn-Phong met de
+  o3d-kleuren, weerspiegeling alleen waar `[matl_envmap]` staat: op lak gedempt
+  (lakglans 0,35 x Schlick), op glas fresnel met minstens 0,6 (anders was getint
+  glas een zwarte plaat). De weerspiegelde omgeving wordt in de shader uit
+  dezelfde hemel en vloer uitgerekend, niet eerst in een kubuskaart. Khronos
+  Neutral en sRGB in de shader. De lichtwaarden staan in `LICHT` (teken.ts) en
+  zijn geijkt met de proef (O560 van 18% naar 7,9% bijna-zwart); `?proef=1&licht={...}`
+  overschrijft ze om te ijken.
+- **Schaduw:** een kaart van 2048² (DEPTH32F, PCF 5 dan 16 monsters, normaal-
+  verschuiving), alleen opnieuw bij een andere bus, lak of als alles scherp staat
+  (roosters wierpen tot dan een dichte schaduw); contactschaduw van onderen
+  (256², tot 0,6 m, twee keer vervaagd).
+- **Buiten** (`core/bus3domgeving.ts`, IPC `bus:omgeving3d`): de dag-hemel uit
+  `[sky_textures]` van envir.cfg en "Cumulus 1" uit Weather/clouds.cfg, als
+  texturen op id. De wolkenlaag pas vanaf zo'n 12°: laag aan de hemel werd hij
+  een veeg; daar staan de wolken van het panorama zelf. Matte grijze vloer die in
+  de horizon overgaat (mipniveau 5 van de hemel, anders strepen).
+- **Texturen** (`bus3d/texturen.ts`): de routes van §5.7 met het budget
+  (`textuurPlan`); DXT eerst de staart (≤ 128 px, een paar kB) en dan de rest met
+  een Range-kop; `dxt-zonder-mips` via één tekenstap naar SRGB8_ALPHA8; PNG, JPEG
+  en BMP met `createImageBitmap` zonder premultiplicatie; verkleinen doet de GPU.
+  Uploaden alleen in de tijd die de werker na een beeld geeft (6 ms): zo komt het
+  eerste beeld niet achter veertig texturen aan. Voorrang: de staarten, dan de
+  carrosserie, dan de duurste (een TGA in de ontleder bepaalt wanneer alles
+  scherp staat). Terwijl de werker 'bus3d' een nieuw pakket bouwt haalt de
+  pagina de bestanden van de textuurlijst al op (`voorhaal`, hooguit 192 MB,
+  20 s). Het budget is 160 MB min hemel en wolken, en nooit meer dan er onder
+  300 MB voor het hele venster overblijft; de LRU van vorige kleurstellingen
+  krijgt wat daarna overblijft (hooguit 64 MB). Een transmap zonder alfakanaal
+  (BMP24, JPEG, TGA24) geeft zijn helderheid als doorzichtigheid. Main stroomt
+  `omsi3d://` in stukken van 1 MB.
+- **Camera** (`bus3d/camera.ts`): §6, plus zijdelings centreren (door het
+  perspectief hing een gelede bus anders aan één kant uit beeld).
+- **Ruststand** (`core/busrust.ts`, in de werker 'bus3d'): de regels van §5.2
+  (`rustRegels` in shared/bus3d.ts, puur) met kleurVars, `startwaardenVan`, de
+  alias `vis_CTI_`/`vis_SV_`, de motorstandaarden en curves bij daglicht
+  (Kajosoft `Szyby`). `[alphascale]`: de lijst op naam gaat vóór de startwaarden
+  (die nemen ook een {if}-tak mee: Kajosoft zette `mroz` = 1 bij vorst). De lak
+  komt nu ook bij "Standaard" en staat op schijf in `s/<pakket>-<stempel>.json`
+  (stempel: .bus, scripts, constfiles, .cti's en de texturen van de
+  kleurstelling), hooguit 8 per pakket.
+- **Heldenbeeld** (§9): zodra de bus scherp en stil staat een WebP van het
+  beeld (`convertToBlob`), via `bus:heldenbeeld` naar `h/<pakket>-<kleur>-<sleutel>.webp`;
+  `bus:fotoAlsKlaar` geeft `omsi3d://h/<id>`. Niet als OMSI draait, niet zonder
+  schakelaar; gaat weg met zijn pakket.
+- **Preload** `preload/bus3d.ts` (`window.bus3d`, type `Bus3dBrug`): model, lak,
+  omgeving, heldenbeeld, fotoAlsKlaar, meld, stuk, voortgang, vervangen; het
+  venster erbij in de tweede helft (hieronder).
+- **Teksten** `shared/tekst/busviewer.ts` (`bv.*`, vier talen).
+
+**Proef:** `scripts/probe-bus3d-beeld.cjs` (eerst `npx electron-vite build`;
+dan `node_modules\electron\dist\electron.exe scripts\probe-bus3d-beeld.cjs --uit <map>`):
+een eigen Electron-hoofdproces met eigen userData, de gebouwde werker, pagina en
+preload. Per bus koud / nieuw / warm, afdrukken (voor, zijkant, achter, schuin,
+zijruit, heldenbeeld, een tweede kleurstelling), beeldtijd bij draaien, GPU
+(eigen boekhouding en nvidia-smi), lange taken, zwart en schaduw. **Let op:**
+draait er een spel, dan kloppen de tijden niet (29-09 stond de GPU op 99% door
+een spel en gaf de eerste tik 1,3 s); de proef zet de belasting vooraf in de
+uitslag.
+
+**Gemeten 29-09 (1280x720 op DPR 1,5):** zie de tabel in bus3d.md bijlage D.
+De tijden van §10 gehaald of op de grens (O560 warm scherp 631-736 ms tegen
+700), beeldtijd p95 bij draaien 1,9-6,6 ms, 0 lange taken, zwart op de O560
+7,9% (max(r,g,b) ≤ 20), schaduw 50-64% donkerder, kleurstelling wisselen
+226-490 ms de eerste keer en 12-162 ms terug. Eigen boekhouding GPU 146-293 MB.
+nvidia-smi: een lege viewer 150 MB, de SD77 met kleine texturen 130-180 MB
+boven een pagina zonder viewer; in de volle ronde is dat getal te onrustig
+(andere programma's op de GPU, contexten van de vorige pagina's).
+
+**Toen nog niet goed (opgelost in de tegenlezing van F2, zie onder):** de O560
+toonde alle twaalf standen van het zonnescherm (`cp_rollo_fenster*_visible`,
+elk alleen 1 gebruikt), de HH20 zijn laadkabel (`electric_cable_vis`), de NLC
+twee stoeltypes tegelijk. De ramen van
+de NLC en de HH Stadtbus blijven donker: het interieur ligt in de schaduw van
+het dak en de stoelen zijn donker (38-40% bijna-zwart).
+
+**F2, tweede helft: het 3D-venster en de 3D-knop (29-09-2026).** Alles achter
+de schakelaar `bus3d` (Instellingen → App, `Bus3dKaart` in `GameSetup.tsx`,
+vier talen). Zonder schakelaar: geen knop, `bus3d:open` geeft 0, en `bus:foto`
+maakt de v3b zoals altijd.
+
+- **De 3D-knop** (`Tegelactie` met `teken: '3d'`, `altijd`, `ingedrukt` in
+  `Setup.tsx`; stijl `.tegelactie.altijd` in setup.css): op de tegels van
+  niveau 3 (uitvoering) en 4 (kleurstelling, ook "Standaard"), in vrij rijden,
+  dienst en loopbaan; niet op merk, type, remise en "busjes klaarzetten". Altijd
+  zichtbaar op 60%, gevuld (`aria-pressed`) zolang die bus in het venster staat.
+  **Dubbelklik** (`Tegel.onDubbel`): de tegel negeert een klik met
+  `detail ≥ 2`, het rooster onthoudt de tegel van de laatste enkele klik en
+  opent bij `dblclick` binnen 500 ms het venster voor díe tegel. De eerste klik
+  doet dus gewoon wat hij deed.
+- **Main: `main/bus3dvenster.ts`.** `bus3d:open` (alleen van het hoofdvenster,
+  alleen met de schakelaar) geeft een volgnummer. Eén venster: een volgende vraag
+  gaat naar hetzelfde venster (`bus3d:vraag`). Kindvenster van het hoofdvenster
+  (`parent`), `sandbox: true`, de smalle preload `bus3d`, plek en maat in de
+  instellingen (`bus3dVenster`, getoetst aan de schermen; anders het midden
+  boven het hoofdvenster). Getoond zodra de pagina haar eerste plaatje heeft
+  (`bus3d:getoond`), hooguit 300 ms na `ready-to-show`. Sluiten is `destroy()`.
+  `bus3d:kies` telt alleen van dit venster, met het nieuwste volgnummer, voor de
+  bus in het venster en een kleurstelling uit zijn lijst; dan `bus3d:keuze`
+  naar het hoofdvenster. `bus3d:sluit` van het hoofdvenster als het de busstap
+  verlaat (START, een andere stap, een ander scherm); de schakelaar uit sluit
+  ook. `render-process-gone`: één keer `bus3d:venster { gecrasht }`; het
+  hoofdvenster zet `bv.windowFailed` in de waarschuwing van de busstap. Pauze:
+  verborgen of geminimaliseerd (pas als het venster al eens getoond is, anders
+  kreeg de pagina bij het laden "pauze" mee en miste ze het "geen pauze" erna),
+  of OMSI draait en geen van onze vensters had 60 s focus; OMSI draait = lichte
+  stand (tasklist hooguit eens per 20 s zolang het venster open is, plus
+  `omsiGewijzigd` van de wacht in index.ts). Taal, thema en "animaties uit" gaan
+  mee (`bus3d:instellingen`).
+- **Het hoofdvenster** (`App.tsx`): `open3d` (het vinkje is wat nu voor deze
+  bus gekozen is), `bus3dKeuze` doet wat de kleurtegel doet (`setVehicleOverride`,
+  `setKleurBus`, `setBusKleur`, merk en type, naar `'hof'`), maar alleen op de
+  busstap (`opBusstap`: `screen === 'drive'`, stap bus, niet `started` en niet
+  `vrijBezig` -- bij vrij rijden zet START alleen `vrijBezig`) en met het eigen
+  volgnummer. Verlaat het de busstap, dan `bus3dSluit`.
+- **De pagina** (`bus3d.html`): de ingang `bus3d/venster.tsx` is klein en zonder
+  React. Zodra de vraag er is, staat het heldenbeeld, de foto van de tegel of het
+  busicoon er (`#bv-voorlopig`), en pas dan laadt `bus3d/ingang.tsx` (React en de
+  teksten: een megabyte script). Het venster zelf is `bus3d/Bus3dVenster.tsx`:
+  de viewer links, een zijpaneel van 320 px rechts (smal < 900 px: eronder) met
+  merk, type en uitvoering, de kleurstellingen met stalen (boven twaalf een
+  zoekveld), de beschrijving (600 tekens, "meer"), maat en geleed, [Kiezen] en
+  [Sluiten]. Bekijken is niet kiezen: klik = in beeld, zweven = in beeld na
+  150 ms rust en terug bij weggaan; kiezen = [Kiezen], Enter (lijst of beeld) of
+  dubbelklik op een rij. De toetsen van §8.1: Esc (eerst het zoekveld leeg),
+  Ctrl+W, Ctrl+F en /, F11 (volledig scherm van HTML), pijltjes en Home/End in
+  de lijst, 1-4/0/Home/+/−/pijltjes in het beeld (BusViewer). De dealerstand
+  (`doel: 'dealer'`): titel "Dealer · …", [Deze kleurstelling], draaiplateau
+  (6°/s na 6 s zonder invoer; niet bij "animaties uit", reduced-motion of OMSI),
+  en niets over geld; de keuze komt als `bus3d:keuze` met `doel: 'dealer'`, en
+  de buskeuze doet er niets mee (F4 sluit het dealerscherm aan). Pauze in de
+  viewer: `loseContext` met een vooraf bewaarde `WEBGL_lose_context` (geen
+  foutmelding), de foto of het icoon plus [Hervatten]; hervatten brengt de
+  context terug en laadt de bus opnieuw (ongeveer 2 s).
+- **Terugval** (§9): het heldenbeeld, anders de foto v4 of v3b van de tegel
+  (`bestaandeFoto` in index.ts, zonder te tekenen), anders het busicoon;
+  versleuteld / geen model / te zwaar: icoon of foto met de uitleg; geen WebGL2:
+  de foto; meer dan 25% van de texturen weg: `bv.incomplete`.
+- **Kleurstalen** (`core/kleurstalen.ts`, werker `bus3d:stalen`, IPC
+  `bus3d:kleurstalen` en tussendoor `bus3d:stalen`): drie kleuren uit de
+  lak-textuur van elke kleurstelling: de CTC-plek met het grootste
+  buitenoppervlak die geen glas is (het plan van §5.7 kiest bij de O560 het glas
+  als "carrosserie"). DXT: alleen het mipniveau rond 64 px van de schijf; TGA,
+  BMP en PNG helemaal; JPEG geeft geen staal. Het venster vraagt ze pas als het
+  3D-beeld scherp is (of na 1,5 s): ze delen de werker met het pakket.
+- **Foto v4** (`main/busfoto4.ts`, `bus3d/fotomodus.ts`): met de schakelaar
+  vraagt `bus:foto` eerst de v4 (bij een fout of de tijd toch de v3b). Een
+  verborgen venster laadt `bus3d.html?foto=1` met dezelfde renderer en meldt
+  `bus3d:fotoGereed` als het luistert; 640x400 WebP, doorzichtig
+  (`Tekenaar.leesFoto`: geen hemel, van de vloer alleen de contactschaduw als
+  alfa), 215°/8°, strak op 88% van de breedte en iets boven het midden
+  (`Camera.fotoBeeld`). Eén tegelijk; het venster gaat 60 s na de laatste foto
+  dicht; `.geen` bij geen model of versleuteld. Map `busfotos/v4`, adres
+  `omsibus://foto/v4/<naam>.webp`; `ruimOudeFotosOp` laat v4 staan. De grote
+  fotoronde ("Busplaatjes bijwerken") blijft v3b tot F3.
+- **CSP:** `bus3d.html` `img-src … omsi3d: omsibus:`, `connect-src 'self' omsi3d:`,
+  `worker-src 'self' blob:`; `index.html` kreeg `omsi3d:` in `img-src` (het
+  heldenbeeld op de dealerfoto, F4).
+
+**Proef:** `scripts/probe-bus3d-venster.cjs` (eerst `npx electron-vite build`;
+dan `node_modules\electron\dist\electron.exe scripts\probe-bus3d-venster.cjs --uit <map>`,
+of `--geheugen <n>` voor alleen het geheugen bij n keer de NLC): de echte app met
+een eigen userData (een kopie van settings, profielen en kaartcache, schakelaar
+aan), een eigen LIVEMAP, een eigen procesnaam voor OMSI (een echt draaiend OMSI
+telt niet; de lichte stand komt van een nepproces) en de vangrails van
+probe-vrijrijden.cjs. De vensters worden zonder focus en met doorzichtigheid 0
+getoond. Wat hij nagaat en de uitslag: bus3d.md bijlage D.
+
+**Geheugen, let op:** na het eerste 3D-venster houdt het GPU-proces van de app
+ongeveer 350 MB privé geheugen en 20-180 MB videogeheugen vast (vóór het eerste
+venster 200 MB privé en 120 MB video; daarna 500-640 MB en 140-300 MB, vlak over
+12 tot 16 keer openen en sluiten; `--geheugen <n>`, videogeheugen per proces uit
+de prestatiemeter "GPU Process Memory" van Windows). Dat is opwarmen
+(shadercompiler, caches van ANGLE, pools van het stuurprogramma), geen lek.
+Geprobeerd en weer weggehaald: de context in de pagina eerst opgeven
+(loseContext) vóór `destroy()`, en het hoofdvenster laten hertekenen: geen van
+beide gaf dat geheugen terug. De werkset van het GPU-proces groeit wel door, maar
+die neemt Windows lui terug en is geen maat.
+
+**Tegenlezing F2 (29-09-2026): beeldbeoordelaar, proefdraaier en aanvaller.**
+Wat er veranderde (elk punt heeft een proef; zie bus3d.md bijlage D):
+
+- **De ruststand rekent** (`core/oscrust.ts`, nieuw): een kleine rekenmachine
+  voor `{init}` en `{frame}` (stapel van 8, `a b -` = a - b, `{if}` haalt niets
+  van de stapel, constanten en curves uit de constfiles, macro's, de laatste
+  definitie telt). Alles wat van buiten komt en niet vaststaat (datum, weer,
+  `random`, teksten, `(M.V.…)`) is NaN; een `{if}` op NaN maakt wat hij
+  toekent NaN. Wat zeker is gaat vóór de regels; wat onzeker blijft valt terug
+  op `rustRegels`, waarvan de laatste regel nu **0** is (zoals OMSI elke
+  variabele begint) behalve bij een keuze zonder 0-tak. Eerst was het "de
+  laagste gebruikte waarde", en dan stond bij 8 van de 12 proefbussen aan wat
+  OMSI verbergt (zonnescherm O560 als plaat boven het dak, fietsendrager en
+  twee stoeltypes NLC, laadkabel HH20, wimpels SD77/NL202, wielborstels
+  Kajosoft, schoolbusrollo O550). Een aanhanger zonder scripts (NLC 18C) volgt
+  de voorwagen. **Gewone uitvoering** (`typischVan` in core/busrust.ts): wat
+  een kleurstelling (of Standaard) niet zet maar de meeste kleurstellingen van
+  het model wel -- zonder dit had de O560 bij Standaard geen wielen
+  (`vis_wheels` staat alleen in de .cti's). Variabelen die op de regels vallen, per
+  bus over de 394 van de buskeuze: p50 155 -> 6, p95 269 -> 67; de lak kost
+  p50 58 / p95 87 ms (was 35 / 174: de startwaarden lezen alleen nog als de
+  rekenmachine niet rekende). `lak-2` in de
+  stempel van `s/`, `bus3d-pakket-2` in het pakket-id (nieuwe tellingen), en
+  `lak.bron` is `'script'` als de rekenmachine voor elk deel rekende.
+- **Buiten zonder harde horizon** (shaders.ts `waas`): het panorama loopt de
+  laatste twee graden in horizonwaas over, de vloer vanaf 15 m in dezelfde waas
+  (weg bij de rand van de schijf); de schaduw op de vloer iets zachter.
+- **Het venster**: de werker tekent de vorige bus niet meer zodra een andere
+  gevraagd is, en elk beeld draagt het nummer van zijn lading (`laad`): een
+  beeld van de vorige bus dat nog onderweg was, laat de verbinding vallen (geen
+  kleimodel en geen oude bus onder het zijpaneel van de nieuwe). De viewer houdt
+  de foto of het heldenbeeld tot het 3D-beeld na zijn eerste beeld scherp is
+  (of 1,5 s, of je draait). Lak tijdens het laden komt goed (onthouden in
+  de werker), pauze kort aan en uit laat de context niet meer voorgoed weg
+  (`contextWeg` meteen, herstellen pas na het lost-bericht: Chromium staat het
+  eerder niet toe), na herstel geen hangende "Texturen laden…", een tweede
+  contextverlies geeft [Opnieuw] (dat maakt zo nodig een verse context), de
+  DPR-luisteraar werkt ook na de tweede wissel, de state van het zijpaneel
+  hoort bij zijn bus en vraag (geen stalen en geen lak van de vorige bus), het
+  smalle venster vult de breedte, en het lege kader is een verloop in de
+  kleuren van Buiten.
+- **Stalen** uit de plek die de meeste kleurstellingen vervangen, per
+  kleurstelling de beste die zij zelf vervangt (O560: alle vier, niet meer het
+  grijze interieur).
+- **Textuurplan zonder S3TC** rekent DXT als RGBA (kap 2048), en de LRU ruimt
+  op met de nieuwe grens (`zetLruGrens`).
+- **Registratie**: `fotoAlsKlaar` toetst de sleutels (een pakket met een
+  ingetrokken sleutel wordt met zijn heldenbeeld vergeten), bij de eerste
+  lezing van een sessie wordt elk pakket vergeten dat niet mag, en de foto v4
+  en zijn `.geen` dragen een vingerafdruk van de bevestigde sleutels in hun
+  naam (`<16hex>-<8hex>.webp`; foto's van een andere registratie gaan weg).
+- **Schakelaar uit** sluit ook het fotovenster; een foto v4 die dan nog klaar
+  komt, gaat niet meer naar de tegel, en de tegels vragen hun foto opnieuw
+  (dan de v3b; `bus3dLaatst` in App.tsx). Zo is de app zonder schakelaar ook
+  binnen dezelfde sessie weer zoals vóór Bus3D.
+- **Twee bouwbeurten van dezelfde bus** (3D-venster en fotovenster tegelijk):
+  `Bus3dCache.schrijf` laat een pakket met hetzelfde id en dezelfde lengte
+  staan en verdraagt een mislukt hernoemen als het er intussen staat; eerst gaf
+  dat EPERM (het bestand werd al gelezen, of Defender hield het vast) en het
+  venster 'fout'.
+- **Onvolledig model**: `telling.meshes`/`meshesWeg` en het label
+  `bv.incompleteModel` ("{n} van {totaal} onderdelen ontbreken in je
+  OMSI-map") boven 25% (de MB O530 Facelift mist 268 van de 416 o3d's).
+- **Proeven**: `probe-bus3d.ts` heeft een deel "Tegenlezing F2" (`--f2` alleen
+  dat deel); `probe-bus3d-exe.cjs --dev` opent nu echt het 3D-venster
+  (schakelaar aan, zichtbaar = `visibilityState`, pakket, `p/`, `t/` met Range,
+  409, scherp, tweede bus, sluiten en opnieuw); `probe-bus3d-venster.cjs` laat
+  een venster eerst hertekenen voor een afdruk (twee afdrukken waren byte voor
+  byte gelijk) en toetst [Hervatten] in de pauze.
+
 ### 5.00 De planning van het busbedrijf — deel 0 staat (28-09-2026)
 
 Ontwerp: `design/ontwerpen/busbedrijf-planning.md`. Deel 0 is het fundament

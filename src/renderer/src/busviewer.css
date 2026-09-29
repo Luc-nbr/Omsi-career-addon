@@ -1,0 +1,388 @@
+/*
+ * De viewer van het 3D-venster (bus3d-ontwerp §8.1). Het beeld zelf volgt het
+ * thema niet: "Buiten" is altijd dezelfde hemel (§5.6). Alleen de knoppen en de
+ * regel eronder hebben een eigen, rustige stijl die op beide thema's leesbaar is.
+ */
+.bv-kader {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  /*
+   * Zolang er geen foto en geen 3D is: Buiten als verloop (hemel, waas, grijze
+   * vloer), zodat het lege kader en het busicoon bij het beeld passen dat komt.
+   * Eerst een vlak lichtblauw, dat in het donkere thema als gat oogde
+   * (beeldbeoordeling F2). Hetzelfde verloop staat in bus3d/venster.tsx en bus3d.html.
+   */
+  background: linear-gradient(to bottom, #5f8bbb 0%, #9db6cd 22%, #bcc7d0 30%, #8e9092 31.5%, #737577 100%);
+  user-select: none;
+}
+
+.bv-doek,
+.bv-foto {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.bv-doek {
+  display: block;
+  touch-action: none;
+  cursor: grab;
+  outline: none;
+  opacity: 0;
+}
+
+.bv-doek:active {
+  cursor: grabbing;
+}
+
+.bv-doek-zichtbaar {
+  opacity: 1;
+}
+
+.bv-doek:focus-visible {
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.85);
+}
+
+.bv-foto {
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.bv-regel {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  max-width: min(640px, calc(100% - 24px));
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(20, 24, 30, 0.62);
+  color: #f2f4f7;
+  font: 500 13px/1.35 system-ui, sans-serif;
+}
+
+.bv-regel-fout {
+  top: 50%;
+  bottom: auto;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  justify-content: center;
+}
+
+.bv-label {
+  opacity: 0.85;
+}
+
+.bv-knoppen {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 4px;
+}
+
+.bv-knop {
+  min-width: 32px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 7px;
+  background: rgba(20, 24, 30, 0.55);
+  color: #f2f4f7;
+  font: 600 12.5px/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.bv-knop:hover,
+.bv-knop:focus-visible {
+  background: rgba(20, 24, 30, 0.78);
+  outline: none;
+}
+
+/* Het busicoon als er geen foto en (nog) geen 3D is: nooit een leeg kader (§0.9). */
+.bv-icoonvlak {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.bv-icoon {
+  width: min(42%, 360px);
+  height: auto;
+  fill: rgba(255, 255, 255, 0.55);
+}
+
+/*
+ * HET VENSTER EROMHEEN (§8.1): links het beeld, rechts het zijpaneel van 320 px.
+ * Het paneel volgt het thema van het hoofdvenster (`.setup` draagt de kleuren,
+ * zie theme.css); het beeld niet.
+ */
+.bv-venster {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  background: var(--vel);
+  color: var(--vel-ink);
+  font-family: var(--letter);
+  font-feature-settings: var(--cijfers);
+}
+
+.bv-beeld {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+
+.bv-paneel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+  border-left: 1px solid var(--vel-rand);
+  background: var(--vel);
+  scrollbar-width: thin;
+}
+
+.bv-kop {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 18px 18px 12px;
+}
+
+.bv-merk {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vel-zacht);
+}
+
+.bv-type {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.bv-uitvoering {
+  font-size: 14px;
+  color: var(--vel-zacht);
+}
+
+.bv-blok {
+  padding: 10px 18px 12px;
+  border-top: 1px solid var(--vel-lijn);
+}
+
+.bv-kleuren {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 180px;
+}
+
+.bv-blokkop {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vel-zacht);
+}
+
+.bv-zacht {
+  margin: 0;
+  font-size: 13px;
+  color: var(--vel-zacht);
+}
+
+.bv-tekst {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-line;
+}
+
+.bv-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--route);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.bv-zoek {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--vel-rand);
+  border-radius: var(--radius-klein, 10px);
+  background: var(--veld);
+  color: var(--vel-ink);
+  font: inherit;
+  font-size: 14px;
+}
+
+.bv-zoek:focus-visible {
+  outline: 2px solid var(--route);
+  outline-offset: 1px;
+}
+
+.bv-lijst {
+  flex: 1 1 auto;
+  min-height: 120px;
+  max-height: 46vh;
+  margin: 0;
+  padding: 2px;
+  overflow: auto;
+  list-style: none;
+  border-radius: var(--radius-klein, 10px);
+  outline: none;
+  scrollbar-width: thin;
+}
+
+.bv-lijst:focus-visible {
+  box-shadow: 0 0 0 2px var(--route);
+}
+
+.bv-rij {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.bv-rij:hover,
+.bv-lijst:focus-visible .bv-rij-focus {
+  background: var(--vel-hover);
+}
+
+.bv-rij-inbeeld,
+.bv-rij-inbeeld:hover {
+  background: color-mix(in srgb, var(--route) 18%, transparent);
+  box-shadow: inset 3px 0 0 var(--route);
+}
+
+.bv-rijnaam {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bv-gekozen {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--optijd);
+}
+
+/* Drie kleuren van de carrosserie, de drukste het breedst (§7). */
+.bv-staal {
+  flex: 0 0 auto;
+  display: flex;
+  width: 30px;
+  height: 18px;
+  overflow: hidden;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1px var(--vel-rand);
+}
+
+.bv-staal i {
+  display: block;
+  flex-basis: 0;
+}
+
+.bv-staal-leeg {
+  background: var(--vel-lijn);
+}
+
+.bv-voet {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 8px;
+  padding: 12px 18px 16px;
+  border-top: 1px solid var(--vel-lijn);
+  background: var(--vel);
+}
+
+.bv-hoofdknop,
+.bv-tweedeknop {
+  height: 40px;
+  padding: 0 16px;
+  border-radius: var(--radius-rond, 999px);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.bv-hoofdknop {
+  flex: 1 1 auto;
+  border: 0;
+  background: var(--route);
+  color: #ffffff;
+}
+
+.bv-hoofdknop:hover {
+  background: var(--route-diep);
+}
+
+.bv-tweedeknop {
+  border: 1px solid var(--vel-rand);
+  background: transparent;
+  color: var(--vel-ink);
+}
+
+.bv-tweedeknop:hover {
+  background: var(--vel-hover);
+}
+
+.bv-hoofdknop:focus-visible,
+.bv-tweedeknop:focus-visible {
+  outline: 2px solid var(--route);
+  outline-offset: 2px;
+}
+
+/* Smal venster (< 900 px): het beeld bovenaan in 16:10, het paneel eronder (§8.1). */
+@media (max-width: 899px) {
+  .bv-venster {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  /* De volle breedte: met aspect-ratio en max-height werd het beeld smaller dan het venster, met een strook ernaast. */
+  .bv-beeld {
+    width: 100%;
+    height: min(62.5vw, 60vh);
+  }
+
+  .bv-paneel {
+    border-left: 0;
+    border-top: 1px solid var(--vel-rand);
+  }
+
+  .bv-lijst {
+    max-height: none;
+  }
+}

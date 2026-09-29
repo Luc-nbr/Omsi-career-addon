@@ -1,0 +1,80 @@
+{
+  "uitleg": "De proefset van Bus3D (design/ontwerpen/bus3d.md §13): 13 bussen, plus de vijf volgordebussen, de SL92 (DISABLED) en een bus met ingesprongen meshes. Paden ten opzichte van de OMSI-map. 'verwacht': wat het pakket moet opleveren op Lucs pc (28-09-2026).",
+  "bussen": [
+    { "nr": 1, "naam": "SD77", "pad": "Vehicles\\MAN_SD200\\MAN_SD77.bus", "verwacht": "pakket", "tijdNieuwMs": 400 },
+    { "nr": 2, "naam": "O560 E6", "pad": "Vehicles\\ABCoach_O560\\O560_E6.bus", "verwacht": "pakket" },
+    { "nr": 3, "naam": "NLC 12C", "pad": "Vehicles\\MAN_NewLionsCity\\MAN_12C_2door_Voith.bus", "verwacht": "pakket", "tijdNieuwMs": 1200 },
+    { "nr": 4, "naam": "NLC 18C", "pad": "Vehicles\\MAN_NewLionsCity\\MAN_18C_3door_main_Voith.bus", "verwacht": "pakket" },
+    { "nr": 5, "naam": "MB O530", "pad": "Vehicles\\MB_O530\\MB_O530.bus", "verwacht": "pakket" },
+    { "nr": 6, "naam": "Kajosoft o530", "pad": "Vehicles\\Citybus 530 by Kajosoft\\01a_o530_e2_2.bus", "verwacht": "pakket" },
+    { "nr": 7, "naam": "TH O550", "pad": "Vehicles\\TH_Ueberlandbus\\O550_Euro2.bus", "verwacht": "pakket" },
+    { "nr": 8, "naam": "HH Stadtbus 2017", "pad": "Vehicles\\HH_Stadtbus2017\\HHStadtbus2017_solo.bus", "verwacht": "pakket" },
+    { "nr": 9, "naam": "MB C2 GN + aanhanger", "pad": "Vehicles\\MB_C2_EN_BVG\\MB_C2_E5_Gn_main.bus", "verwacht": "pakket", "delen": 2 },
+    { "nr": 10, "naam": "Urbanway 18 + aanhanger", "pad": "Vehicles\\HOH_Iveco-Urbanway-18\\Urbanway_18_main.bus", "verwacht": "pakket", "delen": 2 },
+    { "nr": 11, "naam": "HH20 EBus2021 (sleutel 15657, geregistreerd; ingesprongen meshes)", "pad": "Vehicles\\HH20_EBus2021\\HHEBus2021_main.bus", "verwacht": "pakket", "sleutels": [15657] },
+    { "nr": 12, "naam": "MAN NL202 EN92 (sleutel 0)", "pad": "Vehicles\\MAN_NL_NG\\MAN_EN92_main.bus", "verwacht": "pakket", "sleutels": [0] },
+    { "nr": 13, "naam": "GS GU240 (sleutel 12411, niet geregistreerd)", "pad": "Vehicles\\VA_GS_Hochflurer\\GS_GU240.bus", "verwacht": "versleuteld", "sleutels": [12411] }
+  ],
+  "volgorde": [
+    "Vehicles\\HH109_Stadtbus_HHA\\HHStadtbus_HHA.bus",
+    "Vehicles\\HH109_Stadtbus_HHA_Schnellbus\\HHStadtbus_HHA_Schnellbus.bus",
+    "Vehicles\\HH109_Stadtgelenkbus1992_HHA\\HHStadtgelenkbus92_main.bus",
+    "Vehicles\\HH109_Stadtgelenkbus1999_VHH\\HHStadtgelenkbus99_main.bus",
+    "Vehicles\\Rheinhausen_Ueberlandbus\\RheinhausenUeberlandbus2016.bus"
+  ],
+  "disabled": "Vehicles\\MAN_SL_SG\\MAN_SL_standard.bus",
+  "ingesprongen": "Vehicles\\HH20_EBus2021\\HHEBus2021_main.bus",
+  "tg1": {
+    "uitleg": "T-G1: de [matl]-koppeling op de SD77 (G/:1310-1313).",
+    "pad": "Vehicles\\MAN_SD200\\MAN_SD77.bus",
+    "regels": [
+      { "o3d": "SD77_Klappfenster_OL1.o3d", "groep": 5, "alfa": 2 },
+      { "o3d": "SD77_wagenkasten.o3d", "groep": 2, "alfa": 0 },
+      { "o3d": "SD77_wagenkasten.o3d", "groep": 4, "nietSchrijven": true }
+    ]
+  },
+  "tv3": {
+    "uitleg": "T-V3/T-V4: de 26 bussen die met de v3-regel (meer dan 10% versleuteld) een icoon krijgen (scratchpad bus3d/definitief/sleutels/perbus.out.txt). Nu moeten er 25 een pakket geven; GS_GU240 blijft 'versleuteld' (12411). 'nul' = alleen sleutel 0: die blijven ook met een lege registratie een pakket.",
+    "bussen": [
+      "Vehicles\\HC_Volvo7900H\\Volvo_12.bus",
+      "Vehicles\\HC_Volvo7900H\\Volvo_18_main.bus",
+      "Vehicles\\HH109_Stadtbus_HHA\\HHStadtbus_HHA.bus",
+      "Vehicles\\HH109_Stadtbus_HHA_Schnellbus\\HHStadtbus_HHA_Schnellbus.bus",
+      "Vehicles\\HH109_Stadtbus_VHH\\HHStadtbus_VHH.bus",
+      "Vehicles\\HH109_Stadtbus_VHHPVG\\HHStadtbus_PVG.bus",
+      "Vehicles\\HH109_Stadtgelenkbus1992_HHA\\HHStadtgelenkbus92_main.bus",
+      "Vehicles\\HH109_Stadtgelenkbus1999_VHH\\HHStadtbus97.bus",
+      "Vehicles\\HH109_Stadtgelenkbus1999_VHH\\HHStadtbus98.bus",
+      "Vehicles\\HH109_Stadtgelenkbus1999_VHH\\HHStadtbus99.bus",
+      "Vehicles\\HH109_Stadtgelenkbus1999_VHH\\HHStadtgelenkbus99_main.bus",
+      "Vehicles\\HH109_Stadtgelenkbus2012_HHA\\HHStadtgelenkbus2012_main.bus",
+      "Vehicles\\HH109_Stadtgelenkbus2012_HHA\\XHHStadtbus2012_solo.bus",
+      "Vehicles\\HH20_EBus2021\\HHEBus2021_3T_main.bus",
+      "Vehicles\\HH20_EBus2021\\HHEBus2021_main.bus",
+      "Vehicles\\MAN_NL_NG\\MAN_EN92_main.bus",
+      "Vehicles\\MAN_NL_NG\\MAN_EN92_main_EUR.bus",
+      "Vehicles\\MAN_NL_NG\\MAN_GN92_main.bus",
+      "Vehicles\\MAN_NL_NG\\MAN_GN92_main_EUR.bus",
+      "Vehicles\\MAN_NL_NG_263\\MAN_NG313_main.bus",
+      "Vehicles\\MAN_NL_NG_263\\MAN_NG313_main_4.bus",
+      "Vehicles\\MAN_NL_NG_263\\MAN_NL263.bus",
+      "Vehicles\\MAN_NL_NG_263\\MAN_NL263_3.bus",
+      "Vehicles\\MAN_NL_NG_263\\MAN_NL313-15.bus",
+      "Vehicles\\MAN_NL_NG_263\\MAN_NUE263.bus",
+      "Vehicles\\VA_GS_Hochflurer\\GS_GU240.bus"
+    ],
+    "icoon": ["Vehicles\\VA_GS_Hochflurer\\GS_GU240.bus"],
+    "nul": [
+      "Vehicles\\MAN_NL_NG\\MAN_EN92_main.bus",
+      "Vehicles\\MAN_NL_NG\\MAN_EN92_main_EUR.bus",
+      "Vehicles\\MAN_NL_NG\\MAN_GN92_main.bus",
+      "Vehicles\\MAN_NL_NG\\MAN_GN92_main_EUR.bus"
+    ]
+  },
+  "tweeling": {
+    "uitleg": "T-V1: 21_aussen_weich3.o3d (sleutel 15657, versie 7, vlag 2) tegen zijn open tweeling.",
+    "gehusseld": "Vehicles\\HH20_EBus2021\\Model\\21_aussen_weich3.o3d",
+    "open": "Vehicles\\HH20_EBus2021\\Model\\21_aussen_weich3_#low.o3d",
+    "hoekpunten": 582
+  }
+}

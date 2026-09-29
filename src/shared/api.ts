@@ -21,6 +21,7 @@ import type { LiveStatus } from '../core/live'
 import type { VehiclePosition } from '../core/vehicle'
 import type { Settings } from '../core/settings'
 import type { OverlayLayout } from './overlay'
+import type { Bus3dKeuze, Bus3dOpenVraag, Bus3dVensterMelding } from './bus3d'
 
 /** Kaart zoals de UI hem toont. */
 export interface MapSummary {
@@ -680,6 +681,18 @@ export interface CareerApi extends BedrijfPlanApi {
   busFoto(relatiefPad: string, kleurstelling?: string): Promise<string | undefined>
   /** De kleurstellingen van een bus, of niets als hij er geen heeft. */
   busKleurstellingen(relatiefPad: string): Promise<BusKleurstellingen | undefined>
+  /**
+   * Het 3D-venster (bus3d-ontwerp §8.1): openen met deze bus, of dezelfde vraag
+   * naar het venster dat er al is. Geeft het volgnummer; 0 als de schakelaar
+   * `bus3d` uit staat.
+   */
+  bus3dOpen(vraag: Bus3dOpenVraag): Promise<number>
+  /** Het doel hield op (de busstap verlaten, START): het venster dicht als het nog deze vraag toont. */
+  bus3dSluit(aanvraag: number): void
+  /** [Kiezen] in het 3D-venster, door main getoetst: doe wat een klik op die tegel doet. */
+  opBus3dKeuze(luisteraar: (keuze: Bus3dKeuze) => void): () => void
+  /** Open of dicht, en welke bus erin staat (de gevulde 3D-knop), of dat het onverwacht wegging. */
+  opBus3dVenster(luisteraar: (melding: Bus3dVensterMelding) => void): () => void
   /** Hoe ver de app is met het klaarzetten van de kaarten. */
   kaartenStand(): Promise<KaartenStand>
   /** Begin met klaarzetten (als dat nog niet liep) en geef de stand terug. */
