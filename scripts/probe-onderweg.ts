@@ -20,6 +20,13 @@ import {
 import { bouwRittenstaat, volgSpoor, type SpoorRegel } from '../src/core/rittenstaat'
 import { completeDuty, type CareerState } from '../src/core/career'
 import type { Duty } from '../src/core/types'
+import {
+  VOORVAL_CATALOGUS,
+  VOORVAL_SOORTEN,
+  geldigeVoorvalUitslag,
+  somVanVoorvallen,
+  type VoorvalUitslag
+} from '../src/shared/voorval'
 
 let fouten = 0
 function klopt(wat: string, ja: boolean): void {
@@ -129,6 +136,62 @@ const volDuty = { ...duty, lineNumbers: ['35'], tourNumber: '1', depot: '', dura
 const zonder = completeDuty(leeg, volDuty, 'bus', {}).entries[0].pay
 const metOw = completeDuty(leeg, volDuty, 'bus', {}, undefined, ow).entries[0]
 klopt('het loon is loon plus onderweg, en het staat erbij', Math.abs(metOw.pay - (zonder + ow.bedrag)) < 0.001 && metOw.onderweg === ow)
+
+// ---- het contract van de voorvallen (B7, shared/voorval.ts) ----
+const rolstoel: VoorvalUitslag = {
+  id: 'v1',
+  soort: 'rolstoel',
+  start: 612,
+  stappen: [
+    { id: 'stil', gehaald: true },
+    { id: 'deur', gehaald: true },
+    { id: 'knielen', gehaald: null }
+  ],
+  afloop: 'goed',
+  verschoondS: 75,
+  bedrag: 10,
+  reputatie: 0,
+  xp: 5
+}
+const aanrijding: VoorvalUitslag = {
+  id: 'v2',
+  soort: 'aanrijding',
+  start: 640,
+  stappen: [{ id: 'stil', gehaald: false }],
+  afloop: 'mis',
+  verschoondS: 0,
+  bedrag: -25.5,
+  reputatie: -1,
+  xp: 0,
+  veiligheidsfout: true
+}
+const geoefend: VoorvalUitslag = { ...rolstoel, id: 'v3', oefenen: true, bedrag: 10, xp: 5, verschoondS: 30 }
+const som = somVanVoorvallen([rolstoel, aanrijding, geoefend])
+klopt(
+  `voorvallen opgeteld: geoefend telt niet voor geld, wel voor verschoning (${som.bedrag} euro, ${som.verschoondS} s)`,
+  som.bedrag === -15.5 && som.xp === 5 && som.reputatie === -1 && som.verschoondS === 105 && som.goed === 1 && som.veiligheidsfouten === 1 && som.aantal === 3
+)
+const metVoorvallen = onderwegVan({ soort: 'schadevrij' }, staat, { collisions: 0 }, [rolstoel, aanrijding])!
+klopt(
+  'onderweg: de voorvallen staan erbij en tellen in het bedrag',
+  metVoorvallen.voorvallen?.length === 2 && Math.abs(metVoorvallen.bedrag - (ow.bedrag + 10 - 25.5)) < 0.001
+)
+klopt('zonder voorvallen blijft het veld weg (oude logboeken lezen hetzelfde)', !('voorvallen' in ow))
+klopt(
+  'alleen een voorval, geen gebeurtenis en geen flits: toch een onderweg',
+  onderwegVan(undefined, undefined, {}, [rolstoel])?.bedrag === 10
+)
+klopt('een uitslag gaat heel door JSON en het nakijken', JSON.stringify(geldigeVoorvalUitslag(JSON.parse(JSON.stringify(aanrijding)))) === JSON.stringify(aanrijding))
+klopt('een onbekende soort is ongeldig', geldigeVoorvalUitslag({ ...rolstoel, soort: 'draak' }) === undefined)
+klopt('een kapot bedrag is ongeldig', geldigeVoorvalUitslag({ ...rolstoel, bedrag: 'tien' }) === undefined && geldigeVoorvalUitslag({ ...rolstoel, bedrag: Number.NaN }) === undefined)
+klopt('een stap zonder uitkomst is ongeldig', geldigeVoorvalUitslag({ ...rolstoel, stappen: [{ id: 'stil' }] }) === undefined)
+klopt('wat er verder in staat valt weg', !('geheim' in (geldigeVoorvalUitslag({ ...rolstoel, geheim: 1 }) ?? {})))
+klopt(
+  `de catalogus: 30 soorten (V1-V32 zonder V8 en V24), elk nummer één keer`,
+  VOORVAL_SOORTEN.length === 30 &&
+    new Set(VOORVAL_SOORTEN.map((s) => VOORVAL_CATALOGUS[s].nr)).size === 30 &&
+    !VOORVAL_SOORTEN.some((s) => ['V8', 'V24'].includes(VOORVAL_CATALOGUS[s].nr))
+)
 
 console.log(fouten ? `\n${fouten} fout(en)` : '\nalles klopt')
 process.exit(fouten ? 1 : 0)

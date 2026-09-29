@@ -1,6 +1,6 @@
 import { constants as bufferConstants } from 'node:buffer'
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
-import { inflateRawSync } from 'node:zlib'
+import { deflateRawSync, inflateRawSync } from 'node:zlib'
 import iconv from 'iconv-lite'
 
 /*
@@ -221,4 +221,72 @@ export function openZip(pad: string): Zip {
     closeSync(fd)
     throw fout
   }
+}
+
+/**
+ * Een zip MAKEN, net zo zuinig: opslaan met deflate, namen in UTF-8 (vlag
+ * 0x800), zonder zip64 -- dus hoogstens 65535 bestanden en 4 GB. Voor de
+ * meetstand (core/meetstand.ts): een meting die Luc in één bestand kan
+ * versturen. Gelezen met `openZip` hierboven, en met Verkenner.
+ *
+ * De tijd in de zip is die van nu, in het DOS-formaat dat zip kent (op twee
+ * seconden). Geen mappen als eigen regel: een pad met / erin is genoeg.
+ */
+export function maakZip(bestanden: Array<{ naam: string; inhoud: Buffer }>, nu = new Date()): Buffer {
+  if (bestanden.length > 0xfffe) throw new ZipFout('zip64', 'Te veel bestanden voor een zip zonder zip64.')
+  const dosTijd = (nu.getHours() << 11) | (nu.getMinutes() << 5) | Math.floor(nu.getSeconds() / 2)
+  const dosDatum = ((Math.max(1980, nu.getFullYear()) - 1980) << 9) | ((nu.getMonth() + 1) << 5) | nu.getDate()
+  const lokaal: Buffer[] = []
+  const lijst: Buffer[] = []
+  let plek = 0
+  for (const { naam, inhoud } of bestanden) {
+    const schoon = veiligPad(naam)
+    if (!schoon) throw new ZipFout('kapot', `Geen bruikbare naam in de zip: ${naam}`)
+    const naamBytes = Buffer.from(schoon, 'utf8')
+    const gepakt = deflateRawSync(inhoud)
+    /* Winst of niet: een al gepakt bestand gaat er onveranderd in. */
+    const methode = gepakt.length < inhoud.length ? 8 : 0
+    const data = methode === 8 ? gepakt : inhoud
+    const crc = crc32(inhoud)
+    if (plek + 30 + naamBytes.length + data.length > 0xfffffffe) {
+      throw new ZipFout('zip64', 'Te groot voor een zip zonder zip64.')
+    }
+    const kop = Buffer.alloc(30)
+    kop.writeUInt32LE(0x04034b50, 0)
+    kop.writeUInt16LE(20, 4)
+    kop.writeUInt16LE(0x800, 6)
+    kop.writeUInt16LE(methode, 8)
+    kop.writeUInt16LE(dosTijd, 10)
+    kop.writeUInt16LE(dosDatum, 12)
+    kop.writeUInt32LE(crc, 14)
+    kop.writeUInt32LE(data.length, 18)
+    kop.writeUInt32LE(inhoud.length, 22)
+    kop.writeUInt16LE(naamBytes.length, 26)
+    kop.writeUInt16LE(0, 28)
+    lokaal.push(kop, naamBytes, data)
+
+    const regel = Buffer.alloc(46)
+    regel.writeUInt32LE(0x02014b50, 0)
+    regel.writeUInt16LE(20, 4)
+    regel.writeUInt16LE(20, 6)
+    regel.writeUInt16LE(0x800, 8)
+    regel.writeUInt16LE(methode, 10)
+    regel.writeUInt16LE(dosTijd, 12)
+    regel.writeUInt16LE(dosDatum, 14)
+    regel.writeUInt32LE(crc, 16)
+    regel.writeUInt32LE(data.length, 20)
+    regel.writeUInt32LE(inhoud.length, 24)
+    regel.writeUInt16LE(naamBytes.length, 28)
+    regel.writeUInt32LE(plek, 42)
+    lijst.push(regel, naamBytes)
+    plek += 30 + naamBytes.length + data.length
+  }
+  const inhoudsopgave = Buffer.concat(lijst)
+  const eind = Buffer.alloc(22)
+  eind.writeUInt32LE(0x06054b50, 0)
+  eind.writeUInt16LE(bestanden.length, 8)
+  eind.writeUInt16LE(bestanden.length, 10)
+  eind.writeUInt32LE(inhoudsopgave.length, 12)
+  eind.writeUInt32LE(plek, 16)
+  return Buffer.concat([...lokaal, inhoudsopgave, eind])
 }

@@ -103,7 +103,8 @@ Sinds 0.4.9 gaat al dat schrijven via een teruggelezen tijdelijk bestand
 | `roads.ts` | Spline- en objectbanen: meetkunde, soort verkeer, rijrichting |
 | `track.ts` | Route van een rit uit OMSI's eigen `.ttr` |
 | `routing.ts` | Rijstrokennet en routeplanner van halte naar halte; kiest per rit `.ttr` of planner |
-| `live.ts` | Leest `live.json` van de plugin, maakt er een `LiveStatus` van |
+| `live.ts` | Leest `live.json` van de plugin, maakt er een `LiveStatus` van; de 37 systeemgetallen van elk voertuig (`VOERTUIG_GETALLEN`, alle deuren) en de lijst voor `getallen.txt` (`getallenlijst`) |
+| `meetstand.ts` | De meetstand voor ronde 0 van de voorvallen: namen uit de varlists van de bus, de 250 ms-regels, afdrukken bij een vink, de zip |
 | `busscherm.ts` | De schermpjes van de bus uit zijn `model.cfg`: welke variabele, welk lettertype, welke kleur |
 | `busprofiel.ts` | Per bus nagebouwde apparaten (AFR 200, LAWO 8401); anders de generieke weergave |
 | `busmodule.ts` | Stelt uit het model van ELKE bus zelf een apparaat samen: schermpjes, knoppen en hun opschrift |
@@ -147,6 +148,13 @@ Sinds 0.4.9 gaat al dat schrijven via een teruggelezen tijdelijk bestand
 - `api.ts` — het contract tussen hoofdproces en interface.
 - `traject.ts` — de sleutel van een route (ritbestand + haltes) en
   `uniekeRitten`; hoofdproces, werker, scherm en telefoon rekenen ermee.
+- `voorval.ts` — **het contract van de voorvallen met de cloud** (B7): de
+  catalogus, `Voorval`, `VoorvalUitslag` (in `Onderweg.voorvallen`),
+  `VoorvalBeeld`, de spoorregel `'voorval'`, de instellingen; plus
+  `geldigeVoorvalUitslag` en `somVanVoorvallen`. Puur, zonder de motor.
+- `meetstand.ts` — de stappen van de afvinklijst van ronde 0 en `MetingBeeld`.
+- `tekst/` — teksten per deel, elk in een eigen bestand (sinds 29-09 ook
+  `meetstand.ts`).
 
 ### `src/renderer/src/`
 
@@ -674,6 +682,76 @@ hoort niet onder je handen opnieuw op te komen (`probe-beweging.cjs`,
 ---
 
 ## 5. Openstaand werk
+
+### 5.0000 Voorvallen: voorwerk (B3, B6, B7) en de meetstand voor ronde 0 (29-09-2026)
+
+Ontwerp: `design/ontwerpen/voorvallen-en-controleurs.md`. Tak
+`claude/busbedrijf-samen`. Lucs keuzes: D1 premie+quota (bedrijf, cloud), D2
+schrijven in OMSI pas na een proef, D3 loopbaan los van bedrijf. **Stiptheid
+120/180 s (B2) is NIET in deze ronde**: daar is eerst de meting van ronde 0 voor
+nodig. De plugin is niet veranderd (DLL blijft versie 14, sha1 `ec5f85d3...`).
+
+- **B3, de systeemgetallen** (`core/live.ts`, `VOERTUIG_GETALLEN`): alle
+  `PAX_Entry0..7_Open/_Req` en `PAX_Exit0..7_Open/_Req`, `Cabinair_Temp`,
+  `Dirt_Norm`, `Velocity_Ground`, `Axle_Suspension_0_L/R`. Nagekeken in
+  `Program/varlist_roadvehicle.txt` (regels 13, 35-36, 85-116, 124, 130): het
+  zijn namen van OMSI zelf, dus elke bus heeft ze vooraan in zijn getallenlijst
+  en ze gaan via `getallen.txt`, zonder nieuwe plugin. (`varlist_system.txt`
+  telt hier niet: die namen staan niet in de lijst van de bus.)
+  `voertuiggetallenVan` maakt er `Voertuiggetallen` van (deuren als
+  bitmaskers: bit N = deur N in, bit 8+N = deur N uit). `LiveStatus.voertuig`
+  draagt ze; `doorsOpen` en het advies "deuren" kijken nu naar alle deuren (in
+  Lucs o530 stond deur 0 dicht en 1-3 open).
+- **`getallen.txt` wordt anders samengesteld** (`werkGetallenBij` in
+  `main/index.ts`, `getallenlijst` in `core/live.ts`): eerst de 37
+  systeemgetallen, dan die van de apparaatschermen, dan de meetstand; hoogstens
+  512, en wat erbuiten valt komt in het logboek. De 37 verdringen geen scherm:
+  de grootste schermlijst van alle geïnstalleerde bussen is 227 (alle apparaten
+  van een o530 samen). Het liep alleen in
+  `busApparaten` (overlay, toestel of rijscherm open); nu ook elke seconde in de
+  meetlus, zodat de deuren ook zonder overlay binnenkomen.
+- **B3 in het ritspoor**: `Meting.deuren` en een spoorregel `'deuren'` (open en
+  wens als bitmaskers, met rit en halte) bij de eerste stand en bij elke
+  verandering (`volgSpoor`). De rittenstaat kijkt er nog niet naar; de
+  voorvallen (V1, V2, V6, U6) straks wel.
+- **B6, kaartverkoop zonder dat iemand meekijkt**: `telVerkoop` liep alleen in
+  `pushFrame`. Nu in `snelleLus` (250 ms, altijd), met `kassaVoorDienst` voor
+  het terugzetten per dienst. `scripts/probe-verkoopzonderoverlay.cjs` faalde
+  op de oude code ("0 verkocht", "0 wisselgeldfouten") en slaagt nu (2 en 1).
+- **B7, het contract** (`shared/voorval.ts`): zie §3. `Onderweg.voorvallen?` en
+  `OnderwegBeeld.voorval?` in `core/onderweg.ts`; `onderwegVan` neemt de
+  voorvallen mee in het bedrag (geoefende tellen niet). De spoorregel
+  `'voorval'` staat in `SpoorRegel`. **De cloudtak moet dit bestand mergen**,
+  met `VOORVAL_CONTRACT` (nu 1). Bedragen in euro's; het bedrijf rekent
+  `Math.round(bedrag * 100)`.
+- **De meetstand** (`core/meetstand.ts`, instelling `meetstand`, standaard
+  uit; OMSI-instellingen, tab App, "Meetstand (voor de ontwikkelaar)"). Aan:
+  - de plugin krijgt de vering van de andere assen en alle namen uit de
+    varlists van de bus die passen op kneel, ramp, kinderwagen, haltewunsch,
+    warnblink, failure, bremse_halte, klima, tuer/door, licht/light (in die
+    volgorde, binnen de 512; `scripts/probe-meetnamen.ts` telt het per bus: bij
+    de C2 vallen 14 lichtnamen af, bij de o530 120 licht- en deurnamen, bij de
+    MAN NL niets);
+  - `snelleLus` schrijft tijdens een dienst of vrije rit elke 250 ms een regel
+    naar `metingen/meting-<stempel>/meting-<n>-<bus>.jsonl` in de gebruikersmap
+    (tijd, klok, halte, `nextDist`, snelheid, 32 deurgetallen, scriptgetallen
+    als verschil met elke 10 s alles);
+  - de telefoon (overlay en tablet) heeft een app "Meting" met acht stappen
+    (`shared/meetstand.ts`, `renderer/src/telefoonMeting.tsx`); een vink komt
+    in het bestand, en de eerste getallen.json die de plugin NA de vink
+    schrijft wordt als `dump-<n>-<stap>.json` bewaard;
+  - "Meting opslaan" (telefoon of instellingen) maakt één zip naast de map
+    (`maakZip` in `core/zip.ts`), met de sporen van de diensten van die meting
+    erbij onder een naam zonder profiel. Geen naam, nummer, pincode, profiel-id
+    of pad van de pc (`probe-meetstand.cjs` zoekt ernaar). Na het opslaan
+    begint de volgende regel een nieuwe meting.
+  - Handleiding voor Luc: `design/ontwerpen/ronde0-meten.md` (Grundorf lijn 76,
+    de C2, de o530 U e2 en de MAN NL).
+- **Nog open (rest van ronde 1, na de meting):** B2 (aankomst en 120/180 s), B4
+  (voorvalprofiel in `busklaar.ts` en knopsoort `'cabine'`), B5 (`aanHalte()`).
+  Het hoofdproces doet één ding tegelijk: in de eerste seconden na het starten
+  van de app (kaarten klaarzetten) kan er een gat van een paar tellen in de
+  meting vallen; verder is de tussentijd 250-265 ms.
 
 ### 5.000 Bus3D, de eigen 3D-weergave — stap 0, F0, F1 en F2 staan (29-09-2026)
 
@@ -2073,7 +2151,8 @@ aan het eind wachtte was "op tijd".
 
 - **De meetlus** (`meet` in `main/index.ts`) draait elke seconde zolang
   `activeDuty.startedAt` staat, los van `pushFrame` -- die liep alleen met de
-  overlay open of een toestel erbij. Hij valt nu ook de nulmeting
+  overlay open of een toestel erbij. Sinds 29-09 staan ook de deuren in het
+  spoor (regel `'deuren'`, zie §5.0000). Hij valt nu ook de nulmeting
   (`captureBaseline`). Het spoor gaat regel voor regel naar
   `%APPDATA%\omsi-enhancer\ritten\<profiel>-<aangenomen>.jsonl`; de laatste
   twintig blijven staan, om een proefrit na te kunnen lezen.
@@ -2793,7 +2872,19 @@ Er staan probes in `scripts/`:
   de echte OMSI of gebruikersmap; de afsluitproef start en sluit alleen zijn
   eigen nepproces.
 - `probe-onderweg.ts` — flitspalen (welke borden, welke kant, boete),
-  gebeurtenissen, het rapport van de controleurs en wat er van het loon af gaat.
+  gebeurtenissen, het rapport van de controleurs en wat er van het loon af gaat;
+  sinds 29-09 ook het contract van de voorvallen (`shared/voorval.ts`).
+- Voorvallen, voorwerk (29-09, zie §5.0000): `probe-verkoopzonderoverlay.cjs`
+  (B6: verkopen tellen met de overlay dicht; met een ander pad naar
+  `main/index.js` op een oudere bouw te draaien), `probe-meetstand.cjs` (de
+  meetstand in de echte app met een nagebootste plugin; met een map erachter
+  ook een plaatje van de afvinklijst) en `probe-meetnamen.ts` (welke namen de
+  meetstand per bus vraagt en of dat in de 512 past; alleen lezen). De twee
+  Electron-proeven gebruiken `proefvangrails.cjs`: eigen gebruikersmap, eigen
+  map voor live.json, en elke schrijfactie in OMSI, in Lucs gebruikersmap of in
+  de map van de echte plugin wordt geweigerd. Draai `probe-modi.cjs` met
+  `OMSI_ENHANCER_LIVEMAP` op een tijdelijke map: de app schrijft nu elke
+  seconde `getallen.txt` als er verse gegevens zijn.
 - `probe-kaartmogelijkheden.ts` — proef 0 voor een busbedrijf-modus, alleen
   lezen: per kaart de soort ritten (.ttr / typ2 / oud), `StnLinks.cfg` ruw,
   haltes met meer dan één opvolger, KI-groepen per lijn, de wagenparklijsten

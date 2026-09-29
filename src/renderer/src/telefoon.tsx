@@ -32,6 +32,8 @@ import type { OnderwegBeeld } from "../../core/onderweg";
 import { Aankondiging, FlitsMelding, GebeurtenisKaart } from "./telefoonOnderweg";
 import type { VrijBeeld } from "../../shared/api";
 import { suggestieGroepen, vrijeStaatTekst } from "./vrijstaat";
+import type { MeetStap, MetingBeeld } from "../../shared/meetstand";
+import { MEET_ICOON, MeetApp } from "./telefoonMeting";
 
 /*
  * De telefoon: het toestel in de bus, los van het venster waarin hij staat.
@@ -58,7 +60,9 @@ export type TelefoonApp =
   | "pauze"
   | "rit"
   | "kaartjes"
-  | "apparaat";
+  | "apparaat"
+  /* De afvinklijst van de meetstand; alleen als die aanstaat (shared/meetstand.ts). */
+  | "meting";
 
 /** Een app die er alleen in de overlay bij staat: "Bekijk op apparaat". */
 export interface ExtraApp {
@@ -104,6 +108,10 @@ export interface TelefoonActies {
    * alleen plaatjes die bij een apparaat van de huidige bus horen.
    */
   textuurAdres(id: string): string;
+  /** De meetstand: een stap afvinken (of weer uit). */
+  meetVink(stap: MeetStap, aan: boolean): void;
+  /** De meetstand: de meting opslaan; de naam van de zip, of niets als er niets te bewaren was. */
+  meetOpslaan(): Promise<string | undefined>;
 }
 
 /** Wat de telefoon van het beeld nodig heeft. */
@@ -114,6 +122,8 @@ export interface TelefoonFrame extends NavFrame {
   bedrijf?: BedrijfRit;
   /** Flitsen en de gebeurtenis van de dienst; zie core/onderweg.ts. */
   onderweg?: OnderwegBeeld;
+  /** De afvinklijst van de meetstand, alleen als die aanstaat; zie core/meetstand.ts. */
+  meting?: MetingBeeld;
 }
 
 
@@ -263,6 +273,8 @@ export function Telefoon({
               acties={acties}
               language={language}
             />
+          ) : app === "meting" ? (
+            <MeetApp meting={frame.meting} acties={acties} language={language} />
           ) : extra && app === extra.id ? (
             extra.scherm
           ) : (
@@ -296,6 +308,7 @@ export function Telefoon({
         language={language}
         pauze={stand.pauzeVanaf !== undefined}
         extra={extra}
+        meting={frame.meting}
       />
       {frame.onderweg?.flits && (
         <FlitsMelding flits={frame.onderweg.flits} language={language} />
@@ -454,6 +467,7 @@ function Dock({
   language,
   pauze,
   extra,
+  meting,
 }: {
   app: TelefoonApp;
   onApp(app: TelefoonApp): void;
@@ -461,6 +475,8 @@ function Dock({
   pauze: boolean;
   /** Een app die er alleen in de overlay bij staat; zie `Telefoon`. */
   extra?: ExtraApp;
+  /** De meetstand staat aan: dan de afvinklijst erbij, met een stip zolang er gemeten wordt. */
+  meting?: MetingBeeld;
 }): JSX.Element {
   const apps: Array<{
     id: TelefoonApp;
@@ -500,6 +516,7 @@ function Dock({
       pad: "M3 6.5h18v4a2 2 0 0 0 0 3.8v4H3v-4a2 2 0 0 0 0-3.8ZM5 8.5v1.1a4 4 0 0 1 0 5.4v1.1h14v-1.1a4 4 0 0 1 0-5.4V8.5Zm4 1.6h1.6v4.6H9Zm4 0h1.6v4.6H13Z",
     },
   ];
+  if (meting) apps.push({ id: "meting", label: "meet.app", pad: MEET_ICOON });
   if (extra) apps.push({ id: extra.id, label: extra.label, pad: extra.pad });
   return (
     <nav className="dock" data-hit>
@@ -517,6 +534,7 @@ function Dock({
             <path d={item.pad} fill="currentColor" fillRule="evenodd" />
           </svg>
           {((item.id === "pauze" && pauze) ||
+            (item.id === "meting" && meting?.loopt) ||
             (item.id === extra?.id && extra?.stip)) && (
             <i className="dock-stip" aria-hidden="true" />
           )}

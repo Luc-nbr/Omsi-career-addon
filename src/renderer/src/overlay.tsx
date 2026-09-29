@@ -193,6 +193,9 @@ function Overlay(): JSX.Element | null {
       schermvorm: (id) => window.career.schermvorm(id),
       /* Een eigen protocol, zoals omsikaart en omsibus; zie main/index.ts. */
       textuurAdres: (id) => `omsischerm://t/${id}`,
+      meetVink: (stap, aan) => void window.career.metingVink(stap, aan),
+      meetOpslaan: () =>
+        window.career.metingOpslaan().then((naam) => naam ?? undefined),
     }),
     [],
   );

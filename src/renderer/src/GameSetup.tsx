@@ -19,6 +19,7 @@ import type {
 } from '../../shared/api'
 import { MODIFIER_CODES, SCANCODES } from '../../shared/scancodes'
 import { ControllersTab } from './Controllers'
+import type { MetingBeeld } from '../../shared/meetstand'
 
 interface Props {
   language: Language
@@ -364,6 +365,7 @@ function AppTab({ language }: { language: Language }): JSX.Element {
     <>
       <AnimatiesKaart language={language} />
       <Bus3dKaart language={language} />
+      <MeetstandKaart language={language} />
     </>
   )
 }
@@ -402,6 +404,100 @@ function Bus3dKaart({ language }: { language: Language }): JSX.Element {
           </button>
         ))}
       </div>
+    </section>
+  )
+}
+
+/**
+ * De meetstand (core/meetstand.ts), voor de ontwikkelaar en standaard uit:
+ * ronde 0 van de voorvallen. Hier de schakelaar, hoe ver de meting is, "Meting
+ * opslaan" en de map met metingen. De afvinklijst zelf staat op de telefoon,
+ * want die heb je in de bus bij de hand.
+ */
+function MeetstandKaart({ language }: { language: Language }): JSX.Element {
+  const [aan, setAan] = useState<boolean>()
+  const [beeld, setBeeld] = useState<MetingBeeld | null>(null)
+  const [bericht, setBericht] = useState<string>()
+  useEffect(() => {
+    void window.career.settings().then((instellingen) => setAan(instellingen.meetstand === true))
+  }, [])
+  useEffect(() => {
+    if (!aan) {
+      setBeeld(null)
+      return
+    }
+    let weg = false
+    const kijk = (): void => {
+      void window.career.metingStand().then((stand) => {
+        if (!weg) setBeeld(stand)
+      })
+    }
+    kijk()
+    const klok = setInterval(kijk, 2000)
+    return () => {
+      weg = true
+      clearInterval(klok)
+    }
+  }, [aan])
+  const kies = (nieuw: boolean): void => {
+    setAan(nieuw)
+    void window.career.saveSettings({ meetstand: nieuw })
+  }
+  const opslaan = (): void => {
+    void window.career.metingOpslaan().then((naam) =>
+      setBericht(naam ? t(language, 'meet.opgeslagen', { bestand: naam }) : t(language, 'meet.nietsOpgeslagen'))
+    )
+  }
+  const klaar = beeld?.stappen.filter((stap) => stap.klaar).length ?? 0
+  return (
+    <section className="card">
+      <h2 className="section-title">{t(language, 'meet.settingTitle')}</h2>
+      <p className="note">{t(language, 'meet.settingIntro')}</p>
+      <div className="animatie-keuzes" role="radiogroup" aria-label={t(language, 'meet.settingTitle')}>
+        {[false, true].map((waarde) => (
+          <button
+            key={String(waarde)}
+            type="button"
+            role="radio"
+            aria-checked={aan === waarde}
+            className="animatie-keuze"
+            data-meetstand={waarde ? 'aan' : 'uit'}
+            disabled={aan === undefined}
+            onClick={() => kies(waarde)}
+          >
+            <b>{t(language, waarde ? 'meet.aan' : 'meet.uit')}</b>
+          </button>
+        ))}
+      </div>
+      {aan && beeld && (
+        <>
+          <p className="note" style={{ marginTop: 10 }}>
+            {beeld.loopt
+              ? `${t(language, 'meet.loopt', {
+                  bus: beeld.bus ?? '—',
+                  regels: beeld.regels,
+                  tijd: `${Math.floor(beeld.seconden / 60)}:${String(beeld.seconden % 60).padStart(2, '0')}`
+                })} · ${klaar}/${beeld.stappen.length}`
+              : t(language, 'meet.wacht')}
+          </p>
+          {beeld.afgevallen > 0 && (
+            <p className="note warn">{t(language, 'meet.afgevallen', { n: beeld.afgevallen })}</p>
+          )}
+          <div className="actions" style={{ marginTop: 8 }}>
+            <button type="button" className="btn" data-meting="opslaan" onClick={opslaan}>
+              {t(language, 'meet.opslaan')}
+            </button>
+            <button type="button" className="btn secondary" data-meting="map" onClick={() => void window.career.metingMap()}>
+              {t(language, 'meet.openMap')}
+            </button>
+          </div>
+          {(bericht ?? (beeld.opgeslagen && t(language, 'meet.opgeslagen', { bestand: beeld.opgeslagen }))) && (
+            <p className="note" style={{ marginTop: 6 }}>
+              {bericht ?? t(language, 'meet.opgeslagen', { bestand: beeld.opgeslagen ?? '' })}
+            </p>
+          )}
+        </>
+      )}
     </section>
   )
 }

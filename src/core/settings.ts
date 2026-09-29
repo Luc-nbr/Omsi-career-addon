@@ -160,6 +160,15 @@ export interface Settings {
    * dat weg is, valt terug op het midden boven het hoofdvenster.
    */
   bus3dVenster?: Bus3dVensterPlek
+  /**
+   * De meetstand, voor de ontwikkelaar (ronde 0 van de voorvallen, zie
+   * design/ontwerpen/ronde0-meten.md). Staat standaard UIT. Aan vraagt de app
+   * de plugin om veel meer getallen van de bus, schrijft tijdens een dienst of
+   * vrije rit elke 250 ms een regel naar `metingen/` in de gebruikersmap en zet
+   * een afvinklijst op de telefoon. Voor een gewone speler heeft dat geen nut,
+   * vandaar uit.
+   */
+  meetstand?: boolean
 }
 
 export interface Bus3dVensterPlek {
@@ -269,7 +278,8 @@ export function readSettings(userDataPath: string): Settings {
       busmodules: geldigeModules(raw.busmodules),
       busknoppenStraks: geldigeWachtrij(raw.busknoppenStraks),
       bus3d: raw.bus3d === true ? true : undefined,
-      bus3dVenster: geldigeVensterPlek(raw.bus3dVenster)
+      bus3dVenster: geldigeVensterPlek(raw.bus3dVenster),
+      meetstand: raw.meetstand === true ? true : undefined
     }
   } catch {
     return {
@@ -366,7 +376,8 @@ export function writeSettings(userDataPath: string, settings: Partial<Settings>)
         ? geldigeWachtrij(settings.busknoppenStraks)
         : current.busknoppenStraks,
     bus3d: typeof settings.bus3d === 'boolean' ? settings.bus3d || undefined : current.bus3d,
-    bus3dVenster: settings.bus3dVenster ? (geldigeVensterPlek(settings.bus3dVenster) ?? current.bus3dVenster) : current.bus3dVenster
+    bus3dVenster: settings.bus3dVenster ? (geldigeVensterPlek(settings.bus3dVenster) ?? current.bus3dVenster) : current.bus3dVenster,
+    meetstand: typeof settings.meetstand === 'boolean' ? settings.meetstand || undefined : current.meetstand
   }
   const path = settingsPath(userDataPath)
   mkdirSync(dirname(path), { recursive: true })

@@ -15,6 +15,7 @@ import type { WeatherKind } from './weather'
 import type { TripRoute } from '../core/routing'
 import type { PluginStatus } from '../core/pluginInstall'
 import type { AanmeldUitslag, WisselAanbod } from './telefoon'
+import type { MeetStap, MetingBeeld } from './meetstand'
 import type { Duty, Koppelsoort } from '../core/types'
 import type { Vehicle } from '../core/vehicles'
 import type { LiveStatus } from '../core/live'
@@ -655,6 +656,15 @@ export interface CareerApi extends BedrijfPlanApi {
   telefoonKnoppen(): Promise<{ toegevoegd: number; geenPlek: number; fout?: 'bekijken' } | undefined>
   /** Een apparaat uit deze bus in de telefoon zetten of eruit halen. */
   telefoonModule(id: string, aan: boolean): Promise<void>
+  /**
+   * De meetstand (core/meetstand.ts): het beeld (null als hij uit staat), een
+   * stap afvinken, opslaan (de bestandsnaam van de zip, of null) en de map met
+   * metingen openen in Verkenner.
+   */
+  metingStand(): Promise<MetingBeeld | null>
+  metingVink(stap: MeetStap, aan: boolean): Promise<boolean>
+  metingOpslaan(): Promise<string | null>
+  metingMap(): Promise<void>
   /**
    * De vorm van een nagebouwd apparaatscherm, op id; zie shared/scherm.ts. Het
    * beeld zegt welke id er nu hoort; de vorm zelf gaat er niet elke keer mee.
