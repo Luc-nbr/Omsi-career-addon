@@ -189,6 +189,60 @@ export class Camera {
     }
     return { beeld, proj, beeldProj: vermenigvuldig(proj, beeld), oog, doel, dichtbij, ver }
   }
+
+  /**
+   * De camera van de foto v4 (§9): de beginstand (215°/8°), en de afstand zo dat
+   * de doos precies `deel` van de breedte beslaat -- of minder als hij anders te
+   * hoog wordt (hooguit 90% van de hoogte). Door het perspectief is dat niet in
+   * één keer uit te rekenen; vier stappen zijn ruim genoeg.
+   */
+  fotoBeeld(verhouding: number, deel = 0.88): CameraBeeld {
+    const stand: CameraStand = { ...BEGIN }
+    let r = this.inpasAfstand(verhouding)
+    let c = this.beeld(verhouding, { stand, afstand: r })
+    for (let i = 0; i < 4; i++) {
+      const m = this.maatInBeeld(c)
+      if (!m) break
+      const factor = Math.max(m.breedte / (2 * deel), m.hoogte / (2 * 0.9))
+      if (!(factor > 0) || Math.abs(factor - 1) < 0.002) break
+      r *= factor
+      c = this.beeld(verhouding, { stand, afstand: r })
+    }
+    /*
+     * Ook in de hoogte in het midden, iets erboven: het mikpunt ligt op 75% van de
+     * hoogte (§6), en dan zakte de bus op de foto naar de onderrand, waar de
+     * contactschaduw eraf viel.
+     */
+    const m = this.maatInBeeld(c)
+    if (m) {
+      const schuif = (m.midden - 0.04) * r * Math.tan(LENS / 2)
+      const op: Vec3 = [c.beeld[1], c.beeld[5], c.beeld[9]]
+      const oog: Vec3 = [c.oog[0] + op[0] * schuif, c.oog[1] + op[1] * schuif, c.oog[2] + op[2] * schuif]
+      const doel: Vec3 = [c.doel[0] + op[0] * schuif, c.doel[1] + op[1] * schuif, c.doel[2] + op[2] * schuif]
+      const beeld = kijkNaar(oog, doel)
+      c = { ...c, beeld, oog, doel, beeldProj: vermenigvuldig(c.proj, beeld) }
+    }
+    return c
+  }
+
+  /** Hoe breed en hoog de doos in beeld staat, en het midden in de hoogte (in NDC, 2 = het hele beeld). */
+  private maatInBeeld(c: CameraBeeld): { breedte: number; hoogte: number; midden: number } | undefined {
+    let x0 = Infinity
+    let x1 = -Infinity
+    let y0 = Infinity
+    let y1 = -Infinity
+    for (const x of [this.doos.min[0], this.doos.max[0]])
+      for (const y of [this.doos.min[1], this.doos.max[1]])
+        for (const z of [this.doos.min[2], this.doos.max[2]]) {
+          const p = projecteer(c.beeldProj, [x, y, z])
+          if (p[3] <= 0) return undefined
+          x0 = Math.min(x0, p[0])
+          x1 = Math.max(x1, p[0])
+          y0 = Math.min(y0, p[1])
+          y1 = Math.max(y1, p[1])
+        }
+    return { breedte: x1 - x0, hoogte: y1 - y0, midden: (y0 + y1) / 2 }
+  }
 }
 
 function klem(w: number, lo: number, hi: number): number {

@@ -670,11 +670,14 @@ hoort niet onder je handen opnieuw op te komen (`probe-beweging.cjs`,
 
 ## 5. Openstaand werk
 
-### 5.000 Bus3D, de eigen 3D-weergave — stap 0, F0 en F1 staan (29-09-2026)
+### 5.000 Bus3D, de eigen 3D-weergave — stap 0, F0, F1 en F2 staan (29-09-2026)
 
 Ontwerp: `design/ontwerpen/bus3d.md` (met Lucs keuzes van 28-09). Tak
-`claude/bus3d`. **Voor de speler verandert er nog niets** behalve de BMP-fix:
-er is nog geen 3D-venster (F2), geen preload `bus3d` en geen knop.
+`claude/bus3d`. **Voor de speler verandert er niets zolang de schakelaar uit
+staat** (Instellingen → App → "3D-weergave van de bussen (proef)", standaard
+uit tot F3), behalve de BMP-fix van stap 0. Met de schakelaar aan: een 3D-knop
+op de tegels van de buskeuze, het 3D-venster, en de busfoto v4 uit de
+3D-renderer. Zie "F2, tweede helft" hieronder.
 
 - **Stap 0, de BMP-fix in de busfoto:** de werker kiest op de inhoud
   (`pakPlaatUit` in `core/busbeeld.ts`), het hoofdproces ook (`viaHoofdproces` in
@@ -827,8 +830,8 @@ alleen een heldenbeeld als hij aan staat).
   `bus:fotoAlsKlaar` geeft `omsi3d://h/<id>`. Niet als OMSI draait, niet zonder
   schakelaar; gaat weg met zijn pakket.
 - **Preload** `preload/bus3d.ts` (`window.bus3d`, type `Bus3dBrug`): model, lak,
-  omgeving, heldenbeeld, fotoAlsKlaar, meld, stuk, voortgang, vervangen. Het
-  venster (vraag, kiezen, sluiten, taal) komt erbij in de tweede helft.
+  omgeving, heldenbeeld, fotoAlsKlaar, meld, stuk, voortgang, vervangen; het
+  venster erbij in de tweede helft (hieronder).
 - **Teksten** `shared/tekst/busviewer.ts` (`bv.*`, vier talen).
 
 **Proef:** `scripts/probe-bus3d-beeld.cjs` (eerst `npx electron-vite build`;
@@ -855,6 +858,109 @@ zonnescherm (`cp_rollo_fenster*_visible`, elk alleen 1 gebruikt), de HH20 zijn
 laadkabel (`electric_cable_vis`), de NLC twee stoeltypes tegelijk. De ramen van
 de NLC en de HH Stadtbus blijven donker: het interieur ligt in de schaduw van
 het dak en de stoelen zijn donker (38-40% bijna-zwart).
+
+**F2, tweede helft: het 3D-venster en de 3D-knop (29-09-2026).** Alles achter
+de schakelaar `bus3d` (Instellingen → App, `Bus3dKaart` in `GameSetup.tsx`,
+vier talen). Zonder schakelaar: geen knop, `bus3d:open` geeft 0, en `bus:foto`
+maakt de v3b zoals altijd.
+
+- **De 3D-knop** (`Tegelactie` met `teken: '3d'`, `altijd`, `ingedrukt` in
+  `Setup.tsx`; stijl `.tegelactie.altijd` in setup.css): op de tegels van
+  niveau 3 (uitvoering) en 4 (kleurstelling, ook "Standaard"), in vrij rijden,
+  dienst en loopbaan; niet op merk, type, remise en "busjes klaarzetten". Altijd
+  zichtbaar op 60%, gevuld (`aria-pressed`) zolang die bus in het venster staat.
+  **Dubbelklik** (`Tegel.onDubbel`): de tegel negeert een klik met
+  `detail ≥ 2`, het rooster onthoudt de tegel van de laatste enkele klik en
+  opent bij `dblclick` binnen 500 ms het venster voor díe tegel. De eerste klik
+  doet dus gewoon wat hij deed.
+- **Main: `main/bus3dvenster.ts`.** `bus3d:open` (alleen van het hoofdvenster,
+  alleen met de schakelaar) geeft een volgnummer. Eén venster: een volgende vraag
+  gaat naar hetzelfde venster (`bus3d:vraag`). Kindvenster van het hoofdvenster
+  (`parent`), `sandbox: true`, de smalle preload `bus3d`, plek en maat in de
+  instellingen (`bus3dVenster`, getoetst aan de schermen; anders het midden
+  boven het hoofdvenster). Getoond zodra de pagina haar eerste plaatje heeft
+  (`bus3d:getoond`), hooguit 300 ms na `ready-to-show`. Sluiten is `destroy()`.
+  `bus3d:kies` telt alleen van dit venster, met het nieuwste volgnummer, voor de
+  bus in het venster en een kleurstelling uit zijn lijst; dan `bus3d:keuze`
+  naar het hoofdvenster. `bus3d:sluit` van het hoofdvenster als het de busstap
+  verlaat (START, een andere stap, een ander scherm); de schakelaar uit sluit
+  ook. `render-process-gone`: één keer `bus3d:venster { gecrasht }`; het
+  hoofdvenster zet `bv.windowFailed` in de waarschuwing van de busstap. Pauze:
+  verborgen of geminimaliseerd (pas als het venster al eens getoond is, anders
+  kreeg de pagina bij het laden "pauze" mee en miste ze het "geen pauze" erna),
+  of OMSI draait en geen van onze vensters had 60 s focus; OMSI draait = lichte
+  stand (tasklist hooguit eens per 20 s zolang het venster open is, plus
+  `omsiGewijzigd` van de wacht in index.ts). Taal, thema en "animaties uit" gaan
+  mee (`bus3d:instellingen`).
+- **Het hoofdvenster** (`App.tsx`): `open3d` (het vinkje is wat nu voor deze
+  bus gekozen is), `bus3dKeuze` doet wat de kleurtegel doet (`setVehicleOverride`,
+  `setKleurBus`, `setBusKleur`, merk en type, naar `'hof'`), maar alleen op de
+  busstap (`opBusstap`: `screen === 'drive'`, stap bus, niet `started` en niet
+  `vrijBezig` -- bij vrij rijden zet START alleen `vrijBezig`) en met het eigen
+  volgnummer. Verlaat het de busstap, dan `bus3dSluit`.
+- **De pagina** (`bus3d.html`): de ingang `bus3d/venster.tsx` is klein en zonder
+  React. Zodra de vraag er is, staat het heldenbeeld, de foto van de tegel of het
+  busicoon er (`#bv-voorlopig`), en pas dan laadt `bus3d/ingang.tsx` (React en de
+  teksten: een megabyte script). Het venster zelf is `bus3d/Bus3dVenster.tsx`:
+  de viewer links, een zijpaneel van 320 px rechts (smal < 900 px: eronder) met
+  merk, type en uitvoering, de kleurstellingen met stalen (boven twaalf een
+  zoekveld), de beschrijving (600 tekens, "meer"), maat en geleed, [Kiezen] en
+  [Sluiten]. Bekijken is niet kiezen: klik = in beeld, zweven = in beeld na
+  150 ms rust en terug bij weggaan; kiezen = [Kiezen], Enter (lijst of beeld) of
+  dubbelklik op een rij. De toetsen van §8.1: Esc (eerst het zoekveld leeg),
+  Ctrl+W, Ctrl+F en /, F11 (volledig scherm van HTML), pijltjes en Home/End in
+  de lijst, 1-4/0/Home/+/−/pijltjes in het beeld (BusViewer). De dealerstand
+  (`doel: 'dealer'`): titel "Dealer · …", [Deze kleurstelling], draaiplateau
+  (6°/s na 6 s zonder invoer; niet bij "animaties uit", reduced-motion of OMSI),
+  en niets over geld; de keuze komt als `bus3d:keuze` met `doel: 'dealer'`, en
+  de buskeuze doet er niets mee (F4 sluit het dealerscherm aan). Pauze in de
+  viewer: `loseContext` met een vooraf bewaarde `WEBGL_lose_context` (geen
+  foutmelding), de foto of het icoon plus [Hervatten]; hervatten brengt de
+  context terug en laadt de bus opnieuw (ongeveer 2 s).
+- **Terugval** (§9): het heldenbeeld, anders de foto v4 of v3b van de tegel
+  (`bestaandeFoto` in index.ts, zonder te tekenen), anders het busicoon;
+  versleuteld / geen model / te zwaar: icoon of foto met de uitleg; geen WebGL2:
+  de foto; meer dan 25% van de texturen weg: `bv.incomplete`.
+- **Kleurstalen** (`core/kleurstalen.ts`, werker `bus3d:stalen`, IPC
+  `bus3d:kleurstalen` en tussendoor `bus3d:stalen`): drie kleuren uit de
+  lak-textuur van elke kleurstelling: de CTC-plek met het grootste
+  buitenoppervlak die geen glas is (het plan van §5.7 kiest bij de O560 het glas
+  als "carrosserie"). DXT: alleen het mipniveau rond 64 px van de schijf; TGA,
+  BMP en PNG helemaal; JPEG geeft geen staal. Het venster vraagt ze pas als het
+  3D-beeld scherp is (of na 1,5 s): ze delen de werker met het pakket.
+- **Foto v4** (`main/busfoto4.ts`, `bus3d/fotomodus.ts`): met de schakelaar
+  vraagt `bus:foto` eerst de v4 (bij een fout of de tijd toch de v3b). Een
+  verborgen venster laadt `bus3d.html?foto=1` met dezelfde renderer en meldt
+  `bus3d:fotoGereed` als het luistert; 640x400 WebP, doorzichtig
+  (`Tekenaar.leesFoto`: geen hemel, van de vloer alleen de contactschaduw als
+  alfa), 215°/8°, strak op 88% van de breedte en iets boven het midden
+  (`Camera.fotoBeeld`). Eén tegelijk; het venster gaat 60 s na de laatste foto
+  dicht; `.geen` bij geen model of versleuteld. Map `busfotos/v4`, adres
+  `omsibus://foto/v4/<naam>.webp`; `ruimOudeFotosOp` laat v4 staan. De grote
+  fotoronde ("Busplaatjes bijwerken") blijft v3b tot F3.
+- **CSP:** `bus3d.html` `img-src … omsi3d: omsibus:`, `connect-src 'self' omsi3d:`,
+  `worker-src 'self' blob:`; `index.html` kreeg `omsi3d:` in `img-src` (het
+  heldenbeeld op de dealerfoto, F4).
+
+**Proef:** `scripts/probe-bus3d-venster.cjs` (eerst `npx electron-vite build`;
+dan `node_modules\electron\dist\electron.exe scripts\probe-bus3d-venster.cjs --uit <map>`,
+of `--geheugen <n>` voor alleen het geheugen bij n keer de NLC): de echte app met
+een eigen userData (een kopie van settings, profielen en kaartcache, schakelaar
+aan), een eigen LIVEMAP, een eigen procesnaam voor OMSI (een echt draaiend OMSI
+telt niet; de lichte stand komt van een nepproces) en de vangrails van
+probe-vrijrijden.cjs. De vensters worden zonder focus en met doorzichtigheid 0
+getoond. Wat hij nagaat en de uitslag: bus3d.md bijlage D.
+
+**Geheugen, let op:** na het eerste 3D-venster houdt het GPU-proces van de app
+ongeveer 350 MB privé geheugen en 20-180 MB videogeheugen vast (vóór het eerste
+venster 200 MB privé en 120 MB video; daarna 500-640 MB en 140-300 MB, vlak over
+12 tot 16 keer openen en sluiten; `--geheugen <n>`, videogeheugen per proces uit
+de prestatiemeter "GPU Process Memory" van Windows). Dat is opwarmen
+(shadercompiler, caches van ANGLE, pools van het stuurprogramma), geen lek.
+Geprobeerd en weer weggehaald: de context in de pagina eerst opgeven
+(loseContext) vóór `destroy()`, en het hoofdvenster laten hertekenen: geen van
+beide gaf dat geheugen terug. De werkset van het GPU-proces groeit wel door, maar
+die neemt Windows lui terug en is geen maat.
 
 ### 5.00 De planning van het busbedrijf — deel 0 staat (28-09-2026)
 

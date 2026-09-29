@@ -7,6 +7,7 @@ import type {
   KaartenStand,
   OmsiMelding
 } from '../shared/api'
+import type { Bus3dKeuze, Bus3dVensterMelding } from '../shared/bus3d'
 
 /**
  * De renderer praat alleen via deze brug met het bestandssysteem; er staat geen
@@ -20,6 +21,18 @@ const api: CareerApi = {
   logboekMelden: (regel) => ipcRenderer.invoke('logboek:melden', regel),
   busFoto: (relatiefPad, kleurstelling) => ipcRenderer.invoke('bus:foto', relatiefPad, kleurstelling),
   busKleurstellingen: (relatiefPad) => ipcRenderer.invoke('bus:kleurstellingen', relatiefPad),
+  bus3dOpen: (vraag) => ipcRenderer.invoke('bus3d:open', vraag),
+  bus3dSluit: (aanvraag) => ipcRenderer.send('bus3d:sluit', aanvraag),
+  opBus3dKeuze: (luisteraar) => {
+    const heen = (_gebeurtenis: unknown, keuze: Bus3dKeuze): void => luisteraar(keuze)
+    ipcRenderer.on('bus3d:keuze', heen)
+    return () => ipcRenderer.removeListener('bus3d:keuze', heen)
+  },
+  opBus3dVenster: (luisteraar) => {
+    const heen = (_gebeurtenis: unknown, melding: Bus3dVensterMelding): void => luisteraar(melding)
+    ipcRenderer.on('bus3d:venster', heen)
+    return () => ipcRenderer.removeListener('bus3d:venster', heen)
+  },
   kaartenStand: () => ipcRenderer.invoke('kaarten:stand'),
   kaartenVoorbereiden: () => ipcRenderer.invoke('kaarten:voorbereiden'),
   /** Meeluisteren met het klaarzetten; geeft een opzegfunctie terug. */

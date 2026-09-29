@@ -15,6 +15,7 @@ import {
   type Bus3dMeting,
   type Bus3dOmgeving,
   type Bus3dReden,
+  type Bus3dStalen,
   type Bus3dVoortgang
 } from '../shared/bus3d'
 
@@ -64,6 +65,11 @@ export interface Bus3dAfhankelijk {
   omsiDraait?: () => boolean
   /** Staat de schakelaar `bus3d` aan (instellingen, tot F3 standaard uit)? Zonder deze functie: aan. */
   aan?: () => boolean
+  /**
+   * Geen heldenbeeld: de foto die de tegel al heeft (v4, anders v3b), als die op
+   * schijf staat. Zonder te tekenen: het 3D-venster wacht er nooit op (§9).
+   */
+  fotoTerugval?: (relatiefPad: string, kleurstelling?: string) => string | undefined
 }
 
 /** Wat de werker op `bus3d:model` terugstuurt. */
@@ -86,6 +92,11 @@ export interface Bus3dDienst {
    * (de foto v4 komt er later bij).
    */
   fotoAlsKlaar(relatiefPad: string, kleurstelling?: string, verhouding?: 'breed' | 'smal'): string | undefined
+  /**
+   * `bus3d:kleurstalen`: drie kleuren per kleurstelling (§7), uit de werker;
+   * `tussen` krijgt wat al klaar is. Onthouden per bus zolang de app draait.
+   */
+  kleurstalen(relatiefPad: string, tussen?: (stalen: Bus3dStalen) => void): Promise<Bus3dStalen>
   /** `bus:meld3d`: een meting van het venster, voor het logboek (§11.3). */
   meld(meting: Bus3dMeting): void
   /** Het protocol `omsi3d://`. */
@@ -515,14 +526,41 @@ export function maakBus3dDienst(af: Bus3dAfhankelijk): Bus3dDienst {
     const pad = String(relatiefPad ?? '')
     if (!/\.bus$/i.test(pad) || isAbsolute(pad) || pad.split(/[\\/]/).includes('..')) return undefined
     const z = cache.zoek(af.omsi(), pad)
-    if (!z) return undefined
+    if (!z) return af.fotoTerugval?.(pad, kleurstelling)
     const klassen = verhouding === 'smal' ? ['smal', 'breed'] : ['breed', 'smal']
     const sleutels = klassen.flatMap((k) => ['d2', 'd15', 'd1'].map((d) => `${k}-${d}-buiten-vast`))
     const gevonden = cache.zoekHeld(z.pakket, kleurstelling, sleutels)
-    if (!gevonden) return undefined
+    if (!gevonden) return af.fotoTerugval?.(pad, kleurstelling)
     const id = heldId(gevonden)
     helden.set(id, gevonden)
     return `omsi3d://h/${id}`
+  }
+
+  // ------------------------------------------------------------ kleurstalen (§7)
+  const stalen = new Map<string, Bus3dStalen>()
+  async function kleurstalen(relatiefPad: string, tussen?: (s: Bus3dStalen) => void): Promise<Bus3dStalen> {
+    const pad = String(relatiefPad ?? '')
+    if (!/\.bus$/i.test(pad) || isAbsolute(pad) || pad.split(/[\\/]/).includes('..')) return {}
+    const sleutel = pad.toLowerCase()
+    const bekend = stalen.get(sleutel)
+    if (bekend) return bekend
+    const t0 = Date.now()
+    let uit: Bus3dStalen | { reden: 'tijd' }
+    try {
+      uit = await metWacht<Bus3dStalen>({ soort: 'bus3d:stalen', relatiefPad: pad }, (b) => {
+        const deel = (b as { stalen?: Bus3dStalen }).stalen
+        if (deel) tussen?.(deel)
+      })
+    } catch (fout) {
+      af.logFout('bus3d kleurstalen', fout)
+      return {}
+    }
+    if ('reden' in uit && typeof uit.reden === 'string' && Object.keys(uit).length === 1) return {}
+    const klaar = uit as Bus3dStalen
+    if (stalen.size >= 64) stalen.delete(stalen.keys().next().value as string)
+    stalen.set(sleutel, klaar)
+    af.log(`bus3d stalen ${pad}: ${Object.keys(klaar).length} kleurstellingen, ${Date.now() - t0} ms`)
+    return klaar
   }
 
   function meld(meting: Bus3dMeting): void {
@@ -552,7 +590,7 @@ export function maakBus3dDienst(af: Bus3dAfhankelijk): Bus3dDienst {
     }
   }
 
-  return { model3d, lak3d, omgeving3d, heldenbeeld, fotoAlsKlaar, meld, antwoord, vergeet, stuk, ruimOp, cache }
+  return { model3d, lak3d, omgeving3d, heldenbeeld, fotoAlsKlaar, kleurstalen, meld, antwoord, vergeet, stuk, ruimOp, cache }
 }
 
 function zelfdeSet(lijst: number[] | undefined, set: ReadonlySet<number>): boolean {

@@ -28,6 +28,9 @@ interface Viewer {
   camera: Camera
   inVlucht: number
   pauze: boolean
+  /** Het draaiplateau van de dealerstand (§6), en wanneer er voor het laatst invoer was. */
+  plateau: boolean
+  laatsteInvoer: number
 }
 
 const doel = self as unknown as {
@@ -83,6 +86,10 @@ const ontleder = maakOntleders()
 const viewers = new Map<number, Viewer>()
 let actief: Viewer | undefined
 let contextWeg = false
+/** De context is weg omdat het venster pauzeerde (§9): dat is geen fout, en hervatten brengt hem terug. */
+let bewustWeg = false
+/** Vooraf opgehaald: op een verloren context geeft getExtension niets meer. */
+let verlies: WEBGL_lose_context | null = null
 let herstellingen = 0
 /** Zolang de geometrie van een bus binnenkomt: dan eerst die, de texturen wachten. */
 let geometrieBezig = false
@@ -92,11 +99,12 @@ function maakContext(): boolean {
   doek.addEventListener('webglcontextlost', (e) => {
     e.preventDefault()
     contextWeg = true
-    stuur({ soort: 'fout', viewer: actief?.id ?? 0, laad: laad.nr, reden: 'context-weg' })
+    if (!bewustWeg) stuur({ soort: 'fout', viewer: actief?.id ?? 0, laad: laad.nr, reden: 'context-weg' })
   })
   doek.addEventListener('webglcontextrestored', () => {
     contextWeg = false
-    herstellingen++
+    if (!bewustWeg) herstellingen++
+    bewustWeg = false
     try {
       bouwTekenaar()
       if (laad.bericht) void laadBus(laad.bericht)
@@ -114,6 +122,7 @@ function maakContext(): boolean {
     preserveDrawingBuffer: false,
     powerPreference: 'high-performance'
   }) as WebGL2RenderingContext | null
+  verlies = gl?.getExtension('WEBGL_lose_context') ?? null
   return Boolean(gl)
 }
 
@@ -281,7 +290,7 @@ function tik(): void {
   const b = laad.bericht
   let held: Promise<Blob> | undefined
   let heldSleutel = ''
-  if (scherp && !beweegt && scene && b && !b.licht) {
+  if (scherp && !beweegt && scene && b && !b.licht && !b.foto) {
     heldSleutel = heldenSleutel(v.b / v.h, v.dpr)
     const k = `${scene.manifest.pakket}|${b.lak?.kleurstelling ?? ''}|${heldSleutel}`
     if (!laad.heldGedaan.has(k)) {
@@ -326,8 +335,21 @@ function tik(): void {
   }
   // Na het beeld: tijd om texturen te uploaden (niet zolang de geometrie nog binnenkomt).
   if (!geometrieBezig) t.texturen.geefTijd(6)
+  // Het draaiplateau: 6°/s zodra er 6 s geen invoer was (§6); nooit in de lichte stand.
+  const draait = v.plateau && !b?.licht && performance.now() - v.laatsteInvoer > PLATEAU_WACHT
+  if (draait) v.camera.draai(6 * Math.min(dt, 0.1))
   // Doortekenen zolang de camera beweegt of er texturen klaarliggen; anders plant een nieuwe textuur zelf een beeld.
-  if (beweegt || t.texturen.wachtendeUploads() > 0) plan()
+  if (beweegt || draait || t.texturen.wachtendeUploads() > 0) plan()
+}
+
+const PLATEAU_WACHT = 6000
+let plateauKlok: ReturnType<typeof setTimeout> | undefined
+/** Na invoer: het plateau pas weer na 6 s rust laten draaien (het beeld wordt dan vanzelf gepland). */
+function wekPlateau(v: Viewer): void {
+  v.laatsteInvoer = performance.now()
+  if (plateauKlok) clearTimeout(plateauKlok)
+  plateauKlok = undefined
+  if (v.plateau) plateauKlok = setTimeout(() => plan(), PLATEAU_WACHT + 50)
 }
 
 function kwantiel(lijst: number[], q: number): number {
@@ -391,6 +413,7 @@ async function afdrukZelf(
   t: Tekenaar,
   vorige: { b: number; h: number }
 ): Promise<{ beeld: ArrayBuffer; masker?: ArrayBuffer; id?: ArrayBuffer; idTabel?: unknown }> {
+  if (a.foto) return { beeld: await fotoV4(v, a, t) }
   maatDoek(a.b, a.h)
   const cam = v.camera.beeld(a.b / a.h, { stand: a.stand, doel: a.doel, afstand: a.afstand })
   t.teken(cam, a.b, a.h)
@@ -413,6 +436,36 @@ async function afdrukZelf(
   doek.transferToImageBitmap().close()
   maatDoek(vorige.b, vorige.h)
   return { beeld, masker, id, idTabel }
+}
+
+/**
+ * De foto v4 (§9): doorzichtig, 215°/8°, strak op 88% van de breedte. De
+ * tekenaar geeft voorvermenigvuldigde pixels van onder naar boven (zie
+ * `leesFoto`); hier omgedraaid en teruggedeeld, dan via een 2D-doek naar WebP.
+ * Het gewone doek is dicht (`alpha:false`) en kan geen doorzichtig beeld maken.
+ */
+async function fotoV4(v: Viewer, a: AfdrukVraag, t: Tekenaar): Promise<ArrayBuffer> {
+  const cam = v.camera.fotoBeeld(a.b / a.h, 0.88)
+  const px = t.leesFoto(cam, a.b, a.h)
+  const uit = new Uint8ClampedArray(a.b * a.h * 4)
+  const rij = a.b * 4
+  for (let y = 0; y < a.h; y++) {
+    const van = (a.h - 1 - y) * rij
+    const naar = y * rij
+    for (let x = 0; x < rij; x += 4) {
+      const alfa = px[van + x + 3]
+      if (alfa === 0) continue
+      const f = 255 / alfa
+      uit[naar + x] = px[van + x] * f
+      uit[naar + x + 1] = px[van + x + 1] * f
+      uit[naar + x + 2] = px[van + x + 2] * f
+      uit[naar + x + 3] = alfa
+    }
+  }
+  const plat = new OffscreenCanvas(a.b, a.h)
+  const ctx = plat.getContext('2d')!
+  ctx.putImageData(new ImageData(uit, a.b, a.h), 0, 0)
+  return (await plat.convertToBlob({ type: 'image/webp', quality: 0.9 })).arrayBuffer()
 }
 
 function meetDraaien(v: Viewer, beelden: number): { p50: number; p95: number; max: number; beelden: number } {
@@ -439,7 +492,7 @@ function meetDraaien(v: Viewer, beelden: number): { p50: number; p95: number; ma
 function viewerVan(id: number): Viewer {
   let v = viewers.get(id)
   if (!v) {
-    v = { id, b: 0, h: 0, dpr: 1, camera: new Camera(), inVlucht: 0, pauze: false }
+    v = { id, b: 0, h: 0, dpr: 1, camera: new Camera(), inVlucht: 0, pauze: false, plateau: false, laatsteInvoer: 0 }
     viewers.set(id, v)
   }
   return v
@@ -506,6 +559,7 @@ doel.onmessage = (e) => {
     else if (i.soort === 'stand') v.camera.stand(i.stand)
     else if (i.soort === 'draai') v.camera.draai(i.graden)
     else if (i.soort === 'kantel') v.camera.kantel(i.graden)
+    wekPlateau(v)
     plan()
   } else if (m.soort === 'gezien') {
     const v = viewers.get(m.viewer)
@@ -513,11 +567,23 @@ doel.onmessage = (e) => {
       v.inVlucht = Math.max(0, v.inVlucht - 1)
       plan()
     }
+  } else if (m.soort === 'plateau') {
+    const v = viewerVan(m.viewer)
+    v.plateau = m.aan
+    wekPlateau(v)
   } else if (m.soort === 'pauze') {
     const v = viewerVan(m.viewer)
     v.pauze = m.aan
-    if (m.aan && m.vrijgeven) gl?.getExtension('WEBGL_lose_context')?.loseContext()
-    if (!m.aan && contextWeg) gl?.getExtension('WEBGL_lose_context')?.restoreContext()
+    /*
+     * Pauze met vrijgeven (§9): de context weg, en daarmee alle texturen en
+     * buffers op de GPU. Bij hervatten komt hij terug en laadt de werker de bus
+     * opnieuw (de bestanden staan dan in de cache van Chromium).
+     */
+    if (m.aan && m.vrijgeven && !contextWeg) {
+      bewustWeg = true
+      verlies?.loseContext()
+    }
+    if (!m.aan && contextWeg && bewustWeg) verlies?.restoreContext()
     if (!m.aan) plan()
   } else if (m.soort === 'afdruk') {
     const v = viewerVan(m.viewer)

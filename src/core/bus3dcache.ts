@@ -16,9 +16,10 @@ import {
 } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { schrijfPakket } from '../shared/bus3dpak'
-import type { Bus3dLak, Bus3dManifest, Bus3dPakKop } from '../shared/bus3d'
+import { textuurPlan, type Bus3dLak, type Bus3dManifest, type Bus3dPakKop } from '../shared/bus3d'
 import { bouwBus3d, bus3dLak, lakStempel, pakketVerouderd, type Bus3dBouw, type Bus3dBron, type Bus3dTextuurBron } from './bus3d'
 import { leesBus3dOmgeving } from './bus3domgeving'
+import { kleurstalen } from './kleurstalen'
 
 /**
  * DE SCHIJFCACHE VAN BUS3D (bus3d-ontwerp §4.2)
@@ -458,6 +459,7 @@ export type Bus3dOpdracht =
   | { soort: 'bus3d:lak'; pakket: string; kleurstelling?: string }
   | { soort: 'bus3d:controle'; pakket: string }
   | { soort: 'bus3d:omgeving' }
+  | { soort: 'bus3d:stalen'; relatiefPad: string }
 
 /**
  * Wat de werker `'bus3d'` doet, los van de werker zelf: de probe roept precies
@@ -493,6 +495,23 @@ export async function bus3dWerk(
     return { zijspoor: geschreven.zijspoor, tijden: { ...uit.bouw.tijden, schrijven: geschreven.ms }, doostoets: uit.bouw.doostoets }
   }
   if (opdracht.soort === 'bus3d:omgeving') return leesBus3dOmgeving(omsiMap)
+  if (opdracht.soort === 'bus3d:stalen') {
+    /*
+     * De lak uit het pakket als dat er is: de CTC-plek met het grootste
+     * buitenoppervlak, maar niet het glas. Het plan van §5.7 kiest bij de O560
+     * O560_E6_Glass.dds als "carrosserie" (de ruiten beslaan veel oppervlak), en
+     * dan werden de stalen wit en zwart bij een beige bus. Een naam is geen
+     * bewijs, maar om glas over te slaan is hij goed genoeg; zonder pakket raadt
+     * kleurstalen.ts.
+     */
+    const z = cache.zoek(omsiMap, opdracht.relatiefPad)
+    const glas = /glas|glass|scheibe|fenster|window|szyb|trans/i
+    const lak = z?.manifest.texturen
+      .filter((t) => t.ctc && !glas.test(t.naam) && !glas.test(t.ctc))
+      .sort((a, b) => b.oppervlak - a.oppervlak)[0]?.ctc
+    const carrosserie = lak ?? (z ? textuurPlan(z.manifest.texturen, 160 * 1024 * 1024).carrosserie : undefined)
+    return kleurstalen(omsiMap, opdracht.relatiefPad, carrosserie, (stalen) => tussen?.({ stalen }))
+  }
   const z = cache.zijspoor(opdracht.pakket)
   if (opdracht.soort === 'bus3d:lak') {
     if (!z) return { reden: 'verouderd' }

@@ -232,6 +232,67 @@ export interface Bus3dBrug {
   bus3dStuk(pakket: string): void
   opBus3dVoortgang(luister: (v: Bus3dVoortgang) => void): () => void
   opBus3dVervangen(luister: (pakket: string) => void): () => void
+
+  // ---- het venster eromheen (F2, tweede helft; main/bus3dvenster.ts)
+  /** De vraag waarmee het venster opende (`bus3d:vraag`); niets als main dit venster niet kent. */
+  vraag(): Promise<Bus3dVensterVraag | undefined>
+  /** Een nieuwe bus of een nieuw doel in hetzelfde venster. */
+  opVraag(luister: (v: Bus3dVensterVraag) => void): () => void
+  /** Taal en thema: bij het openen in de vraag, daarna bij elke wissel. */
+  opInstellingen(luister: (i: Bus3dVensterInstellingen) => void): () => void
+  /** Pauze en lichte stand (§9), door main bepaald uit de vensters en OMSI. */
+  opStand(luister: (s: Bus3dVensterStand) => void): () => void
+  /** [Kiezen]: main toetst afzender en volgnummer en geeft het door aan het hoofdvenster. */
+  kies(keuze: Bus3dKeuze): void
+  /** Dicht zonder keuze (Esc, Ctrl+W, [Sluiten]). */
+  sluit(): void
+  /** Het eerste plaatje (heldenbeeld, foto of icoon) staat: main mag het venster tonen. */
+  getoond(): void
+  busKleurstellingen(relatiefPad: string): Promise<Bus3dKleurlijst | undefined>
+  /** Drie kleuren per kleurstelling; wat al klaar is meteen, de rest via `opKleurstalen`. */
+  busKleurstalen(relatiefPad: string): Promise<Bus3dStalen>
+  opKleurstalen(luister: (relatiefPad: string, stalen: Bus3dStalen) => void): () => void
+
+  // ---- het fotovenster (foto v4, §4.5, §9): alleen als main deze pagina als fotovenster laadde
+  opFotoVraag(luister: (v: Bus3dFotoVraag) => void): () => void
+  /** Het fotovenster luistert: pas daarna stuurt main fotovragen (dit deel laadt na de pagina). */
+  fotoGereed(): void
+  fotoKlaar(id: number, uitkomst: { webp: ArrayBuffer } | { reden: string }): void
+}
+
+/** De lijst met kleurstellingen, zoals de buskeuze hem ook krijgt (`BusKleurstellingen` in api.ts). */
+export interface Bus3dKleurlijst {
+  variabele: string
+  lijst: Array<{ index: number; naam: string; setvars: Record<string, number> }>
+}
+
+/** Per kleurstelling drie kleuren (#rrggbb), de meest voorkomende eerst (§7). */
+export type Bus3dStalen = Record<string, [string, string, string]>
+
+/** Wat main het venster laat weten over pauzeren en de lichte stand (§9). */
+export interface Bus3dVensterStand {
+  /** Verborgen of geminimaliseerd, of OMSI draait en geen van onze vensters had 60 s focus. */
+  pauze: boolean
+  /** OMSI draait: DPR 1, budget 96 MB, geen draaiplateau en geen heldenbeeld. */
+  licht: boolean
+  reden?: 'verborgen' | 'omsi-zonder-focus'
+}
+
+export interface Bus3dVensterInstellingen {
+  taal: string
+  thema: 'systeem' | 'licht' | 'donker'
+  /** Minder beweging (instelling `animaties`, of Windows): geen draaiplateau. */
+  rustig?: boolean
+}
+
+/** Een foto v4 (§9): 640x400, doorzichtig, 215°/8°, op 88% van de breedte. */
+export interface Bus3dFotoVraag {
+  id: number
+  relatiefPad: string
+  kleurstelling?: string
+  b: number
+  h: number
+  licht?: boolean
 }
 
 export interface Bus3dMeting {
@@ -250,13 +311,40 @@ export interface Bus3dMeting {
 /** Het 3D-venster (§8.1). */
 export type Bus3dDoel = 'buskeuze' | 'dealer' | 'wagenpark'
 export interface Bus3dVensterVraag {
+  /** Volgnummer van main; een keuze met een ouder nummer telt niet. */
   aanvraag: number
   doel: Bus3dDoel
   relatiefPad: string
+  /** In beeld bij het openen; undefined = Standaard. */
   kleurstelling?: string
+  /** Wat nu in de buskeuze of bij de dealer staat (het vinkje); null = Standaard. */
   gekozen?: string | null
+  /** "MAN Lion's City 12C E6"; in het wagenpark "Bus 107 · MAN SD200". */
   titel: string
+  /** Merk, type en uitvoering zoals de tegels ze tonen: het zijpaneel heeft ze vóór het manifest er is. */
+  naam?: [string, string, string]
+  /** De vorm voor het icoon als er geen foto en geen 3D is. */
+  vorm?: 'solo' | 'geleed' | 'dubbel' | 'midi'
+  /** Het heldenbeeld of de foto van de tegel, door main al opgezocht: nooit een leeg kader (§0.9). */
+  foto?: string
   vloot?: { nummer: string; kenteken?: string }
+  /** Taal en thema van het hoofdvenster op het moment van openen. */
+  instellingen?: Bus3dVensterInstellingen
+  /** Pauze en lichte stand op het moment van openen. */
+  stand?: Bus3dVensterStand
+}
+
+/** Wat het hoofdvenster vraagt (`bus3dOpen`): main zet er het volgnummer, de foto en de instellingen bij. */
+export type Bus3dOpenVraag = Omit<Bus3dVensterVraag, 'aanvraag' | 'foto' | 'instellingen' | 'stand'>
+
+/** Wat het hoofdvenster over het 3D-venster hoort (`bus3d:venster`): de gevulde 3D-knop en bv.windowFailed. */
+export interface Bus3dVensterMelding {
+  open: boolean
+  relatiefPad?: string
+  kleurstelling?: string
+  doel?: Bus3dDoel
+  aanvraag?: number
+  gecrasht?: boolean
 }
 export interface Bus3dKeuze {
   aanvraag: number

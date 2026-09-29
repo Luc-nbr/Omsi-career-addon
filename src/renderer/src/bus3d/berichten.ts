@@ -30,6 +30,11 @@ export interface AfdrukVraag {
   masker?: boolean
   /** Diagnose: een beeld met per tekenbeurt een eigen kleur, en de tabel erbij. */
   id?: boolean
+  /**
+   * De foto v4 (§9): de camera van de foto (215°/8°, 88% van de breedte), een
+   * doorzichtige achtergrond met alleen de contactschaduw als alfa. Altijd WebP.
+   */
+  foto?: boolean
   formaat: 'png' | 'webp'
 }
 
@@ -50,6 +55,8 @@ export type NaarWerker =
       t0: number
       /** Lichte stand: OMSI draait (budget 96 MB, geen heldenbeeld). */
       licht?: boolean
+      /** Het fotovenster: geen heldenbeeld (dat hoort bij het 3D-venster). */
+      foto?: boolean
     }
   | { soort: 'lak'; viewer: number; lak: Bus3dLak; t0: number }
   /** De textuurlijst van een pakket dat nog gebouwd wordt: de bestanden alvast ophalen (§4.1). */
@@ -57,6 +64,8 @@ export type NaarWerker =
   | { soort: 'invoer'; viewer: number; invoer: Invoer }
   | { soort: 'gezien'; viewer: number }
   | { soort: 'pauze'; viewer: number; aan: boolean; vrijgeven?: boolean }
+  /** Het draaiplateau van de dealerstand (§6): 6°/s na 6 s zonder invoer. */
+  | { soort: 'plateau'; viewer: number; aan: boolean }
   | { soort: 'afdruk'; vraag: number; viewer: number; afdruk: AfdrukVraag }
   | { soort: 'meet'; vraag: number; viewer: number; wat: 'draaien' | 'schaduw' | 'geheugen'; beelden?: number }
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
-import type { Bus3dBrug, Bus3dLak, Bus3dMeting, Bus3dReden } from '../../shared/bus3d'
+import type { Bus3dBrug, Bus3dLak, Bus3dManifest, Bus3dMeting, Bus3dReden } from '../../shared/bus3d'
 import { useT } from './language'
 import { klok } from './bus3d/berichten'
 import type { Stand } from './bus3d/camera'
@@ -15,8 +15,10 @@ import './busviewer.css'
  * de muis, het wiel en de toetsen door naar de camera in de werker.
  *
  * Nooit een leeg kader (§0.9): zolang er geen 3D-beeld is, staat het
- * heldenbeeld (of later de foto v4) eronder; komt er geen 3D (geen WebGL2, een
- * versleuteld model, een fout), dan blijft dat plaatje staan met de uitleg.
+ * heldenbeeld of de foto van de tegel eronder, en is die er ook niet, het
+ * busicoon. Komt er geen 3D (geen WebGL2, een versleuteld model, een fout), dan
+ * blijft dat plaatje staan met de uitleg. In pauze (§9) gaat de context weg en
+ * staat de foto er weer, met [Hervatten].
  */
 
 declare global {
@@ -24,6 +26,8 @@ declare global {
     bus3d?: Bus3dBrug
   }
 }
+
+export type Busvorm = 'solo' | 'geleed' | 'dubbel' | 'midi'
 
 export interface ViewerStand {
   fase: 'wacht' | 'bouwen' | 'geometrie' | 'texturen' | 'scherp' | 'fout'
@@ -41,6 +45,8 @@ export interface ViewerStand {
   /** Onderdelen die niet getoond worden omdat hun sleutel hier niet geregistreerd is (§9, bv.partial). */
   versleuteld?: number
   ontbrekend?: number
+  /** Texturen in het manifest (voor bv.incomplete: meer dan 25% ontbrekend). */
+  texturen?: number
 }
 
 interface Props {
@@ -48,11 +54,29 @@ interface Props {
   kleurstelling?: string
   /** Voor het label: "3D-weergave van MAN Lion's City 12C". */
   naam?: string
+  /** Het heldenbeeld of de foto die main al opzocht (de vraag van het venster): meteen in beeld. */
+  foto?: string
+  /** De vorm van het icoon als er geen foto en geen 3D is. */
+  vorm?: Busvorm
   /** OMSI draait: DPR 1, budget 96 MB, geen heldenbeeld (§9). */
   licht?: boolean
+  /** Verborgen, geminimaliseerd, of OMSI zonder focus (§9): context weg, foto plus [Hervatten]. */
+  pauze?: boolean
+  /** Het draaiplateau van de dealerstand (§6). */
+  plateau?: boolean
   onStand?: (s: ViewerStand) => void
+  /** Het manifest is binnen: naam, beschrijving en maat voor het zijpaneel. */
+  onManifest?: (m: Bus3dManifest) => void
+  /** Het eerste plaatje staat (foto, icoon of 3D): het venster mag zichtbaar worden. */
+  onGetoond?: (wat: 'foto' | 'icoon' | '3d') => void
+  /** [Hervatten] in pauze. */
+  onHervat?: () => void
+  /** Enter in het beeld: kiezen (§8.1). */
+  onKies?: () => void
   /** Voor de proef en het venster: de viewer zelf. */
   onHandvat?: (h: ViewerHandvat) => void
+  /** Het beeld begint met focus, zodat de pijltjes meteen werken (§8.1). */
+  autoFocus?: boolean
 }
 
 /** DPR = min(apparaat, 2), en nooit meer dan 1920x1080 tekenpixels (§5.8, §10). */
@@ -63,18 +87,98 @@ function tekenMaat(b: number, h: number, licht: boolean): { b: number; h: number
   return { b: Math.max(2, Math.round(b * dpr)), h: Math.max(2, Math.round(h * dpr)), dpr }
 }
 
-export function BusViewer({ relatiefPad, kleurstelling, naam, licht = false, onStand, onHandvat }: Props): JSX.Element {
+/** De vorm van een bus, getekend (dezelfde vormen als het busicoon op de tegels). */
+function Busicoon({ vorm }: { vorm: Busvorm }): JSX.Element {
+  return (
+    <svg className="bv-icoon" viewBox="0 0 96 40" aria-hidden="true">
+      {vorm === 'geleed' ? (
+        <>
+          <rect x="2" y="8" width="44" height="22" rx="4" />
+          <rect x="48" y="10" width="6" height="18" rx="2" opacity="0.5" />
+          <rect x="56" y="8" width="38" height="22" rx="4" />
+          <circle cx="14" cy="32" r="4" />
+          <circle cx="40" cy="32" r="4" />
+          <circle cx="82" cy="32" r="4" />
+        </>
+      ) : vorm === 'dubbel' ? (
+        <>
+          <rect x="6" y="2" width="72" height="28" rx="4" />
+          <circle cx="20" cy="32" r="4" />
+          <circle cx="66" cy="32" r="4" />
+        </>
+      ) : vorm === 'midi' ? (
+        <>
+          <rect x="16" y="10" width="52" height="20" rx="4" />
+          <circle cx="28" cy="32" r="4" />
+          <circle cx="58" cy="32" r="4" />
+        </>
+      ) : (
+        <>
+          <rect x="6" y="8" width="78" height="22" rx="4" />
+          <circle cx="20" cy="32" r="4" />
+          <circle cx="70" cy="32" r="4" />
+        </>
+      )}
+    </svg>
+  )
+}
+
+export function BusViewer({
+  relatiefPad,
+  kleurstelling,
+  naam,
+  foto: fotoVooraf,
+  vorm = 'solo',
+  licht = false,
+  pauze = false,
+  plateau = false,
+  onStand,
+  onManifest,
+  onGetoond,
+  onHervat,
+  onKies,
+  onHandvat,
+  autoFocus
+}: Props): JSX.Element {
   const t = useT()
   const doekRef = useRef<HTMLCanvasElement>(null)
   const kaderRef = useRef<HTMLDivElement>(null)
   const handvatRef = useRef<ViewerHandvat | undefined>(undefined)
   const [stand, zetStand] = useState<ViewerStand>({ fase: 'wacht', klaar: 0, totaal: 0 })
-  const [foto, zetFoto] = useState<string>()
+  /** De foto hoort bij één bus: van een andere bus tonen we hem niet. */
+  const [foto, zetFoto] = useState<{ pad: string; url: string } | undefined>(
+    fotoVooraf ? { pad: relatiefPad, url: fotoVooraf } : undefined
+  )
+  const [fotoGeladen, zetFotoGeladen] = useState(false)
   const [eersteBeeld, zetEersteBeeld] = useState(false)
-  const huidig = useRef<{ pad: string; kleur?: string; pakket?: string; vraag: number }>({ pad: '', vraag: 0 })
+  const huidig = useRef<{ pad: string; kleur?: string; pakket?: string; vraag: number; manifest?: Bus3dManifest; lak?: Bus3dLak }>({
+    pad: '',
+    vraag: 0
+  })
   const standRef = useRef(stand)
   const onStandRef = useRef(onStand)
   onStandRef.current = onStand
+  const onManifestRef = useRef(onManifest)
+  onManifestRef.current = onManifest
+  const onGetoondRef = useRef(onGetoond)
+  onGetoondRef.current = onGetoond
+  const getoondGemeld = useRef(false)
+  const lichtRef = useRef(licht)
+  lichtRef.current = licht
+  const pauzeRef = useRef(pauze)
+  pauzeRef.current = pauze
+
+  const getoond = useCallback((wat: 'foto' | 'icoon' | '3d') => {
+    if (getoondGemeld.current) return
+    getoondGemeld.current = true
+    // Af te lezen voor de proef (probe-bus3d-venster.cjs): wat er als eerste stond, en wanneer.
+    // Het voorlopige plaatje van de ingang (venster.tsx) was er misschien al eerder: dat telt.
+    if (!document.documentElement.dataset.getoondMs) {
+      document.documentElement.dataset.getoond = wat
+      document.documentElement.dataset.getoondMs = String(Math.round(performance.now()))
+    }
+    onGetoondRef.current?.(wat)
+  }, [])
 
   const meld = useCallback((s: ViewerStand) => {
     standRef.current = s
@@ -87,7 +191,11 @@ export function BusViewer({ relatiefPad, kleurstelling, naam, licht = false, onS
     const doek = doekRef.current!
     const verbinding = Verbinding.get()
     const h: ViewerHandvat = verbinding.meld(doek, {
-      opEersteBeeld: () => zetEersteBeeld(true),
+      opEersteBeeld: () => {
+        if (pauzeRef.current) return
+        zetEersteBeeld(true)
+        getoond('3d')
+      },
       opStand: (s) => {
         meld({
           ...standRef.current,
@@ -118,7 +226,7 @@ export function BusViewer({ relatiefPad, kleurstelling, naam, licht = false, onS
     const kader = kaderRef.current!
     const zetMaat = (): void => {
       const r = kader.getBoundingClientRect()
-      const m = tekenMaat(r.width, r.height, licht)
+      const m = tekenMaat(r.width, r.height, lichtRef.current)
       if (doek.width !== m.b || doek.height !== m.h) {
         doek.width = m.b
         doek.height = m.h
@@ -129,14 +237,18 @@ export function BusViewer({ relatiefPad, kleurstelling, naam, licht = false, onS
     zetMaat()
     const ro = new ResizeObserver(zetMaat)
     ro.observe(kader)
+    // Een andere DPR (het venster naar een ander scherm, G8.3): opnieuw de maat.
+    const dprLuister = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
+    dprLuister.addEventListener('change', zetMaat)
     return () => {
       ro.disconnect()
+      dprLuister.removeEventListener('change', zetMaat)
       h.weg()
       handvatRef.current = undefined
     }
-    // Eén keer per mount; licht en onHandvat veranderen de aanmelding niet.
+    // Eén keer per mount; onHandvat verandert de aanmelding niet.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [meld])
+  }, [meld, getoond])
 
   // Een bus laden (nieuw pad), of alleen de lak wisselen (zelfde bus, andere kleurstelling).
   const laad = useCallback(
@@ -152,22 +264,25 @@ export function BusViewer({ relatiefPad, kleurstelling, naam, licht = false, onS
         const lak = await brug.busLak3d(cur.pakket, kleur)
         if (huidig.current.kleur !== kleur) return
         if ('reden' in lak) return laad(pad, kleur, true)
+        cur.lak = lak as Bus3dLak
         meld({ ...standRef.current, fase: 'texturen', mijlpalen: { antwoord: Math.round(klok() - t0) } })
         h.lak(lak as Bus3dLak, t0)
         return
       }
       const vraag = ++cur.vraag
+      const nieuweBus = cur.pad !== pad
       cur.pad = pad
       cur.kleur = kleur
       cur.pakket = undefined
       const t0 = klok()
-      zetEersteBeeld(false)
+      if (nieuweBus) zetEersteBeeld(false)
       meld({ fase: 'bouwen', klaar: 0, totaal: 0 })
       const r = kaderRef.current?.getBoundingClientRect()
       void brug
         .busFotoAlsKlaar(pad, kleur, r && r.width / Math.max(1, r.height) >= 1.45 ? 'breed' : 'smal')
         .then((url) => {
-          if (huidig.current.vraag === vraag) zetFoto(url)
+          if (huidig.current.vraag !== vraag || !url) return
+          zetFoto((oud) => (oud?.url === url ? oud : { pad, url }))
         })
       const antwoord = await brug.busModel3d(pad, kleur)
       if (huidig.current.vraag !== vraag) return
@@ -176,6 +291,9 @@ export function BusViewer({ relatiefPad, kleurstelling, naam, licht = false, onS
         return
       }
       cur.pakket = antwoord.manifest.pakket
+      cur.manifest = antwoord.manifest
+      cur.lak = antwoord.lak
+      onManifestRef.current?.(antwoord.manifest)
       const antwoordMs = Math.round(klok() - t0)
       meld({
         mijlpalen: { antwoord: antwoordMs },
@@ -185,16 +303,86 @@ export function BusViewer({ relatiefPad, kleurstelling, naam, licht = false, onS
         pakket: antwoord.manifest.pakket,
         bron: antwoord.bron,
         versleuteld: antwoord.manifest.telling.versleuteld,
-        ontbrekend: antwoord.manifest.telling.ontbrekend
+        ontbrekend: antwoord.manifest.telling.ontbrekend,
+        texturen: antwoord.manifest.telling.texturen
       })
-      h.laad(antwoord.manifest, antwoord.lak, antwoord.bron ?? 'cache', t0, licht)
+      // In pauze niet laden: dat gebeurt bij hervatten (de context is dan weg).
+      if (pauzeRef.current) return
+      h.laad(antwoord.manifest, antwoord.lak, antwoord.bron ?? 'cache', t0, lichtRef.current)
     },
-    [licht, meld]
+    [meld]
   )
 
   useEffect(() => {
     void laad(relatiefPad, kleurstelling)
   }, [relatiefPad, kleurstelling, laad])
+
+  // Een nieuwe foto van main (een andere bus in hetzelfde venster).
+  useEffect(() => {
+    if (fotoVooraf) zetFoto({ pad: relatiefPad, url: fotoVooraf })
+  }, [fotoVooraf, relatiefPad])
+
+  // Zonder foto meteen het icoon: dat is dan het eerste plaatje (§0.9).
+  useEffect(() => {
+    if (!fotoVooraf) getoond('icoon')
+    // Alleen bij de eerste mount: daarna telt het al.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // De lichte stand (OMSI begon of stopte): andere DPR en een ander budget.
+  const eersteLicht = useRef(true)
+  useEffect(() => {
+    if (eersteLicht.current) {
+      eersteLicht.current = false
+      return
+    }
+    const h = handvatRef.current
+    const kader = kaderRef.current
+    const doek = doekRef.current
+    if (!h || !kader || !doek) return
+    const r = kader.getBoundingClientRect()
+    const m = tekenMaat(r.width, r.height, licht)
+    doek.width = m.b
+    doek.height = m.h
+    h.maat(m.b, m.h, m.dpr)
+    const cur = huidig.current
+    if (cur.manifest && !pauzeRef.current) h.laad(cur.manifest, cur.lak, 'cache', klok(), licht)
+  }, [licht])
+
+  // Pauze (§9): de context weg en de foto terug; hervatten brengt de context en de bus terug.
+  const eerstePauze = useRef(true)
+  useEffect(() => {
+    const h = handvatRef.current
+    if (eerstePauze.current) {
+      eerstePauze.current = false
+      if (!pauze) return
+    }
+    if (!h) return
+    if (pauze) {
+      h.pauze(true, true)
+      zetEersteBeeld(false)
+      try {
+        doekRef.current?.getContext('bitmaprenderer')?.transferFromImageBitmap(null)
+      } catch {
+        // Al leeg.
+      }
+      // Inmiddels is er misschien een heldenbeeld: dat liever dan de foto van de tegel.
+      const cur = huidig.current
+      void window.bus3d?.busFotoAlsKlaar(cur.pad, cur.kleur, 'breed').then((url) => {
+        if (url && huidig.current.pad === cur.pad) zetFoto({ pad: cur.pad, url })
+      })
+    } else {
+      h.pauze(false)
+      const cur = huidig.current
+      // Pauze kwam vóór het manifest: nu pas laden.
+      if (cur.manifest && standRef.current.fase === 'bouwen') h.laad(cur.manifest, cur.lak, 'cache', klok(), lichtRef.current)
+    }
+  }, [pauze])
+
+  // Het draaiplateau (dealerstand), niet in de lichte stand.
+  useEffect(() => {
+    handvatRef.current?.plateau(plateau && !licht)
+  }, [plateau, licht])
 
   // Voortgang van het bouwen (werker 'bus3d'), en een pakket dat vervangen is (§4.2).
   useEffect(() => {
@@ -214,6 +402,10 @@ export function BusViewer({ relatiefPad, kleurstelling, naam, licht = false, onS
       weg2()
     }
   }, [laad, meld])
+
+  useEffect(() => {
+    if (autoFocus) doekRef.current?.focus()
+  }, [autoFocus])
 
   // ------------------------------------------------------------ bediening (§6)
   const invoer = (i: Parameters<ViewerHandvat['invoer']>[0]): void => handvatRef.current?.invoer(i)
@@ -249,16 +441,19 @@ export function BusViewer({ relatiefPad, kleurstelling, naam, licht = false, onS
 
   // Het wiel zoomt altijd boven het beeld (§6); niet passief, anders scrolt de pagina mee.
   useEffect(() => {
-    const doek = doekRef.current!
+    const kader = kaderRef.current!
     const wiel = (e: WheelEvent): void => {
       e.preventDefault()
       invoer({ soort: 'zoom', factor: e.deltaY > 0 ? 1.08 : 1 / 1.08 })
     }
-    doek.addEventListener('wheel', wiel, { passive: false })
-    return () => doek.removeEventListener('wheel', wiel)
+    kader.addEventListener('wheel', wiel, { passive: false })
+    return () => kader.removeEventListener('wheel', wiel)
   }, [])
 
+  const onKiesRef = useRef(onKies)
+  onKiesRef.current = onKies
   const toets = (e: React.KeyboardEvent): void => {
+    if (e.ctrlKey || e.altKey || e.metaKey) return
     const stand = (s: Stand): void => invoer({ soort: 'stand', stand: s })
     const k = e.key
     if (k === 'ArrowLeft') invoer({ soort: 'draai', graden: 15 })
@@ -272,6 +467,7 @@ export function BusViewer({ relatiefPad, kleurstelling, naam, licht = false, onS
     else if (k === '3') stand('achter')
     else if (k === '4') stand('schuin')
     else if (k === '0' || k === 'Home') stand('terug')
+    else if (k === 'Enter' && onKiesRef.current) onKiesRef.current()
     else return
     e.preventDefault()
   }
@@ -286,20 +482,50 @@ export function BusViewer({ relatiefPad, kleurstelling, naam, licht = false, onS
       if (stand.reden === 'te-zwaar') return t('bv.tooHeavy')
       return t('bv.failed')
     }
+    if (pauze) return t('bv.paused')
     if (stand.fase === 'bouwen' && stand.totaal > 0) return t('bv.loading', { klaar: stand.klaar, totaal: stand.totaal })
     if (stand.fase === 'texturen' && stand.totaal > 0) return t('bv.loadingTextures', { klaar: stand.klaar, totaal: stand.totaal })
     return undefined
   })()
   const labels: string[] = []
   if (!fout && stand.versleuteld) labels.push(t('bv.partial', { n: stand.versleuteld }))
+  if (!fout && stand.ontbrekend && stand.texturen && stand.ontbrekend / (stand.ontbrekend + stand.texturen) > 0.25) {
+    labels.push(t('bv.incomplete', { n: stand.ontbrekend }))
+  }
   if (!fout && licht) labels.push(t('bv.omsiRunning'))
 
+  const fotoHier = foto && foto.pad === relatiefPad ? foto.url : undefined
+  const toon3d = eersteBeeld && !pauze && !fout
+  const toonIcoon = !toon3d && (!fotoHier || !fotoGeladen)
+  const herstelbaar = fout && stand.reden !== 'geen-webgl' && stand.reden !== 'versleuteld' && stand.reden !== 'geen-model'
+
   return (
-    <div className="bv-kader" ref={kaderRef}>
-      {foto && !eersteBeeld ? <img className="bv-foto" src={foto} alt="" draggable={false} /> : null}
+    <div className="bv-kader" ref={kaderRef} data-fase={pauze ? 'pauze' : stand.fase} data-reden={stand.reden}>
+      {toonIcoon ? (
+        <div className="bv-icoonvlak" aria-hidden="true">
+          <Busicoon vorm={vorm} />
+        </div>
+      ) : null}
+      {fotoHier && !toon3d ? (
+        <img
+          className="bv-foto"
+          src={fotoHier}
+          alt=""
+          draggable={false}
+          onLoad={() => {
+            zetFotoGeladen(true)
+            document.documentElement.dataset.fotoMs = String(Math.round(performance.now()))
+            getoond('foto')
+          }}
+          onError={() => {
+            zetFotoGeladen(false)
+            getoond('icoon')
+          }}
+        />
+      ) : null}
       <canvas
         ref={doekRef}
-        className={`bv-doek${eersteBeeld ? ' bv-doek-zichtbaar' : ''}`}
+        className={`bv-doek${toon3d ? ' bv-doek-zichtbaar' : ''}`}
         tabIndex={0}
         role="img"
         aria-label={t('bv.viewerLabel', { naam: naam ?? relatiefPad })}
@@ -311,21 +537,26 @@ export function BusViewer({ relatiefPad, kleurstelling, naam, licht = false, onS
         onKeyDown={toets}
       />
       {regel || labels.length ? (
-        <div className={`bv-regel${fout ? ' bv-regel-fout' : ''}`} role="status">
+        <div className={`bv-regel${fout || pauze ? ' bv-regel-fout' : ''}`} role="status">
           {regel ? <span>{regel}</span> : null}
           {labels.map((l) => (
             <span key={l} className="bv-label">
               {l}
             </span>
           ))}
-          {fout && stand.reden !== 'geen-webgl' && stand.reden !== 'versleuteld' && stand.reden !== 'geen-model' ? (
+          {herstelbaar ? (
             <button type="button" className="bv-knop" onClick={() => void laad(relatiefPad, kleurstelling, true)}>
               {t('bv.retry')}
             </button>
           ) : null}
+          {pauze && !fout ? (
+            <button type="button" className="bv-knop" onClick={() => onHervat?.()}>
+              {t('bv.resume')}
+            </button>
+          ) : null}
         </div>
       ) : null}
-      {!fout ? (
+      {!fout && !pauze ? (
         <div className="bv-knoppen">
           <button type="button" className="bv-knop" onClick={() => invoer({ soort: 'stand', stand: 'voor' })}>
             {t('bv.viewFront')}

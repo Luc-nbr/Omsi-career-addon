@@ -64,7 +64,8 @@ export function ruimOudeFotosOp(userData: string): void {
     return
   }
   for (const naam of inhoud) {
-    if (naam === `v${FOTO_VORM}`) continue
+    // v4 is de foto uit de 3D-renderer (main/busfoto4.ts): die hoort er ook te blijven.
+    if (naam === `v${FOTO_VORM}` || naam === 'v4') continue
     try {
       rmSync(join(wortel, naam), { recursive: true, force: true })
       log(`busfoto's van een oudere tekenaar weggehaald: ${naam}`)
@@ -115,6 +116,12 @@ export function busfotoAfgehandeld(
   if (existsSync(join(map, bestandsnaam(relatiefPad, kleurstelling)))) return 'foto'
   if (existsSync(merktekenVan(map, relatiefPad, kleurstelling))) return 'geen'
   return undefined
+}
+
+/** De foto v3b als die er al staat (zonder te tekenen): de terugval van het 3D-venster (§9). */
+export function bestaandeBusfoto(userData: string, relatiefPad: string, kleurstelling?: string): string | undefined {
+  const pad = join(busfotoMap(userData), bestandsnaam(relatiefPad, kleurstelling))
+  return existsSync(pad) ? pad : undefined
 }
 
 /** Het adres waaronder het scherm de foto van deze bus opvraagt. */

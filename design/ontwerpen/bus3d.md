@@ -1407,7 +1407,7 @@ Met verkleinen naar ≤ 1024 duurt de decode ongeveer even lang.
 
 ## Bijlage D: stand van de bouw (29-09-2026, tak `claude/bus3d`)
 
-**Gebouwd:** stap 0, F0 en F1. Zie HANDOVER.md §5.000 voor de bestanden.
+**Gebouwd:** stap 0, F0, F1 en F2 (renderer, 3D-venster, 3D-knop, foto v4; achter de schakelaar). Zie HANDOVER.md §5.000 voor de bestanden.
 
 **Gemeten** (Lucs pc, node, bronnen in de OS-cache; `scripts/probe-bus3d.ts`):
 
@@ -1461,4 +1461,45 @@ Gemeten met `scripts/probe-bus3d-beeld.cjs` (Lucs pc, RTX 4070 SUPER via ANGLE/D
 - "Zwart" is max(r,g,b) ≤ 20: zo komt de foto v3 van de O560 op 40%, het "39%" van §1. Met ≤ 35 is de O560 26%: het meeste daarvan is echt zwart (de raamband van e-main.tga is zwart geverfd, de banden). De NLC, de HH-bussen en de C2 blijven donker achter het glas: het interieur ligt in de schaduw van het dak en de stoelen zijn donker.
 - Het heldenbeeld komt bij elke bus (WebP 1918x1081, 80-135 kB), ook na een kleurwissel.
 - **Afwijkingen van het ontwerp, met reden:** geen kubuskaart voor de weerspiegeling (dezelfde hemel en vloer worden in de shader uitgerekend); glas weerspiegelt minstens 0,6 (§5.5 gaf de sterkte uit de cfg, 0,25-0,34 bij de O560: een zwarte plaat); de lichtwaarden geijkt op zwart ≤ 10% bij de O560 (hemel in de schaduw 0,8 in plaats van 0,6, strooilicht 0,22, belichting 1,4); de wolkenlaag pas vanaf 12° (laag aan de hemel een veeg); de camera centreert zijdelings; MSAA in een eigen framebuffer in plaats van `antialias:true`; het textuurbudget trekt hemel en wolken af en blijft onder 300 MB voor het hele venster.
-- **Nog niet:** de DPR-stap bij een trage beeldtijd (§5.8), de begrenzing van het lakmasker op 0,3 (§5.5), pauzeren en de lichte stand aansluiten op het venster (de werker kent `pauze` en `licht`), de foto v4 uit dezelfde renderer.
+- **Nog niet:** de DPR-stap bij een trage beeldtijd (§5.8), de begrenzing van het lakmasker op 0,3 (§5.5), pauzeren en de lichte stand aansluiten op het venster (de werker kent `pauze` en `licht`), de foto v4 uit dezelfde renderer. (Die laatste twee kwamen in de tweede helft, hieronder.)
+
+**F2, tweede helft: het 3D-venster en de 3D-knop (29-09-2026).** Zie HANDOVER.md §5.000 voor de bestanden (`main/bus3dvenster.ts`, `main/busfoto4.ts`, `core/kleurstalen.ts`, `bus3d/venster.tsx`, `bus3d/ingang.tsx`, `bus3d/Bus3dVenster.tsx`, `bus3d/fotomodus.ts`, de 3D-knop in `Setup.tsx`/`App.tsx`, de schakelaar in `GameSetup.tsx`). Alles achter `Settings.bus3d`, standaard uit; zonder schakelaar geen knop, `bus3d:open` geeft 0 en de tegels krijgen de v3b.
+
+Gemeten met `scripts/probe-bus3d-venster.cjs`: de echte app met eigen userData, de vensters zonder focus en doorzichtig, de O560 E6 in vrij rijden op Grundorf. Een nieuw pakket (verse userData), dus de eerste opening is "nieuw". **Tijdens alle rondes draaide op Lucs pc een spel op dezelfde GPU** (HITMAN3, 3 GB videogeheugen; eerder op de dag OMSI): de tijden zijn eerder te hoog dan te laag. Zes volledige rondes; de laatste gaf ALLES GOED.
+
+| Moment (§10 "Het venster") | Doel | Gemeten |
+|---|---|---|
+| Klik op de 3D-knop → nieuw venster zichtbaar met heldenbeeld, foto of icoon | ≤ 400 ms | 155-323 ms (laatste ronde 155) |
+| Heldenbeeld of foto in het venster, na het laden van de pagina | ≤ 50 ms | 1 ms na DOMContentLoaded; 118-248 ms na de HTML (het laden van het ingangsscript in een vers renderer-proces) |
+| Klik op de 3D-knop → venster al open, nieuwe bus in het venster | ≤ 100 ms | 4-10 ms |
+| Een gewone klik op een tegel | niet trager | geen wachttijd: de klik doet meteen wat hij deed; alleen een klik met `detail ≥ 2` telt niet |
+| [Kiezen] → tegel `gekozen` in het hoofdvenster | ≤ 150 ms | 6-12 ms |
+| [Kiezen] → 3D-venster dicht | ≤ 150 ms | 7-15 ms |
+| 3D-venster dicht → renderer-proces weg | ≤ 2 s | 693-735 ms |
+| 3D-venster dicht → GPU-geheugen terug | ≤ 2 s | deels: zie hieronder |
+| Klik → 3D scherp (O560, nieuw pakket, met het openen van het venster) | (§10: nieuw scherp ≤ 1500) | 1014-1639 ms |
+| NLC 12C openen tot scherp, tien keer (warm) | (§10: warm scherp ≤ 1000, plus het venster) | 816-1365 ms; in de laatste ronde liep het op tot 7,1 s toen een ander programma er 5 GB videogeheugen bij nam (hele kaart 5,3 → 10,3 GB) |
+| Kleurstelling wisselen in het venster (O560, eerste keer) | ≤ 500 ms | 55-294 ms |
+| Hervatten na pauze tot weer 3D | — | 1,95-2,3 s (de context komt terug en de bus laadt opnieuw) |
+| OMSI draait, geen focus → pauze | 60 s | 59,4-59,9 s |
+| Foto v4, eerste van een bus / volgende kleurstellingen | — | 886-4980 ms (pakket, context, shaders) / 143-276 ms; 33-38 kB |
+| Kleurstalen, alle kleurstellingen van een bus | — | O560 (4, TGA) 3,5 s, NLC 12C (20) 2,3 s, op de achtergrond; de lijst staat er eerst zonder stalen |
+
+**Wat de proef nagaat (laatste ronde: ALLES GOED, 0 vangrails geraakt):** geen 3D-knop op merk en type, wel op elke tegel van niveau 3 en 4; één venster, en een tweede 3D-klik in hetzelfde venster (zelfde `webContents`); zijpaneel met naam, kleurstellingen, stalen, beschrijving en maat; [Kiezen] zet bus en kleurstelling zoals een tegelklik (remise, kruimel, gekozen tegel), het venster gaat dicht en het renderer-proces is weg; een keuze met een oud volgnummer of van een ander venster telt niet; Esc sluit zonder keuze; dubbelklik gaat één niveau verder en opent de bus van de eerste klik; hoofdvenster minimaliseren geeft `bv.paused` en daarna weer 3D; toetsen (2 in het beeld, /, typen, Enter in het zoekveld, Esc maakt het zoekveld leeg, pijltjes met 150 ms rust, Enter in de lijst, Ctrl+W); smal venster; het thema volgt; plek en maat onthouden, een plek buiten de schermen valt op het midden; de dealerstand (titel, [Deze kleurstelling], draaiplateau, niets over geld, de buskeuze verandert niet); tien keer de NLC zonder groei; een gecrasht venster geeft `bv.windowFailed` en de tegels werken door; de foto v4 op de tegels; de busstap verlaten sluit het venster; de schakelaar uit: geen knop en `bus3dOpen` geeft 0, weer aan: de knop terug; OMSI (nepproces): lichte stand en na 60 s zonder focus pauze; START sluit het venster.
+
+**GPU-geheugen na het sluiten** (`--geheugen 12` en `16`, videogeheugen per proces uit de prestatiemeter "GPU Process Memory" van Windows; nvidia-smi telt de hele kaart en daar speelde het spel naast): vóór het eerste 3D-venster heeft het GPU-proces van de app 120 MB videogeheugen en 200 MB privé geheugen. Met een bus open 266-457 MB video (NLC, O560). Na het sluiten komt het grootste deel binnen 2 s terug, maar het GPU-proces houdt 20-180 MB video en ongeveer 350 MB privé vast; over 12-16 keer openen en sluiten blijft dat vlak (geen lek: groei na het opwarmen, de laatste vijf tegen de eerste vijf keer, 1-4 MB main, 8-50 MB privé, video −130 tot −102 MB; het privé geheugen schommelt tussen 315 en 625 MB). Geprobeerd en weer weggehaald: de context in de pagina eerst opgeven (`loseContext`) vóór `destroy()`, en het hoofdvenster laten hertekenen; geen van beide gaf dat geheugen terug. Het zijn de caches van ANGLE en het stuurprogramma in het GPU-proces van Electron, dat de app deelt met het hoofdvenster; daar kan de app niet bij. §10 "GPU-geheugen terug ≤ 2 s" is dus voor dat deel niet gehaald.
+
+**Afwijkingen van het ontwerp, met reden**
+- **Bestandsnamen:** `bus3d/Venster.tsx` heet `bus3d/Bus3dVenster.tsx` (Windows kent geen verschil tussen `venster.tsx` en `Venster.tsx`); de ingang `bus3d/venster.tsx` is klein en zonder React en laadt `bus3d/ingang.tsx` pas nadat het plaatje staat (met alles in één stuk kwam het eerste plaatje 290 ms na de HTML, zo 1 ms na DOMContentLoaded).
+- **Het venster wordt pas getoond als het eerste plaatje staat** (`bus3d:getoond`, hooguit 300 ms na `ready-to-show`), zodat het nooit leeg verschijnt. `sandbox: true` voor het 3D-venster en het fotovenster.
+- **Pauze bij "verborgen" pas nadat het venster getoond is:** anders kreeg de pagina bij het laden "pauze" mee (het venster is dan nog verborgen) en miste ze het "geen pauze" erna; het 3D bleef dan weg.
+- **"Geen van onze vensters heeft focus"** = geen enkel venster van de app (`BrowserWindow.getFocusedWindow()`).
+- **Kleurstalen uit de lak, niet uit de "carrosserie" van §5.7:** het textuurplan kiest bij de O560 `O560_E6_Glass.dds` als carrosserie (het glas beslaat veel oppervlak). De stalen nemen de grootste CTC-plek die geen glas is (op naam: glas, glass, scheibe, fenster, window, szyb, trans), en zetten zuiver zwart achteraan (ongebruikte vakken van een atlas). JPEG geeft geen staal (node leest geen JPEG).
+- **Foto v4 alleen via `bus:foto`** (de tegels, op vraag); de grote fotoronde "Busplaatjes bijwerken" blijft v3b tot F3. Bij een fout of de tijd valt `bus:foto` terug op de v3b.
+- **Vrij rijden:** START zet daar `vrijBezig` en niet `started`, en de stap blijft "bus"; het hoofdvenster telt dat mee als "de busstap verlaten".
+- **F11** gebruikt het volledige scherm van HTML (`requestFullscreen`), niet `setFullScreen` van main.
+- **Dealerstand:** het venster kan het al (`doel: 'dealer'`), het dealerscherm niet (F4). Een keuze met `doel: 'dealer'` komt als `bus3d:keuze` in het hoofdvenster, en de buskeuze doet er niets mee. De wagenparkstand heeft alleen de titel "Bus {nr} · {naam}".
+
+**De andere proeven na de tweede helft** (29-09, met een spel op dezelfde GPU: 72% belasting, 5,8 GB): `probe-bus3d.ts` ALLES GOED; `probe-bus3d-beeld.cjs` door alle 13 bussen zonder fout (GS GU240 `versleuteld`, 0 lange taken, beeldtijd p95 2,9-5,4 ms, zwart en schaduw gelijk aan de eerste helft); de tijden zijn door het spel trager dan in de eerste helft (O560 warm scherp 854 ms, NLC 12C 968 ms); `probe-vrijrijden.cjs` alle stappen, spelmap onaangeroerd; `probe-modi.cjs` vrij rijden en carrière door; `probe-teksten.ts` alles klopt.
+
+**Nog niet (F3 en later):** de ruststand via de scripts (zie boven: zonnescherm O560, laadkabel HH20, twee stoeltypes NLC); de DPR-stap en de begrenzing van het lakmasker uit de eerste helft; de foto v4 voor de hele vloot (`probe-busfoto-v4.cjs`); de exe-proef met het venster in `app.asar` (`probe-bus3d-exe.cjs`).

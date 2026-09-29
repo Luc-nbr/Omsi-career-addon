@@ -139,6 +139,14 @@ export interface Tegel {
    */
   acties?: Tegelactie[];
   onDoen: () => void;
+  /**
+   * Een dubbelklik op de tegel: de eerste klik doet gewoon wat hij doet (kiezen,
+   * een niveau verder), en de dubbelklik doet dit daarbovenop -- voor de tegel
+   * van die eerste klik, want na de eerste klik staat er vaak al een andere
+   * tegel onder de muis. Zo wacht een gewone klik nooit op een mogelijke tweede
+   * (bus3d-ontwerp §8.1: het 3D-venster openen).
+   */
+  onDubbel?: () => void;
 }
 
 /** Een handeling in de hoek van een tegel. */
@@ -146,8 +154,16 @@ export interface Tegelactie {
   label: string;
   /** Rood bij zweven; alleen voor wat je niet terugkrijgt. */
   gevaarlijk?: boolean;
-  /** Het tekentje; standaard het kruis dat iets weggooit. */
-  teken?: "kruis" | "foto" | "fotoweg";
+  /** Het tekentje; standaard het kruis dat iets weggooit. `3d` is de letters "3D". */
+  teken?: "kruis" | "foto" | "fotoweg" | "3d";
+  /**
+   * Altijd zichtbaar (gedempt, vol bij zweven of focus) in plaats van pas bij
+   * zweven. Voor de 3D-knop: dat is de enige weg naar 3D en die moet te vinden
+   * zijn (bus3d-ontwerp §8.1).
+   */
+  altijd?: boolean;
+  /** Gevuld: wat deze knop opent staat nu open (de bus in het 3D-venster). */
+  ingedrukt?: boolean;
   onDoen: () => void;
 }
 
@@ -545,6 +561,8 @@ export function Setup({
     refit: () => void;
   }>(undefined);
   const gekozenRef = useRef<HTMLButtonElement>(null);
+  /** De tegel van de laatste enkele klik, voor een dubbelklik (zie `Tegel.onDubbel`). */
+  const laatsteKlik = useRef<{ tegel: Tegel; tijd: number }>(undefined);
   const [geometry, setGeometry] = useState<MapGeometry>();
   const kaartmap = duty?.mapFolder ?? netkaart;
   useEffect(() => {
@@ -828,6 +846,10 @@ export function Setup({
             onPointerMove={(event) => kantel(event, ".tegel", 5)}
             onPointerLeave={kantelLos}
             onScroll={kantelLos}
+            onDoubleClick={() => {
+              const klik = laatsteKlik.current;
+              if (klik && performance.now() - klik.tijd <= 500) klik.tegel.onDubbel?.();
+            }}
           >
             {tegels.map((tegel, index) => (
               <button
@@ -838,7 +860,12 @@ export function Setup({
                 aria-pressed={tegel.gekozen}
                 disabled={Boolean(tegel.uit)}
                 title={tegel.uit}
-                onClick={tegel.onDoen}
+                onClick={(e) => {
+                  // De tweede klik van een dubbelklik kiest niets: dat deed de eerste al.
+                  if (e.detail >= 2) return;
+                  laatsteKlik.current = { tegel, tijd: performance.now() };
+                  tegel.onDoen();
+                }}
               >
                 {tegel.beeld ? (
                   <Tegelbeeld bron={tegel.beeld} naam={tegel.titel} />
@@ -862,9 +889,11 @@ export function Setup({
                         key={actie.label}
                         role="button"
                         tabIndex={0}
-                        className={`tegelactie ${actie.gevaarlijk ? "gevaarlijk" : ""}`}
+                        className={`tegelactie ${actie.gevaarlijk ? "gevaarlijk" : ""} ${actie.altijd ? "altijd" : ""}`}
                         title={actie.label}
                         aria-label={actie.label}
+                        aria-pressed={actie.teken === "3d" ? Boolean(actie.ingedrukt) : undefined}
+                        data-teken={actie.teken}
                         onClick={(e) => {
                           e.stopPropagation();
                           actie.onDoen();
@@ -876,7 +905,11 @@ export function Setup({
                           actie.onDoen();
                         }}
                       >
-                        {actie.teken && actie.teken !== "kruis" ? (
+                        {actie.teken === "3d" ? (
+                          <span className="tegelactie-letters" aria-hidden="true">
+                            3D
+                          </span>
+                        ) : actie.teken && actie.teken !== "kruis" ? (
                           <Pictogram naam={actie.teken} />
                         ) : (
                           <svg viewBox="0 0 24 24" aria-hidden="true">

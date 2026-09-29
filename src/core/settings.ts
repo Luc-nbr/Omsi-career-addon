@@ -154,6 +154,34 @@ export interface Settings {
    * schakelaar blijft de app precies zoals hij was.
    */
   bus3d?: boolean
+  /**
+   * Plek en maat van het 3D-venster (bus3d-ontwerp §8.1), in schermpunten. Bij
+   * het openen getoetst aan de schermen die er dan zijn: een plek op een scherm
+   * dat weg is, valt terug op het midden boven het hoofdvenster.
+   */
+  bus3dVenster?: Bus3dVensterPlek
+}
+
+export interface Bus3dVensterPlek {
+  x: number
+  y: number
+  breedte: number
+  hoogte: number
+  gemaximaliseerd?: boolean
+}
+
+/** Alleen eindige getallen binnen redelijke grenzen; anders niets (dan het midden). */
+function geldigeVensterPlek(ruw: unknown): Bus3dVensterPlek | undefined {
+  if (!ruw || typeof ruw !== 'object') return undefined
+  const r = ruw as Record<string, unknown>
+  const getal = (w: unknown, min: number, max: number): number | undefined =>
+    typeof w === 'number' && Number.isFinite(w) && w >= min && w <= max ? Math.round(w) : undefined
+  const x = getal(r.x, -100000, 100000)
+  const y = getal(r.y, -100000, 100000)
+  const breedte = getal(r.breedte, 200, 20000)
+  const hoogte = getal(r.hoogte, 200, 20000)
+  if (x === undefined || y === undefined || breedte === undefined || hoogte === undefined) return undefined
+  return { x, y, breedte, hoogte, gemaximaliseerd: r.gemaximaliseerd === true ? true : undefined }
 }
 
 /**
@@ -240,7 +268,8 @@ export function readSettings(userDataPath: string): Settings {
       apparaatPoort: geldigePoort(raw.apparaatPoort),
       busmodules: geldigeModules(raw.busmodules),
       busknoppenStraks: geldigeWachtrij(raw.busknoppenStraks),
-      bus3d: raw.bus3d === true ? true : undefined
+      bus3d: raw.bus3d === true ? true : undefined,
+      bus3dVenster: geldigeVensterPlek(raw.bus3dVenster)
     }
   } catch {
     return {
@@ -336,7 +365,8 @@ export function writeSettings(userDataPath: string, settings: Partial<Settings>)
       settings.busknoppenStraks && typeof settings.busknoppenStraks === 'object'
         ? geldigeWachtrij(settings.busknoppenStraks)
         : current.busknoppenStraks,
-    bus3d: typeof settings.bus3d === 'boolean' ? settings.bus3d || undefined : current.bus3d
+    bus3d: typeof settings.bus3d === 'boolean' ? settings.bus3d || undefined : current.bus3d,
+    bus3dVenster: settings.bus3dVenster ? (geldigeVensterPlek(settings.bus3dVenster) ?? current.bus3dVenster) : current.bus3dVenster
   }
   const path = settingsPath(userDataPath)
   mkdirSync(dirname(path), { recursive: true })

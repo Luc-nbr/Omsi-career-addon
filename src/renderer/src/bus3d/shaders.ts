@@ -395,14 +395,20 @@ ${GEMEEN}
 ${HEMEL}
 ${SCHADUW}
 uniform sampler2D uContactTex;
+// 1: de foto v4 (§5.6, §9): geen vloer, alleen de contactschaduw als alfa, zodat hij op elke tegel past.
+uniform int uFoto;
 in vec3 vWereld;
 out vec4 uitKleur;
 void main() {
   vec3 n = vec3(0.0, 1.0, 0.0);
-  float s = schaduw(vWereld, n);
   vec2 cuv = (vWereld.xz - uContact.xy) * uContact.zw;
   float occ = 0.0;
   if (cuv.x > 0.0 && cuv.x < 1.0 && cuv.y > 0.0 && cuv.y < 1.0) occ = texture(uContactTex, cuv).r * uDivers2.y;
+  if (uFoto == 1) {
+    uitKleur = vec4(0.0, 0.0, 0.0, clamp(occ * 0.7, 0.0, 0.7));
+    return;
+  }
+  float s = schaduw(vWereld, n);
   vec3 zon = uZonKleur.rgb * max(uZonRicht.y, 0.0) * s * (1.0 - 0.35 * occ);
   vec3 rond = (uHemelLicht.rgb * mix(uDivers2.w, 1.0, s) + uOmgeving.rgb) * (1.0 - 0.9 * occ);
   vec3 kleur = uVloer.rgb * (zon + rond) * uOog.w;

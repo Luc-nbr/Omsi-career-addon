@@ -1,153 +1,130 @@
-import { StrictMode, useEffect, useRef, useState, type JSX } from 'react'
-import { createRoot } from 'react-dom/client'
-import { isLanguage, type Language } from '../../../shared/i18n'
-import { BusViewer, type ViewerStand } from '../BusViewer'
-import { LanguageProvider } from '../language'
-import type { AfdrukVraag } from './berichten'
-import { Verbinding, type ViewerHandvat } from './verbinding'
+import type { Bus3dBrug, Bus3dVensterVraag } from '../../../shared/bus3d'
 
 /**
- * DE INGANG VAN HET 3D-VENSTER (bus3d.html, bus3d-ontwerp §8.1)
+ * DE INGANG VAN HET 3D-VENSTER (bus3d.html, bus3d-ontwerp §8.1, §0.9)
  *
- * Met StrictMode, net als het hoofdvenster: de viewer moet een dubbele mount
- * overleven met één context (§4.4, §14 F2).
+ * Met opzet klein en zonder React: nooit een leeg kader. Zodra main de vraag
+ * geeft (`bus3d:vraag`, met het heldenbeeld of de foto van de tegel erin) staat
+ * dat plaatje er -- of het busicoon -- en pas daarna wordt het React-deel
+ * geladen (ingang.tsx: viewer, zijpaneel, teksten). Met alles in één stuk kwam
+ * het eerste plaatje pas 290 ms na het laden van de pagina (de teksten alleen
+ * al zijn een megabyte script); zo is het er vrijwel meteen. Het voorlopige
+ * plaatje gaat weg zodra de viewer zijn eigen eerste plaatje toont.
  *
- * Dit is de eerste helft van F2: alleen de viewer, over het hele venster. Welke
- * bus erin staat komt nu uit het adres (`?bus=<relatief pad>&kleur=<naam>&taal=nl`);
- * het venster eromheen -- de vraag van main, het zijpaneel met de
- * kleurstellingen, [Kiezen] -- komt met main/bus3dvenster.ts.
- *
- * Met `?proef=1` hangt er een haakje voor de proef (scripts/probe-bus3d-beeld.cjs)
- * aan `window.__bv`: een bus laden en wachten tot hij scherp staat, afdrukken,
- * meten, en de lange taken op de hoofddraad.
+ * Drie standen, op het adres:
+ * - gewoon: het 3D-venster van main (main/bus3dvenster.ts);
+ * - `?foto=1`: het verborgen fotovenster van de foto v4 (bus3d/fotomodus.ts);
+ * - `?proef=1` of `?bus=...`: alleen de viewer, voor scripts/probe-bus3d-beeld.cjs.
  */
-
-const adres = new URLSearchParams(location.search)
-const taalUitAdres = adres.get('taal') ?? 'nl'
-const taal: Language = isLanguage(taalUitAdres) ? taalUitAdres : 'nl'
-const proef = adres.has('proef')
-// Alleen bij de proef: lichtwaarden om te ijken (`?licht={"belichting":1.4}`).
-if (proef && adres.get('licht')) {
-  try {
-    Verbinding.get().licht(JSON.parse(adres.get('licht')!) as Record<string, unknown>)
-  } catch {
-    // geen geldige JSON: dan de gewone waarden
-  }
-}
-
-interface Proefhaak {
-  laad(pad: string, kleur?: string): Promise<ViewerStand>
-  /** Dezelfde bus in een andere kleurstelling (zonder opnieuw te laden): tot hij weer scherp staat. */
-  kleur(kleur?: string): Promise<ViewerStand>
-  afdruk(a: AfdrukVraag): Promise<{ beeld?: string; masker?: string; id?: string; idTabel?: unknown; fout?: string }>
-  meet(wat: 'draaien' | 'schaduw' | 'geheugen', beelden?: number): Promise<unknown>
-  stand(): ViewerStand | undefined
-  langeTaken(): number[]
-  wisLangeTaken(): void
-  /** Wat de renderer-werker bij het starten meldde: WebGL2, kaart, MSAA-monsters, S3TC. */
-  info(): Promise<unknown>
-}
 
 declare global {
   interface Window {
-    __bv?: Proefhaak
+    bus3d?: Bus3dBrug
   }
 }
 
-/** Een ArrayBuffer als base64, voor de proef (die haalt het met executeJavaScript op). */
-function base64(b: ArrayBuffer): string {
-  const bytes = new Uint8Array(b)
-  let s = ''
-  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-  return btoa(s)
+const adres = new URLSearchParams(location.search)
+const brug = window.bus3d
+// Voor de proef (probe-bus3d-venster.cjs): wanneer de ingang begon en wanneer de vraag er was.
+document.documentElement.dataset.ingangMs = String(Math.round(performance.now()))
+
+/** Het vlak van de viewer: links naast het paneel van 320 px, of in een smal venster bovenaan in 16:10 (§8.1). */
+function vlakVanViewer(): { links: number; boven: number; breedte: number; hoogte: number } {
+  const b = window.innerWidth
+  const h = window.innerHeight
+  if (b < 900) return { links: 0, boven: 0, breedte: b, hoogte: Math.min(h * 0.6, (b * 10) / 16) }
+  return { links: 0, boven: 0, breedte: b - 320, hoogte: h }
 }
 
-/** Lange taken op de hoofddraad (> 50 ms), met hun begin: alleen die na `wisLangeTaken` tellen. */
-const langeTaken: Array<{ begin: number; duur: number }> = []
-let langeTakenVanaf = 0
-if (proef && 'PerformanceObserver' in window) {
-  try {
-    new PerformanceObserver((lijst) => {
-      for (const e of lijst.getEntries()) langeTaken.push({ begin: e.startTime, duur: Math.round(e.duration) })
-    }).observe({ type: 'longtask', buffered: true })
-  } catch {
-    // geen longtask in deze Chromium: dan blijft de lijst leeg
+/** De vorm van een bus als SVG, dezelfde als het busicoon van de viewer. */
+function busicoon(vorm: Bus3dVensterVraag['vorm']): SVGSVGElement {
+  const ns = 'http://www.w3.org/2000/svg'
+  const svg = document.createElementNS(ns, 'svg')
+  svg.setAttribute('viewBox', '0 0 96 40')
+  svg.setAttribute('aria-hidden', 'true')
+  svg.style.cssText = 'width:min(42%,360px);height:auto;fill:rgba(255,255,255,0.55)'
+  const delen: Array<[string, Record<string, number>]> =
+    vorm === 'geleed'
+      ? [
+          ['rect', { x: 2, y: 8, width: 44, height: 22, rx: 4 }],
+          ['rect', { x: 56, y: 8, width: 38, height: 22, rx: 4 }],
+          ['circle', { cx: 14, cy: 32, r: 4 }],
+          ['circle', { cx: 40, cy: 32, r: 4 }],
+          ['circle', { cx: 82, cy: 32, r: 4 }]
+        ]
+      : vorm === 'midi'
+        ? [
+            ['rect', { x: 16, y: 10, width: 52, height: 20, rx: 4 }],
+            ['circle', { cx: 28, cy: 32, r: 4 }],
+            ['circle', { cx: 58, cy: 32, r: 4 }]
+          ]
+        : vorm === 'dubbel'
+          ? [
+              ['rect', { x: 6, y: 2, width: 72, height: 28, rx: 4 }],
+              ['circle', { cx: 20, cy: 32, r: 4 }],
+              ['circle', { cx: 66, cy: 32, r: 4 }]
+            ]
+          : [
+              ['rect', { x: 6, y: 8, width: 78, height: 22, rx: 4 }],
+              ['circle', { cx: 20, cy: 32, r: 4 }],
+              ['circle', { cx: 70, cy: 32, r: 4 }]
+            ]
+  for (const [soort, attrs] of delen) {
+    const el = document.createElementNS(ns, soort)
+    for (const [k, w] of Object.entries(attrs)) el.setAttribute(k, String(w))
+    svg.appendChild(el)
   }
+  return svg
 }
 
-function Venster(): JSX.Element {
-  const [bus, zetBus] = useState<{ pad: string; kleur?: string; n: number }>({
-    pad: adres.get('bus') ?? '',
-    kleur: adres.get('kleur') ?? undefined,
-    n: 0
+/** Het plaatje meteen, zonder React: de foto of het icoon, op de plek van de viewer. */
+function toonVoorlopig(v: Bus3dVensterVraag, b: Bus3dBrug): void {
+  const d = document.documentElement.dataset
+  const meld = (wat: 'foto' | 'icoon'): void => {
+    if (d.getoondMs) return
+    d.getoond = wat
+    d.getoondMs = String(Math.round(performance.now()))
+    b.getoond()
+  }
+  const vlak = document.createElement('div')
+  vlak.id = 'bv-voorlopig'
+  const v0 = vlakVanViewer()
+  vlak.style.cssText =
+    `position:fixed;left:${v0.links}px;top:${v0.boven}px;width:${v0.breedte}px;height:${v0.hoogte}px;` +
+    'display:grid;place-items:center;background:#8fa7c0;z-index:5;pointer-events:none'
+  const icoon = busicoon(v.vorm)
+  vlak.appendChild(icoon)
+  if (v.foto) {
+    const img = document.createElement('img')
+    img.alt = ''
+    img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain'
+    img.onload = () => {
+      icoon.remove()
+      meld('foto')
+    }
+    img.onerror = () => meld('icoon')
+    img.src = v.foto
+    vlak.appendChild(img)
+  }
+  document.body.appendChild(vlak)
+  if (!v.foto) meld('icoon')
+}
+
+if (adres.has('foto') && brug) {
+  void import('./fotomodus').then((m) => m.startFotomodus(brug))
+} else if (adres.has('proef') || adres.has('bus') || !brug) {
+  void import('./ingang').then((m) => m.startProef())
+} else {
+  void brug.vraag().then((v) => {
+    if (!v) {
+      // Main kent dit venster niet (meer): dicht.
+      brug.sluit()
+      return
+    }
+    document.documentElement.dataset.vraagKlaarMs = String(Math.round(performance.now()))
+    toonVoorlopig(v, brug)
+    void import('./ingang').then((m) => m.startVenster(v))
   })
-  const handvat = useRef<ViewerHandvat | undefined>(undefined)
-  const laatste = useRef<ViewerStand | undefined>(undefined)
-  const wachters = useRef<Array<(s: ViewerStand) => void>>([])
-
-  useEffect(() => {
-    if (!proef) return
-    window.__bv = {
-      laad: (pad, kleur) =>
-        new Promise((klaar) => {
-          laatste.current = undefined
-          wachters.current.push(klaar)
-          zetBus((b) => ({ pad, kleur, n: b.n + 1 }))
-        }),
-      kleur: (kleur) =>
-        new Promise((klaar) => {
-          laatste.current = undefined
-          wachters.current.push(klaar)
-          zetBus((b) => ({ ...b, kleur }))
-        }),
-      afdruk: async (a) => {
-        const h = handvat.current
-        if (!h) return { fout: 'geen viewer' }
-        const u = await h.afdruk(a)
-        if ('fout' in u) return { fout: u.fout }
-        return {
-          beeld: base64(u.beeld),
-          masker: u.masker ? base64(u.masker) : undefined,
-          id: u.id ? base64(u.id) : undefined,
-          idTabel: u.idTabel
-        }
-      },
-      meet: async (wat, beelden) => (handvat.current ? handvat.current.meet(wat, beelden) : { fout: 'geen viewer' }),
-      stand: () => laatste.current,
-      info: () => Verbinding.get().gereed,
-      langeTaken: () => langeTaken.filter((t) => t.begin >= langeTakenVanaf).map((t) => t.duur),
-      wisLangeTaken: () => {
-        langeTakenVanaf = performance.now()
-      }
-    }
-  }, [])
-
-  const opStand = (s: ViewerStand): void => {
-    laatste.current = s
-    if (s.fase === 'scherp' || s.fase === 'fout') {
-      const w = wachters.current
-      wachters.current = []
-      for (const k of w) k(s)
-    }
-  }
-
-  return (
-    <LanguageProvider language={taal}>
-      {bus.pad ? (
-        <BusViewer
-          key={proef ? `${bus.pad}|${bus.n}` : bus.pad}
-          relatiefPad={bus.pad}
-          kleurstelling={bus.kleur}
-          onStand={opStand}
-          onHandvat={(h) => (handvat.current = h)}
-        />
-      ) : null}
-    </LanguageProvider>
-  )
 }
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <Venster />
-  </StrictMode>
-)
+export {}

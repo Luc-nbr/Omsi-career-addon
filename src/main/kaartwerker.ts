@@ -93,6 +93,7 @@ type Opdracht =
   | { id: number; soort: 'bus3d:lak'; pakket: string; kleurstelling?: string }
   | { id: number; soort: 'bus3d:controle'; pakket: string }
   | { id: number; soort: 'bus3d:omgeving' }
+  | { id: number; soort: 'bus3d:stalen'; relatiefPad: string }
 
 interface Antwoord {
   id: number
@@ -136,7 +137,8 @@ parentPort?.on('message', (opdracht: Opdracht) => {
     opdracht.soort === 'bus3d:model' ||
     opdracht.soort === 'bus3d:lak' ||
     opdracht.soort === 'bus3d:controle' ||
-    opdracht.soort === 'bus3d:omgeving'
+    opdracht.soort === 'bus3d:omgeving' ||
+    opdracht.soort === 'bus3d:stalen'
   ) {
     bus3dCache ??= new Bus3dCache(userData)
     bus3dWerk(opdracht, omsiPath, bus3dCache, (tussen) => parentPort?.postMessage({ id: opdracht.id, tussen })).then(

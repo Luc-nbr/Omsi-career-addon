@@ -185,7 +185,7 @@ export class Tekenaar {
   private contactProg!: { prog: WebGLProgram; mat: Loc }
   private vaagProg!: { prog: WebGLProgram; bron: Loc; stap: Loc }
   private hemelProg!: { prog: WebGLProgram; hemel: Loc; wolk: Loc }
-  private vloerProg!: { prog: WebGLProgram; hemel: Loc; wolk: Loc; schaduw: Loc; contact: Loc }
+  private vloerProg!: { prog: WebGLProgram; hemel: Loc; wolk: Loc; schaduw: Loc; contact: Loc; foto: Loc }
   private ubo!: WebGLBuffer
   private blok = new Float32Array(BLOK_FLOATS)
   private leegVao!: WebGLVertexArrayObject
@@ -257,7 +257,8 @@ export class Tekenaar {
       hemel: gl.getUniformLocation(lp, 'uHemelTex'),
       wolk: gl.getUniformLocation(lp, 'uWolkTex'),
       schaduw: gl.getUniformLocation(lp, 'uSchaduwKaart'),
-      contact: gl.getUniformLocation(lp, 'uContactTex')
+      contact: gl.getUniformLocation(lp, 'uContactTex'),
+      foto: gl.getUniformLocation(lp, 'uFoto')
     }
     gl.useProgram(hp)
     gl.uniform1i(this.hemelProg.hemel, 4)
@@ -914,7 +915,7 @@ export class Tekenaar {
     return fb
   }
 
-  teken(c: CameraBeeld, b: number, h: number, opties: { vlak?: boolean; zonderBus?: boolean; id?: boolean } = {}): void {
+  teken(c: CameraBeeld, b: number, h: number, opties: TekenOpties = {}): void {
     const gl = this.gl
     const fb = this.msaaVoor(b, h)
     this.tekenScene(c, b, h, opties, fb)
@@ -932,7 +933,7 @@ export class Tekenaar {
     c: CameraBeeld,
     b: number,
     h: number,
-    opties: { vlak?: boolean; zonderBus?: boolean; id?: boolean },
+    opties: TekenOpties,
     doelFb: WebGLFramebuffer
   ): void {
     const gl = this.gl
@@ -944,7 +945,8 @@ export class Tekenaar {
     gl.viewport(0, 0, b, h)
     gl.colorMask(true, true, true, true)
     gl.depthMask(true)
-    gl.clearColor(0, 0, 0, 1)
+    // De foto v4 is doorzichtig (§5.6): geen hemel, en van de vloer alleen de contactschaduw.
+    gl.clearColor(0, 0, 0, opties.foto ? 0 : 1)
     gl.clearDepth(1)
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
     gl.disable(gl.BLEND)
@@ -953,16 +955,19 @@ export class Tekenaar {
     this.bindOmgeving()
 
     if (!opties.vlak && !opties.id) {
-      // De hemel, zonder diepte.
-      gl.disable(gl.DEPTH_TEST)
       gl.disable(gl.CULL_FACE)
-      gl.useProgram(this.hemelProg.prog)
-      gl.bindVertexArray(this.leegVao)
-      gl.drawArrays(gl.TRIANGLES, 0, 3)
+      if (!opties.foto) {
+        // De hemel, zonder diepte.
+        gl.disable(gl.DEPTH_TEST)
+        gl.useProgram(this.hemelProg.prog)
+        gl.bindVertexArray(this.leegVao)
+        gl.drawArrays(gl.TRIANGLES, 0, 3)
+      }
       // De vloer.
       gl.enable(gl.DEPTH_TEST)
       gl.depthFunc(gl.LEQUAL)
       gl.useProgram(this.vloerProg.prog)
+      gl.uniform1i(this.vloerProg.foto, opties.foto ? 1 : 0)
       gl.bindVertexArray(this.vloerVao)
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
     }
@@ -1089,6 +1094,26 @@ export class Tekenaar {
     return true
   }
 
+  /**
+   * De foto v4 (§9): één beeld met `foto` in de eigen MSAA-framebuffer, opgelost
+   * en teruggelezen. De pixels zijn voorvermenigvuldigd (glas en randen boven
+   * niets mengen met doorzichtig zwart) en staan van onder naar boven; de
+   * werker zet ze om.
+   */
+  leesFoto(c: CameraBeeld, b: number, h: number): Uint8Array {
+    const gl = this.gl
+    const fb = this.msaaVoor(b, h)
+    this.tekenScene(c, b, h, { foto: true }, fb)
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fb)
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this.msaa!.uitFb)
+    gl.blitFramebuffer(0, 0, b, h, 0, 0, b, h, gl.COLOR_BUFFER_BIT, gl.NEAREST)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.msaa!.uitFb)
+    const px = new Uint8Array(b * h * 4)
+    gl.readPixels(0, 0, b, h, gl.RGBA, gl.UNSIGNED_BYTE, px)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+    return px
+  }
+
   // ------------------------------------------------------------ metingen
   /** Wat er nu op de GPU staat (eigen boekhouding), in bytes. */
   gpuBytes(b: number, h: number): { totaal: number; texturen: number; geometrie: number; doelen: number } {
@@ -1139,6 +1164,19 @@ export class Tekenaar {
     const beurten = s.dicht.length + s.test.length + s.schaduwMeshes.length + s.meng.reduce((n, l) => n + l.length, 0)
     return { driehoeken: s.driehoeken, zichtbaar: s.zichtbareDriehoeken, tekenbeurten: beurten }
   }
+}
+
+/**
+ * `vlak`: alleen de bus in wit op zwart (het masker van de proef). `id`: per
+ * tekenbeurt een eigen kleur (diagnose). `zonderBus`: alleen hemel en vloer, met
+ * de schaduwen (de schaduwmeting). `foto`: doorzichtig, zonder hemel, met alleen
+ * de contactschaduw als alfa (de foto v4).
+ */
+export interface TekenOpties {
+  vlak?: boolean
+  zonderBus?: boolean
+  id?: boolean
+  foto?: boolean
 }
 
 function afstandKwadraat(a: Vec3, b: Vec3): number {

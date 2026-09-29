@@ -22,10 +22,12 @@ export interface ViewerLuisteraar {
 export interface ViewerHandvat {
   readonly id: number
   maat(b: number, h: number, dpr: number): void
-  laad(manifest: Bus3dManifest, lak: Bus3dLak | undefined, bron: 'cache' | 'nieuw', t0: number, licht?: boolean): number
+  laad(manifest: Bus3dManifest, lak: Bus3dLak | undefined, bron: 'cache' | 'nieuw', t0: number, licht?: boolean, foto?: boolean): number
   lak(lak: Bus3dLak, t0: number): void
   invoer(i: Invoer): void
+  /** Pauze (§9); met `vrijgeven` gaat de context weg, en bij hervatten komt hij terug met de bus. */
   pauze(aan: boolean, vrijgeven?: boolean): void
+  plateau(aan: boolean): void
   afdruk(a: AfdrukVraag): Promise<{ beeld: ArrayBuffer; masker?: ArrayBuffer; id?: ArrayBuffer; idTabel?: unknown } | { fout: string }>
   meet(wat: 'draaien' | 'schaduw' | 'geheugen', beelden?: number): Promise<unknown>
   weg(): void
@@ -119,16 +121,22 @@ export class Verbinding {
     return {
       id,
       maat: (b, h, dpr) => zelf.stuur({ soort: 'viewer', viewer: id, b, h, dpr }),
-      laad: (manifest, lak, bron, t0, licht) => {
+      laad: (manifest, lak, bron, t0, licht, foto) => {
         const laad = ++zelf.volgendeLaad
         const v = zelf.viewers.get(id)
         if (v) v.beelden = 0
-        zelf.stuur({ soort: 'bus', viewer: id, laad, manifest, lak, bron, t0, licht })
+        zelf.stuur({ soort: 'bus', viewer: id, laad, manifest, lak, bron, t0, licht, foto })
         return laad
       },
       lak: (lak, t0) => zelf.stuur({ soort: 'lak', viewer: id, lak, t0 }),
       invoer: (i) => zelf.stuur({ soort: 'invoer', viewer: id, invoer: i }),
-      pauze: (aan, vrijgeven) => zelf.stuur({ soort: 'pauze', viewer: id, aan, vrijgeven }),
+      pauze: (aan, vrijgeven) => {
+        const v = zelf.viewers.get(id)
+        // Na hervatten komt de bus opnieuw binnen: het eerste beeld telt dan weer als eerste.
+        if (v && !aan) v.beelden = 0
+        zelf.stuur({ soort: 'pauze', viewer: id, aan, vrijgeven })
+      },
+      plateau: (aan) => zelf.stuur({ soort: 'plateau', viewer: id, aan }),
       afdruk: (a) => zelf.vraag((vraag) => ({ soort: 'afdruk', vraag, viewer: id, afdruk: a })) as ReturnType<ViewerHandvat['afdruk']>,
       meet: (wat, beelden) => zelf.vraag((vraag) => ({ soort: 'meet', vraag, viewer: id, wat, beelden })),
       weg: () => {
