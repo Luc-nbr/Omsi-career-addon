@@ -178,15 +178,30 @@ export const OMSI_MAPPEN = [
   'TicketPacks',
   'Money',
   'plugins',
-  'Gras',
   'Weather',
   'Trains',
-  'Situations'
+  'Situations',
+  'Sounds',
+  'Scripts'
 ] as const
+/*
+ * Nagekeken aan Lucs Steam-OMSI (29-09, alleen gelezen): `Sounds` en `Scripts`
+ * staan in de hoofdmap, met de geluiden en scripts van de AI-auto's
+ * (`Sounds\AI_Cars`, `Scripts\AI_Cars`); een AI-pakket dat daarin schrijft
+ * kwam als "niet geplaatst" uit. `Gras` stond in de lijst, maar bestaat daar
+ * niet -- de grastexturen staan in `Texture` -- en een zip met een map `Gras`
+ * maakte er een nieuwe map naast Omsi.exe van, die OMSI nooit leest.
+ */
 
 const MAP_OP_NAAM = new Map<string, string>(OMSI_MAPPEN.map((m) => [m.toLowerCase(), m]))
-/** De OMSI-mappen die nooit ín een bus, kaart of object liggen (anders dan `Texture` en `Fonts`). */
-const PAKKET = new Set(OMSI_MAPPEN.filter((m) => m !== 'Texture' && m !== 'Fonts').map((m) => m.toLowerCase()))
+/**
+ * De OMSI-mappen die nooit ín een bus, kaart of object liggen. `Texture` en
+ * `Fonts` niet: die heeft een bus of een object ook. `Sounds` en `Scripts`
+ * evenmin: een object met zijn geluid in een map `Sounds` blijft een object.
+ */
+const PAKKET = new Set(
+  OMSI_MAPPEN.filter((m) => !['Texture', 'Fonts', 'Sounds', 'Scripts'].includes(m)).map((m) => m.toLowerCase())
+)
 
 /*
  * Welke map een map is, aan de bestanden die er direct in staan.
@@ -301,6 +316,23 @@ export function plaatsVan(paden: string[], naam = 'Add-on'): Map<string, string>
   return uit
 }
 
+/**
+ * De naam van de add-on als mapnaam, voor losse bestanden zonder eigen map.
+ *
+ * De naam komt uit de bestandsnaam van de zip, en die mag op Windows dingen
+ * die een map niet mag: `Bomen v1..zip` gaf `Bomen v1.` en `Bomen .zip` gaf
+ * `Bomen ` -- een naam die op een punt of spatie eindigt, en die `veiligPad`
+ * terecht weigert. Dan werd elk los bestand "geweigerd", met de uitleg dat de
+ * namen buiten de OMSI-map wezen. Nu: punten en spaties aan het eind weg,
+ * verboden tekens een liggend streepje, en wat daarna nog niet mag (`CON`,
+ * niets) wordt `Add-on`.
+ */
+export function pakketNaam(naam: string): string {
+  // eslint-disable-next-line no-control-regex
+  const schoon = naam.replace(/[\u0000-\u001f<>:"/\\|?*]/g, '_').replace(/[. ]+$/, '').trim()
+  return schoon && veiligPad(schoon) === schoon ? schoon : 'Add-on'
+}
+
 /*
  * PROGRAMMACODE
  *
@@ -312,7 +344,17 @@ export function plaatsVan(paden: string[], naam = 'Add-on'): Map<string, string>
  * vinkje. (Idee uit openOMSI, dat plugins uit een download apart zet.)
  */
 export const IS_CODE = /\.(dll|opl)$/i
-export const NOOIT = /\.(exe|com|bat|cmd|ps1|psm1|vbs|vbe|js|jse|wsf|wsh|hta|scr|pif|cpl|msi|msp|reg|lnk)$/i
+/*
+ * Ook nooit: snelkoppelingen en bestanden waarvan de verkenner zelf een
+ * pictogram of inhoud ophaalt (`.url`, `.scf`, `.library-ms`,
+ * `.searchConnector-ms`, `.website`). Wie alleen de map opent, laat Windows
+ * dan naar het pad in dat bestand gaan -- ook een netwerkpad als
+ * `\\server\x.ico`, en daarbij stuurt Windows de aanmeldgegevens (de
+ * NTLM-hash) mee. En programmacode die geen plugin is: `.jar`, `.msc`, `.inf`,
+ * `.chm`, stuurprogramma's en ActiveX-onderdelen. (29-09, uit de tegenlezing.)
+ */
+export const NOOIT =
+  /\.(exe|com|bat|cmd|ps1|psm1|vbs|vbe|js|jse|wsf|wsh|wsc|sct|hta|scr|pif|cpl|msi|msp|reg|lnk|url|scf|library-ms|searchconnector-ms|website|appref-ms|settingcontent-ms|application|jar|msc|inf|chm|sys|drv|ocx|diagcab)$/i
 
 /**
  * Mag er op dit pad in de OMSI-map geschreven worden?
@@ -457,6 +499,15 @@ export interface Plan {
   overig: string[]
   /** Namen die buiten de OMSI-map uitkwamen of op Windows niet mogen. */
   geweigerd: string[]
+  /**
+   * Bestanden die op dezelfde plek zouden komen als een eerder bestand uit
+   * dezelfde bron (`Zomer/zon.owt` en `Winter/zon.owt` gaan allebei naar
+   * `Weather/zon.owt`; `a.cfg` en `A.CFG` zijn op Windows één bestand). Het
+   * eerste gaat mee, deze niet.
+   */
+  dubbel: string[]
+  /** Bestanden waarvan het pad in de OMSI-map te lang wordt voor OMSI (zie `MAX_PAD`). */
+  teLang: string[]
   /** Hoeveel rommelbestanden (`__MACOSX`, `Thumbs.db`, ...) er overgeslagen zijn. */
   rommel: number
   /** Samenvatting per plek: `Vehicles/MAN_NL202` met het aantal bestanden. */
@@ -464,6 +515,15 @@ export interface Plan {
   bussen: string[]
   kaarten: string[]
 }
+
+/*
+ * OMSI is een 32-bits programma dat geen lange paden kent: een pad van 260
+ * tekens of meer (MAX_PATH, met het afsluitende nulteken) kan het niet openen.
+ * Node schrijft zo'n bestand wel (met `\\?\` ervoor), en dan staat het er
+ * zonder dat OMSI het ooit vindt -- een grijs blok of een ontbrekend geluid,
+ * en niemand die ziet waarom. Het plan zet ze apart.
+ */
+export const MAX_PAD = 259
 
 /** De plek van een doelpad: de eerste twee mappen (`Vehicles/MAN_NL202`). */
 function plekVan(doel: string): string {
@@ -479,7 +539,7 @@ function plekVan(doel: string): string {
 export function* planStappen(bron: Bron, omsi: string, register: Register): Generator<number, Plan> {
   const nooit = bron.bestanden.filter((b) => NOOIT.test(b.pad)).map((b) => b.pad)
   const bruikbaar = bron.bestanden.filter((b) => !NOOIT.test(b.pad))
-  const plaats = plaatsVan(bruikbaar.map((b) => b.pad), bron.naam)
+  const plaats = plaatsVan(bruikbaar.map((b) => b.pad), pakketNaam(bron.naam))
   const eigenaar = new Map<string, string>()
   for (const a of register.addons) for (const b of a.bestanden) eigenaar.set(b.pad.toLowerCase(), a.naam)
 
@@ -487,6 +547,16 @@ export function* planStappen(bron: Bron, omsi: string, register: Register): Gene
   const code: PlanRegel[] = []
   const overig: string[] = []
   const geweigerd = [...bron.geweigerd]
+  const dubbel: string[] = []
+  const teLang: string[] = []
+  /*
+   * Elk doel één keer, zonder op hoofdletters te letten (zoals Windows). Twee
+   * bronbestanden met hetzelfde doel schreven eerst allebei: het tweede
+   * maakte een "reservekopie" van het eerste, net neergezette, en bij
+   * verwijderen kwam die terug -- een bestand van de add-on dat bleef staan,
+   * met de melding "gewijzigd".
+   */
+  const doelen = new Set<string>()
   let n = 0
   for (const b of bruikbaar) {
     const doel = plaats.get(b.pad)
@@ -498,7 +568,16 @@ export function* planStappen(bron: Bron, omsi: string, register: Register): Gene
       geweigerd.push(b.pad)
       continue
     }
+    if (doelen.has(doel.toLowerCase())) {
+      dubbel.push(b.pad)
+      continue
+    }
+    doelen.add(doel.toLowerCase())
     const opPad = schrijfpad(omsi, doel)
+    if (resolve(opPad).length > MAX_PAD) {
+      teLang.push(b.pad)
+      continue
+    }
     let staat: PlanRegel['staat'] = 'nieuw'
     let grootteNu: number | undefined
     if (existsSync(opPad)) {
@@ -539,6 +618,8 @@ export function* planStappen(bron: Bron, omsi: string, register: Register): Gene
     nooit,
     overig,
     geweigerd,
+    dubbel,
+    teLang,
     rommel: bron.rommel,
     plekken: [...plekken.entries()].map(([plek, v]) => ({ plek, ...v })).sort((a, b) => b.bytes - a.bytes),
     bussen: mappen('Vehicles', /\.(bus|ovh)$/i),
@@ -656,7 +737,7 @@ export class InstallatieFout extends Error {
 /**
  * Installeren volgens een plan. Wat anders was, gaat eerst naar de reserve van
  * deze add-on; daarna pas wordt het overschreven. Het register wordt aan het
- * eind in één keer geschreven, door de aanroeper.
+ * eind in één keer geschreven, door de aanroeper, met `registreer`.
  *
  * Plugins gaan alleen mee met `metCode` (de speler vertrouwt de maker).
  *
@@ -680,13 +761,16 @@ export function* installeerStappen(
   const regels = opties.metCode ? [...plan.regels, ...plan.code] : plan.regels
   // Wat al gedaan is, om terug te kunnen: het pad op schijf, en of er een reserve van is.
   const gedaan: Array<{ doel: string; reserve?: string }> = []
+  // Ook hier elk doel één keer; zie `doelen` in `planStappen`.
+  const al = new Set<string>()
   let geschreven = 0
   let overschreven = 0
   let code = 0
   try {
     for (const regel of regels) {
       const b = perPad.get(regel.bron)
-      if (!b || !magSchrijven(regel.doel)) continue
+      if (!b || !magSchrijven(regel.doel) || al.has(regel.doel.toLowerCase())) continue
+      al.add(regel.doel.toLowerCase())
       const doel = schrijfpad(omsi, regel.doel)
       if (regel.staat === 'gelijk') {
         bestanden.push({ pad: regel.doel, sha1: sha1(readFileSync(doel)), was: 'gelijk' })
@@ -742,18 +826,59 @@ function draaiTerug(omsi: string, gedaan: Array<{ doel: string; reserve?: string
   let gelukt = true
   const mappen = new Set<string>()
   for (const { doel, reserve } of [...gedaan].reverse()) {
+    /*
+     * De map van elk doel, ook als het bestand er (nog) niet is: de mappen
+     * worden gemaakt vóór het schrijven, en een kapot bestand in de zip of
+     * een volle schijf kan daartussen vallen. Dan bleef er een lege
+     * `Vehicles/NieuweBus/model/...` staan. Alleen lege mappen gaan weg.
+     */
+    mappen.add(dirname(doel))
     try {
       if (reserve) copyFileSync(reserve, doel)
-      else if (existsSync(doel)) {
-        unlinkSync(doel)
-        mappen.add(dirname(doel))
-      }
+      else if (existsSync(doel)) unlinkSync(doel)
     } catch {
       gelukt = false
     }
   }
   ruimLegeMappenOp(omsi, mappen)
   return gelukt
+}
+
+/**
+ * Een geslaagde installatie weer ongedaan maken, aan wat ze teruggaf: wat
+ * nieuw was weg, wat overschreven was terug uit de reserve, en de reserve
+ * weg als dat lukte. Voor als het register daarna niet geschreven kan worden.
+ */
+function draaiInstallatieTerug(omsi: string, userData: string, addon: Addon): boolean {
+  const gedaan = addon.bestanden
+    .filter((b) => b.was !== 'gelijk')
+    .map((b) => ({
+      doel: schrijfpad(omsi, b.pad),
+      reserve: b.was === 'overschreven' ? join(reserveMap(userData, addon.id), ...b.pad.split('/')) : undefined
+    }))
+  const gelukt = draaiTerug(omsi, gedaan)
+  if (gelukt) rmSync(reserveMap(userData, addon.id), { recursive: true, force: true })
+  return gelukt
+}
+
+/**
+ * Een installatie in het register zetten.
+ *
+ * Lukte dat niet (een volle schijf in de gebruikersmap, een bestand dat
+ * vastzat), dan stond de add-on wel in OMSI maar kende de app hem niet: niet in
+ * de lijst, niet te verwijderen, en zijn reserve bleef liggen. Nu gaat de
+ * installatie dan terug, en komt er een `InstallatieFout` zoals bij een
+ * volle schijf tijdens het schrijven.
+ */
+export function registreer(userData: string, omsi: string, installatie: Installatie): void {
+  try {
+    const register = leesRegister(userData)
+    schrijfRegister(userData, { addons: [...register.addons, installatie.addon] })
+  } catch (fout) {
+    const teruggedraaid = draaiInstallatieTerug(omsi, userData, installatie.addon)
+    const vol = (fout as NodeJS.ErrnoException).code === 'ENOSPC'
+    throw new InstallatieFout(vol ? 'ruimte' : 'fout', fout instanceof Error ? fout.message : String(fout), teruggedraaid)
+  }
 }
 
 /** Lege mappen opruimen, van diep naar ondiep, tot aan de OMSI-mappen. */

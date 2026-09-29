@@ -21,7 +21,7 @@ const versie = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf8
  * nummer was niet van een nieuwe te onderscheiden. Of het de installatie of de
  * draagbare is, weet pas de draaiende app; zie main/versiewacht.ts.
  */
-function bouw(): { hash: string; tijd: string } {
+function bouw(): { hash: string; tijd: string; iso: string } {
   const git = (...args: string[]): string =>
     execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
   let hash = 'onbekend'
@@ -36,7 +36,8 @@ function bouw(): { hash: string; tijd: string } {
   const tijd =
     `${nu.getFullYear()}-${twee(nu.getMonth() + 1)}-${twee(nu.getDate())} ` +
     `${twee(nu.getHours())}:${twee(nu.getMinutes())}`
-  return { hash, tijd }
+  // `iso` (UTC) om bouwen te vergelijken, `tijd` om te lezen; zie core/versiewacht.ts.
+  return { hash, tijd, iso: nu.toISOString() }
 }
 
 export default defineConfig({

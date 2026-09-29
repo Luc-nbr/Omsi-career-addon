@@ -8,7 +8,9 @@
  * Eigen gebruikersmap en een nagebouwde OMSI-map. De knop "Zip kiezen" krijgt
  * een zip met rare namen, een plugin en een .exe, in plaats van een venster.
  * Er wordt niet op Installeren gedrukt. Maakt `addons-plan.png` en
- * `addons-plan-vinkje.png` in de werkmap.
+ * `addons-plan-vinkje.png` in de werkmap. Sinds 29-09 ook twee bestanden voor
+ * dezelfde plek, een pad dat te lang is voor OMSI en een snelkoppeling, en
+ * "1 bestand" in plaats van "1 bestanden".
  */
 const { app, BrowserWindow, ipcMain } = require('electron')
 const { mkdirSync, rmSync, writeFileSync } = require('node:fs')
@@ -83,6 +85,9 @@ maakZip(zip, [
   ['__MACOSX/Stadtbus/._Stadtbus.bus', 'x'],
   ['Deko/bank.sco', '[mesh]\nbank.o3d\n'],
   ['Wetter/Nebel.owt', 'owt'],
+  ['Winter/Nebel.owt', 'ander weer, zelfde naam'],
+  ['Stadtbus/snelkoppeling.url', '[InternetShortcut]\nURL=https://example.org/\n'],
+  [`Stadtbus/${Array.from({ length: 9 }, (_, i) => `map${i}_${'x'.repeat(20)}`).join('/')}/lak.bmp`, 'bmp'],
   ['BusPlugin/BusPlugin.dll', 'MZ'],
   ['BusPlugin/BusPlugin.opl', '[dll]\nBusPlugin.dll\n'],
   ['Vehicles/../../BUITEN.txt', 'x'],
@@ -124,6 +129,7 @@ app.whenReady().then(async () => {
   await wait(2500)
   const tekst = await js(`document.querySelector('.bd-hoofd')?.innerText ?? document.body.innerText`)
   writeFileSync(join(werk, 'addons-plan.png'), (await main.capturePage()).toPNG())
+  writeFileSync(join(werk, 'addons-plan.txt'), tekst)
   const knopUit = await js(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Installeren')?.disabled`)
   await js(`document.querySelector('.ad-vinkje input')?.click()`)
   await wait(500)
@@ -132,8 +138,21 @@ app.whenReady().then(async () => {
   writeFileSync(join(werk, 'addons-plan-vinkje.png'), (await main.capturePage()).toPNG())
 
   // innerText volgt text-transform: koppen staan er in hoofdletters.
-  const moet = ['bestanden geweigerd', 'programmacode', 'ik vertrouw de maker', 'nooit neergezet', 'rommelbestanden overgeslagen', 'nodig']
+  const moet = [
+    'bestanden geweigerd',
+    'programmacode',
+    'ik vertrouw de maker',
+    'nooit neergezet',
+    'snelkoppelingen',
+    'rommelbestanden overgeslagen',
+    '1 bestand op dezelfde plek',
+    '1 bestand met een pad dat te lang is voor omsi',
+    '1 bestand',
+    'nodig'
+  ]
   const mist = moet.filter((m) => !tekst.toLowerCase().includes(m))
+  if (/(^|\s)1 bestanden\b/.test(tekst)) mist.push('(er staat nog "1 bestanden")')
+  if (!/(^|\s)1 bestand(\s|$)/m.test(tekst)) mist.push('(nergens "1 bestand")')
   console.log(tekst.split('\n').filter(Boolean).slice(0, 40).join('\n'))
   console.log(`\nInstalleren uit: ${knopUit}`)
   console.log(mist.length ? `MIST: ${mist.join(', ')}` : 'alles staat in beeld')

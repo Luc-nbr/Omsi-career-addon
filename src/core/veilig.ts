@@ -25,8 +25,10 @@ import { basename, dirname, extname, join, resolve } from 'node:path'
  *
  * Windows kan het hernoemen weigeren zolang een virusscanner of indexeerder het
  * bestand even open heeft (EPERM, EBUSY, EACCES). Dat duurt milliseconden, dus
- * een paar nieuwe pogingen lossen het op; lukt het dan nog niet, dan gaat de fout
- * door naar de aanroeper, zoals vroeger.
+ * een paar nieuwe pogingen lossen het op. Lukt het dan nog niet, dan wordt het
+ * bestand ter plekke overschreven met de teruggelezen inhoud, zoals vroeger (een
+ * programma dat het openhoudt zonder "verwijderen" toe te staan, laat hernoemen
+ * nooit toe); faalt ook dat, dan gaat de fout door naar de aanroeper.
  *
  * Sinds 28-09 wordt het tijdelijke bestand eerst teruggelezen: pas als daar
  * byte voor byte staat wat er moest staan, gaat het naar de echte plek. En een
@@ -52,7 +54,25 @@ export function schrijfVeilig(
     if (!terug.equals(bytes)) {
       throw new Error(`Niet geschreven: ${basename(pad)} kwam anders terug dan hij geschreven werd.`)
     }
-    metNieuwePogingen(() => renameSync(tijdelijk, pad))
+    try {
+      metNieuwePogingen(() => renameSync(tijdelijk, pad))
+    } catch (fout) {
+      if (!vastgehouden(fout) || !existsSync(pad)) throw fout
+      /*
+       * Hernoemen over een bestand heen vraagt Windows om het oude te mogen
+       * verwijderen. Houdt een ander programma het open en staat het dat
+       * niet toe (wel lezen en schrijven), dan lukt dat nooit -- terwijl
+       * gewoon overschrijven, zoals de app het tot 28-09 deed, wel lukt. Dan
+       * dus dat, met de inhoud die hierboven al teruggelezen is, en daarna
+       * het bestand zelf nog eens teruggelezen. Op een bestand dat echt op
+       * alleen-lezen staat, faalt dit net zo als het hernoemen.
+       */
+      writeFileSync(pad, bytes)
+      if (!readFileSync(pad).equals(bytes)) {
+        throw new Error(`Niet geschreven: ${basename(pad)} kwam anders terug dan hij geschreven werd.`)
+      }
+      unlinkSync(tijdelijk)
+    }
   } catch (fout) {
     try {
       unlinkSync(tijdelijk)
@@ -61,7 +81,6 @@ export function schrijfVeilig(
     }
     throw fout
   }
-  naOpslaan?.(pad)
 }
 
 function grootteVan(pad: string): number {
@@ -72,15 +91,30 @@ function grootteVan(pad: string): number {
   }
 }
 
-/*
- * Wie wil weten dat er iets opgeslagen is. Het hoofdproces noteert zo welke
- * versie van de app het laatst in de gebruikersmap schreef (zie
- * core/versiewacht.ts); zonder aanroeper (een proef) gebeurt er niets.
- */
-let naOpslaan: ((pad: string) => void) | undefined
+/** Een fout van Windows die zegt dat een ander het bestand even (of langer) vasthoudt. */
+function vastgehouden(fout: unknown): boolean {
+  const code = (fout as NodeJS.ErrnoException).code
+  return code === 'EPERM' || code === 'EBUSY' || code === 'EACCES'
+}
 
-export function zetNaOpslaan(doe: ((pad: string) => void) | undefined): void {
-  naOpslaan = doe
+/*
+ * ALLEEN BEKIJKEN
+ *
+ * Start een oudere exe dan de versie die de gebruikersmap het laatst
+ * bijwerkte, en kiest de speler "alleen bekijken", dan schrijft de app nergens
+ * (main/versiewacht.ts). Het meeste houdt `fs` zelf dan tegen; wat niet via
+ * `fs` gaat -- `reg add` voor de Game Bar, OMSI starten -- vraagt het hier.
+ * Tot 29-09 zette de knop voor de Game Bar in alleen-bekijken gewoon het
+ * register om.
+ */
+let bekijkstand = false
+
+export function zetBekijkstand(aan: boolean): void {
+  bekijkstand = aan
+}
+
+export function inBekijkstand(): boolean {
+  return bekijkstand
 }
 
 /* ---- de bestanden van OMSI ---- */
@@ -141,9 +175,7 @@ export function metNieuwePogingen<T>(doe: () => T): T {
     try {
       return doe()
     } catch (fout) {
-      const code = (fout as NodeJS.ErrnoException).code
-      const tijdelijkeFout = code === 'EPERM' || code === 'EBUSY' || code === 'EACCES'
-      if (!tijdelijkeFout || poging >= POGINGEN) throw fout
+      if (!vastgehouden(fout) || poging >= POGINGEN) throw fout
       wachtEven(poging * 40)
     }
   }

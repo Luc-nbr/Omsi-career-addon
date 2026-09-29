@@ -113,4 +113,29 @@ else {
   klopt('veiligPad: "console.cfg" en "nulpunt.txt" mogen wel', veiligPad('Fonts/console.cfg') === 'Fonts/console.cfg' && veiligPad('a/nulpunt.txt') === 'a/nulpunt.txt')
 }
 
+// ---- (29-09) paden die te lang zijn voor OMSI ----
+/*
+ * OMSI is 32-bits en kent geen lange paden: vanaf 260 tekens opent het een
+ * bestand niet. Node schrijft het wel (met \\?\ ervoor). Op d9eeeda kwam zo'n
+ * bestand zonder een woord in de OMSI-map.
+ */
+{
+  const map = proefMap('zipslip-lang')
+  const omsiL = nepOmsi(map)
+  const diep = Array.from({ length: 9 }, (_, i) => `map${i}_${'x'.repeat(20)}`).join('/')
+  const zipL = join(map, 'lang.zip')
+  maakZip(zipL, [
+    { naam: 'Bus/bus.bus', inhoud: 'bus' },
+    { naam: `Bus/${diep}/textuur.bmp`, inhoud: 'bmp' }
+  ])
+  const vol = join(omsiL, 'Vehicles', 'Bus', ...diep.split('/'), 'textuur.bmp')
+  const bronL = openBron(zipL)
+  const planL = loopAf(planStappen(bronL, omsiL, { addons: [] }))
+  loopAf(installeerStappen(bronL, planL, omsiL, join(map, 'userdata'), new Date(2026, 8, 29)))
+  bronL.sluit()
+  const teLang = (planL as Plan & { teLang?: string[] }).teLang ?? []
+  klopt(`lang pad (${vol.length} tekens): in het plan bij "te lang" (${teLang.join(', ') || 'nergens'})`, teLang.length === 1)
+  klopt('lang pad: niet neergezet, de bus wel', !existsSync(vol) && existsSync(join(omsiL, 'Vehicles', 'Bus', 'bus.bus')))
+}
+
 einde()

@@ -492,6 +492,7 @@ export type OverlayReden =
   | 'lezen'
   | 'schrijven'
   | 'register'
+  | 'bekijken'
 
 export interface OverlayUitkomst {
   gelukt: boolean
@@ -936,6 +937,12 @@ export interface AddonPlan {
   /** Namen die buiten de OMSI-map uitkwamen of op Windows niet mogen (de eerste 100). */
   geweigerd: string[]
   geweigerdAantal: number
+  /** Op dezelfde plek als een eerder bestand uit de bron; niet neergezet (de eerste 100). */
+  dubbel: string[]
+  dubbelAantal: number
+  /** Het pad in de OMSI-map wordt te lang voor OMSI; niet neergezet (de eerste 100). */
+  teLang: string[]
+  teLangAantal: number
   /** Overgeslagen rommel: `__MACOSX`, `Thumbs.db`, ... */
   rommel: number
   /** Plugins: alleen met het vinkje. Met hun staat (nieuw, gelijk, anders). */

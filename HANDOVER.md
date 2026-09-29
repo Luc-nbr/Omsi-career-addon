@@ -1745,7 +1745,7 @@ ronde faalt en nu slaagt (nagedraaid op een kopie van `b7f3d7b`).
 - **Oudere exe's** (`core/versiewacht.ts`, `main/versiewacht.ts`): de eerste
   opslag via `schrijfVeilig` in de gebruikersmap noteert in
   `laatst-geschreven.json` wie er schreef (versie en bouwstempel; de hoogste
-  blijft staan). Start een oudere versie, dan eerst een venster "Bijgewerkt
+  blijft staan; sinds 29-09 bij het starten en met de bouw, zie hieronder). Start een oudere versie, dan eerst een venster "Bijgewerkt
   door 0.4.9, deze exe is 0.4.1" met Alleen bekijken (standaard, ook bij
   wegklikken), Toch doorgaan en Afsluiten, en een uitleg. Alleen bekijken zet
   de app op een kopie van de gebruikersmap in `%TEMP%` (zonder caches, logboek
@@ -1767,6 +1767,80 @@ ronde faalt en nu slaagt (nagedraaid op een kopie van `b7f3d7b`).
   van de versiewacht met eigen ogen als venster (de proef beantwoordt hem
   zonder venster), en de installer uit deze tak in `release/` gezet -- die
   hoort daar pas na het samenvoegen met de lopende bouw.
+
+**Tegenlezing van ronde 1** (29-09-2026, zelfde tak). Een aanvaller en een
+proefdraaier liepen ronde 1 na; dit is wat echt fout bleek, elk met een proef
+die op `d9eeeda` faalt en nu slaagt.
+- **Versiewacht, dezelfde versie** (`isNieuwer` in `core/versiewacht.ts`):
+  alleen het versienummer telde, en na elke wijziging heet elke nieuwe exe
+  0.4.7 -- precies de oude draagbare uit CLAUDE.md zag dus niets. De notitie
+  heeft nu ook `hash`, `gebouwd` (ISO, uit `__BOUW__.iso`) en `variant`; bij
+  hetzelfde nummer is een bouw nieuwer als hij later gebouwd is met een andere
+  hash. Nooit bij `dev` of zonder bouwtijd. Het venster zegt dan "Bijgewerkt
+  door 0.4.7 (bouw bbbbbbb), deze exe is 0.4.7 (bouw cd06dcd)".
+- **Meteen noteren** (`bewaakVersie`): de notitie kwam pas bij de eerste
+  opslag via `schrijfVeilig`, en instellingen, overlay-indeling en het
+  add-onregister gaan daar buitenom. Nu bij het starten (na "toch doorgaan"
+  ook). Het haakje `zetNaOpslaan` in `veilig.ts` is weg.
+- **Alleen bekijken als de kopie niet lukt** (`zetOpKopie`,
+  `vraagNaMislukteKopie`): een vastgehouden bestand liet `cpSync` gooien vóór
+  het logboek, en de app draaide zonder venster door met het slot in handen --
+  elke volgende start stopte meteen. Nu: halve kopie weg, en de vraag
+  Afsluiten (standaard) of Toch doorgaan. Daarnaast vangt `meldStartFout` elke
+  fout in `whenReady` van `index.ts`: zonder venster een melding en
+  `app.exit(1)`, met venster alleen het logboek. `OMSI_ENHANCER_PROEFKEUZE_KOPIE`
+  beantwoordt de tweede vraag in een proef.
+- **Alleen bekijken buiten `fs` om** (`zetBekijkstand`/`inBekijkstand` in
+  `veilig.ts`): de Game Bar-knop schreef met `reg add` in het register, en de
+  dienst startte OMSI ook als het klaarzetten met EROFS mislukte. `zetKnop`
+  geeft nu reden `bekijken`, `launchOmsi` weigert met EROFS.
+- **Twee bestanden voor één plek** (`planStappen`): `Zomer/zon.owt` en
+  `Winter/zon.owt` (plat naar `Weather`), of `a.cfg` en `A.CFG`, schreven
+  allebei; het tweede maakte een "reserve" van het eerste, en verwijderen liet
+  een bestand van de add-on staan met de melding "gewijzigd". Nu gaat het
+  eerste mee en staat de rest in `plan.dubbel`; `installeerStappen` slaat een
+  tweede schrijfbeurt naar hetzelfde doel ook zelf over.
+- **Register na installeren** (`registreer`): lukte `addons.json` niet, dan
+  stond de add-on in OMSI en kende de app hem niet. Nu gaat de installatie dan
+  terug en komt er `InstallatieFout('ruimte'|'fout')`.
+- **Terugdraaien laat geen lege mappen** (`draaiTerug`): de map van elk doel
+  telt mee, ook als het bestand er nog niet was (een kapot bestand in de zip).
+- **Nooit neerzetten, meer soorten** (`NOOIT`): `.url`, `.scf`,
+  `.library-ms`, `.searchConnector-ms`, `.website` -- de verkenner haalt daar
+  zelf een pictogram van een netwerkpad en stuurt dan de NTLM-hash mee -- en
+  `.jar`, `.msc`, `.inf`, `.chm`, `.sys`, `.drv`, `.ocx` en verwanten.
+- **Naam van de zip** (`pakketNaam`): `Bomen v1..zip` gaf de pakketmap
+  `Bomen v1.`, die `veiligPad` weigert; alle losse bestanden werden
+  "geweigerd". Nu opgeschoond, anders `Add-on`.
+- **`Sounds` en `Scripts`** staan in `OMSI_MAPPEN` (Lucs OMSI heeft ze, met
+  de AI-auto's); `Gras` is eruit (bestaat niet, de grastexturen staan in
+  `Texture`). `probe-mapsoorten` kijkt na dat elke map uit de lijst echt bestaat.
+- **Te lange paden** (`MAX_PAD`, `plan.teLang`): vanaf 260 tekens kan OMSI
+  (32-bits) een bestand niet openen; zulke bestanden komen niet neer en het
+  plan zegt waarom.
+- **Een zip die over zijn grootte liegt** (`zip.ts`): `inflateRawSync` met
+  `maxOutputLength` = de opgegeven grootte, en niet meer lezen dan er staat;
+  een zipbom wordt "beschadigd" zonder eerst in het geheugen te passen.
+- **OMSI afsluiten zonder antwoord van PowerShell** (`procesMetPid` geeft nu
+  een proces, `weg` of `onbekend`): een fout of time-out werd "OMSI is al
+  dicht" en de knop verdween. `onbekend` wordt `mislukt`, en telt na taskkill
+  niet als dicht. Het script eindigt op `exit 0`: een `Get-Process` die niets
+  vindt gaf anders exitcode 1. `taskkillOpNaam` apart, zodat de proef het
+  filter op naam zelf nakijkt.
+- **Schrijven naast een programma dat het bestand openhoudt**
+  (`schrijfVeilig`): hernoemen lukt niet over een bestand dat een ander open
+  heeft zonder "verwijderen" te delen, waar gewoon overschrijven wel lukte.
+  Nu na de laatste poging ter plekke overschrijven met de teruggelezen inhoud,
+  en daarna het bestand zelf teruglezen.
+- Kleine teksten: "1 bestand" in plaats van "1 bestanden" in het plan, en de
+  rommelregel zegt "zoals" (hij noemde desktop.ini ook als die er niet was).
+- Proeven: uitgebreid `probe-ruimte`, `-programmacode`, `-zipslip`,
+  `-mapsoorten`, `-versiewacht` (met `execFileSync` nagebootst: nooit een echt
+  `reg add`), `-omsiafsluiten`, `-veiligschrijven`, `probe-alleenbekijken.cjs`
+  en `schermafdruk-addons.cjs`; nieuw `probe-versiestart.cjs` (start de
+  gebouwde app vier keer als eigen proces). Niet gedaan: het venster na een
+  mislukte kopie met eigen ogen gezien (de proef beantwoordt het), en
+  `setLastMap` in `startup.ts` (zie hierboven).
 
 **Navigatie: doorzichtig, vaste zoom, en haltenamen die niet meer wegvallen**
 (28-09-2026). Drie vragen van gebruikers, via Luc.

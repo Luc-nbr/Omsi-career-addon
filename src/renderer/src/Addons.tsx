@@ -271,6 +271,8 @@ function PlanVak({
       s.wat === 'omsi' ? 'ad.spaceOmsi' : s.wat === 'reserve' ? 'ad.spaceBackup' : 'ad.spaceBoth',
       { schijf: s.schijf }
     )}`
+  // "1 bestand", niet "1 bestanden".
+  const tel = (n: number, een: TextKey, meer: TextKey): string => (n === 1 ? tr(een) : tr(meer, { n }))
   return (
     <>
       <section className="bd-paneel">
@@ -325,7 +327,7 @@ function PlanVak({
               </p>
             ))}
         {!niets && !ruimte.past && <p className="bd-melding">{tr('ad.spaceShort')}</p>}
-        {plan.rommel > 0 && <p className="bd-rustig bd-klein">{tr('ad.junk', { n: plan.rommel })}</p>}
+        {plan.rommel > 0 && <p className="bd-rustig bd-klein">{tel(plan.rommel, 'ad.junk1', 'ad.junk')}</p>}
         {niets ? (
           <p className="bd-melding">{plan.gelijk > 0 ? tr('ad.allThere') : tr('ad.nothing')}</p>
         ) : (
@@ -376,22 +378,24 @@ function PlanVak({
         </section>
       )}
 
-      {plan.geweigerdAantal > 0 && (
-        <details className="bd-paneel ad-overig" open>
-          <summary>{tr('ad.refusedTitle', { n: plan.geweigerdAantal })}</summary>
-          <p className="bd-rustig">{tr('ad.refusedText')}</p>
-          <ul className="ad-lijst">
-            {plan.geweigerd.map((o) => (
-              <li key={o}>
-                <span className="ad-pad">{o}</span>
-              </li>
-            ))}
-            {plan.geweigerdAantal > plan.geweigerd.length && (
-              <li className="bd-rustig">{tr('ad.more', { n: plan.geweigerdAantal - plan.geweigerd.length })}</li>
-            )}
-          </ul>
-        </details>
-      )}
+      <NietNeergezet
+        titel={tel(plan.geweigerdAantal, 'ad.refusedTitle1', 'ad.refusedTitle')}
+        tekst={tr('ad.refusedText')}
+        lijst={plan.geweigerd}
+        aantal={plan.geweigerdAantal}
+      />
+      <NietNeergezet
+        titel={tel(plan.dubbelAantal, 'ad.doubleTitle1', 'ad.doubleTitle')}
+        tekst={tr('ad.doubleText')}
+        lijst={plan.dubbel}
+        aantal={plan.dubbelAantal}
+      />
+      <NietNeergezet
+        titel={tel(plan.teLangAantal, 'ad.longTitle1', 'ad.longTitle')}
+        tekst={tr('ad.longText')}
+        lijst={plan.teLang}
+        aantal={plan.teLangAantal}
+      />
 
       <section className="bd-paneel">
         <div className="bd-paneelkop">
@@ -401,7 +405,7 @@ function PlanVak({
           {plan.plekken.map((p) => (
             <li key={p.plek}>
               <span className="ad-pad">{p.plek}</span>
-              <span className="bd-rustig">{tr('ad.files', { n: p.bestanden })}</span>
+              <span className="bd-rustig">{tel(p.bestanden, 'ad.files1', 'ad.files')}</span>
               <span className="bd-rustig">{grootte(p.bytes)}</span>
             </li>
           ))}
@@ -430,7 +434,7 @@ function PlanVak({
 
       {plan.overigAantal > 0 && (
         <details className="bd-paneel ad-overig">
-          <summary>{tr('ad.notPlacedTitle', { n: plan.overigAantal })}</summary>
+          <summary>{tel(plan.overigAantal, 'ad.notPlacedTitle1', 'ad.notPlacedTitle')}</summary>
           <p className="bd-rustig">{tr('ad.notPlacedText')}</p>
           <ul className="ad-lijst">
             {plan.overig.map((o) => (
@@ -442,6 +446,40 @@ function PlanVak({
         </details>
       )}
     </>
+  )
+}
+
+/**
+ * Bestanden uit de bron die niet neergezet worden, met waarom: geweigerde
+ * namen, twee bestanden voor dezelfde plek, en paden die te lang zijn voor
+ * OMSI. Het venster krijgt er hoogstens honderd; `aantal` is het echte aantal.
+ */
+function NietNeergezet({
+  titel,
+  tekst,
+  lijst,
+  aantal
+}: {
+  titel: string
+  tekst: string
+  lijst: string[]
+  aantal: number
+}): JSX.Element | null {
+  const tr = useT()
+  if (aantal === 0) return null
+  return (
+    <details className="bd-paneel ad-overig" open>
+      <summary>{titel}</summary>
+      <p className="bd-rustig">{tekst}</p>
+      <ul className="ad-lijst">
+        {lijst.map((o) => (
+          <li key={o}>
+            <span className="ad-pad">{o}</span>
+          </li>
+        ))}
+        {aantal > lijst.length && <li className="bd-rustig">{tr('ad.more', { n: aantal - lijst.length })}</li>}
+      </ul>
+    </details>
   )
 }
 
@@ -497,7 +535,7 @@ function Geinstalleerd({ voortgang }: { voortgang?: { fase: string; n: number } 
                 <span className="ad-addonnaam">
                   <b>{a.naam}</b>
                   <small>
-                    {new Date(a.geinstalleerd).toLocaleDateString(taal)} · {tr('ad.files', { n: a.bestanden })}
+                    {new Date(a.geinstalleerd).toLocaleDateString(taal)} · {a.bestanden === 1 ? tr('ad.files1') : tr('ad.files', { n: a.bestanden })}
                     {a.overschreven > 0 && ` · ${tr('ad.backups', { n: a.overschreven })}`}
                   </small>
                   {(a.bussen.length > 0 || a.kaarten.length > 0) && (

@@ -56,9 +56,9 @@ export function nepOmsi(basis: string): string {
 /**
  * Een zip schrijven met de namen PRECIES zoals opgegeven -- ook `..`,
  * `C:` of een backslash -- zodat de lezer krijgt wat een kwaadwillende zip zou
- * bevatten.
+ * bevatten. `crcFout` geeft dat bestand een verkeerde crc: een beschadigde zip.
  */
-export function maakZip(pad: string, bestanden: Array<{ naam: string; inhoud: Buffer | string }>): void {
+export function maakZip(pad: string, bestanden: Array<{ naam: string; inhoud: Buffer | string; crcFout?: boolean }>): void {
   const lokaal: Buffer[] = []
   const centraal: Buffer[] = []
   let at = 0
@@ -66,11 +66,12 @@ export function maakZip(pad: string, bestanden: Array<{ naam: string; inhoud: Bu
     const inhoud = Buffer.isBuffer(b.inhoud) ? b.inhoud : Buffer.from(b.inhoud)
     const gepakt = deflateRawSync(inhoud)
     const naam = iconv.encode(b.naam, 'cp437')
+    const crc = b.crcFout ? (crc32(inhoud) ^ 1) >>> 0 : crc32(inhoud)
     const kop = Buffer.alloc(30)
     kop.writeUInt32LE(0x04034b50, 0)
     kop.writeUInt16LE(20, 4)
     kop.writeUInt16LE(8, 8)
-    kop.writeUInt32LE(crc32(inhoud), 14)
+    kop.writeUInt32LE(crc, 14)
     kop.writeUInt32LE(gepakt.length, 18)
     kop.writeUInt32LE(inhoud.length, 22)
     kop.writeUInt16LE(naam.length, 26)
@@ -79,7 +80,7 @@ export function maakZip(pad: string, bestanden: Array<{ naam: string; inhoud: Bu
     c.writeUInt16LE(20, 4)
     c.writeUInt16LE(20, 6)
     c.writeUInt16LE(8, 10)
-    c.writeUInt32LE(crc32(inhoud), 16)
+    c.writeUInt32LE(crc, 16)
     c.writeUInt32LE(gepakt.length, 20)
     c.writeUInt32LE(inhoud.length, 24)
     c.writeUInt16LE(naam.length, 28)

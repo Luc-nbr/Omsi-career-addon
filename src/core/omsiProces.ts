@@ -139,26 +139,45 @@ export function leesOmsiProces(procesnaam = 'Omsi'): Promise<OmsiProces | undefi
   })
 }
 
-/** Wie er nu achter een pid zit: de naam zonder `.exe` en de starttijd. */
-export function procesMetPid(pid: number): Promise<{ naam: string; start?: string } | undefined> {
+/**
+ * Wie er nu achter een pid zit: de naam zonder `.exe` en de starttijd, of
+ * `weg` (er draait niets onder dat pid), of `onbekend` (PowerShell gaf geen
+ * antwoord: niet te starten, een time-out, onleesbare uitvoer).
+ *
+ * Die laatste twee waren eerst allebei `undefined`, en dan zei de knop "OMSI is
+ * al dicht" en verdween hij -- terwijl het vastgelopen OMSI nog draaide.
+ */
+export type ProcesOpPid = { naam: string; start?: string } | 'weg' | 'onbekend'
+
+export function procesMetPid(pid: number): Promise<ProcesOpPid> {
+  /*
+   * `exit 0` aan het eind: een `Get-Process` die niets vindt laat PowerShell
+   * anders met 1 eindigen, ook met SilentlyContinue, en dan was "weg" niet van
+   * een fout te onderscheiden. Een fout die het script afbreekt, komt daar niet.
+   */
   const opdracht =
     `$p = Get-Process -Id ${Math.trunc(pid)} -ErrorAction SilentlyContinue; ` +
-    `if ($p) { ${START}; [pscustomobject]@{ naam = $p.ProcessName; start = $s } | ConvertTo-Json -Compress }`
+    `if ($p) { ${START}; [pscustomobject]@{ naam = $p.ProcessName; start = $s } | ConvertTo-Json -Compress }; exit 0`
   return new Promise((klaar) => {
     execFile(
       powershell32(),
       ['-NoProfile', '-NonInteractive', '-Command', opdracht],
       { windowsHide: true, timeout: 15000 },
       (fout, uit) => {
-        if (fout || !uit.trim()) {
-          klaar(undefined)
+        if (fout) {
+          klaar('onbekend')
+          return
+        }
+        // Afgelopen zonder fout en zonder uitvoer: `Get-Process` vond niets.
+        if (!uit.trim()) {
+          klaar('weg')
           return
         }
         try {
           const gelezen = JSON.parse(uit) as { naam: string; start?: string | null }
-          klaar({ naam: gelezen.naam, start: gelezen.start || undefined })
+          klaar(typeof gelezen?.naam === 'string' ? { naam: gelezen.naam, start: gelezen.start || undefined } : 'onbekend')
         } catch {
-          klaar(undefined)
+          klaar('onbekend')
         }
       }
     )
@@ -166,9 +185,27 @@ export function procesMetPid(pid: number): Promise<{ naam: string; start?: strin
 }
 
 /**
+ * `taskkill` op pid én naam: past een van de twee niet, dan sluit hij niets
+ * af. Het antwoord van taskkill telt niet (zie `sluitOmsi`); dit wacht alleen
+ * tot hij klaar is.
+ */
+export function taskkillOpNaam(pid: number, procesnaam: string): Promise<void> {
+  return new Promise<void>((klaar) => {
+    execFile(
+      'taskkill',
+      ['/F', '/FI', `PID eq ${Math.trunc(pid)}`, '/FI', `IMAGENAME eq ${procesnaam}.exe`],
+      { windowsHide: true },
+      () => klaar()
+    )
+  })
+}
+
+/**
  * Hoe het afsluiten afliep. `al-dicht`: er draait onder dat pid geen OMSI meer
  * -- het is uit zichzelf gestopt, of het pid is intussen van een ander
- * programma, en dan is er niets afgesloten.
+ * programma, en dan is er niets afgesloten. `mislukt`: het draait nog, of
+ * Windows kon niet zeggen wie er onder het pid zit (dan is er ook niets
+ * afgesloten, en blijft de knop staan).
  */
 export type Afsluiten = 'gesloten' | 'al-dicht' | 'mislukt'
 
@@ -189,30 +226,28 @@ export type Afsluiten = 'gesloten' | 'al-dicht' | 'mislukt'
  */
 export async function sluitOmsi(pid: number, start: string | undefined, procesnaam = 'Omsi'): Promise<Afsluiten> {
   const nu = await procesMetPid(pid)
-  if (!nu || nu.naam.toLowerCase() !== procesnaam.toLowerCase()) return 'al-dicht'
+  // Niet te zien wie er onder het pid zit: niets afsluiten, en de knop blijft.
+  if (nu === 'onbekend') return 'mislukt'
+  const zelfde = (p: Exclude<ProcesOpPid, 'onbekend'>): boolean =>
+    p !== 'weg' && p.naam.toLowerCase() === procesnaam.toLowerCase() && p.start === start
+  if (nu === 'weg' || nu.naam.toLowerCase() !== procesnaam.toLowerCase()) return 'al-dicht'
   /*
    * Een ander OMSI onder hetzelfde pid heeft een andere starttijd. Kon Windows
    * die toen en nu allebei niet geven (OMSI als beheerder gestart), dan blijft
    * alleen het filter op pid en naam over -- en dan lukt afsluiten zonder
    * beheerder toch niet, en zegt de knop dat.
    */
-  if (nu.start !== start) return 'al-dicht'
-  await new Promise<void>((klaar) => {
-    execFile(
-      'taskkill',
-      ['/F', '/FI', `PID eq ${Math.trunc(pid)}`, '/FI', `IMAGENAME eq ${procesnaam}.exe`],
-      { windowsHide: true },
-      () => klaar()
-    )
-  })
+  if (!zelfde(nu)) return 'al-dicht'
+  await taskkillOpNaam(pid, procesnaam)
   /*
    * Niet op de tekst van taskkill afgaan: die is vertaald ("GESLAAGD" op een
    * Nederlandse Windows), en met filters slaagt hij ook als er niets paste.
-   * Gewoon kijken of het er nog is; afsluiten duurt soms een tel.
+   * Gewoon kijken of het er nog is; afsluiten duurt soms een tel. Een
+   * `onbekend` telt niet als dicht: dan nog eens kijken.
    */
   for (let poging = 0; poging < 10; poging++) {
     const daarna = await procesMetPid(pid)
-    if (!daarna || daarna.start !== start) return 'gesloten'
+    if (daarna !== 'onbekend' && !zelfde(daarna)) return 'gesloten'
     await new Promise((klaar) => setTimeout(klaar, 300))
   }
   return 'mislukt'

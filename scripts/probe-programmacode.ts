@@ -10,8 +10,14 @@
  * programma. Dan een tweede keer met het vinkje: de plugins erbij, de
  * programma's nog steeds niet.
  *
+ * (29-09) Daarna een zip met snelkoppelingen en bestanden waarvan de
+ * verkenner zelf een pictogram ophaalt, ook van een netwerkpad (`.url`,
+ * `.scf`, `.library-ms`, `.searchConnector-ms`, `.website`), en een `.jar`:
+ * ook met het vinkje komt daar niets van in OMSI.
+ *
  * Op de oude code (vóór 28-09) faalt dit: `plugins/ander.dll` ging stil mee
- * en `setup.exe` kwam in de busmap.
+ * en `setup.exe` kwam in de busmap. Het laatste deel faalt op d9eeeda: de
+ * `.scf`, `.url` en `.library-ms` kwamen in `Vehicles/MijnBus/script/`.
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -61,5 +67,30 @@ inOmsi = allesOnder(omsi)
 klopt(`met vinkje: de plugins erbij (${met.code ?? '?'} bestanden)`, inOmsi.includes('plugins/MijnPlugin.dll') && inOmsi.includes('plugins/MijnPlugin.opl') && inOmsi.includes('plugins/ander.dll') && met.code === 3)
 klopt("met vinkje: nog steeds geen programma's", !inOmsi.some((p) => /\.(exe|bat|ps1)$/i.test(p) && p !== 'Omsi.exe'))
 klopt('met vinkje: in het register staan de plugins, dus verwijderen haalt ze weer weg', met.addon.bestanden.some((b) => b.pad === 'plugins/MijnPlugin.dll'))
+
+// ---- snelkoppelingen en wat de verkenner zelf opent ----
+{
+  const map = proefMap('programmacode-verkenner')
+  const omsi2 = nepOmsi(map)
+  const zip2 = join(map, 'Bus met snelkoppelingen.zip')
+  const icoon = String.raw`[.ShellClassInfo]
+IconFile=\\aanvaller\x\i.ico
+`
+  const RAAR = ['y.scf', 'z.url', 'w.library-ms', 'v.searchConnector-ms', 'u.website', 't.jar', 's.chm', 'r.inf']
+  maakZip(zip2, [
+    { naam: 'MijnBus/mijn.bus', inhoud: '[friendlyname]\nMijn bus\n' },
+    { naam: 'MijnBus/script/leesmij.txt', inhoud: 'gewoon' },
+    ...RAAR.map((naam) => ({ naam: `MijnBus/script/${naam}`, inhoud: icoon }))
+  ])
+  const bron2 = openBron(zip2)
+  const plan3 = loopAf(planStappen(bron2, omsi2, { addons: [] }))
+  loopAf(installeerStappen(bron2, plan3, omsi2, join(map, 'userdata'), new Date(2026, 8, 29), { metCode: true }))
+  bron2.sluit()
+  const neergezet = allesOnder(omsi2)
+  const mis = RAAR.filter((naam) => neergezet.some((p) => p.toLowerCase().endsWith(naam.toLowerCase())))
+  klopt(`verkenner: met het vinkje geen snelkoppeling of pictogrambestand in OMSI (${mis.join(', ') || 'geen'})`, mis.length === 0)
+  klopt(`verkenner: ze staan in het plan bij "nooit" (${(plan3.nooit ?? []).length} van ${RAAR.length})`, (plan3.nooit ?? []).length === RAAR.length)
+  klopt('verkenner: de bus en de leesmij wel', neergezet.includes('Vehicles/MijnBus/mijn.bus') && neergezet.includes('Vehicles/MijnBus/script/leesmij.txt'))
+}
 
 einde()

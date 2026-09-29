@@ -6,4 +6,4 @@ declare const __APP_VERSION__: string
  * waren) en het moment van bouwen; zie electron.vite.config.ts en
  * main/versiewacht.ts.
  */
-declare const __BOUW__: { hash: string; tijd: string }
+declare const __BOUW__: { hash: string; tijd: string; iso: string }

@@ -15,10 +15,13 @@
  * - toetsen opslaan in OMSI wordt geweigerd (EROFS), en schrijven vanuit het
  *   hoofdproces naar de OMSI-map ook;
  * - de echte gebruikersmap (behalve wat Chromium zelf bijhoudt) en de OMSI-map
- *   zijn byte voor byte wat ze waren, de notitie van 9.9.9 incluis.
+ *   zijn byte voor byte wat ze waren, de notitie van 9.9.9 incluis;
+ * - (29-09) de knop voor de Game Bar weigert met "bekijken" en vraagt geen
+ *   `reg add`. Daarvoor vervangt de proef `execFileSync` door iets dat alleen
+ *   opschrijft: faalt de wacht, dan raakt hij het echte register nog niet.
  *
  * Op de oude code (vóór 28-09) faalt dit: geen vraag, en alles werd in de
- * echte map geschreven.
+ * echte map geschreven. Het deel over de Game Bar faalt op d9eeeda.
  */
 const { app, BrowserWindow } = require('electron')
 const { createHash } = require('node:crypto')
@@ -113,6 +116,26 @@ app.whenReady().then(async () => {
     direct = `geweigerd (${fout.code})`
   }
   klopt(`schrijven vanuit het hoofdproces naar de OMSI-map: ${direct}`, direct === 'geweigerd (EROFS)')
+
+  // De Game Bar gaat met `reg add` het register in, buiten `fs` om.
+  const cp = require('node:child_process')
+  const echtExec = cp.execFileSync
+  const gevraagd = []
+  cp.execFileSync = (bestand, args = [], ...rest) => {
+    gevraagd.push(`${bestand} ${args.join(' ')}`)
+    if (bestand === 'reg' && args[0] !== 'query') return ''
+    // "Steam draait": zo komt ook een falende wacht niet aan Steams bestanden.
+    if (bestand === 'tasklist') return 'steam.exe 1234 Console 1 10.000 K'
+    return echtExec(bestand, args, ...rest)
+  }
+  let knop
+  try {
+    knop = await js(`window.career.zetOverlayKnop('gamebar', true).then((u) => JSON.stringify(u), (f) => 'fout: ' + f.message)`)
+  } finally {
+    cp.execFileSync = echtExec
+  }
+  const regAdd = gevraagd.filter((g) => /^reg (add|delete)/.test(g))
+  klopt(`de Game Bar-knop weigert (${knop}), zonder reg add (${regAdd.length})`, /"reden":"bekijken"/.test(knop) && regAdd.length === 0)
 
   echtSchrijven(join(werk, 'alleenbekijken.png'), (await main.capturePage()).toPNG())
   console.log(`afdruk: ${join(werk, 'alleenbekijken.png')}`)

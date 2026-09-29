@@ -3,15 +3,17 @@ import fs from 'node:fs'
 import { constants } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { logFout } from '../core/logboek'
 import { readSettings } from '../core/settings'
-import { zetNaOpslaan } from '../core/veilig'
+import { zetBekijkstand } from '../core/veilig'
 import {
   bouwstempel,
   kopieVoorBekijken,
   nieuwereSchrijver,
   noteerSchrijver,
   variantVan,
-  type Schrijver
+  type Schrijver,
+  type Wie
 } from '../core/versiewacht'
 import { DEFAULT_LANGUAGE, isLanguage, t } from '../shared/i18n'
 
@@ -24,6 +26,12 @@ import { DEFAULT_LANGUAGE, isLanguage, t } from '../shared/i18n'
 /** De bouwstempel van deze exe; `__BOUW__` bakt electron.vite.config.ts erin. */
 export function stempel(): string {
   return bouwstempel(typeof __BOUW__ === 'undefined' ? undefined : __BOUW__, variantVan(app.isPackaged))
+}
+
+/** Deze exe: versie en bouw, om te noteren en te vergelijken. */
+function ik(versie: string): Wie {
+  const bouw = typeof __BOUW__ === 'undefined' ? undefined : __BOUW__
+  return { versie, bouw: stempel(), hash: bouw?.hash, gebouwd: bouw?.iso, variant: variantVan(app.isPackaged) }
 }
 
 let bekijken: { nieuwere: Schrijver; kopie: string } | undefined
@@ -39,53 +47,82 @@ export function alleenBekijken(): { versie: string; bouw?: string } | undefined 
  *
  * - Alleen bekijken: de app draait op een kopie van de gebruikersmap in de
  *   tijdelijke map, en schrijft verder nergens -- niet in de echte map, niet
- *   in OMSI, niet bij Steam (`sluitSchrijvenAf`). Rondkijken kan, opslaan
- *   niet, en OMSI starten dus ook niet. Chromium volgt de kopie ook; alleen
- *   zijn eigen `Local State` komt nog in de echte map (geen gegevens van de app).
+ *   in OMSI, niet bij Steam, niet in het register (`sluitSchrijvenAf`,
+ *   `zetBekijkstand`). Rondkijken kan, opslaan niet, en OMSI starten ook
+ *   niet. Chromium volgt de kopie ook; alleen zijn eigen `Local State` komt
+ *   nog in de echte map (geen gegevens van de app).
  * - Toch doorgaan: zoals altijd.
  * - Afsluiten: de app gaat meteen weer dicht.
  *
- * Anders, en na "toch doorgaan", noteert de eerste opslag in de gebruikersmap
- * welke versie er schreef (`noteerSchrijver`).
+ * Lukt de kopie niet (een profiel dat een ander programma vasthoudt, een
+ * volle tijdelijke map), dan komt de vraag of de speler toch wil doorgaan of
+ * afsluiten. Tot 29-09 ging die fout ongezien voorbij: de app draaide zonder
+ * venster door, met het slot op de gebruikersmap in handen, en elke volgende
+ * start stopte meteen -- tot de speler hem in Taakbeheer vond.
  *
- * `OMSI_ENHANCER_PROEFKEUZE` beantwoordt de vraag zonder venster, voor een
- * proef (scripts/probe-versiewacht.cjs); in een gewone start staat hij niet.
+ * Anders, en na "toch doorgaan", noteert de app meteen welke exe er schrijft
+ * (`noteerSchrijver`). Tot 29-09 gebeurde dat pas bij de eerste opslag via
+ * `schrijfVeilig`, en instellingen, de overlay-indeling en het register van de
+ * add-ons gaan daar buitenom: een nieuwere versie die alleen die veranderde,
+ * liet geen notitie achter, en een oudere exe daarna gooide de velden weg die
+ * hij niet kende.
+ *
+ * `OMSI_ENHANCER_PROEFKEUZE` beantwoordt de vraag zonder venster, en
+ * `OMSI_ENHANCER_PROEFKEUZE_KOPIE` die na een mislukte kopie, voor een proef
+ * (scripts/probe-alleenbekijken.cjs, probe-bekijkenfout.cjs); in een gewone
+ * start staan ze niet.
  */
 export function bewaakVersie(versie: string): 'verder' | 'afsluiten' {
   const echt = app.getPath('userData')
-  const nieuwere = nieuwereSchrijver(echt, versie)
+  const nieuwere = nieuwereSchrijver(echt, ik(versie))
   if (nieuwere) {
     const keuze = vraag(echt, versie, nieuwere)
     if (keuze === 'afsluiten') return 'afsluiten'
     if (keuze === 'bekijken') {
-      const kopie = join(app.getPath('temp'), `omsi-enhancer-bekijken-${process.pid}`)
-      ruimOudeKopieenOp(app.getPath('temp'))
-      kopieVoorBekijken(echt, kopie)
-      app.setPath('userData', kopie)
-      bekijken = { nieuwere, kopie }
-      sluitSchrijvenAf([kopie])
-      toonInTitel(echt, versie)
-      app.on('will-quit', () => {
-        try {
-          fs.rmSync(kopie, { recursive: true, force: true })
-        } catch {
-          // Dan ruimt Windows de tijdelijke map later op.
-        }
-      })
-      return 'verder'
+      const fout = zetOpKopie(echt, versie, nieuwere)
+      if (fout === undefined) return 'verder'
+      if (vraagNaMislukteKopie(echt, fout) === 'afsluiten') return 'afsluiten'
     }
   }
-  let genoteerd = false
-  zetNaOpslaan((pad) => {
-    if (genoteerd || !pad.toLowerCase().startsWith(echt.toLowerCase() + sep)) return
-    genoteerd = true
+  try {
+    noteerSchrijver(echt, ik(versie))
+  } catch {
+    // Niet kunnen noteren mag het starten niet tegenhouden.
+  }
+  return 'verder'
+}
+
+/**
+ * De app op een kopie van de gebruikersmap zetten om alleen te bekijken.
+ * Geeft de fout terug als de kopie niet lukte; wat er al gekopieerd was, is
+ * dan weer weg, en de app staat nog gewoon op de echte map.
+ */
+function zetOpKopie(echt: string, versie: string, nieuwere: Schrijver): unknown {
+  const kopie = join(app.getPath('temp'), `omsi-enhancer-bekijken-${process.pid}`)
+  ruimOudeKopieenOp(app.getPath('temp'))
+  try {
+    kopieVoorBekijken(echt, kopie)
+  } catch (fout) {
     try {
-      noteerSchrijver(echt, versie, stempel())
+      fs.rmSync(kopie, { recursive: true, force: true, maxRetries: 3 })
     } catch {
-      // Niet kunnen noteren mag het opslaan zelf niet tegenhouden.
+      // Dan ruimt `ruimOudeKopieenOp` hem een volgende keer op.
+    }
+    return fout ?? new Error('onbekende fout')
+  }
+  app.setPath('userData', kopie)
+  bekijken = { nieuwere, kopie }
+  sluitSchrijvenAf([kopie])
+  zetBekijkstand(true)
+  toonInTitel(echt, versie)
+  app.on('will-quit', () => {
+    try {
+      fs.rmSync(kopie, { recursive: true, force: true })
+    } catch {
+      // Dan ruimt Windows de tijdelijke map later op.
     }
   })
-  return 'verder'
+  return undefined
 }
 
 /*
@@ -107,18 +144,28 @@ function ruimOudeKopieenOp(temp: string): void {
 }
 
 function taal(userData: string): Parameters<typeof t>[0] {
-  const gekozen = readSettings(userData).language
-  return isLanguage(gekozen) ? gekozen : DEFAULT_LANGUAGE
+  try {
+    const gekozen = readSettings(userData).language
+    return isLanguage(gekozen) ? gekozen : DEFAULT_LANGUAGE
+  } catch {
+    return DEFAULT_LANGUAGE
+  }
+}
+
+/** Een versie met zijn bouw erbij, als het nummer alleen niet zegt welke nieuwer is. */
+function metBouw(wie: Wie, andere: Wie): string {
+  return wie.versie === andere.versie && wie.hash ? `${wie.versie} (bouw ${wie.hash})` : wie.versie
 }
 
 function vraag(userData: string, versie: string, nieuwere: Schrijver): 'bekijken' | 'doorgaan' | 'afsluiten' {
   const proef = process.env.OMSI_ENHANCER_PROEFKEUZE
   if (proef === 'bekijken' || proef === 'doorgaan' || proef === 'afsluiten') return proef
   const tl = taal(userData)
+  const eigen = ik(versie)
   const knop = dialog.showMessageBoxSync({
     type: 'warning',
     title: 'OMSI Enhancer',
-    message: t(tl, 'vw.bericht', { nieuw: nieuwere.versie, eigen: versie }),
+    message: t(tl, 'vw.bericht', { nieuw: metBouw(nieuwere, eigen), eigen: metBouw(eigen, nieuwere) }),
     detail: [t(tl, 'vw.uitleg'), nieuwere.bouw ? `${nieuwere.versie}: ${nieuwere.bouw}\n${versie}: ${stempel()}` : '']
       .filter(Boolean)
       .join('\n\n'),
@@ -129,6 +176,47 @@ function vraag(userData: string, versie: string, nieuwere: Schrijver): 'bekijken
     noLink: true
   })
   return knop === 1 ? 'doorgaan' : knop === 2 ? 'afsluiten' : 'bekijken'
+}
+
+/** De kopie om te bekijken lukte niet: afsluiten (standaard, ook bij wegklikken) of toch doorgaan op de echte map. */
+function vraagNaMislukteKopie(userData: string, fout: unknown): 'doorgaan' | 'afsluiten' {
+  const proef = process.env.OMSI_ENHANCER_PROEFKEUZE_KOPIE
+  if (proef === 'doorgaan' || proef === 'afsluiten') return proef
+  const tl = taal(userData)
+  const knop = dialog.showMessageBoxSync({
+    type: 'error',
+    title: 'OMSI Enhancer',
+    message: t(tl, 'vw.kopieMislukt'),
+    detail: `${t(tl, 'vw.kopieUitleg')}\n\n${fout instanceof Error ? fout.message : String(fout)}`,
+    buttons: [t(tl, 'vw.afsluiten'), t(tl, 'vw.doorgaan')],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true
+  })
+  return knop === 1 ? 'doorgaan' : 'afsluiten'
+}
+
+/**
+ * Een fout tijdens het opstarten (in `app.whenReady` van main/index.ts).
+ *
+ * Zonder dit werd zo'n fout een onafgehandelde belofte: de app draaide door
+ * zonder venster, met het slot op de gebruikersmap in handen, en elke
+ * volgende start zag dat slot en stopte meteen. Staat het venster er al, dan
+ * gaat de fout alleen het logboek in, zoals elke andere; anders een melding,
+ * en de app gaat dicht zodat een nieuwe start weer kan. In een proef
+ * (`OMSI_ENHANCER_PROEFKEUZE` staat) zonder de melding, die anders wacht op
+ * een klik.
+ */
+export function meldStartFout(fout: unknown, vensterEr: boolean): void {
+  logFout('opstarten', fout)
+  if (vensterEr) return
+  try {
+    const tl = taal(app.getPath('userData'))
+    const tekst = `${t(tl, 'app.startFout')}\n\n${fout instanceof Error ? fout.message : String(fout)}`
+    if (!process.env.OMSI_ENHANCER_PROEFKEUZE) dialog.showErrorBox('OMSI Enhancer', tekst)
+  } finally {
+    app.exit(1)
+  }
 }
 
 /**
@@ -161,6 +249,11 @@ function toonInTitel(userData: string, versie: string): void {
  * andere fout. Het werkt omdat de gebouwde app `fs.writeFileSync(...)` bij
  * elke aanroep op het moduleobject opzoekt. Alleen in dit hoofdproces: de
  * kaartwerker schrijft alleen zijn cache, en die staat in de kopie.
+ *
+ * Twee dingen gaan niet via `fs`, en die kijken zelf naar `inBekijkstand`
+ * (core/veilig.ts): de knop voor de Game Bar, die met `reg add` in het
+ * register schrijft (core/overlayknop.ts), en OMSI starten (core/launch.ts)
+ * -- de dienst startte het spel ook als het klaarzetten met EROFS mislukte.
  */
 const PADEN: Record<string, number[]> = {
   writeFileSync: [0],

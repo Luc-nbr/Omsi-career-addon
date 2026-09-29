@@ -13,11 +13,14 @@
  *    en instellingen. Met `leegMag` wel.
  * 4. Een keyboard.cfg in UTF-16 (met BOM) wordt gelezen en blijft UTF-16.
  * 5. options.cfg met Windows-1252-tekens (€, é) gaat byte voor byte heen en weer.
+ * 6. (29-09) Een bestand dat een ander programma openhoudt zonder "verwijderen"
+ *    toe te staan, wordt toch geschreven (ter plekke, zoals tot 28-09).
  *
  * Op de oude code (vóór 28-09) faalt dit: keyboard.cfg werd rechtstreeks
  * overschreven en bleef half achter, een lege lijst werd gewoon geschreven, en
  * een UTF-16-bestand las als leeg.
  */
+import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import { join } from 'node:path'
 import { readControllers, writeControllers } from '../src/core/omsiControllers'
@@ -128,4 +131,43 @@ fs.writeFileSync(opties, cp1252)
 writeOptions(omsi, readOptions(omsi))
 klopt('5. options.cfg met € en é: heen en weer byte-identiek', fs.readFileSync(opties).equals(cp1252))
 
-einde()
+/*
+ * 6. (29-09) Een ander programma houdt keyboard.cfg open met lezen en
+ *    schrijven gedeeld, maar niet verwijderen (zoals een programma dat het
+ *    bestand in de gaten houdt). Hernoemen over zo'n bestand heen lukt nooit;
+ *    gewoon overschrijven, zoals tot 28-09, wel. Op d9eeeda gaf schrijfVeilig
+ *    hier EPERM terwijl de oude code het schreef.
+ */
+async function openGehouden(): Promise<void> {
+  writeKeyboard(omsi, BINDINGEN)
+  const pad = toetsen.replace(/'/g, "''")
+  const ps = spawn(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      `$f = [System.IO.File]::Open('${pad}', 'Open', 'ReadWrite', 'ReadWrite'); Write-Output open; Start-Sleep -Seconds 6; $f.Close()`
+    ],
+    { windowsHide: true }
+  )
+  await new Promise<void>((klaar, mislukt) => {
+    ps.stdout.on('data', (d) => String(d).includes('open') && klaar())
+    ps.on('exit', () => mislukt(new Error('PowerShell hield het bestand niet open')))
+  })
+  let uit: string
+  try {
+    writeKeyboard(omsi, BINDINGEN.map((b) => (b.action === 'Brake' ? { ...b, scancode: 209 } : b)))
+    uit = 'geschreven'
+  } catch (fout) {
+    uit = `fout ${(fout as NodeJS.ErrnoException).code ?? (fout as Error).message}`
+  }
+  const brake = readKeyboard(omsi).find((b) => b.action === 'Brake')?.scancode
+  klopt(`6. keyboard.cfg open bij een ander programma (zonder "verwijderen"): ${uit}, Brake=${brake}`, uit === 'geschreven' && brake === 209)
+  klopt('6. geen .bezig achtergebleven', !fs.readdirSync(inputs).some((n) => n.endsWith('.bezig')))
+  await new Promise((klaar) => ps.on('exit', klaar))
+}
+
+void openGehouden()
+  .catch((fout) => klopt(`6. ${fout instanceof Error ? fout.message : fout}`, false))
+  .then(() => einde())

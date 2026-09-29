@@ -11,20 +11,28 @@
  * Weather, Fonts, Drivers en Trains platte mappen zijn, en Sceneryobjects,
  * Splines, Humans en TicketPacks een map per pakket hebben.
  *
+ * Sinds 29-09 ook: `Sounds` en `Scripts` uit de hoofdmap van OMSI (de
+ * AI-auto's), geen map `Gras` meer (die heeft OMSI niet), een zip waarvan de
+ * naam op een punt of spatie eindigt, en twee bestanden die op dezelfde plek
+ * uitkomen (`Zomer/zon.owt` en `Winter/zon.owt`, `a.cfg` en `A.CFG`): één gaat
+ * mee, de ander staat in het plan als dubbel, en verwijderen laat niets van
+ * de add-on achter.
+ *
  * Op de oude code (vóór 28-09) faalt dit: alleen bussen en kaarten werden
- * herkend.
+ * herkend. De delen van 29-09 falen op d9eeeda.
  */
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { installeerStappen, loopAf, openBron, plaatsVan, planStappen } from '../src/core/addon'
+import * as addon from '../src/core/addon'
+import { installeerStappen, loopAf, OMSI_MAPPEN, openBron, plaatsVan, planStappen, verwijderStappen } from '../src/core/addon'
 import { findOmsiInstall } from '../src/core/install'
-import { einde, klopt, maakZip, nepOmsi, proefMap } from './proefhulp'
+import { afdruk, einde, klopt, maakZip, nepOmsi, proefMap } from './proefhulp'
 
 const moet = (lijst: string[], naam: string | undefined, verwacht: Record<string, string | undefined>): void => {
   const p = plaatsVan(lijst, naam)
   const mis = Object.entries(verwacht).filter(([bron, doel]) => p.get(bron) !== doel)
   klopt(
-    `${Object.values(verwacht).find(Boolean)?.split('/')[0] ?? '?'}: ${mis.length ? mis.map(([b]) => `${b} -> ${p.get(b)}`).join('; ') : 'goed'}`,
+    `${Object.values(verwacht).find(Boolean)?.split('/')[0] ?? 'niet geplaatst'}: ${mis.length ? mis.map(([b]) => `${b} -> ${p.get(b)}`).join('; ') : 'goed'}`,
     mis.length === 0
   )
 }
@@ -81,6 +89,70 @@ moet(['Pack/deko.sco', 'Pack/Vehicles/Bus/bus.bus'], 'x', {
   'Pack/Vehicles/Bus/bus.bus': 'Vehicles/Bus/bus.bus'
 })
 
+// AI-auto's: hun geluiden en scripts staan in de hoofdmap van OMSI.
+moet(['OMSI 2/Vehicles/AI_Cars_X/x.ovh', 'OMSI 2/Sounds/AI_Cars/x_motor.wav', 'OMSI 2/Scripts/AI_Cars/x.osc'], 'x', {
+  'OMSI 2/Vehicles/AI_Cars_X/x.ovh': 'Vehicles/AI_Cars_X/x.ovh',
+  'OMSI 2/Sounds/AI_Cars/x_motor.wav': 'Sounds/AI_Cars/x_motor.wav',
+  'OMSI 2/Scripts/AI_Cars/x.osc': 'Scripts/AI_Cars/x.osc'
+})
+// Een object met zijn geluid in een map `Sounds` blijft een object (geen verzameling).
+moet(['Kerk/kerk.sco', 'Kerk/Sounds/glocke.wav'], 'x', {
+  'Kerk/kerk.sco': 'Sceneryobjects/Kerk/kerk.sco',
+  'Kerk/Sounds/glocke.wav': 'Sceneryobjects/Kerk/Sounds/glocke.wav'
+})
+// `Gras` bestaat niet in OMSI 2: niet als nieuwe map naast Omsi.exe.
+moet(['OMSI 2/Gras/gras.bmp'], 'x', { 'OMSI 2/Gras/gras.bmp': undefined })
+
+// ---- de naam van de zip als pakketnaam ----
+const pakketNaam = (addon as Partial<typeof addon>).pakketNaam
+klopt(
+  `pakketnaam: "Bomen v1." -> ${JSON.stringify(pakketNaam?.('Bomen v1.'))}, "Bomen " -> ${JSON.stringify(pakketNaam?.('Bomen '))}, "CON" -> ${JSON.stringify(pakketNaam?.('CON'))}, "a:b" -> ${JSON.stringify(pakketNaam?.('a:b'))}`,
+  pakketNaam?.('Bomen v1.') === 'Bomen v1' && pakketNaam('Bomen ') === 'Bomen' && pakketNaam('CON') === 'Add-on' && pakketNaam('a:b') === 'a_b'
+)
+{
+  const map = proefMap('mapsoorten-naam')
+  const omsiN = nepOmsi(map)
+  for (const zipNaam of ['Bomen v1..zip', 'Bomen .zip']) {
+    const z = join(map, zipNaam)
+    maakZip(z, [
+      { naam: 'boom.sco', inhoud: '[mesh]\nboom.o3d\n' },
+      { naam: 'model/boom.o3d', inhoud: 'o3d' }
+    ])
+    const br = openBron(z)
+    const p = loopAf(planStappen(br, omsiN, { addons: [] }))
+    br.sluit()
+    klopt(
+      `zip "${zipNaam}" met losse objecten: ${p.regels.map((r) => r.doel).join(', ')} (geweigerd: ${p.geweigerd.length})`,
+      p.geweigerd.length === 0 && p.regels.length === 2 && p.regels.every((r) => r.doel.startsWith('Sceneryobjects/Bomen'))
+    )
+  }
+}
+
+// ---- twee bestanden voor dezelfde plek ----
+{
+  const map = proefMap('mapsoorten-dubbel')
+  const omsiD = nepOmsi(map)
+  const dataD = join(map, 'userdata')
+  const z = join(map, 'weer.zip')
+  maakZip(z, [
+    { naam: 'Zomer/zon.owt', inhoud: 'ZOMER' },
+    { naam: 'Winter/zon.owt', inhoud: 'WINTER' },
+    { naam: 'Vehicles/Bus/a.cfg', inhoud: 'KLEIN' },
+    { naam: 'vehicles/BUS/A.cfg', inhoud: 'GROOT' }
+  ])
+  const voor = afdruk(omsiD)
+  const br = openBron(z)
+  const p = loopAf(planStappen(br, omsiD, { addons: [] }))
+  const dubbel = (p as { dubbel?: string[] }).dubbel ?? []
+  klopt(`dubbel: 2 in het plan, 2 als dubbel (${p.regels.map((r) => `${r.doel}=${r.staat}`).join(', ')}; dubbel: ${dubbel.join(', ')})`, p.regels.length === 2 && dubbel.length === 2)
+  const inst = loopAf(installeerStappen(br, p, omsiD, dataD, new Date(2026, 8, 29)))
+  br.sluit()
+  klopt(`dubbel: het register kent elk bestand één keer, als nieuw (${inst.addon.bestanden.map((b) => `${b.pad}=${b.was}`).join(', ')})`, inst.addon.bestanden.length === 2 && inst.addon.bestanden.every((b) => b.was === 'nieuw'))
+  const weg = loopAf(verwijderStappen(inst.addon, { addons: [inst.addon] }, omsiD, dataD))
+  klopt(`dubbel: verwijderen haalt alles weg (${weg.verwijderd} weg, ${weg.teruggezet} terug, gewijzigd: ${weg.gewijzigd.join(', ') || 'geen'})`, weg.verwijderd === 2 && weg.teruggezet === 0 && weg.gewijzigd.length === 0)
+  klopt('dubbel: de OMSI-map is daarna weer zoals ervoor', afdruk(omsiD) === voor)
+}
+
 // ---- een echte installatie ----
 const basis = proefMap('mapsoorten')
 const omsi = nepOmsi(basis)
@@ -135,6 +207,10 @@ else {
     const t = telling(map)
     if (t) klopt(`echte OMSI: ${map} heeft een map per pakket (${t.mappen} mappen, ${t.bestanden} bestanden)`, t.mappen > t.bestanden)
   }
+  // Elke map waar een add-on in mag, bestaat ook echt in de hoofdmap van OMSI (29-09: `Gras` niet).
+  const mis = OMSI_MAPPEN.filter((m) => !existsSync(join(echt, m)))
+  klopt(`echte OMSI: elke map uit OMSI_MAPPEN bestaat (${mis.join(', ') || 'allemaal'})`, mis.length === 0)
+  klopt('echte OMSI: Sounds en Scripts staan in de hoofdmap', existsSync(join(echt, 'Sounds')) && existsSync(join(echt, 'Scripts')))
 }
 
 einde()

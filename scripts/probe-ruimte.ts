@@ -12,17 +12,30 @@
  *    daarna moet de OMSI-map byte voor byte zijn zoals ervoor, en de
  *    reservekopie van deze poging weg.
  *
+ * 3. (29-09) Het register kan na een geslaagde installatie niet geschreven
+ *    worden (ENOSPC op de gebruikersmap): de installatie gaat terug, en er
+ *    blijft geen add-on in OMSI staan die de app niet kent.
+ * 4. (29-09) Een kapot bestand als eerste in een nieuwe map: na het
+ *    terugdraaien geen lege mappen.
+ * 5. (29-09) Een zip die over zijn grootte liegt (1 byte opgegeven, 50 MB
+ *    erin): "beschadigd" zonder die 50 MB eerst uit te pakken.
+ *
  * Op de oude code (vóór 28-09) faalt dit: er was geen ruimtecontrole, en na
  * de fout bleven de eerste bestanden, een half bestand en een overschreven
- * textuur staan.
+ * textuur staan. Stap 3 tot 5 falen op d9eeeda.
  */
-import { existsSync, readdirSync, writeFileSync } from 'node:fs'
+import fs, { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import * as addon from '../src/core/addon'
-import { installeerStappen, loopAf, openBron, planStappen, type Bron, type Plan } from '../src/core/addon'
-import { afdruk, einde, klopt, maakZip, nepOmsi, proefMap, schrijf } from './proefhulp'
+import { installeerStappen, leesRegister, loopAf, openBron, planStappen, type Bron, type Plan } from '../src/core/addon'
+import { allesOnder, afdruk, einde, klopt, maakZip, nepOmsi, proefMap, schrijf } from './proefhulp'
 
 const GB = 1e9
+/** Wat er in afdruk `na` staat en niet in `voor`. */
+const verschil = (voor: string, na: string): string => {
+  const was = new Set(voor.split('\n'))
+  return na.split('\n').filter((regel) => !was.has(regel)).join(' | ') || '(er ontbreekt iets)'
+}
 const ruimteVoor = (addon as Partial<typeof addon>).ruimteVoor
 const vrijeRuimte = (addon as Partial<typeof addon>).vrijeRuimte
 
@@ -34,6 +47,8 @@ const nepPlan = (regels: Plan['regels'], code: Plan['regels'] = []): Plan => ({
   nooit: [],
   overig: [],
   geweigerd: [],
+  dubbel: [],
+  teLang: [],
   rommel: 0,
   plekken: [],
   bussen: [],
@@ -116,5 +131,102 @@ if (na !== voor) {
 }
 const reserve = join(data, 'addon-reserve')
 klopt('geen reservekopie van deze poging achtergebleven', !existsSync(reserve) || readdirSync(reserve).length === 0)
+
+// ---- 3. het register lukt niet na een geslaagde installatie ----
+{
+  const map = proefMap('ruimte-register')
+  const omsi3 = nepOmsi(map)
+  const data3 = join(map, 'userdata')
+  schrijf(omsi3, 'Vehicles/Bus/a.cfg', 'OUD-A')
+  const zip3 = join(map, 'bus.zip')
+  maakZip(zip3, [
+    { naam: 'Bus/bus.bus', inhoud: 'bus' },
+    { naam: 'Bus/a.cfg', inhoud: 'NIEUW-A' },
+    { naam: 'Bus/model/diep/m.o3d', inhoud: 'o3d' }
+  ])
+  const voor3 = afdruk(omsi3)
+  const bron3 = openBron(zip3)
+  const plan3 = loopAf(planStappen(bron3, omsi3, { addons: [] }))
+  const uit3 = loopAf(installeerStappen(bron3, plan3, omsi3, data3))
+  bron3.sluit()
+  const registreer = (addon as Partial<typeof addon>).registreer
+  // Zoals het hoofdproces: daarna het register, en dan is de gebruikersmap vol.
+  const echtSchrijven = fs.writeFileSync
+  ;(fs as { writeFileSync: typeof fs.writeFileSync }).writeFileSync = ((pad: fs.PathOrFileDescriptor, ...rest: unknown[]) => {
+    if (String(pad).includes('addons.json')) throw Object.assign(new Error('ENOSPC: no space left on device, write'), { code: 'ENOSPC' })
+    return (echtSchrijven as (...a: unknown[]) => void)(pad, ...rest)
+  }) as typeof fs.writeFileSync
+  let fout3: unknown
+  try {
+    if (registreer) registreer(data3, omsi3, uit3)
+    else addon.schrijfRegister(data3, { addons: [...leesRegister(data3).addons, uit3.addon] })
+  } catch (f) {
+    fout3 = f
+  } finally {
+    ;(fs as { writeFileSync: typeof fs.writeFileSync }).writeFileSync = echtSchrijven
+  }
+  const soort3 = (fout3 as { soort?: string } | undefined)?.soort
+  klopt(`register vol: de fout zegt "ruimte" (${soort3 ?? String(fout3)})`, soort3 === 'ruimte')
+  const na3 = afdruk(omsi3)
+  klopt(`register vol: de OMSI-map is weer zoals ervoor (a.cfg=${readFileSync(join(omsi3, 'Vehicles/Bus/a.cfg'), 'utf8')})`, na3 === voor3)
+  if (na3 !== voor3) console.log(`     verschil: ${verschil(voor3, na3)}`)
+  klopt('register vol: geen reserve van die installatie meer', !existsSync(addon.reserveMap(data3, uit3.addon.id)))
+}
+
+// ---- 4. een kapot bestand als eerste in een nieuwe map ----
+{
+  const map = proefMap('ruimte-kapot')
+  const omsi4 = nepOmsi(map)
+  const zip4 = join(map, 'bus.zip')
+  // Het tweede bestand, het eerste in een nieuwe map `model/diep`, met een verkeerde crc.
+  maakZip(zip4, [
+    { naam: 'NieuweBus/bus.bus', inhoud: 'bus' },
+    { naam: 'NieuweBus/model/diep/m.o3d', inhoud: 'o3d', crcFout: true }
+  ])
+  const voor4 = afdruk(omsi4)
+  const bron4 = openBron(zip4)
+  const plan4 = loopAf(planStappen(bron4, omsi4, { addons: [] }))
+  let fout4: unknown
+  try {
+    loopAf(installeerStappen(bron4, plan4, omsi4, join(map, 'userdata')))
+  } catch (f) {
+    fout4 = f
+  } finally {
+    bron4.sluit()
+  }
+  klopt(`kapot bestand: de installatie stopt (${fout4 instanceof Error ? fout4.message : 'geen fout'})`, fout4 instanceof Error)
+  // `afdruk` noemt ook elke map, dus ook een lege.
+  const na4 = afdruk(omsi4)
+  klopt(`kapot bestand: de OMSI-map is weer zoals ervoor, ook geen lege mappen (${na4 === voor4 ? 'gelijk' : verschil(voor4, na4)})`, na4 === voor4)
+}
+
+// ---- 5. een zip die over zijn grootte liegt ----
+{
+  const map = proefMap('ruimte-liegt')
+  const omsi5 = nepOmsi(map)
+  const zip5 = join(map, 'bus.zip')
+  maakZip(zip5, [{ naam: 'Bus/bus.bus', inhoud: Buffer.alloc(50 * 1024 * 1024) }])
+  const buf = readFileSync(zip5)
+  const cd = buf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]))
+  buf.writeUInt32LE(1, cd + 24)
+  writeFileSync(zip5, buf)
+  const bron5 = openBron(zip5)
+  const plan5 = loopAf(planStappen(bron5, omsi5, { addons: [] }))
+  const voorGeheugen = process.memoryUsage().arrayBuffers
+  let piek = 0
+  let fout5: unknown
+  try {
+    loopAf(installeerStappen(bron5, plan5, omsi5, join(map, 'userdata')))
+  } catch (f) {
+    fout5 = f
+    piek = process.memoryUsage().arrayBuffers - voorGeheugen
+  } finally {
+    bron5.sluit()
+  }
+  const melding = fout5 instanceof Error ? fout5.message : 'geen fout'
+  klopt(`liegende zip: "beschadigd" (${melding})`, /Beschadigd/.test(melding))
+  klopt(`liegende zip: niet eerst 50 MB uitgepakt (erbij na de fout: ~${Math.round(piek / 1e6)} MB)`, piek < 10e6)
+  klopt('liegende zip: niets neergezet', allesOnder(join(omsi5, 'Vehicles')).length === 0)
+}
 
 einde()

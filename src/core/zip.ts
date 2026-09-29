@@ -1,3 +1,4 @@
+import { constants as bufferConstants } from 'node:buffer'
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
 import { inflateRawSync } from 'node:zlib'
 import iconv from 'iconv-lite'
@@ -181,17 +182,35 @@ export function openZip(pad: string): Zip {
     return {
       bestanden,
       lees(bestand) {
+        const kapot = (): ZipFout => new ZipFout('kapot', `Beschadigd in de zip: ${bestand.naam}`)
         const lokaal = leesStuk(fd, bestand.kop, 30)
-        if (lokaal.readUInt32LE(0) !== 0x04034b50) throw new ZipFout('kapot', `Beschadigd in de zip: ${bestand.naam}`)
+        if (lokaal.length < 30 || lokaal.readUInt32LE(0) !== 0x04034b50) throw kapot()
         const start = bestand.kop + 30 + lokaal.readUInt16LE(26) + lokaal.readUInt16LE(28)
+        /*
+         * De groottes in de inhoudsopgave zijn wat de zip zegt, niet wat er
+         * is. Een zip die 1 byte opgeeft en 50 MB uitpakt, kwam door de
+         * ruimtecontrole (die rekent met de opgegeven grootte) en werd eerst
+         * helemaal in het geheugen uitgepakt voordat de controle hierna
+         * "beschadigd" zei; een zipbom van een paar gigabyte legt zo het
+         * hoofdproces plat. Daarom: niet meer inlezen dan er in het bestand
+         * staat, en niet verder uitpakken dan de opgegeven grootte.
+         */
+        if (start + bestand.gepakt > lengte) throw kapot()
+        if (bestand.methode === 0 && bestand.gepakt !== bestand.grootte) throw kapot()
         const ruw = leesStuk(fd, start, bestand.gepakt)
         let inhoud: Buffer
         if (bestand.methode === 0) inhoud = ruw
-        else if (bestand.methode === 8) inhoud = inflateRawSync(ruw)
-        else throw new ZipFout('methode', `Onbekende inpakmethode (${bestand.methode}) voor ${bestand.naam}; pak de zip zelf uit.`)
-        if (inhoud.length !== bestand.grootte || crc32(inhoud) !== bestand.crc) {
-          throw new ZipFout('kapot', `Beschadigd in de zip: ${bestand.naam}`)
-        }
+        else if (bestand.methode === 8) {
+          try {
+            inhoud = inflateRawSync(ruw, {
+              maxOutputLength: Math.min(Math.max(bestand.grootte, 1), bufferConstants.MAX_LENGTH)
+            })
+          } catch {
+            // Groter dan opgegeven (ERR_BUFFER_TOO_LARGE) of geen geldige deflate.
+            throw kapot()
+          }
+        } else throw new ZipFout('methode', `Onbekende inpakmethode (${bestand.methode}) voor ${bestand.naam}; pak de zip zelf uit.`)
+        if (inhoud.length !== bestand.grootte || crc32(inhoud) !== bestand.crc) throw kapot()
         return inhoud
       },
       sluit() {

@@ -22,10 +22,20 @@ import { schrijfVeilig } from './veilig'
  * niet op wie hij is.
  */
 
-export interface Schrijver {
+/** Welke exe: het versienummer en zijn bouw. */
+export interface Wie {
   versie: string
-  /** De bouwstempel: `bouw 1a2b3c4 · 2026-09-28 20:15 · setup`. */
+  /** De bouwstempel als tekst, voor de melding: `bouw 1a2b3c4 · 2026-09-28 20:15 · setup`. */
   bouw?: string
+  /** De korte git-hash van de bouw (sinds 29-09; zie `isNieuwer`). */
+  hash?: string
+  /** Wanneer hij gebouwd is, ISO in UTC. */
+  gebouwd?: string
+  variant?: Variant
+}
+
+export interface Schrijver extends Wie {
+  /** Wanneer hij het laatst schreef. */
   tijd: string
 }
 
@@ -65,24 +75,45 @@ export function leesSchrijvers(userData: string): Schrijvers | undefined {
 }
 
 /**
- * Noteren dat deze versie schreef. De hoogste blijft staan als die hoger is:
+ * Is exe `a` nieuwer dan exe `b`? Eerst het versienummer. Bij hetzelfde
+ * nummer de bouw: na elke wijziging wordt er opnieuw gebouwd (CLAUDE.md), en
+ * al die exe's heten dan 0.4.7 -- ook de oude draagbare die het risico is
+ * waarvoor deze wacht er staat. Tot 29-09 telde alleen het nummer, en zag een
+ * oude 0.4.7 niet dat een nieuwe 0.4.7 de map had bijgewerkt.
+ *
+ * Een andere bouw is nieuwer als hij later gebouwd is. Nooit bij een
+ * ontwikkelversie (`dev`: die bouwt bij elke start opnieuw, en zegt dus niets
+ * over wat er in de map staat), zonder bouwtijd (een notitie van vóór 29-09),
+ * of met dezelfde hash (dezelfde broncode, twee keer gebouwd).
+ */
+export function isNieuwer(a: Wie, b: Wie): boolean {
+  const versies = vergelijkVersies(a.versie, b.versie)
+  if (versies !== 0) return versies > 0
+  if (a.variant === 'dev' || b.variant === 'dev') return false
+  if (typeof a.gebouwd !== 'string' || typeof b.gebouwd !== 'string') return false
+  if (a.hash && a.hash === b.hash) return false
+  return a.gebouwd > b.gebouwd
+}
+
+/**
+ * Noteren dat deze exe schreef. De hoogste blijft staan als die nieuwer is:
  * wie na 0.4.9 een keer met 0.4.1 "toch doorgaan" koos, krijgt de vraag de
  * volgende keer weer -- de profielen zijn nog steeds van 0.4.9.
  */
-export function noteerSchrijver(userData: string, versie: string, bouw?: string, nu = new Date()): void {
-  const ik: Schrijver = { versie, bouw, tijd: nu.toISOString() }
+export function noteerSchrijver(userData: string, wie: Wie, nu = new Date()): void {
+  const ik: Schrijver = { ...wie, tijd: nu.toISOString() }
   const eerder = leesSchrijvers(userData)
-  const hoogste = eerder && vergelijkVersies(eerder.hoogste.versie, versie) > 0 ? eerder.hoogste : ik
+  const hoogste = eerder && isNieuwer(eerder.hoogste, ik) ? eerder.hoogste : ik
   schrijfVeilig(join(userData, SCHRIJVER_BESTAND), `${JSON.stringify({ hoogste, laatst: ik }, undefined, 2)}\n`)
 }
 
 /**
- * Is deze versie ouder dan wat er het laatst in de map schreef? Dan staat
- * erin wie dat was, voor de melding.
+ * Is deze exe ouder dan wat er het laatst in de map schreef? Dan staat erin
+ * wie dat was, voor de melding.
  */
-export function nieuwereSchrijver(userData: string, versie: string): Schrijver | undefined {
+export function nieuwereSchrijver(userData: string, wie: Wie): Schrijver | undefined {
   const schrijvers = leesSchrijvers(userData)
-  return schrijvers && vergelijkVersies(schrijvers.hoogste.versie, versie) > 0 ? schrijvers.hoogste : undefined
+  return schrijvers && isNieuwer(schrijvers.hoogste, wie) ? schrijvers.hoogste : undefined
 }
 
 /*

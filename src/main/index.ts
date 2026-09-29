@@ -146,6 +146,7 @@ import {
   leesRegister,
   openBron,
   planStappen,
+  registreer,
   reserveMap,
   ruimteVoor,
   schrijfRegister,
@@ -155,7 +156,7 @@ import {
 import { controleerBus, controleerKaart, type Controle } from '../core/addoncheck'
 import { ZipFout } from '../core/zip'
 import type { AddonOverzicht, AddonPlan } from '../shared/api'
-import { alleenBekijken, bewaakVersie, stempel } from './versiewacht'
+import { alleenBekijken, bewaakVersie, meldStartFout, stempel } from './versiewacht'
 import {
   FLITS,
   controleAanBoord,
@@ -5111,6 +5112,10 @@ function registerHandlers(): void {
     overigAantal: plan.overig.length,
     geweigerd: plan.geweigerd.slice(0, 100),
     geweigerdAantal: plan.geweigerd.length,
+    dubbel: plan.dubbel.slice(0, 100),
+    dubbelAantal: plan.dubbel.length,
+    teLang: plan.teLang.slice(0, 100),
+    teLangAantal: plan.teLang.length,
     rommel: plan.rommel,
     code: plan.code.slice(0, 50).map((r) => ({ doel: r.doel, staat: r.staat })),
     nooit: plan.nooit.slice(0, 50),
@@ -5157,8 +5162,8 @@ function registerHandlers(): void {
           event.sender,
           'installeer'
         )
-        const register = leesRegister(userData())
-        schrijfRegister(userData(), { addons: [...register.addons, uit.addon] })
+        // Lukt het register niet, dan gaat de installatie terug (`registreer`).
+        registreer(userData(), omsi(), uit)
         log(
           `Add-on geïnstalleerd: ${uit.addon.naam} (${uit.geschreven} bestanden, ${uit.overschreven} overschreven, ` +
             `${uit.code} plugin, ${plan.geweigerd.length} geweigerd, ${plan.nooit.length} programma's niet)`
@@ -5578,7 +5583,8 @@ if (!app.requestSingleInstanceLock()) {
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
     })
-  })
+    // Een fout hierboven mag nooit een app zonder venster achterlaten; zie `meldStartFout`.
+  }).catch((fout) => meldStartFout(fout, Boolean(mainWindow && !mainWindow.isDestroyed())))
 
   app.on('before-quit', () => {
     stopApparaat()

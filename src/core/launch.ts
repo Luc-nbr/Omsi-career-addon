@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { inBekijkstand } from './veilig'
 
 /**
  * Start OMSI, verder niets.
@@ -44,6 +45,14 @@ export async function launchOmsi(
   /** En de weg langs Windows, om dezelfde reden apart te kunnen zetten. */
   vragen: (executable: string, cwd: string, windowed?: boolean) => Promise<LaunchResult> = metRechten
 ): Promise<LaunchResult> {
+  /*
+   * Alleen bekijken (main/versiewacht.ts): dan start OMSI niet. Het
+   * klaarzetten van een dienst mislukt daar met EROFS, maar de dienst startte
+   * het spel toch -- op het startscherm van de vorige keer.
+   */
+  if (inBekijkstand()) {
+    throw Object.assign(new Error('Alleen bekijken: OMSI wordt niet gestart.'), { code: 'EROFS' })
+  }
   const executable = join(omsiPath, 'Omsi.exe')
   if (!existsSync(executable)) throw new Error(`Omsi.exe niet gevonden in ${omsiPath}`)
 
