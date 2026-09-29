@@ -237,10 +237,35 @@ const nieuw3d = (niet, ms = 4000) =>
 const venster3d = () =>
   BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && /bus3d\.html/.test(w.webContents.getURL()) && !/foto=1/.test(w.webContents.getURL()))
 const fotovenster = () => BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && /foto=1/.test(w.webContents.getURL()))
+/*
+ * Een venster zonder focus en met doorzichtigheid 0 tekent niet vanzelf opnieuw:
+ * capturePage gaf dan het vorige beeld. Zo waren "schakelaar uit" en "tegels met
+ * foto v4" byte voor byte gelijk, en toonde "pauze" nog het 3D-beeld
+ * (beeldbeoordeling F2). Daarom eerst laten hertekenen en twee beelden wachten;
+ * is de afdruk dan nog gelijk aan de vorige van dat venster, nog één keer.
+ */
+const vorigeAfdruk = new Map()
 async function afdruk(w, naam) {
   if (!w || w.isDestroyed()) return
+  const vers = async () => {
+    w.webContents.invalidate()
+    await Promise.race([
+      w.webContents.executeJavaScript('new Promise((k) => requestAnimationFrame(() => requestAnimationFrame(() => k(true))))'),
+      slaap(600)
+    ]).catch(() => undefined)
+    await slaap(120)
+    return (await w.webContents.capturePage()).toPNG()
+  }
   try {
-    fs.writeFileSync(path.join(BEELD, naam), (await w.webContents.capturePage()).toPNG())
+    let png = await vers()
+    const vorige = vorigeAfdruk.get(w.webContents.id)
+    if (vorige && vorige.equals(png)) {
+      await slaap(400)
+      png = await vers()
+      if (vorige.equals(png)) uitslag.fouten.push(`afdruk ${naam}: gelijk aan de vorige afdruk van dit venster`)
+    }
+    vorigeAfdruk.set(w.webContents.id, png)
+    fs.writeFileSync(path.join(BEELD, naam), png)
   } catch (fout) {
     uitslag.fouten.push(`afdruk ${naam}: ${String(fout).slice(0, 80)}`)
   }
@@ -580,6 +605,20 @@ app.whenReady().then(async () => {
     const weerScherp = await wachtOp(w, `document.querySelector('.bv-kader')?.dataset.fase === 'scherp' && document.querySelector('.bv-doek-zichtbaar')`, 20000)
     ok('hoofdvenster geminimaliseerd: pauze (bv.paused), daarna terug', Boolean(pauze) && Boolean(terug) && /gepauzeerd/.test(tekst),
       `"${tekst.replace(/\s+/g, ' ').slice(0, 60)}", hervat en weer 3D na ${weerScherp ? Date.now() - th : '-'} ms`)
+    /*
+     * Pauze kort aan en weer uit, zoals main het stuurt (aanvalsverslag F2, punt 3):
+     * kwam "geen pauze" vóór het bericht dat de context weg was, dan bleef het
+     * venster voorgoed op de foto. Na elke ronde moet het 3D-beeld terugkomen.
+     */
+    const rondes = []
+    for (const gat of [2, 6, 12, 40]) {
+      w.webContents.send('bus3d:stand', { pauze: true, licht: false, reden: 'verborgen' })
+      await slaap(gat)
+      w.webContents.send('bus3d:stand', { pauze: false, licht: false })
+      const weer = await wachtOp(w, `document.querySelector('.bv-kader')?.dataset.fase === 'scherp' && Boolean(document.querySelector('.bv-doek-zichtbaar'))`, 20000, 100)
+      rondes.push(`${gat} ms: ${weer ? 'terug' : 'WEG'}`)
+    }
+    ok('pauze kort aan en uit (2, 6, 12, 40 ms): het 3D-beeld komt elke keer terug', rondes.every((r) => r.endsWith('terug')), rondes.join(', '))
   }
 
   // ------------------------------------------------------------ 8. toetsen, smal, licht
@@ -835,8 +874,10 @@ app.whenReady().then(async () => {
     await busstapOpnieuw()
     await slaap(500)
     const knoppen = await js(hoofd, drieD())
+    // Zonder schakelaar zoals vóór Bus3D: ook de tegels weer met de v3b, niet de v4 van daarnet.
+    const zonderV4 = await H(`(() => { const s = [...document.querySelectorAll('.tegel img')].map((i) => i.getAttribute('src') ?? ''); return s.length > 0 && !s.some((x) => /\\/v4\\//.test(x)) ? s.length : undefined })()`, 15000)
     await afdruk(hoofd, 'hoofd-schakelaar-uit.png')
-    ok('schakelaar uit: geen 3D-knop, bus3dOpen geeft 0', knoppen === 0 && nul === 0, `${knoppen} knoppen, bus3dOpen ${nul}`)
+    ok('schakelaar uit: geen 3D-knop, bus3dOpen geeft 0, de tegels weer met de v3b', knoppen === 0 && nul === 0 && Boolean(zonderV4), `${knoppen} knoppen, bus3dOpen ${nul}, tegels zonder v4 ${zonderV4 ?? 'nee'}`)
     await js(hoofd, `window.career.saveSettings({ bus3d: true })`)
     await busstapOpnieuw()
     await slaap(500)
@@ -861,8 +902,10 @@ app.whenReady().then(async () => {
     const tp = Date.now()
     const pauze = await wachtOp(w, `document.querySelector('.bv-kader')?.dataset.fase === 'pauze'`, 75000, 500)
     const tPauze = Date.now() - tp
+    // In pauze: de foto of het icoon, [Hervatten], geen knoppen van het beeld (§9).
+    const hervat = await wachtOp(w, `[...document.querySelectorAll('.bv-regel .bv-knop')].some((b) => /Hervat|Resume|Fortsetzen|Reprendre/i.test(b.textContent)) && !document.querySelector('.bv-knoppen')`, 5000)
     await afdruk(w, 'venster-pauze.png')
-    ok('OMSI draait: lichte stand, na 60 s zonder focus pauze', Boolean(licht) && Boolean(pauze), `pauze na ${tPauze} ms (venster zonder focus)`)
+    ok('OMSI draait: lichte stand, na 60 s zonder focus pauze met [Hervatten]', Boolean(licht) && Boolean(pauze) && Boolean(hervat), `pauze na ${tPauze} ms (venster zonder focus), [Hervatten] ${Boolean(hervat)}`)
     // START (OMSI "draait", dus alleen de situatie, omgeleid): het venster gaat dicht.
     const draait = await js(hoofd, `window.career.omsiRunning()`)
     if (draait) {

@@ -97,6 +97,14 @@ export interface Bus3dDienst {
    * `tussen` krijgt wat al klaar is. Onthouden per bus zolang de app draait.
    */
   kleurstalen(relatiefPad: string, tussen?: (stalen: Bus3dStalen) => void): Promise<Bus3dStalen>
+  /**
+   * Een korte vingerafdruk van de bevestigde sleutels (8 hextekens). De foto v4 en zijn
+   * `.geen` dragen hem in hun naam: zo geldt een foto die met een sleutel
+   * gemaakt is niet meer als die sleutel weg is, en krijgt een bus die eerst
+   * `versleuteld` was een nieuwe kans als zijn add-on geregistreerd wordt
+   * (aanvalsverslag F2, punt 2).
+   */
+  registratieStempel(): string
   /** `bus:meld3d`: een meting van het venster, voor het logboek (§11.3). */
   meld(meting: Bus3dMeting): void
   /** Het protocol `omsi3d://`. */
@@ -143,10 +151,16 @@ export function maakBus3dDienst(af: Bus3dAfhankelijk): Bus3dDienst {
        */
       const weg = [...(vorigeSleutels ?? [])].filter((s) => !r.sleutels.has(s))
       vorigeSleutels = r.sleutels
-      if (weg.length > 0) {
-        const aantal = cache.vergeet({ sleutels: weg })
-        for (const [id, p] of pakketten) if (p.sleutels.some((s) => weg.includes(s))) pakketten.delete(id)
-        af.log(`bus3d: ${aantal} pakket(ten) vergeten, sleutel(s) niet meer geregistreerd: ${weg.join(', ')}`)
+      /*
+       * Ook bij de eerste lezing van deze sessie: een pakket uit een vorige
+       * sessie met een sleutel die nu niet (meer) geregistreerd is. Eerst begon
+       * `vorigeSleutels` leeg, en bleef zo'n pakket na een herstart met zijn
+       * heldenbeeld staan (aanvalsverslag F2, punt 2).
+       */
+      const aantal = cache.vergeet({ toegestaan: r.sleutels })
+      for (const [id, p] of pakketten) if (!magTonen(p.sleutels, r.sleutels)) pakketten.delete(id)
+      if (aantal > 0 || weg.length > 0) {
+        af.log(`bus3d: ${aantal} pakket(ten) vergeten, sleutel(s) niet (meer) geregistreerd${weg.length ? `: ${weg.join(', ')}` : ''}`)
       }
     }
     return r.sleutels
@@ -525,7 +539,15 @@ export function maakBus3dDienst(af: Bus3dAfhankelijk): Bus3dDienst {
   function fotoAlsKlaar(relatiefPad: string, kleurstelling?: string, verhouding?: 'breed' | 'smal'): string | undefined {
     const pad = String(relatiefPad ?? '')
     if (!/\.bus$/i.test(pad) || isAbsolute(pad) || pad.split(/[\\/]/).includes('..')) return undefined
+    // Eerst de registratie: die vergeet wat niet meer mag, ook het heldenbeeld.
+    const reg = registratie()
     const z = cache.zoek(af.omsi(), pad)
+    if (z && !magTonen(z.manifest.sleutels, reg)) {
+      cache.vergeetPakket(z.pakket, af.omsi(), z.bus)
+      pakketten.delete(z.pakket)
+      af.log(`bus3d ${pad}: pakket en heldenbeeld vergeten, een sleutel is niet (meer) geregistreerd`)
+      return af.fotoTerugval?.(pad, kleurstelling)
+    }
     if (!z) return af.fotoTerugval?.(pad, kleurstelling)
     const klassen = verhouding === 'smal' ? ['smal', 'breed'] : ['breed', 'smal']
     const sleutels = klassen.flatMap((k) => ['d2', 'd15', 'd1'].map((d) => `${k}-${d}-buiten-vast`))
@@ -590,7 +612,18 @@ export function maakBus3dDienst(af: Bus3dAfhankelijk): Bus3dDienst {
     }
   }
 
-  return { model3d, lak3d, omgeving3d, heldenbeeld, fotoAlsKlaar, kleurstalen, meld, antwoord, vergeet, stuk, ruimOp, cache }
+  let stempel = { tijd: 0, waarde: '' }
+  function registratieStempel(): string {
+    // Hooguit eens per 2 s de ini's lezen: elke tegel vraagt zijn foto.
+    // Uit de bevestigde sleutels, niet uit de vingerafdruk van de bestanden: een update van Steam verandert het manifest, niet de sleutels.
+    if (Date.now() - stempel.tijd > 2000) {
+      const sleutels = [...registratie()].sort((a, b) => a - b).join(',')
+      stempel = { tijd: Date.now(), waarde: createHash('sha1').update(sleutels).digest('hex').slice(0, 8) }
+    }
+    return stempel.waarde
+  }
+
+  return { model3d, lak3d, omgeving3d, heldenbeeld, fotoAlsKlaar, registratieStempel, kleurstalen, meld, antwoord, vergeet, stuk, ruimOp, cache }
 }
 
 function zelfdeSet(lijst: number[] | undefined, set: ReadonlySet<number>): boolean {

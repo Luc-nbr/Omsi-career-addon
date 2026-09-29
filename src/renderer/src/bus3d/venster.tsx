@@ -91,7 +91,7 @@ function toonVoorlopig(v: Bus3dVensterVraag, b: Bus3dBrug): void {
   const v0 = vlakVanViewer()
   vlak.style.cssText =
     `position:fixed;left:${v0.links}px;top:${v0.boven}px;width:${v0.breedte}px;height:${v0.hoogte}px;` +
-    'display:grid;place-items:center;background:#8fa7c0;z-index:5;pointer-events:none'
+    'display:grid;place-items:center;background:linear-gradient(to bottom, #5f8bbb 0%, #9db6cd 22%, #bcc7d0 30%, #8e9092 31.5%, #737577 100%);z-index:5;pointer-events:none'
   const icoon = busicoon(v.vorm)
   vlak.appendChild(icoon)
   if (v.foto) {

@@ -4485,7 +4485,8 @@ function registerHandlers(): void {
        */
       if (readSettings(userData()).bus3d === true && busfoto4) {
         const v4 = await busfoto4.foto(relatiefPad, kleurstelling || undefined)
-        if (v4) return busfoto4Adres(v4)
+        // Ging de schakelaar intussen uit, dan hoort de tegel de v3b te krijgen.
+        if (v4 && readSettings(userData()).bus3d === true) return busfoto4Adres(v4)
       }
       const bestand = await maakBusfoto(
         busfotoOpdracht(relatiefPad, 'voorgrond', kleurstelling || undefined)
@@ -4534,7 +4535,8 @@ function registerHandlers(): void {
     preload: join(__dirname, '../preload/bus3d.js'),
     pagina: bus3dPagina(),
     omsiDraait: () => omsiDraaide,
-    log
+    log,
+    registratie: () => bus3d().registratieStempel()
   })
 
   handle('busfotos:stand', (): Promise<BusfotoStand> => busfotosStand())
@@ -5723,7 +5725,11 @@ function registerHandlers(): void {
      * Het 3D-venster: de schakelaar uit is het venster dicht (en geen knop meer
      * op de tegels); taal, thema en beweging volgen meteen (bus3d-ontwerp §8.1).
      */
-    if (voor.bus3d && !saved.bus3d) bus3dVenster?.sluitAlles('de schakelaar bus3d ging uit')
+    if (voor.bus3d && !saved.bus3d) {
+      bus3dVenster?.sluitAlles('de schakelaar bus3d ging uit')
+      // Ook het verborgen fotovenster (met zijn WebGL-context): een lopende foto v4 komt dan niet meer op de tegel (aanvalsverslag F2, punt 9).
+      busfoto4?.sluit()
+    }
     if (voor.language !== saved.language || voor.theme !== saved.theme || voor.animaties !== saved.animaties) {
       bus3dVenster?.instellingenGewijzigd()
     }
@@ -6589,7 +6595,7 @@ function busplaatje(request: Request): Promise<Response> {
   const map = busfotoMap(userData())
   const naam = decodeURIComponent(new URL(request.url).pathname).replace(/^\/+/, '')
   // De foto v4 uit de 3D-renderer (main/busfoto4.ts): eigen map, zelfde regel.
-  const v4 = /^v4\/([a-f0-9]{16}\.webp)$/i.exec(naam)?.[1]
+  const v4 = /^v4\/([a-f0-9]{16}(-[a-f0-9]{8})?\.webp)$/i.exec(naam)?.[1]
   if (v4) {
     const map4 = busfoto4Map(userData())
     const bestand4 = resolve(map4, v4)

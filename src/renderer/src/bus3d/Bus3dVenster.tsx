@@ -45,19 +45,36 @@ export function Bus3dVenster({ vraag, instellingen, stand }: Props): JSX.Element
   const t = useT()
   const taal = useLanguage()
   const brug = window.bus3d!
-  const [lijst, zetLijst] = useState<Bus3dKleurlijst | null>()
-  const [stalen, zetStalen] = useState<Bus3dStalen>({})
-  const [inBeeld, zetInBeeld] = useState<string | undefined>(vraag.kleurstelling)
-  const [zweef, zetZweef] = useState<string | undefined | null>(null)
+  const pad = vraag.relatiefPad
+  /*
+   * Wat bij één bus of één vraag hoort, draagt die bus of vraag mee en geldt
+   * alleen zolang hij klopt. Eerst werd het pas in een effect teruggezet: bij een
+   * andere bus in een open venster liepen de stalen dan meteen (met de lijst en
+   * "scherp" van de vorige bus), en vroeg de viewer eerst de nieuwe bus in de
+   * kleurstelling van de vorige: het eerste 3D-beeld werd twee keer zo traag
+   * (aanvalsverslag F2, punt 5).
+   */
+  const [lijstVan, zetLijstVan] = useState<{ pad: string; lijst: Bus3dKleurlijst | null }>()
+  const lijst = lijstVan && lijstVan.pad === pad ? lijstVan.lijst : undefined
+  const [stalenVan, zetStalenVan] = useState<{ pad: string; stalen: Bus3dStalen }>({ pad, stalen: {} })
+  const stalen = stalenVan.pad === pad ? stalenVan.stalen : {}
+  const [inBeeldVan, zetInBeeldVan] = useState<{ aanvraag: number; kleur: string | undefined }>({ aanvraag: vraag.aanvraag, kleur: vraag.kleurstelling })
+  const inBeeld = inBeeldVan.aanvraag === vraag.aanvraag ? inBeeldVan.kleur : vraag.kleurstelling
+  const zetInBeeld = (kleur: string | undefined): void => zetInBeeldVan({ aanvraag: vraag.aanvraag, kleur })
+  const [zweefVan, zetZweefVan] = useState<{ aanvraag: number; kleur: string | undefined | null }>({ aanvraag: vraag.aanvraag, kleur: null })
+  const zweef = zweefVan.aanvraag === vraag.aanvraag ? zweefVan.kleur : null
+  const zetZweef = (kleur: string | undefined | null): void => zetZweefVan({ aanvraag: vraag.aanvraag, kleur })
   const [zoek, zetZoek] = useState('')
   const [manifest, zetManifest] = useState<Bus3dManifest>()
   const [meer, zetMeer] = useState(false)
   const [hervat, zetHervat] = useState(false)
-  const [scherp, zetScherp] = useState(false)
+  const [scherpVoor, zetScherpVoor] = useState<string>()
+  const scherp = scherpVoor === pad
   const zoekRef = useRef<HTMLInputElement>(null)
   const lijstRef = useRef<HTMLUListElement>(null)
   const zweefKlok = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const pad = vraag.relatiefPad
+  const padRef = useRef(pad)
+  padRef.current = pad
 
   // Af te lezen voor de proef: welke vraag er staat en wanneer hij kwam, en wat in beeld is.
   useEffect(() => {
@@ -71,10 +88,10 @@ export function Bus3dVenster({ vraag, instellingen, stand }: Props): JSX.Element
     document.documentElement.dataset.inBeeld = kleurInViewerVoorProef(inBeeld)
   })
 
-  // Een nieuwe vraag in hetzelfde venster: de kleurstelling van die vraag in beeld.
+  // Een nieuwe vraag in hetzelfde venster: de kleurstelling van die vraag staat al in beeld (zie boven); het zoekveld leeg.
   useEffect(() => {
-    zetInBeeld(vraag.kleurstelling)
-    zetZweef(null)
+    if (zweefKlok.current) clearTimeout(zweefKlok.current)
+    zweefKlok.current = undefined
     zetZoek('')
   }, [vraag.aanvraag, vraag.kleurstelling])
   /*
@@ -85,12 +102,10 @@ export function Bus3dVenster({ vraag, instellingen, stand }: Props): JSX.Element
   useEffect(() => {
     zetManifest(undefined)
     zetMeer(false)
-    zetScherp(false)
-    zetLijst(undefined)
     let geldig = true
     void brug.busKleurstellingen(pad).then(
-      (l) => geldig && zetLijst(l ?? null),
-      () => geldig && zetLijst(null)
+      (l) => geldig && zetLijstVan({ pad, lijst: l ?? null }),
+      () => geldig && zetLijstVan({ pad, lijst: null })
     )
     return () => {
       geldig = false
@@ -98,23 +113,25 @@ export function Bus3dVenster({ vraag, instellingen, stand }: Props): JSX.Element
   }, [brug, pad])
 
   // De stalen: pas als het 3D-beeld staat (of na 1,5 s), want ze delen de werker met het pakket.
+  const vulStalen = useCallback((bus: string, deel: Bus3dStalen) => {
+    zetStalenVan((oud) => ({ pad: bus, stalen: oud.pad === bus ? { ...oud.stalen, ...deel } : { ...deel } }))
+  }, [])
   useEffect(() => {
-    zetStalen({})
     let geldig = true
     const weg = brug.opKleurstalen((bus, deel) => {
-      if (geldig && bus === pad) zetStalen((oud) => ({ ...oud, ...deel }))
+      if (geldig && bus === pad) vulStalen(bus, deel)
     })
     return () => {
       geldig = false
       weg()
     }
-  }, [brug, pad])
+  }, [brug, pad, vulStalen])
   const stalenGevraagd = useRef('')
   const vraagStalen = useCallback(() => {
     if (stalenGevraagd.current === pad) return
     stalenGevraagd.current = pad
-    void brug.busKleurstalen(pad).then((s) => zetStalen((oud) => ({ ...oud, ...s })), () => undefined)
-  }, [brug, pad])
+    void brug.busKleurstalen(pad).then((s) => vulStalen(pad, s), () => undefined)
+  }, [brug, pad, vulStalen])
   useEffect(() => {
     if (!lijst || lijst.lijst.length === 0) return
     if (scherp) return vraagStalen()
@@ -249,7 +266,7 @@ export function Bus3dVenster({ vraag, instellingen, stand }: Props): JSX.Element
   const plateau = vraag.doel === 'dealer' && !rustig && !stand.licht
 
   const opStand = useCallback((s: ViewerStand) => {
-    if (s.fase === 'scherp') zetScherp(true)
+    if (s.fase === 'scherp') zetScherpVoor(padRef.current)
   }, [])
 
   // ------------------------------------------------------------ gegevens

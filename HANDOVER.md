@@ -756,7 +756,8 @@ randgevallen; `--nulmeting`; `--alles [--diep]`), `scripts/probe-meshlijst.ts`,
 Luc bekijkt de GS GU240 (sleutel 12411) één keer in OMSI -- let op: dat is een
 KI-bus (M18 KI-Version); hij staat niet in de buskeuze, dus op deze pc is het
 icoon 'versleuteld' via de buskeuze niet te zien; de opentijd van het 3D-venster
-(F2); de exe-proef in de gebouwde exe; `bewaar: false` voor een fotoronde (F2,
+(F2); de exe-proef in de gebouwde exe (gedaan in de tegenlezing van F2,
+met `electron-builder --dir`); `bewaar: false` voor een fotoronde (F2,
 met foto v4).
 
 **F2, eerste helft: de renderer (29-09-2026).** Nog steeds niets voor de
@@ -853,9 +854,10 @@ nvidia-smi: een lege viewer 150 MB, de SD77 met kleine texturen 130-180 MB
 boven een pagina zonder viewer; in de volle ronde is dat getal te onrustig
 (andere programma's op de GPU, contexten van de vorige pagina's).
 
-**Nog niet goed (de regels, F3):** de O560 toont alle twaalf standen van het
-zonnescherm (`cp_rollo_fenster*_visible`, elk alleen 1 gebruikt), de HH20 zijn
-laadkabel (`electric_cable_vis`), de NLC twee stoeltypes tegelijk. De ramen van
+**Toen nog niet goed (opgelost in de tegenlezing van F2, zie onder):** de O560
+toonde alle twaalf standen van het zonnescherm (`cp_rollo_fenster*_visible`,
+elk alleen 1 gebruikt), de HH20 zijn laadkabel (`electric_cable_vis`), de NLC
+twee stoeltypes tegelijk. De ramen van
 de NLC en de HH Stadtbus blijven donker: het interieur ligt in de schaduw van
 het dak en de stoelen zijn donker (38-40% bijna-zwart).
 
@@ -961,6 +963,76 @@ Geprobeerd en weer weggehaald: de context in de pagina eerst opgeven
 (loseContext) vóór `destroy()`, en het hoofdvenster laten hertekenen: geen van
 beide gaf dat geheugen terug. De werkset van het GPU-proces groeit wel door, maar
 die neemt Windows lui terug en is geen maat.
+
+**Tegenlezing F2 (29-09-2026): beeldbeoordelaar, proefdraaier en aanvaller.**
+Wat er veranderde (elk punt heeft een proef; zie bus3d.md bijlage D):
+
+- **De ruststand rekent** (`core/oscrust.ts`, nieuw): een kleine rekenmachine
+  voor `{init}` en `{frame}` (stapel van 8, `a b -` = a - b, `{if}` haalt niets
+  van de stapel, constanten en curves uit de constfiles, macro's, de laatste
+  definitie telt). Alles wat van buiten komt en niet vaststaat (datum, weer,
+  `random`, teksten, `(M.V.…)`) is NaN; een `{if}` op NaN maakt wat hij
+  toekent NaN. Wat zeker is gaat vóór de regels; wat onzeker blijft valt terug
+  op `rustRegels`, waarvan de laatste regel nu **0** is (zoals OMSI elke
+  variabele begint) behalve bij een keuze zonder 0-tak. Eerst was het "de
+  laagste gebruikte waarde", en dan stond bij 8 van de 12 proefbussen aan wat
+  OMSI verbergt (zonnescherm O560 als plaat boven het dak, fietsendrager en
+  twee stoeltypes NLC, laadkabel HH20, wimpels SD77/NL202, wielborstels
+  Kajosoft, schoolbusrollo O550). Een aanhanger zonder scripts (NLC 18C) volgt
+  de voorwagen. **Gewone uitvoering** (`typischVan` in core/busrust.ts): wat
+  een kleurstelling (of Standaard) niet zet maar de meeste kleurstellingen van
+  het model wel -- zonder dit had de O560 bij Standaard geen wielen
+  (`vis_wheels` staat alleen in de .cti's). Variabelen die op de regels vallen, per
+  bus over de 394 van de buskeuze: p50 155 -> 6, p95 269 -> 67; de lak kost
+  p50 58 / p95 87 ms (was 35 / 174: de startwaarden lezen alleen nog als de
+  rekenmachine niet rekende). `lak-2` in de
+  stempel van `s/`, `bus3d-pakket-2` in het pakket-id (nieuwe tellingen), en
+  `lak.bron` is `'script'` als de rekenmachine voor elk deel rekende.
+- **Buiten zonder harde horizon** (shaders.ts `waas`): het panorama loopt de
+  laatste twee graden in horizonwaas over, de vloer vanaf 15 m in dezelfde waas
+  (weg bij de rand van de schijf); de schaduw op de vloer iets zachter.
+- **Het venster**: de werker tekent de vorige bus niet meer zodra een andere
+  gevraagd is, en elk beeld draagt het nummer van zijn lading (`laad`): een
+  beeld van de vorige bus dat nog onderweg was, laat de verbinding vallen (geen
+  kleimodel en geen oude bus onder het zijpaneel van de nieuwe). De viewer houdt
+  de foto of het heldenbeeld tot het 3D-beeld na zijn eerste beeld scherp is
+  (of 1,5 s, of je draait). Lak tijdens het laden komt goed (onthouden in
+  de werker), pauze kort aan en uit laat de context niet meer voorgoed weg
+  (`contextWeg` meteen, herstellen pas na het lost-bericht: Chromium staat het
+  eerder niet toe), na herstel geen hangende "Texturen laden…", een tweede
+  contextverlies geeft [Opnieuw] (dat maakt zo nodig een verse context), de
+  DPR-luisteraar werkt ook na de tweede wissel, de state van het zijpaneel
+  hoort bij zijn bus en vraag (geen stalen en geen lak van de vorige bus), het
+  smalle venster vult de breedte, en het lege kader is een verloop in de
+  kleuren van Buiten.
+- **Stalen** uit de plek die de meeste kleurstellingen vervangen, per
+  kleurstelling de beste die zij zelf vervangt (O560: alle vier, niet meer het
+  grijze interieur).
+- **Textuurplan zonder S3TC** rekent DXT als RGBA (kap 2048), en de LRU ruimt
+  op met de nieuwe grens (`zetLruGrens`).
+- **Registratie**: `fotoAlsKlaar` toetst de sleutels (een pakket met een
+  ingetrokken sleutel wordt met zijn heldenbeeld vergeten), bij de eerste
+  lezing van een sessie wordt elk pakket vergeten dat niet mag, en de foto v4
+  en zijn `.geen` dragen een vingerafdruk van de bevestigde sleutels in hun
+  naam (`<16hex>-<8hex>.webp`; foto's van een andere registratie gaan weg).
+- **Schakelaar uit** sluit ook het fotovenster; een foto v4 die dan nog klaar
+  komt, gaat niet meer naar de tegel, en de tegels vragen hun foto opnieuw
+  (dan de v3b; `bus3dLaatst` in App.tsx). Zo is de app zonder schakelaar ook
+  binnen dezelfde sessie weer zoals vóór Bus3D.
+- **Twee bouwbeurten van dezelfde bus** (3D-venster en fotovenster tegelijk):
+  `Bus3dCache.schrijf` laat een pakket met hetzelfde id en dezelfde lengte
+  staan en verdraagt een mislukt hernoemen als het er intussen staat; eerst gaf
+  dat EPERM (het bestand werd al gelezen, of Defender hield het vast) en het
+  venster 'fout'.
+- **Onvolledig model**: `telling.meshes`/`meshesWeg` en het label
+  `bv.incompleteModel` ("{n} van {totaal} onderdelen ontbreken in je
+  OMSI-map") boven 25% (de MB O530 Facelift mist 268 van de 416 o3d's).
+- **Proeven**: `probe-bus3d.ts` heeft een deel "Tegenlezing F2" (`--f2` alleen
+  dat deel); `probe-bus3d-exe.cjs --dev` opent nu echt het 3D-venster
+  (schakelaar aan, zichtbaar = `visibilityState`, pakket, `p/`, `t/` met Range,
+  409, scherp, tweede bus, sluiten en opnieuw); `probe-bus3d-venster.cjs` laat
+  een venster eerst hertekenen voor een afdruk (twee afdrukken waren byte voor
+  byte gelijk) en toetst [Hervatten] in de pauze.
 
 ### 5.00 De planning van het busbedrijf — deel 0 staat (28-09-2026)
 

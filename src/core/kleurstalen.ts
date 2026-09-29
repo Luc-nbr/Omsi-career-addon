@@ -11,10 +11,10 @@ import { leesPng } from './png'
  *
  * Per kleurstelling drie kleuren, zodat je in een lijst van 76 (de MB C2) niet
  * alleen op namen hoeft te zoeken. Ze komen uit de textuur die de kleurstelling
- * op de plek van de CARROSSERIE legt: de CTC-plek met het grootste
- * buitenoppervlak volgens het pakket (`carrosserie` van `textuurPlan`), of --
- * zonder pakket -- de plek die de meeste kleurstellingen vervangen, met het
- * grootste bestand.
+ * op de plek van de LAK legt: de plek die de meeste kleurstellingen vervangen
+ * (daarna het grootste buitenoppervlak volgens het pakket, dan het grootste
+ * bestand), en per kleurstelling de beste plek die zij zelf vervangt
+ * (`rangschikPlekken`).
  *
  * Klein gelezen: van een DXT met mips alleen het niveau van ongeveer 64 pixels
  * (een paar honderd bytes van de schijf); TGA, BMP en PNG helemaal, en dan om de
@@ -33,7 +33,7 @@ const geheugen = new Map<string, Bewaard>()
 export async function kleurstalen(
   omsiMap: string,
   relatiefPad: string,
-  carrosserie: string | undefined,
+  oppervlak: Record<string, number> | undefined,
   tussen?: (stalen: Bus3dStalen) => void
 ): Promise<Bus3dStalen> {
   const busPad = join(omsiMap, relatiefPad)
@@ -43,13 +43,15 @@ export async function kleurstalen(
   const info = leesKleurstellingen(modelcfg)
   if (!info || info.lijst.length === 0) return {}
 
-  const plek = carrosserie && info.lijst.some((k) => k.texturen[carrosserie]) ? carrosserie : raadCarrosserie(info.lijst)
+  const plekken = rangschikPlekken(info.lijst, oppervlak)
   const uit: Bus3dStalen = {}
-  if (!plek) return uit
+  if (plekken.length === 0) return uit
   let laatsteMelding = Date.now()
   for (let i = 0; i < info.lijst.length; i++) {
     const k = info.lijst[i]
-    const pad = k.texturen[plek]
+    // De beste plek die DEZE kleurstelling vervangt: "Postbus" van de O560 vervangt alleen de lak.
+    const plek = plekken.find((p) => k.texturen[p])
+    const pad = plek ? k.texturen[plek] : undefined
     if (pad) {
       const kleuren = staalVan(pad)
       if (kleuren) uit[k.naam] = kleuren
@@ -64,8 +66,18 @@ export async function kleurstalen(
   return uit
 }
 
-/** Zonder pakket: de plek die de meeste kleurstellingen vervangen, en dan het grootste bestand. */
-function raadCarrosserie(lijst: Array<{ texturen: Record<string, string> }>): string | undefined {
+/**
+ * De plekken in de volgorde waarin ze voor een staal deugen: eerst die de meeste
+ * kleurstellingen vervangen (dat is de lak: bij de O560 farbschema_tex1, 4 van
+ * de 4), dan het grootste buitenoppervlak volgens het pakket, dan het grootste
+ * bestand. Nooit het glas.
+ *
+ * Eerst koos het pakket ÉÉN plek: de CTC-plek met het grootste buitenoppervlak
+ * die geen glas is. Bij de O560 is dat het interieur (farbschema_tex3), dat
+ * maar twee van de vier kleurstellingen vervangen: die kregen een grijs staal
+ * en "Postbus" en "Stadtbus Haren" geen (beeldbeoordeling en aanvalsverslag F2).
+ */
+function rangschikPlekken(lijst: Array<{ texturen: Record<string, string> }>, oppervlak?: Record<string, number>): string[] {
   const tel = new Map<string, { n: number; bytes: number }>()
   // Het glas niet: dat is vaak het grootste bestand, en dan wordt een beige bus wit en zwart.
   const glas = /glas|glass|scheibe|fenster|window|szyb|trans/i
@@ -84,15 +96,10 @@ function raadCarrosserie(lijst: Array<{ texturen: Record<string, string> }>): st
       tel.set(plek, t)
     }
   }
-  let beste: string | undefined
-  let b = { n: 0, bytes: 0 }
-  for (const [plek, t] of tel) {
-    if (t.n > b.n || (t.n === b.n && t.bytes > b.bytes)) {
-      beste = plek
-      b = t
-    }
-  }
-  return beste
+  const opp = (plek: string): number => oppervlak?.[plek] ?? 0
+  return [...tel]
+    .sort(([pa, a], [pb, b]) => b.n - a.n || opp(pb) - opp(pa) || b.bytes - a.bytes)
+    .map(([plek]) => plek)
 }
 
 function staalVan(pad: string): [string, string, string] | undefined {

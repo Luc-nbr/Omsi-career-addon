@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { BrowserWindow, type IpcMain } from 'electron'
 
@@ -21,6 +21,13 @@ import { BrowserWindow, type IpcMain } from 'electron'
  * Een bus zonder model of versleuteld met een sleutel die hier niet geregistreerd
  * is, krijgt een `.geen` naast de foto's: dan wordt het niet elke keer opnieuw
  * geprobeerd (zoals bij v3).
+ *
+ * De naam draagt een vingerafdruk van de bevestigde sleutels (`registratie`;
+ * niet van de bestanden, want een update van Steam verandert het manifest): een foto
+ * die met een sleutel gemaakt is, geldt niet meer als die sleutel weg is, en
+ * een `.geen` van een bus die versleuteld was vervalt als zijn add-on
+ * geregistreerd wordt (§5.1, §9; aanvalsverslag F2, punt 2). Foto's van een
+ * andere registratie ruimt de eerste vraag daarna op.
  */
 
 export const FOTO_V4 = { breedte: 640, hoogte: 400 }
@@ -34,6 +41,8 @@ export interface Busfoto4Afhankelijk {
   pagina: { url?: string; bestand?: string }
   omsiDraait: () => boolean
   log: (regel: string) => void
+  /** De korte vingerafdruk van de bevestigde sleutels (main/bus3d.ts, `registratieStempel`). */
+  registratie: () => string
 }
 
 export interface Busfoto4 {
@@ -50,10 +59,10 @@ export function busfoto4Map(userData: string): string {
   return join(userData, 'busfotos', 'v4')
 }
 
-/** Dezelfde naamregel als v3 (main/busfoto.ts), met .webp. */
-function bestandsnaam(relatiefPad: string, kleurstelling?: string): string {
+/** Dezelfde naamregel als v3 (main/busfoto.ts), plus de vingerafdruk van de sleutels; .webp of .geen erachter. */
+function bestandsnaam(relatiefPad: string, kleurstelling: string | undefined, registratie: string): string {
   const sleutel = kleurstelling ? `${relatiefPad.toLowerCase()}|${kleurstelling}` : relatiefPad.toLowerCase()
-  return createHash('sha1').update(sleutel).digest('hex').slice(0, 16)
+  return `${createHash('sha1').update(sleutel).digest('hex').slice(0, 16)}-${registratie}`
 }
 
 export function maakBusfoto4(ipcMain: IpcMain, af: Busfoto4Afhankelijk): Busfoto4 {
@@ -115,14 +124,37 @@ export function maakBusfoto4(ipcMain: IpcMain, af: Busfoto4Afhankelijk): Busfoto
     venster = undefined
   }
 
+  /** Foto's van een vorige registratie weg: één keer per vingerafdruk. */
+  let opgeruimdVoor = ''
+  function ruimRegistratieOp(reg: string): void {
+    if (opgeruimdVoor === reg) return
+    opgeruimdVoor = reg
+    const map = busfoto4Map(af.userData())
+    let weg = 0
+    try {
+      for (const naam of readdirSync(map)) {
+        if (!/\.(webp|geen)$/i.test(naam) || naam.includes(`-${reg}.`)) continue
+        rmSync(join(map, naam), { force: true })
+        weg++
+      }
+    } catch {
+      // Geen map: niets op te ruimen.
+    }
+    if (weg) af.log(`busfoto v4: ${weg} foto('s) van een andere registratie weg`)
+  }
+
   function bestaand(relatiefPad: string, kleurstelling?: string): string | undefined {
-    const pad = join(busfoto4Map(af.userData()), `${bestandsnaam(relatiefPad, kleurstelling)}.webp`)
+    const reg = af.registratie()
+    ruimRegistratieOp(reg)
+    const pad = join(busfoto4Map(af.userData()), `${bestandsnaam(relatiefPad, kleurstelling, reg)}.webp`)
     return existsSync(pad) ? pad : undefined
   }
 
   async function teken(relatiefPad: string, kleurstelling: string | undefined): Promise<string | undefined> {
     const map = busfoto4Map(af.userData())
-    const naam = bestandsnaam(relatiefPad, kleurstelling)
+    const reg = af.registratie()
+    ruimRegistratieOp(reg)
+    const naam = bestandsnaam(relatiefPad, kleurstelling, reg)
     const doel = join(map, `${naam}.webp`)
     const geen = join(map, `${naam}.geen`)
     if (existsSync(doel)) return doel

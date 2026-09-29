@@ -3,7 +3,8 @@ import { dirname, join } from 'node:path'
 import { readOmsiLines } from './omsiFile'
 import { leesKleurstellingen } from './kleurstelling'
 import { startwaardenVan } from './schermvorm'
-import { rustRegels, type Bus3dPakKop, type RustDeel, type RustVermelding } from '../shared/bus3d'
+import { leesRustProgramma, rekenRust } from './oscrust'
+import { MOTORSTANDAARD, rustRegels, type Bus3dPakKop, type RustDeel, type RustVermelding } from '../shared/bus3d'
 
 /**
  * DE RUSTSTAND VAN EEN BUS, ZONDER OSC-MACHINE (bus3d-ontwerp §5.2, F2)
@@ -15,10 +16,14 @@ import { rustRegels, type Bus3dPakKop, type RustDeel, type RustVermelding } from
  * buitendriehoeken), welk `[matl_item]` een `[matl_change]` kiest, en hoe
  * doorzichtig een materiaal met `[alphascale]` is.
  *
- * De scripts zelf draaien komt in F3 (`core/osc.ts`). Tot dan de REGELS van
- * `rustRegels` (shared/bus3d.ts), met hier de invoer erbij:
+ * De scripts helemaal draaien komt in F3 (`core/osc.ts`). Sinds de tegenlezing
+ * van F2 rekent een kleine rekenmachine (`core/oscrust.ts`) `{init}` en
+ * `{frame}` al door voor zover de uitkomst ZEKER is; wat onzeker blijft, valt
+ * terug op de REGELS van `rustRegels` (shared/bus3d.ts), met hier de invoer erbij:
  * - per deel de `kleurVars` van de kleurstelling (een aanhanger zonder die
  *   kleurstelling houdt zijn eigen: niets, zoals `aanhangerVan` in main);
+ * - de gewone uitvoering van het model (`typischVan`): wat de kleurstelling niet
+ *   zet maar de meeste kleurstellingen wel (de wielen van de O560);
  * - de startwaarden uit de scripts (`startwaardenVan`, core/schermvorm.ts);
  * - de variabelen die een script via een curve uit Envir_Brightness zet
  *   (`(L.L.Envir_Brightness) (F.L.<curve>) (S.L.<var>)`), uitgerekend bij
@@ -167,7 +172,7 @@ export function busRust(
   kop: Bus3dPakKop,
   delen: RustInvoerDeel[],
   kleurstelling: string | undefined
-): ReturnType<typeof rustRegels> & { vars: Array<[string, number]> } {
+): ReturnType<typeof rustRegels> & { vars: Array<[string, number]>; bron: 'script' | 'regels' } {
   const vermeldingen: RustVermelding[] = kop.vermeldingen.map((v) => ({
     deel: kop.stukken[v.stuk]?.deel ?? 0,
     zicht: v.zicht,
@@ -193,23 +198,104 @@ export function busRust(
   let vars: Array<[string, number]> = []
   const rustDelen: RustDeel[] = delen.map((deel, d) => {
     let kleurVars: Array<[string, number]> = []
-    if (kleurstelling) {
-      const info = leesKleurstellingen(deel.modelcfg)
-      const gekozen = info?.lijst.find((item) => item.naam === kleurstelling)
-      if (info && gekozen) kleurVars = [[info.variabele, gekozen.index], ...Object.entries(gekozen.setvars)]
-    }
+    const info = deel.modelcfg ? leesKleurstellingen(deel.modelcfg) : undefined
+    const gekozen = kleurstelling ? info?.lijst.find((item) => item.naam === kleurstelling) : undefined
+    if (info && gekozen) kleurVars = [[info.variabele, gekozen.index], ...Object.entries(gekozen.setvars)]
     if (d === 0) vars = kleurVars
-    let startwaarden: Record<string, number> = {}
-    try {
-      startwaarden = startwaardenVan(deel.modelcfg, [...(namenPerDeel[d] ?? [])])
-    } catch {
-      startwaarden = {}
+    /*
+     * De startwaarden pas als de regels erom vragen: met de rekenmachine is dat
+     * alleen nog voor een handvol onzekere variabelen, en ze lezen alle scripts
+     * een tweede keer.
+     */
+    let startwaarden: Record<string, number> | undefined
+    const leesStart = (): Record<string, number> => {
+      try {
+        return klein(startwaardenVan(deel.modelcfg, [...(namenPerDeel[d] ?? [])]))
+      } catch {
+        return {}
+      }
     }
+    const typisch = info ? typischVan(info.lijst, gekozen) : {}
+    const kleinVars = klein(Object.fromEntries(kleurVars))
     return {
-      kleurVars: klein(Object.fromEntries(kleurVars)),
-      startwaarden: klein(startwaarden),
+      kleurVars: kleinVars,
+      typisch,
+      // De voorwagen rekent ook voor een aanhanger zonder scripts (zie onder): alle namen.
+      berekend: berekendVoor(deel.busPad, { ...typisch, ...kleinVars }, d === 0 ? new Set(namenPerDeel.flatMap((n) => [...n])) : (namenPerDeel[d] ?? new Set())),
+      get startwaarden(): Record<string, number> {
+        startwaarden ??= leesStart()
+        return startwaarden
+      },
       daglicht: klein(daglichtVoorBus(deel.busPad))
     }
   })
-  return { ...rustRegels(vermeldingen, rustDelen), vars }
+  /*
+   * Een aanhanger zonder eigen scripts (de achterwagen van de NLC 18C heeft
+   * alleen [varnamelist]) rekent zelf niets: zijn stoelen, deuren en lichten
+   * volgen de voorwagen. Dan wat de voorwagen zeker weet, met de eigen
+   * kleurVars erover.
+   */
+  for (let d = 1; d < rustDelen.length; d++) {
+    const eigen = rustDelen[d]
+    if (eigen.berekend || !rustDelen[0].berekend) continue
+    eigen.berekend = { ...rustDelen[0].berekend, ...eigen.kleurVars }
+  }
+  // 'script': de rekenmachine rekende voor elk deel; wat zij onzeker liet, deden de regels.
+  const bron = rustDelen.every((d) => d.berekend) ? 'script' : 'regels'
+  return { ...rustRegels(vermeldingen, rustDelen), vars, bron }
+}
+
+/**
+ * De gewone uitvoering van een model (tegenlezing F2): per setvar die de
+ * gekozen kleurstelling (of Standaard) NIET zet, de waarde die de meeste
+ * kleurstellingen van dit model geven; een kleurstelling die hem niet zet telt
+ * als 0 (zo begint OMSI). Bij gelijke stand: de waarde van de eerste in OMSI's
+ * volgorde. Alleen wat niet 0 is komt erin.
+ *
+ * Waarom: de O560 zet `vis_wheels` alleen in zijn .cti's (3 van de 4 op 1). Bij
+ * Standaard zet de app niets, en een variabele die geen script zet is in OMSI 0
+ * -- dan had de bus geen wielen. Dit toont het model zoals de maker het
+ * bedoelde; wat OMSI zelf bij Standaard toont, meet de plugin-afdruk in F3.
+ */
+export function typischVan(
+  lijst: Array<{ setvars: Record<string, number> }>,
+  gekozen?: { setvars: Record<string, number> }
+): Record<string, number> {
+  const eigen = new Set(Object.keys(gekozen?.setvars ?? {}).map((n) => n.toLowerCase()))
+  const perKleur = lijst.map((k) => klein(k.setvars))
+  const namen = new Set<string>()
+  for (const s of perKleur) for (const n of Object.keys(s)) if (!eigen.has(n)) namen.add(n)
+  const uit: Record<string, number> = {}
+  for (const naam of namen) {
+    const tel = new Map<number, number>()
+    for (const s of perKleur) tel.set(s[naam] ?? 0, (tel.get(s[naam] ?? 0) ?? 0) + 1)
+    const meest = Math.max(...tel.values())
+    const kandidaten = new Set([...tel].filter(([, n]) => n === meest).map(([w]) => w))
+    const w = perKleur.map((s) => s[naam] ?? 0).find((x) => kandidaten.has(x)) ?? 0
+    if (w !== 0) uit[naam] = w
+  }
+  return uit
+}
+
+/** Systeemvariabelen die in rust vaststaan; de rest (datum, weer, ...) is onzeker. */
+const SYSTEEM: Readonly<Record<string, number>> = { timegap: 1 / 30 }
+
+/**
+ * Wat de rekenmachine (core/oscrust.ts) zeker weet over de namen waar de regels
+ * naar vragen: `{init}`, dan de vars (kleurVars plus de gewone uitvoering), dan
+ * `{frame}` tot die namen stilstaan. Niets als het niet lukt (dan gelden de regels).
+ */
+function berekendVoor(busPad: string, vars: Record<string, number>, namen: Set<string>): Record<string, number> | undefined {
+  try {
+    const { scripts, constfiles } = busLijsten(busPad)
+    if (scripts.length === 0) return undefined
+    const programma = leesRustProgramma(scripts, constfiles)
+    const gevraagd = new Set([...namen].map((n) => n.toLowerCase()))
+    const uit = rekenRust(programma, { motor: MOTORSTANDAARD, vars, systeem: SYSTEEM, gevraagd })
+    const zeker: Record<string, number> = {}
+    for (const [naam, w] of uit.waarden) if (!Number.isNaN(w)) zeker[naam] = w
+    return zeker
+  } catch {
+    return undefined
+  }
 }

@@ -34,6 +34,12 @@ export const TEKST_BUSVIEWER = {
     fr: 'Modèle incomplet : {n} textures manquent',
     nl: 'Model onvolledig: {n} texturen ontbreken'
   },
+  'bv.incompleteModel': {
+    en: 'Model incomplete: {n} of {totaal} parts are missing from your OMSI folder',
+    de: 'Modell unvollständig: {n} von {totaal} Teilen fehlen in deinem OMSI-Ordner',
+    fr: 'Modèle incomplet : {n} pièces sur {totaal} manquent dans ton dossier OMSI',
+    nl: 'Model onvolledig: {n} van {totaal} onderdelen ontbreken in je OMSI-map'
+  },
   'bv.noWebgl': {
     en: 'This computer cannot show 3D here (no WebGL 2). You still see the picture.',
     de: 'Dieser Computer kann hier kein 3D zeigen (kein WebGL 2). Du siehst weiterhin das Bild.',

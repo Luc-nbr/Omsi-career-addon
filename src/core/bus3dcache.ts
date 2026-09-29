@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import {
   closeSync,
+  existsSync,
   fsyncSync,
   mkdirSync,
   openSync,
@@ -16,7 +17,7 @@ import {
 } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { schrijfPakket } from '../shared/bus3dpak'
-import { textuurPlan, type Bus3dLak, type Bus3dManifest, type Bus3dPakKop } from '../shared/bus3d'
+import type { Bus3dLak, Bus3dManifest, Bus3dPakKop } from '../shared/bus3d'
 import { bouwBus3d, bus3dLak, lakStempel, pakketVerouderd, type Bus3dBouw, type Bus3dBron, type Bus3dTextuurBron } from './bus3d'
 import { leesBus3dOmgeving } from './bus3domgeving'
 import { kleurstalen } from './kleurstalen'
@@ -72,6 +73,18 @@ export interface Bus3dZijspoor {
   gebouwd: number
 }
 
+/** Voor unieke tijdelijke namen: twee schrijfbeurten in dezelfde werker delen hun pid. */
+let schrijfTeller = 0
+
+/** Staat het bestand er al, met precies deze lengte? */
+function bestaatMetLengte(pad: string, lengte: number): boolean {
+  try {
+    return statSync(pad).size === lengte
+  } catch {
+    return false
+  }
+}
+
 /**
  * De sleutel van een bus: de OMSI-map hoort erbij. Wie een andere installatie
  * aanwijst, heeft onder hetzelfde relatieve pad misschien een andere bus -- en
@@ -115,19 +128,38 @@ export class Bus3dCache {
     mkdirSync(join(this.map, 'bus'), { recursive: true })
     const pakket = bouw.manifest.pakket
     const delen = schrijfPakket(bouw.kop, bouw.staart)
-    const tijdelijk = `${this.pakketPad(pakket)}.${process.pid}.tmp`
-    const fd = openSync(tijdelijk, 'w')
-    let bytes = 0
-    try {
-      // In stukken van hooguit 1024 buffers (de grens van writev).
-      for (let i = 0; i < delen.length; i += 1024) bytes += writevSync(fd, delen.slice(i, i + 1024))
-      // Eerst echt op de schijf, dan pas de echte naam: anders kan een stroomstoring
-      // een pakket met de goede naam en een halve inhoud achterlaten.
-      fsyncSync(fd)
-    } finally {
-      closeSync(fd)
+    const lengte = delen.reduce((s, d) => s + d.byteLength, 0)
+    /*
+     * Hetzelfde id is dezelfde inhoud (een hash van alle bronnen). Twee bouwbeurten
+     * van dezelfde bus tegelijk -- het 3D-venster en het fotovenster van de foto
+     * v4 -- schreven eerst allebei, en de tweede kon niet over het bestand heen
+     * dat het 3D-venster al via p/ las: EPERM, en het venster kreeg 'fout'
+     * (proef van de tegenlezing F2). Staat het er al met de goede lengte, dan
+     * laten we het staan; lukt het hernoemen niet terwijl het er intussen wel
+     * staat, dan ook.
+     */
+    const doel = this.pakketPad(pakket)
+    let bytes = lengte
+    if (!bestaatMetLengte(doel, lengte)) {
+      const tijdelijk = `${doel}.${process.pid}.${++schrijfTeller}.tmp`
+      const fd = openSync(tijdelijk, 'w')
+      bytes = 0
+      try {
+        // In stukken van hooguit 1024 buffers (de grens van writev).
+        for (let i = 0; i < delen.length; i += 1024) bytes += writevSync(fd, delen.slice(i, i + 1024))
+        // Eerst echt op de schijf, dan pas de echte naam: anders kan een stroomstoring
+        // een pakket met de goede naam en een halve inhoud achterlaten.
+        fsyncSync(fd)
+      } finally {
+        closeSync(fd)
+      }
+      try {
+        renameSync(tijdelijk, doel)
+      } catch (fout) {
+        rmSync(tijdelijk, { force: true })
+        if (!bestaatMetLengte(doel, bytes)) throw fout
+      }
     }
-    renameSync(tijdelijk, this.pakketPad(pakket))
     bouw.manifest.ms.schrijven = Math.round(performance.now() - t0)
     const zijspoor: Bus3dZijspoor = {
       versie: 1,
@@ -142,8 +174,15 @@ export class Bus3dCache {
       gebouwd: Date.now()
     }
     const json = JSON.stringify(zijspoor)
-    writeFileSync(`${this.zijspoorPad(pakket)}.tmp`, json)
-    renameSync(`${this.zijspoorPad(pakket)}.tmp`, this.zijspoorPad(pakket))
+    const zijTijdelijk = `${this.zijspoorPad(pakket)}.${process.pid}.${++schrijfTeller}.tmp`
+    writeFileSync(zijTijdelijk, json)
+    try {
+      renameSync(zijTijdelijk, this.zijspoorPad(pakket))
+    } catch (fout) {
+      // Een gelijktijdige bouwbeurt van hetzelfde pakket schreef hem al (zelfde inhoud, op de bouwtijd na).
+      rmSync(zijTijdelijk, { force: true })
+      if (!existsSync(this.zijspoorPad(pakket))) throw fout
+    }
     // Het vorige pakket van deze bus mag weg: het heeft een ander id.
     const vorige = this.pakketVan(omsiMap, bouw.manifest.bus)
     writeFileSync(join(this.map, 'bus', busSleutel(omsiMap, bouw.manifest.bus)), pakket)
@@ -432,9 +471,11 @@ export class Bus3dCache {
   /**
    * Pakketten vergeten: allemaal, of die van bussen onder deze voertuigmappen
    * (de add-on-manager, §4.2), of die met een van deze o3d-sleutels (een add-on
-   * is weg, §5.1).
+   * is weg, §5.1), of (`toegestaan`) die met een sleutel die niet 0 is en niet
+   * in deze registratie staat -- ook een pakket uit een vorige sessie
+   * (aanvalsverslag F2, punt 2).
    */
-  vergeet(filter?: { mappen?: string[]; sleutels?: number[] }): number {
+  vergeet(filter?: { mappen?: string[]; sleutels?: number[]; toegestaan?: ReadonlySet<number> }): number {
     let weg = 0
     const mappen = filter?.mappen?.map((m) => m.toLowerCase().replace(/\//g, '\\'))
     for (const { pakket } of this.inhoud()) {
@@ -443,7 +484,9 @@ export class Bus3dCache {
         const bus = z?.bus.toLowerCase().replace(/\//g, '\\') ?? ''
         const opMap = mappen?.some((m) => bus.startsWith(`vehicles\\${m}\\`) || bus.startsWith(`${m}\\`)) ?? false
         const opSleutel = filter.sleutels?.some((s) => z?.manifest.sleutels.includes(s)) ?? false
-        if (z && !opMap && !opSleutel) continue
+        const toegestaan = filter.toegestaan
+        const nietToegestaan = toegestaan ? (z?.manifest.sleutels.some((s) => s !== 0 && !toegestaan.has(s)) ?? false) : false
+        if (z && !opMap && !opSleutel && !nietToegestaan) continue
       }
       this.gooiWeg(pakket)
       weg++
@@ -497,20 +540,15 @@ export async function bus3dWerk(
   if (opdracht.soort === 'bus3d:omgeving') return leesBus3dOmgeving(omsiMap)
   if (opdracht.soort === 'bus3d:stalen') {
     /*
-     * De lak uit het pakket als dat er is: de CTC-plek met het grootste
-     * buitenoppervlak, maar niet het glas. Het plan van §5.7 kiest bij de O560
-     * O560_E6_Glass.dds als "carrosserie" (de ruiten beslaan veel oppervlak), en
-     * dan werden de stalen wit en zwart bij een beige bus. Een naam is geen
-     * bewijs, maar om glas over te slaan is hij goed genoeg; zonder pakket raadt
-     * kleurstalen.ts.
+     * Het buitenoppervlak per CTC-plek uit het pakket, als dat er is: bij gelijke
+     * telling kiest kleurstalen.ts de plek die het meest van de bus beslaat. De
+     * plek zelf kiest kleurstalen.ts (de plek die de meeste kleurstellingen
+     * vervangen, per kleurstelling de beste die zij zelf vervangt; nooit glas).
      */
     const z = cache.zoek(omsiMap, opdracht.relatiefPad)
-    const glas = /glas|glass|scheibe|fenster|window|szyb|trans/i
-    const lak = z?.manifest.texturen
-      .filter((t) => t.ctc && !glas.test(t.naam) && !glas.test(t.ctc))
-      .sort((a, b) => b.oppervlak - a.oppervlak)[0]?.ctc
-    const carrosserie = lak ?? (z ? textuurPlan(z.manifest.texturen, 160 * 1024 * 1024).carrosserie : undefined)
-    return kleurstalen(omsiMap, opdracht.relatiefPad, carrosserie, (stalen) => tussen?.({ stalen }))
+    const oppervlak: Record<string, number> = {}
+    for (const t of z?.manifest.texturen ?? []) if (t.ctc) oppervlak[t.ctc] = Math.max(oppervlak[t.ctc] ?? 0, t.oppervlak)
+    return kleurstalen(omsiMap, opdracht.relatiefPad, oppervlak, (stalen) => tussen?.({ stalen }))
   }
   const z = cache.zijspoor(opdracht.pakket)
   if (opdracht.soort === 'bus3d:lak') {

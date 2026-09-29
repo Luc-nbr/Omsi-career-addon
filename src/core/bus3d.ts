@@ -510,6 +510,9 @@ export async function bouwBus3d(invoer: Bus3dBouwInvoer): Promise<Bus3dBouwUitko
   const mappenPerDeel: string[][] = []
   const ctcPerDeel: Array<Map<string, string>> = []
   let totaal = 0
+  /** Buitenmeshes volgens de cfg, en hoeveel daarvan hun o3d mist (voor bv.incomplete). */
+  let buitenMeshes = 0
+  let buitenMeshesWeg = 0
   for (let d = 0; d < delen.length; d++) {
     const deel = delen[d]
     const cfg = cfgs[d]
@@ -541,9 +544,13 @@ export async function bouwBus3d(invoer: Bus3dBouwInvoer): Promise<Bus3dBouwUitko
      */
     for (const mesh of cfg.meshes) if (mesh.pad.trim()) stempel(dirname(mesh.bestand))
     for (const mesh of cfg.meshes) {
-      if (!mesh.bestaat) continue
       if (hoogsteLod >= 0 && mesh.lod >= 0 && mesh.lod !== hoogsteLod) continue
       const vp = mesh.aanzicht
+      if (mesh.pad.trim() && (vp === 0 || (vp & 1) !== 0)) {
+        buitenMeshes++
+        if (!mesh.bestaat) buitenMeshesWeg++
+      }
+      if (!mesh.bestaat) continue
       const buiten = vp === 0 || (vp & 1) !== 0
       const binnen = !buiten && (vp & 2) !== 0
       if (!buiten && !binnen) continue
@@ -1000,7 +1007,7 @@ export async function bouwBus3d(invoer: Bus3dBouwInvoer): Promise<Bus3dBouwUitko
   for (const map of zoeker.bekekenMappen()) stempel(map)
   const bronLijst = [...bronnen.values()].sort((a, b) => (a.pad.toLowerCase() < b.pad.toLowerCase() ? -1 : 1))
   const h = createHash('sha1')
-  h.update(`bus3d-pakket-1|${relatiefPad.toLowerCase()}|${[...geregistreerd].sort((a, b) => a - b).join(',')}`)
+  h.update(`bus3d-pakket-2|${relatiefPad.toLowerCase()}|${[...geregistreerd].sort((a, b) => a - b).join(',')}`)
   for (const b of bronLijst) h.update(`|${b.pad.toLowerCase()}|${b.grootte}|${b.mtime}`)
   const pakket = h.digest('hex')
 
@@ -1024,7 +1031,9 @@ export async function bouwBus3d(invoer: Bus3dBouwInvoer): Promise<Bus3dBouwUitko
       versleuteld: versleuteldeO3d.length,
       ontward,
       ontbrekend: ontbrekend.size,
-      onleesbaar: onleesbaar.size
+      onleesbaar: onleesbaar.size,
+      meshes: buitenMeshes,
+      meshesWeg: buitenMeshesWeg
     },
     problemen: {
       ontbrekend: [...ontbrekend].sort(),
@@ -1182,6 +1191,7 @@ export function bus3dLak(
     lak.alphascale = rust.alphascale
     lak.onbekend = rust.onbekend
     lak.vars = rust.vars
+    lak.bron = rust.bron
   }
   if (!kleurstelling) {
     lak.ms = Math.round(performance.now() - t0)
@@ -1236,11 +1246,15 @@ export function bus3dLak(
 /**
  * De vingerafdruk van alles waar de lak van een kleurstelling van afhangt en wat
  * niet al in het pakket-id zit: per deel de .bus, zijn scripts en constfiles, en
- * de texturen die de kleurstelling vervangt. Grootte en tijd, geen inhoud: een
- * handvol `stat`s. Voor de schijfcache `s/` (§4.2).
+ * de texturen die de kleurstelling vervangt, en de .cti's (ook bij Standaard:
+ * de gewone uitvoering komt uit alle kleurstellingen, `typischVan`). Grootte en
+ * tijd, geen inhoud: een handvol `stat`s. Voor de schijfcache `s/` (§4.2).
+ *
+ * `lak-2`: de rekenmachine van de ruststand (core/oscrust.ts, tegenlezing F2)
+ * geeft andere standen dan de regels van F2; de oude mogen niet meer uit de cache komen.
  */
 export function lakStempel(omsiMap: string, manifest: Bus3dManifest, kleurstelling: string | undefined): string {
-  const h = createHash('sha1').update(`lak-1|${kleurstelling ?? ''}`)
+  const h = createHash('sha1').update(`lak-2|${kleurstelling ?? ''}`)
   const stempel = (pad: string): void => {
     try {
       const st = statSync(pad)
@@ -1254,11 +1268,10 @@ export function lakStempel(omsiMap: string, manifest: Bus3dManifest, kleurstelli
     stempel(busPad)
     const { scripts, constfiles } = busLijsten(busPad)
     for (const p of [...scripts, ...constfiles]) stempel(p)
-    if (!kleurstelling) continue
     const bus = leesBusBestand(busPad)
     if (!bus?.model) continue
     const info = leesKleurstellingen(join(dirname(busPad), ...bus.model.split(/[\\/]+/)))
-    const gekozen = info?.lijst.find((item) => item.naam === kleurstelling)
+    const gekozen = kleurstelling ? info?.lijst.find((item) => item.naam === kleurstelling) : undefined
     for (const p of Object.values(gekozen?.texturen ?? {})) stempel(p)
     // De .cti's zelf: een setvar die erbij komt verandert de lak, niet de texturen.
     if (info?.map) {

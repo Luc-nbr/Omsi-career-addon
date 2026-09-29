@@ -89,6 +89,14 @@ export interface Bus3dManifest {
     ontbrekend: number
     /** Texturen die er wel zijn maar waarvan de kop niet te lezen is. */
     onleesbaar: number
+    /**
+     * Buitenmeshes volgens de cfg (na LOD), en hoeveel daarvan hun o3d mist op
+     * deze pc. De MB O530 Facelift mist er 268 van de 416 en stond zonder label
+     * bijna leeg in beeld (proefdraaier F2); boven 25% zegt bv.incompleteModel het.
+     * Ontbreekt in een pakket van vóór de tegenlezing van F2.
+     */
+    meshes?: number
+    meshesWeg?: number
   }
   /** Namen, voor het logboek en de proeven: geen paden. */
   problemen: {
@@ -430,7 +438,23 @@ export const MOTORSTANDAARD: Readonly<Record<string, number>> = {
 export interface RustDeel {
   /** `kleurVars`: de CTC-index plus de setvars van de kleurstelling van dit deel. */
   kleurVars: Record<string, number>
-  /** Wat de scripts letterlijk zetten in `{init}` en `{frame}` (`startwaardenVan`). */
+  /**
+   * Wat deze kleurstelling (of Standaard) NIET zet, maar de meeste kleurstellingen
+   * van dit model wel: de gewone uitvoering van het model (niet gezet telt als 0).
+   * Zonder dit had de O560 bij Standaard geen wielen (`vis_wheels` zet alleen een
+   * .cti).
+   */
+  typisch?: Record<string, number>
+  /**
+   * Wat de rekenmachine (core/oscrust.ts) ZEKER weet na `{init}`, de vars en
+   * `{frame}`. Een naam die ontbreekt is onzeker; dan gelden de regels.
+   */
+  berekend?: Record<string, number>
+  /**
+   * Wat de scripts letterlijk zetten in `{init}` en `{frame}` (`startwaardenVan`).
+   * Alleen als de rekenmachine niet rekende (`berekend` ontbreekt): wat die
+   * onzeker laat, is met een letterlijke waarde uit een {if} ook niet zekerder.
+   */
   startwaarden: Record<string, number>
   /** Voor `[alphascale]`: variabelen die een script via een curve uit Envir_Brightness zet, bij daglicht. */
   daglicht: Record<string, number>
@@ -452,21 +476,28 @@ export interface RustVermelding {
 const ALFA_NUL = [/^rain_/i, /^dirt_/i, /_grain$/i, /^dash_/i, /^para_/i, /^mroz/i, /^beschlag_/i]
 
 /**
- * De ruststand volgens de regels van §5.2, zolang er geen OSC-machine is (F3),
- * en als terugval daarna. Puur, ook voor de probe.
+ * De ruststand volgens de regels van §5.2, met wat de rekenmachine zeker weet
+ * (core/oscrust.ts, tegenlezing F2) voorop. Puur, ook voor de probe.
  *
  * `[visible]` en `[matl_change]`, per variabele, in deze voorrang:
- *  1. `kleurVars` (die wint van wat `{init}` letterlijk toekent, zoals in het spel);
- *  2. de startwaarden uit de scripts;
- *  3. de alias: bij `vis_<rest>` de waarde van `vis_CTI_<rest>` of `vis_SV_<rest>`
+ *  1. wat de rekenmachine zeker weet (die rekent al met kleurVars, de gewone
+ *     uitvoering en de motor; een variabele die geen script zet is daar 0,
+ *     zoals in OMSI);
+ *  2. `kleurVars` (die wint van wat `{init}` letterlijk toekent, zoals in het
+ *     spel), dan de gewone uitvoering van het model (`typisch`);
+ *  3. de startwaarden uit de scripts (alleen als de rekenmachine niet rekende);
+ *  4. de alias: bij `vis_<rest>` de waarde van `vis_CTI_<rest>` of `vis_SV_<rest>`
  *     (zo zet de NLC spiegels, deuren en matrix, setvar.osc:510-519);
- *  4. de standaardwaarden van de motor;
- *  5. 0 als een vermelding 0 gebruikt;
- *  6. anders de laagste waarde.
+ *  5. de standaardwaarden van de motor;
+ *  6. anders 0, zoals OMSI elke variabele begint -- behalve bij een KEUZE zonder
+ *     0-tak (de vermeldingen gebruiken twee of meer waarden en geen 0): dan de
+ *     laagste, zodat er iets van dat onderdeel te zien is. Eerst was dit altijd
+ *     "de laagste gebruikte waarde", en wordt alleen 1 gebruikt, dan stond het
+ *     aan: zonnescherm, fietsendrager, laadkabel, wimpels (beeldbeoordeling F2).
  * Zichtbaar is |waarde - w| < 0,5 (openOMSI; de plugin-afdruk beslist in F3).
  *
  * `[alphascale]`: een curve bij daglicht, dan kleurVars, dan de lijst op naam
- * (0), dan de startwaarden en de motor, anders 1.
+ * (0), dan de rekenmachine, de startwaarden en de motor, anders 1.
  */
 export function rustRegels(
   vermeldingen: RustVermelding[],
@@ -489,14 +520,15 @@ export function rustRegels(
   const bron = (d: number, naam: string): number | undefined => {
     const deel = delen[d] ?? delen[0]
     if (!deel) return undefined
-    return deel.kleurVars[naam] ?? deel.startwaarden[naam]
+    return deel.kleurVars[naam] ?? deel.typisch?.[naam] ?? (deel.berekend ? undefined : deel.startwaarden[naam])
   }
   const waarde = (d: number, naamRuw: string): number => {
     const naam = naamRuw.toLowerCase()
     const k = `${d}|${naam}`
     const bekend = geheugen.get(k)
     if (bekend !== undefined) return bekend
-    let w = bron(d, naam)
+    let w = (delen[d] ?? delen[0])?.berekend?.[naam]
+    w ??= bron(d, naam)
     if (w === undefined && naam.startsWith('vis_')) {
       const rest = naam.slice(4)
       w = bron(d, `vis_cti_${rest}`) ?? bron(d, `vis_sv_${rest}`)
@@ -504,7 +536,8 @@ export function rustRegels(
     w ??= MOTORSTANDAARD[naam]
     if (w === undefined) {
       const lijst = gebruikt.get(k) ?? []
-      w = lijst.length === 0 || lijst.includes(0) ? 0 : Math.min(...lijst)
+      const verschillend = new Set(lijst)
+      w = verschillend.size >= 2 && !verschillend.has(0) ? Math.min(...lijst) : 0
       onbekend.add(naamRuw)
     }
     geheugen.set(k, w)
@@ -526,16 +559,17 @@ export function rustRegels(
         const naam = m.alfaSchaal.toLowerCase()
         const deel = delen[v.deel] ?? delen[0]
         /*
-         * De lijst op naam gaat vóór de startwaarden: die nemen ook een waarde
-         * binnen een {if} mee, en regen, vorst en beslag zet een script juist
-         * onder een voorwaarde (Kajosoft: `1 (S.L.mroz)` bij vorst onder -10
-         * graden, cockpit.osc:2410).
+         * De lijst op naam gaat vóór de rekenmachine en de startwaarden: regen,
+         * vorst en beslag zet een script juist onder een voorwaarde (Kajosoft:
+         * `1 (S.L.mroz)` bij vorst onder -10 graden, cockpit.osc:2410), en het
+         * weer van Buiten is droog en zacht.
          */
         const a =
           deel?.daglicht[naam] ??
           deel?.kleurVars[naam] ??
           (ALFA_NUL.some((r) => r.test(naam)) ? 0 : undefined) ??
-          deel?.startwaarden[naam] ??
+          deel?.berekend?.[naam] ??
+          (deel?.berekend ? undefined : deel?.startwaarden[naam]) ??
           MOTORSTANDAARD[naam] ??
           1
         alphascale[m.alfaSchaal] = Math.max(0, Math.min(1, a))
@@ -610,16 +644,16 @@ export function dxtMaxOverslaan(t: Pick<Bus3dTextuur, 'b' | 'h' | 'mips'>): numb
   return k
 }
 
-/** Bytes van een textuur vanaf niveau `k`, met de hele mipketen eronder. */
-function bytesVanaf(t: Bus3dTextuur, k: number): { bytes: number; b: number; h: number } {
-  const rgba = t.soort !== 'dxt'
+/** Bytes van een textuur vanaf niveau `k`, met de hele mipketen eronder. `s3tc`: kan de GPU DXT zelf aan? */
+function bytesVanaf(t: Bus3dTextuur, k: number, s3tc = true): { bytes: number; b: number; h: number } {
+  const rgba = t.soort !== 'dxt' || !s3tc
   const b0 = Math.max(1, t.b >> k)
   const h0 = Math.max(1, t.h >> k)
   let bytes = 0
   let b = b0
   let h = h0
   // DXT met mips: de niveaus uit het bestand; al het andere krijgt een volle keten op de GPU.
-  const niveaus = t.soort === 'dxt' ? Math.max(1, t.mips - k) : Math.floor(Math.log2(Math.max(b0, h0))) + 1
+  const niveaus = t.soort === 'dxt' && s3tc ? Math.max(1, t.mips - k) : Math.floor(Math.log2(Math.max(b0, h0))) + 1
   for (let i = 0; i < niveaus; i++) {
     bytes += niveauBytes(t, b, h, rgba)
     b = Math.max(1, b >> 1)
@@ -639,8 +673,14 @@ function bytesVanaf(t: Bus3dTextuur, k: number): { bytes: number; b: number; h: 
  *   grootste buitenoppervlak) zakt als laatste.
  * - Niet laden: envmaps (de omgevingskaart komt uit onze eigen omgeving) en wat
  *   buiten niet te zien is (A = 0).
+ * - Zonder S3TC (`s3tc: false`) pakt het venster DXT uit naar RGBA: dan telt DXT
+ *   als RGBA, met de kap van 2048 en zonder de grens van `dxtMaxOverslaan` (dat
+ *   is een grens van gecomprimeerd uploaden). Eerst rekende het plan ook dan
+ *   gecomprimeerd, en kwam de O560 op 254 MB texturen tegen 89 MB in het plan
+ *   (aanvalsverslag F2, punt 6).
  */
-export function textuurPlan(texturen: Bus3dTextuur[], budgetBytes: number): TextuurPlan {
+export function textuurPlan(texturen: Bus3dTextuur[], budgetBytes: number, opties: { s3tc?: boolean } = {}): TextuurPlan {
+  const s3tc = opties.s3tc !== false
   let carrosserie: Bus3dTextuur | undefined
   for (const t of texturen) {
     if (t.ctc && t.oppervlak > (carrosserie?.oppervlak ?? 0)) carrosserie = t
@@ -656,13 +696,14 @@ export function textuurPlan(texturen: Bus3dTextuur[], budgetBytes: number): Text
     }
     const d0 = Math.sqrt((Math.max(t.uv, 1e-9) * t.b * t.h) / t.oppervlak)
     let k = Math.max(0, Math.floor(Math.log2(d0 / DOEL_DICHTHEID)))
-    const kap = t.soort === 'dxt' ? KAP_DXT : KAP_RGBA
+    const dxt = t.soort === 'dxt' && s3tc
+    const kap = dxt ? KAP_DXT : KAP_RGBA
     while (Math.max(t.b >> k, t.h >> k) > kap) k++
     // Nooit meer overslaan dan het bestand niveaus heeft en WebGL als begin
     // aanneemt (DXT, zie dxtMaxOverslaan), of dan er zijde is.
-    const maxK = t.soort === 'dxt' ? dxtMaxOverslaan(t) : Math.floor(Math.log2(Math.max(t.b, t.h)))
+    const maxK = dxt ? dxtMaxOverslaan(t) : Math.floor(Math.log2(Math.max(t.b, t.h)))
     k = Math.min(k, maxK)
-    const r = bytesVanaf(t, k)
+    const r = bytesVanaf(t, k, s3tc)
     regels.push({ id: t.id, overslaan: k, bytes: r.bytes, b: r.b, h: r.h, laden: true })
     stappen.push(k)
   }
@@ -679,7 +720,7 @@ export function textuurPlan(texturen: Bus3dTextuur[], budgetBytes: number): Text
         if (!r.laden) continue
         if ((t === carrosserie) !== kandidaatCarrosserie) continue
         if (Math.max(r.b, r.h) <= BUDGET_BODEM) continue
-        if (t.soort === 'dxt' && stappen[i] + 1 > dxtMaxOverslaan(t)) continue
+        if (t.soort === 'dxt' && s3tc && stappen[i] + 1 > dxtMaxOverslaan(t)) continue
         const waarde = r.bytes / Math.max(t.oppervlak, 1e-6)
         if (waarde > besteWaarde) {
           besteWaarde = waarde
@@ -693,7 +734,7 @@ export function textuurPlan(texturen: Bus3dTextuur[], budgetBytes: number): Text
       break
     }
     stappen[beste]++
-    const r = bytesVanaf(texturen[beste], stappen[beste])
+    const r = bytesVanaf(texturen[beste], stappen[beste], s3tc)
     totaal += r.bytes - regels[beste].bytes
     regels[beste] = { ...regels[beste], overslaan: stappen[beste], bytes: r.bytes, b: r.b, h: r.h }
   }

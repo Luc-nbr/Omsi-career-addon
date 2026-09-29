@@ -603,7 +603,7 @@ export class Tekenaar {
     // De ruimte voor de LRU: wat er onder 300 MB overblijft (§10), hooguit 64 MB (§7).
     const vast = this.gpuBytes(this.msaa?.b ?? 1920, this.msaa?.h ?? 1080)
     const ruimte = 300 * 1024 * 1024 - vast.geometrie - vast.doelen - plan.bytes - this.texturen.losBytes()
-    this.texturen.lruMax = Math.max(0, Math.min(64 * 1024 * 1024, ruimte))
+    this.texturen.zetLruGrens(Math.min(64 * 1024 * 1024, ruimte))
     s.schaduwVuil = true
     s.contactVuil = true
   }

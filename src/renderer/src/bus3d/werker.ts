@@ -94,20 +94,62 @@ let herstellingen = 0
 /** Zolang de geometrie van een bus binnenkomt: dan eerst die, de texturen wachten. */
 let geometrieBezig = false
 
+/**
+ * Een context die onverwacht wegging (§9): de eerste keer stil herstellen, de
+ * tweede keer de foto met [Opnieuw]. Dan herstelt de werker niet vanzelf; een
+ * nieuwe bus ([Opnieuw]) maakt een verse context als de oude niet terugkwam.
+ */
+let wachtOpOpnieuw = false
+
+/** Laadtijden en stand opnieuw: na een hersteld beeld begint de bus weer van voren (aanvalsverslag F2, punt 4). */
+function laadOpnieuwBegonnen(): void {
+  laad.eersteBeeld = undefined
+  laad.scherp = undefined
+  laad.schaduwNaScherp = false
+  laad.laatsteStand = 0
+  laad.mijlpalen = {}
+  laad.t0 = klok()
+}
+
 function maakContext(): boolean {
   doek = new OffscreenCanvas(16, 16)
+  const dit = doek
   doek.addEventListener('webglcontextlost', (e) => {
     e.preventDefault()
+    if (dit !== doek) return
     contextWeg = true
-    if (!bewustWeg) stuur({ soort: 'fout', viewer: actief?.id ?? 0, laad: laad.nr, reden: 'context-weg' })
+    if (bewustWeg) {
+      /*
+       * Het venster was al weer terug voordat dit bericht kwam (pauze kort aan en
+       * uit): nu pas kan de context terug. Eerst werd dan niets hersteld, en bleef
+       * het venster voorgoed op de foto (aanvalsverslag F2, punt 3).
+       */
+      // Pas NA dit bericht: Chromium staat herstellen pas toe als de handler met preventDefault klaar is.
+      if (actief && !actief.pauze) setTimeout(herstel, 0)
+      return
+    }
+    herstellingen++
+    if (herstellingen >= 2) {
+      wachtOpOpnieuw = true
+      stuur({ soort: 'fout', viewer: actief?.id ?? 0, laad: laad.nr, reden: 'context-weg' })
+    }
   })
   doek.addEventListener('webglcontextrestored', () => {
+    if (dit !== doek) return
     contextWeg = false
-    if (!bewustWeg) herstellingen++
+    const bewust = bewustWeg
     bewustWeg = false
+    // Intussen weer gepauzeerd: meteen weer vrijgeven in plaats van de bus te laden.
+    if (actief?.pauze && bewust) {
+      bewustWeg = true
+      contextWeg = true
+      verlies?.loseContext()
+      return
+    }
     try {
       bouwTekenaar()
-      if (laad.bericht) void laadBus(laad.bericht)
+      laadOpnieuwBegonnen()
+      if (laad.bericht && !wachtOpOpnieuw) void laadBus(laad.bericht)
     } catch (fout) {
       stuur({ soort: 'fout', viewer: actief?.id ?? 0, laad: laad.nr, reden: 'fout', detail: String(fout) })
     }
@@ -124,6 +166,25 @@ function maakContext(): boolean {
   }) as WebGL2RenderingContext | null
   verlies = gl?.getExtension('WEBGL_lose_context') ?? null
   return Boolean(gl)
+}
+
+/** Een bewust opgegeven context terughalen; lukt het nog niet (het lost-bericht kwam nog niet), dan doet dat bericht het. */
+function herstel(): void {
+  if (!verlies || !gl?.isContextLost() || actief?.pauze) return
+  try {
+    verlies.restoreContext()
+  } catch {
+    // Nog niet toegestaan: de lost-handler herstelt zodra zijn bericht er is.
+  }
+}
+
+/** [Opnieuw] na een tweede verlies: de oude context terug als hij er is, anders een verse. */
+function naVerliesOpnieuw(): void {
+  wachtOpOpnieuw = false
+  herstellingen = 0
+  if (!contextWeg && gl && !gl.isContextLost()) return
+  if (maakContext()) bouwTekenaar()
+  else stuur({ soort: 'fout', viewer: actief?.id ?? 0, laad: laad.nr, reden: 'geen-webgl' })
 }
 
 function bouwTekenaar(): void {
@@ -196,6 +257,12 @@ async function laadBus(b: Extract<NaarWerker, { soort: 'bus' }>): Promise<void> 
   const v = viewers.get(b.viewer)
   if (!t || !v) return
   const zelfdePakket = t.scene?.manifest.pakket === b.manifest.pakket
+  /*
+   * De lak die NU gevraagd is: een kleurstelling die tijdens het laden werd
+   * aangeklikt komt als 'lak' en staat dan in laad.bericht, niet in b
+   * (aanvalsverslag F2, punt 1: de lijst zei Alheim, de bus bleef wit).
+   */
+  const nuLak = (): Bus3dLak | undefined => (nr === laad.nr && laad.bericht ? laad.bericht.lak : b.lak)
   try {
     if (!zelfdePakket) {
       geometrieBezig = true
@@ -207,7 +274,7 @@ async function laadBus(b: Extract<NaarWerker, { soort: 'bus' }>): Promise<void> 
         (kop) => {
           if (nr !== laad.nr) return
           mijlpaal('kop')
-          t.voorlopigPlan(kop, b.manifest, b.lak, budget(b))
+          t.voorlopigPlan(kop, b.manifest, nuLak(), budget(b))
         }
       )
       geometrieBezig = false
@@ -215,7 +282,7 @@ async function laadBus(b: Extract<NaarWerker, { soort: 'bus' }>): Promise<void> 
       mijlpaal('geometrie')
       zetDoos(v, b.manifest)
     }
-    t.zetLak(b.lak, budget(b))
+    t.zetLak(nuLak(), budget(b))
     mijlpaal('lak')
     plan()
   } catch (fout) {
@@ -264,8 +331,18 @@ function maatDoek(b: number, h: number): void {
 function tik(): void {
   const v = actief
   const t = tekenaar
-  if (!v || !t || !gl || v.b < 2 || v.h < 2 || contextWeg || afdrukBezig) return zetSpoor(`tik weg: ${v?.b}x${v?.h}`)
+  // Ook een al gepland beeld niet op een verloren context: dat gaf bij elke pauze "ImageBitmap construction failed".
+  if (!v || !t || !gl || v.b < 2 || v.h < 2 || contextWeg || v.pauze || gl.isContextLost() || afdrukBezig) {
+    return zetSpoor(`tik weg: ${v?.b}x${v?.h}`)
+  }
   if (v.inVlucht >= 2) return zetSpoor('tik weg: onderweg') // 'gezien' plant het volgende beeld
+  /*
+   * Een andere bus gevraagd en zijn geometrie is er nog niet: de vorige niet
+   * meer tekenen. Zijn texturen zijn dan al uit het plan, en hij stond als
+   * kleimodel onder het zijpaneel van de nieuwe bus (beeldbeoordeling F2). De
+   * viewer houdt intussen de foto van de nieuwe bus in beeld.
+   */
+  if (laad.bericht && t.scene && t.scene.manifest.pakket !== laad.bericht.manifest.pakket) return zetSpoor('tik weg: vorige bus')
   const nu = performance.now()
   const dt = laatsteTik ? (nu - laatsteTik) / 1000 : 0
   laatsteTik = nu
@@ -302,7 +379,7 @@ function tik(): void {
   beeldtijden.push(performance.now() - nu)
   if (beeldtijden.length > 120) beeldtijden.shift()
   v.inVlucht++
-  stuur({ soort: 'beeld', viewer: v.id, bitmap }, [bitmap])
+  stuur({ soort: 'beeld', viewer: v.id, bitmap, laad: laad.nr }, [bitmap])
 
   if (held && scene && b) {
     const pakket = scene.manifest.pakket
@@ -526,6 +603,8 @@ doel.onmessage = (e) => {
   } else if (m.soort === 'bus') {
     const v = viewerVan(m.viewer)
     actief = v
+    // Na een tweede verlies is dit [Opnieuw]: de context terug, of een verse.
+    if (wachtOpOpnieuw) naVerliesOpnieuw()
     const nieuw = laad.bericht?.manifest.pakket !== m.manifest.pakket
     laad.nr = m.laad
     laad.bericht = m
@@ -540,11 +619,19 @@ doel.onmessage = (e) => {
     void laadBus(m)
   } else if (m.soort === 'lak') {
     const b = laad.bericht
-    if (!b || !tekenaar?.scene) return
+    if (!b) return
+    /*
+     * Altijd onthouden, ook als de bus nog laadt: laadBus neemt na de geometrie
+     * de lak uit laad.bericht. Eerst viel een lak zonder scene weg, en kwam een
+     * lak tijdens het laden van een tweede bus op de scene van de VORIGE bus
+     * terecht (aanvalsverslag F2, punt 1).
+     */
     laad.bericht = { ...b, lak: m.lak }
+    if (tekenaar?.scene?.manifest.pakket !== b.manifest.pakket) return
     laad.scherp = undefined
     laad.eersteBeeld = undefined
     laad.schaduwNaScherp = false
+    laad.laatsteStand = 0
     laad.t0 = m.t0
     laad.mijlpalen = {}
     spoor.length = 0
@@ -578,16 +665,22 @@ doel.onmessage = (e) => {
      * Pauze met vrijgeven (§9): de context weg, en daarmee alle texturen en
      * buffers op de GPU. Bij hervatten komt hij terug en laadt de werker de bus
      * opnieuw (de bestanden staan dan in de cache van Chromium).
+     *
+     * `contextWeg` meteen: het lost-bericht komt pas later. Kwam "geen pauze"
+     * daarvóór, dan werd er niet hersteld en bleef het venster dood
+     * (aanvalsverslag F2, punt 3); nu herstelt hervatten, of anders het
+     * lost-bericht zelf.
      */
-    if (m.aan && m.vrijgeven && !contextWeg) {
+    if (m.aan && m.vrijgeven && !contextWeg && verlies) {
       bewustWeg = true
-      verlies?.loseContext()
+      contextWeg = true
+      verlies.loseContext()
     }
-    if (!m.aan && contextWeg && bewustWeg) verlies?.restoreContext()
+    if (!m.aan && bewustWeg) herstel()
     if (!m.aan) plan()
   } else if (m.soort === 'afdruk') {
     const v = viewerVan(m.viewer)
-    if (!tekenaar) return stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: { fout: 'geen webgl' } })
+    if (!tekenaar || contextWeg || gl?.isContextLost()) return stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: { fout: 'geen webgl' } })
     void afdruk(v, m.afdruk).then(
       (u) => stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: u }, [u.beeld, ...(u.masker ? [u.masker] : []), ...(u.id ? [u.id] : [])]),
       (fout) => stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: { fout: String(fout) } })
@@ -595,7 +688,7 @@ doel.onmessage = (e) => {
   } else if (m.soort === 'meet') {
     const v = viewerVan(m.viewer)
     const t = tekenaar
-    if (!t) return stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: { fout: 'geen webgl' } })
+    if (!t || contextWeg || gl?.isContextLost()) return stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: { fout: 'geen webgl' } })
     let uitkomst: unknown
     if (m.wat === 'draaien') uitkomst = meetDraaien(v, m.beelden ?? 90)
     else if (m.wat === 'schaduw') {

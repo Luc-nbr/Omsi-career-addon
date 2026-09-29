@@ -38,11 +38,14 @@
  *   die erbij komen, en de cachegrens tijdens een sessie.
  */
 import { createHash } from 'node:crypto'
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, truncateSync, utimesSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, truncateSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { bouwBusTekening } from '../src/core/busbeeld'
-import { bouwBus3d, pakketVerouderd } from '../src/core/bus3d'
+import { bouwBus3d, bus3dLak, pakketVerouderd } from '../src/core/bus3d'
+import { typischVan } from '../src/core/busrust'
+import { kleurstalen } from '../src/core/kleurstalen'
+import { leesRustProgramma, rekenRust } from '../src/core/oscrust'
 import { Bus3dCache, bus3dWerk, type Bus3dOpdracht } from '../src/core/bus3dcache'
 import { findOmsiInstall } from '../src/core/install'
 import { ontleedO3d } from '../src/core/o3d'
@@ -53,7 +56,17 @@ import { ontleedTextuur, pakBmpUit } from '../src/core/textuur'
 import { listVehicles } from '../src/core/vehicles'
 import type { WebContents } from 'electron'
 import { maakBus3dDienst, type Bus3dWerkerModel } from '../src/main/bus3d'
-import { dxtMaxOverslaan, textuurPlan, type Bus3dAntwoord, type Bus3dLak, type Bus3dManifest, type Bus3dTextuur } from '../src/shared/bus3d'
+import {
+  dxtMaxOverslaan,
+  rustRegels,
+  textuurPlan,
+  type Bus3dAntwoord,
+  type Bus3dLak,
+  type Bus3dManifest,
+  type Bus3dPakKop,
+  type Bus3dTextuur,
+  type RustVermelding
+} from '../src/shared/bus3d'
 import { leesPakket } from '../src/shared/bus3dpak'
 import { ontwar } from '../src/shared/o3dhussel'
 
@@ -997,14 +1010,249 @@ async function alles(): Promise<void> {
   }
 }
 
+// ------------------------------------------------------------ tegenlezing F2
+/*
+ * Elk punt uit de tegenlezing van F2 (beeldbeoordelaar, proefdraaier, aanvaller)
+ * dat hier in node na te gaan is: de rekenmachine van de ruststand
+ * (core/oscrust.ts), de regels erachter, de ruststand van de proefbussen, de
+ * stalen, het textuurplan zonder S3TC en de registratie die een heldenbeeld
+ * weer vergeet. Het venster zelf gaat na in probe-bus3d-venster.cjs.
+ */
+async function tegenlezingF2(): Promise<void> {
+  console.log('\n== Tegenlezing F2: ruststand, stalen, plan zonder S3TC, registratie ==')
+
+  // -------------------------------------------------------- de rekenmachine op kleine scripts
+  const map = join(tijdelijk, 'osc')
+  mkdirSync(map, { recursive: true })
+  const script = (naam: string, tekst: string): string => {
+    const p = join(map, naam)
+    writeFileSync(p, tekst.split('\n').join('\r\n'))
+    return p
+  }
+  const a = script(
+    'a.osc',
+    [
+      '{init}',
+      "  5 3 - (S.L.min) ' a b - is a - b",
+      '  3 0 / (S.L.deling)',
+      '  1 {if} 5 + (S.L.nietgepopt) {endif}',
+      '  (M.L.dubbel)',
+      '{end}',
+      '{macro:dubbel}',
+      '  1 (S.L.dubbel)',
+      '{end}',
+      '{frame}',
+      '  (L.L.x) 1 <',
+      '  {if} 1 (S.L.tak) {else} 2 (S.L.tak) {endif}',
+      '  (L.S.Time) 0 > {if} 1 (S.L.onzeker) {endif}',
+      '  0 (L.S.Time) && {if} 1 (S.L.zekernul) {endif}',
+      '  10 random (S.L.toeval)',
+      '  "een tekst met spaties" $length (S.L.tekst)',
+      '  4 (S.L.daarna)',
+      '{end}'
+    ].join('\n')
+  )
+  const b = script('b.osc', ['{macro:dubbel}', '  7 (S.L.dubbel)', '{end}'].join('\n'))
+  const programma = leesRustProgramma([a, b], [])
+  const reken = (vars: Record<string, number>): Map<string, number> =>
+    rekenRust(programma, {
+      motor: {},
+      vars,
+      systeem: { timegap: 1 / 30 },
+      gevraagd: ['min', 'deling', 'nietgepopt', 'dubbel', 'tak', 'onzeker', 'zekernul', 'toeval', 'tekst', 'daarna']
+    }).waarden
+  const r0 = reken({})
+  const r3 = reken({ x: 3 })
+  toets('rekenmachine: a b - is a - b, delen door 0 geeft 0, {if} haalt niets van de stapel', r0.get('min') === 2 && r0.get('deling') === 0 && r0.get('nietgepopt') === 6, `${r0.get('min')} / ${r0.get('deling')} / ${r0.get('nietgepopt')}`)
+  toets('rekenmachine: een macro die twee keer bestaat, de laatste telt', r0.get('dubbel') === 7, String(r0.get('dubbel')))
+  toets('rekenmachine: {if} {else} volgt de vars (x 0 -> 1, x 3 -> 2)', r0.get('tak') === 1 && r3.get('tak') === 2, `${r0.get('tak')} / ${r3.get('tak')}`)
+  toets(
+    'rekenmachine: een onzekere voorwaarde maakt onzeker (NaN), een zekere 0 met && niet; random en teksten zijn onzeker; daarna gaat het zeker verder',
+    Number.isNaN(r0.get('onzeker')) && r0.get('zekernul') === 0 && Number.isNaN(r0.get('toeval')) && Number.isNaN(r0.get('tekst')) && r0.get('daarna') === 4,
+    [...r0].map(([k, w]) => `${k}=${w}`).join(' ')
+  )
+
+  // -------------------------------------------------------- de regels voor wat onzeker blijft
+  const v = (zicht: Array<[string, number]>): RustVermelding => ({ deel: 0, zicht, materialen: [] })
+  const regels = rustRegels(
+    [v([['optie', 1]]), v([['keus', 1]]), v([['keus', 2]]), v([['keus', 3]]), v([['metnul', 0]]), v([['metnul', 1]]), v([['geteld', 1]])],
+    [{ kleurVars: {}, startwaarden: {}, daglicht: {}, berekend: { geteld: 1 } }]
+  )
+  toets(
+    'regels: onbekend en alleen 1 gebruikt -> 0 (verborgen); een keuze zonder 0-tak -> de laagste; wat de rekenmachine zeker weet gaat voor',
+    regels.zichtbaar === '0100101',
+    `${regels.zichtbaar} (verwacht 0100101), onbekend [${regels.onbekend.join(', ')}]`
+  )
+  const t1 = typischVan([{ setvars: { vis_wheels: 1 } }, { setvars: {} }, { setvars: { vis_wheels: 1, vis_x: 2 } }])
+  const t2 = typischVan([{ setvars: { vis_wheels: 1 } }, { setvars: {} }, { setvars: { vis_wheels: 1 } }], { setvars: { vis_wheels: 0 } })
+  toets('gewone uitvoering: wat de meeste kleurstellingen zetten (niet gezet = 0), niet wat de gekozen zelf zet', t1.vis_wheels === 1 && t1.vis_x === undefined && t2.vis_wheels === undefined, `${JSON.stringify(t1)} / ${JSON.stringify(t2)}`)
+
+  // -------------------------------------------------------- de ruststand van de proefbussen
+  const reg = omsiRegistratie(OMSI).sleutels
+  const zichtbaarOp = (kop: Bus3dPakKop, lak: Bus3dLak, patroon: RegExp): number => {
+    let n = 0
+    kop.vermeldingen.forEach((vm, i) => {
+      if (!vm.buiten || lak.zichtbaar[i] !== '1') return
+      if (!vm.zicht.some(([naam]) => patroon.test(naam))) return
+      const st = kop.stukken[vm.stuk]
+      n += st ? st.indices.len / st.indices.breed / 3 : 0
+    })
+    return Math.round(n)
+  }
+  const rust = async (pad: string): Promise<{ kop: Bus3dPakKop; lak: Bus3dLak; ms: number; manifest: Bus3dManifest } | undefined> => {
+    const u = await bouwBus3d({ omsiMap: OMSI, relatiefPad: pad, geregistreerd: reg })
+    if (!u.bouw) return undefined
+    bus3dLak(OMSI, u.bouw.manifest, undefined, u.bouw.kop)
+    const t0 = performance.now()
+    const { lak } = bus3dLak(OMSI, u.bouw.manifest, undefined, u.bouw.kop)
+    return { kop: u.bouw.kop, lak, ms: performance.now() - t0, manifest: u.bouw.manifest }
+  }
+  const o560 = await rust('Vehicles\\ABCoach_O560\\O560_E6.bus')
+  if (o560) {
+    toets('ruststand O560: geen zonnescherm (cp_rollo*) als plaat boven het dak, wel wielen (vis_wheels uit de .cti)', zichtbaarOp(o560.kop, o560.lak, /^cp_rollo/i) === 0 && zichtbaarOp(o560.kop, o560.lak, /^vis_wheels$/i) > 0, `rollo ${zichtbaarOp(o560.kop, o560.lak, /^cp_rollo/i)}, wielen ${zichtbaarOp(o560.kop, o560.lak, /^vis_wheels$/i)} driehoeken; bron ${o560.lak.bron}, ${o560.ms.toFixed(0)} ms`)
+    // De stalen: elke kleurstelling een staal, uit de lak (farbschema_tex1), niet uit het interieur.
+    const oppervlak: Record<string, number> = {}
+    for (const t of o560.manifest.texturen) if (t.ctc) oppervlak[t.ctc] = Math.max(oppervlak[t.ctc] ?? 0, t.oppervlak)
+    const stalen = await kleurstalen(OMSI, 'Vehicles\\ABCoach_O560\\O560_E6.bus', oppervlak)
+    const licht = (hex?: string): number => (hex ? Math.max(parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)) : 0)
+    toets('stalen O560: alle vier de kleurstellingen, "Stadtbus Haren" en "Postbus" wit (niet het grijze interieur)', Object.keys(stalen).length === 4 && licht(stalen['Stadtbus Haren']?.[0]) > 230 && licht(stalen['Postbus']?.[0]) > 230, JSON.stringify(stalen))
+    // Zonder S3TC pakt het venster DXT uit: dan rekent het plan RGBA en blijft het binnen het budget.
+    const MB160 = 160 * 1024 * 1024
+    const met = textuurPlan(o560.manifest.texturen, MB160)
+    const zonder = textuurPlan(o560.manifest.texturen, MB160, { s3tc: false })
+    const dxtRgba = o560.manifest.texturen.every((t, i) => t.soort !== 'dxt' || !zonder.regels[i].laden || zonder.regels[i].bytes >= zonder.regels[i].b * zonder.regels[i].h * 4)
+    toets('textuurplan zonder S3TC: DXT telt als RGBA en het plan blijft binnen 160 MB', dxtRgba && (zonder.bytes <= MB160 || zonder.teZwaar), `met S3TC ${MB(met.bytes)} MB, zonder ${MB(zonder.bytes)} MB${zonder.teZwaar ? ' (te zwaar)' : ''}`)
+  }
+  for (const pad of ['Vehicles\\MAN_NewLionsCity\\MAN_12C_2door_Voith.bus', 'Vehicles\\MAN_NewLionsCity\\MAN_18C_3door_main_Voith.bus']) {
+    const r = await rust(pad)
+    if (!r) continue
+    const stad = zichtbaarOp(r.kop, r.lak, /^vis_stadtsitz$/i)
+    const land = zichtbaarOp(r.kop, r.lak, /^vis_ueberlandsitz$/i)
+    const fiets = zichtbaarOp(r.kop, r.lak, /^vis_fahrradtraeger$/i)
+    toets(`ruststand ${basename(pad)}: één stoeltype (ook in de achterwagen), geen fietsendrager`, (stad > 0) !== (land > 0) && fiets === 0, `Stadtsitz ${stad}, Ueberlandsitz ${land}, fietsendrager ${fiets}; bron ${r.lak.bron}, ${r.ms.toFixed(0)} ms`)
+  }
+  const verborgen: Array<[string, RegExp, string]> = [
+    ['Vehicles\\HH20_EBus2021\\HHEBus2021_main.bus', /^electric_cable_vis$/i, 'de laadkabel met paal'],
+    ['Vehicles\\MAN_SD200\\MAN_SD77.bus', /^wimpel_visibility$/i, 'de wimpels'],
+    ['Vehicles\\MAN_NL_NG\\MAN_EN92_main.bus', /^wimpel_visibility$/i, 'de wimpels'],
+    ['Vehicles\\Citybus 530 by Kajosoft\\01a_o530_e2_2.bus', /^in_wheels_brush$/i, 'de wielborstels']
+  ]
+  for (const [pad, patroon, wat] of verborgen) {
+    const r = await rust(pad)
+    if (!r) continue
+    const n = zichtbaarOp(r.kop, r.lak, patroon)
+    const glas = Object.entries(r.lak.alphascale).filter(([k]) => /^szyby/i.test(k))
+    const glasGoed = glas.every(([, w]) => w === 1)
+    toets(`ruststand ${basename(pad)}: ${wat} niet in beeld${glas.length ? ', het glas (Szyby) op 1' : ''}`, n === 0 && glasGoed && r.lak.bron === 'script' && r.ms < 150, `${n} driehoeken${glas.length ? `, Szyby ${glas.map(([, w]) => w).join('/')}` : ''}; bron ${r.lak.bron}, ${r.ms.toFixed(0)} ms`)
+  }
+  const o550 = await rust('Vehicles\\TH_Ueberlandbus\\O550_Euro2.bus')
+  if (o550) {
+    const felge = zichtbaarOp(o550.kop, o550.lak, /^vis_felge$/i)
+    const kappen = o550.kop.vermeldingen.some((vm, i) => vm.buiten && o550.lak.zichtbaar[i] === '1' && vm.zicht.some(([n, w]) => /^vis_radkappe$/i.test(n) && w === 2))
+    toets('ruststand O550: velgen volgen de wieldoppen ({frame}: vis_radkappe < 2), nooit allebei', (felge > 0) !== kappen, `velgen ${felge} driehoeken, wieldoppen 2 ${kappen}`)
+  }
+
+  // -------------------------------------------------------- twee bouwbeurten van dezelfde bus tegelijk
+  {
+    /*
+     * Het 3D-venster en het fotovenster van de foto v4 vroegen dezelfde bus
+     * tegelijk: de tweede schrijfbeurt kon niet over het pakket heen dat al
+     * gelezen werd (EPERM), en het venster kreeg 'fout' (proef van de tegenlezing F2).
+     */
+    const cache2 = new Bus3dCache(join(tijdelijk, 'ud-f2-dubbel'))
+    const opdracht = { soort: 'bus3d:model', relatiefPad: 'Vehicles\\MAN_SD200\\MAN_SD77.bus', geregistreerd: [...reg] } as Bus3dOpdracht
+    const uitkomsten = await Promise.allSettled([bus3dWerk(opdracht, OMSI, cache2), bus3dWerk(opdracht, OMSI, cache2)])
+    const pakketten = uitkomsten.map((u) => {
+      if (u.status === 'rejected') return `fout: ${String(u.reason).slice(0, 80)}`
+      const w = u.value as { zijspoor?: { pakket: string } }
+      return w.zijspoor?.pakket ?? 'geen pakket'
+    })
+    const leesbaar = Boolean(cache2.zijspoor(pakketten[0]))
+    toets('twee bouwbeurten van dezelfde bus tegelijk: allebei hetzelfde pakket, en het zijspoor klopt', pakketten[0] === pakketten[1] && /^[0-9a-f]{40}$/.test(pakketten[0]) && leesbaar, pakketten.join(' / '))
+    // Het pakket is niet te overschrijven (zoals toen het venster het las, of een virusscanner het vasthield): opnieuw bouwen moet toch lukken.
+    const pakPad = cache2.pakketPad(pakketten[0])
+    chmodSync(pakPad, 0o444)
+    let nogEens = ''
+    try {
+      const w = (await bus3dWerk(opdracht, OMSI, cache2)) as { zijspoor?: { pakket: string } }
+      nogEens = w.zijspoor?.pakket ?? 'geen pakket'
+    } catch (fout) {
+      nogEens = `fout: ${String(fout).slice(0, 120)}`
+    } finally {
+      chmodSync(pakPad, 0o644)
+    }
+    toets('opnieuw bouwen terwijl het pakket niet te overschrijven is: hetzelfde pakket, geen EPERM', nogEens === pakketten[0], nogEens)
+  }
+
+  // -------------------------------------------------------- registratie: een heldenbeeld vergeten
+  const bib = join(tijdelijk, 'f2-intrekking', 'steamapps')
+  const nep = join(bib, 'common', 'OMSI 2')
+  const busmap = join(nep, 'Vehicles', 'Proef')
+  mkdirSync(join(busmap, 'Model'), { recursive: true })
+  mkdirSync(join(nep, 'RegAddons'), { recursive: true })
+  writeFileSync(join(nep, 'addons.ini'), '')
+  copyFileSync(join(OMSI, 'Vehicles', 'HH20_EBus2021', 'Model', '21_aussen_weich3.o3d'), join(busmap, 'Model', 'h.o3d'))
+  writeFileSync(join(busmap, 'Model', 'model.cfg'), ['[mesh]', 'h.o3d', ''].join('\r\n'))
+  writeFileSync(join(busmap, 'Proef.bus'), ['[friendlyname]', 'Proef', 'Proef', 'Wit', '', '[model]', 'Model\\model.cfg', '', '[boundingbox]', '3', '14', '4', '0', '0', '2', ''].join('\r\n'))
+  const ini = join(nep, 'RegAddons', 'Linie20_15657.ini')
+  writeFileSync(ini, '[addon.0]\r\nName=Proef Linie 20\r\nArtNr=15657\r\nSteamname=Proef\r\nSteamArtNr=1889540')
+  writeFileSync(join(bib, 'appmanifest_252530.acf'), '"AppState"\n{\n\t"InstalledDepots"\n\t{\n\t\t"1889540"\n\t\t{\n\t\t\t"dlcappid"\t\t"1889540"\n\t\t}\n\t}\n}\n')
+  const ud = join(tijdelijk, 'ud-f2-intrekking')
+  const dienstVoor = (log: string[]): ReturnType<typeof maakBus3dDienst> => {
+    const cache = new Bus3dCache(ud)
+    return maakBus3dDienst({
+      userData: () => ud,
+      omsi: () => nep,
+      werkerVraag: async <T>(o: Record<string, unknown>, tussen?: (b: unknown) => void): Promise<T> => (await bus3dWerk(o as Bus3dOpdracht, nep, cache, tussen)) as T,
+      sluitWerker: () => undefined,
+      log: (r) => log.push(r),
+      logFout: (w, f) => log.push(`FOUT ${w}: ${String(f)}`),
+      tijden: { rust: 50 },
+      fotoTerugval: () => undefined
+    })
+  }
+  const webp = new Uint8Array(64)
+  webp.set([0x52, 0x49, 0x46, 0x46, 56, 0, 0, 0, 0x57, 0x45, 0x42, 0x50])
+  const logA: string[] = []
+  const dienstA = dienstVoor(logA)
+  const mA = await dienstA.model3d('Vehicles\\Proef\\Proef.bus')
+  const pakket = 'manifest' in mA ? mA.manifest.pakket : ''
+  dienstA.heldenbeeld(pakket, undefined, 'breed-d15-buiten-vast', webp)
+  const heldVoor = dienstA.fotoAlsKlaar('Vehicles\\Proef\\Proef.bus')
+  const stempelVoor = dienstA.registratieStempel()
+  // "Herstart": een nieuwe dienst, en de add-on is intussen weg.
+  rmSync(ini)
+  const logB: string[] = []
+  const dienstB = dienstVoor(logB)
+  const heldNa = dienstB.fotoAlsKlaar('Vehicles\\Proef\\Proef.bus')
+  const nogInCache = dienstB.cache.zoek(nep, 'Vehicles\\Proef\\Proef.bus')
+  await new Promise((k) => setTimeout(k, 2100))
+  const stempelNa = dienstB.registratieStempel()
+  toets(
+    'registratie: na een herstart zonder de add-on geen heldenbeeld meer, het pakket vergeten, en de foto v4 krijgt een andere naam',
+    Boolean(heldVoor?.startsWith('omsi3d://h/')) && heldNa === undefined && !nogInCache && stempelVoor !== stempelNa,
+    `voor ${heldVoor?.slice(0, 14)}, na ${heldNa}, pakket nog in de cache ${Boolean(nogInCache)}, stempel ${stempelVoor} -> ${stempelNa}; ${logB.filter((r) => /vergeten/.test(r)).join(' | ')}`
+  )
+  // In dezelfde sessie: de sleutel komt terug, het heldenbeeld komt er weer (nieuw pakket), en gaat weer weg.
+  writeFileSync(ini, '[addon.0]\r\nName=Proef Linie 20\r\nArtNr=15657\r\nSteamname=Proef\r\nSteamArtNr=1889540')
+  const mB = await dienstB.model3d('Vehicles\\Proef\\Proef.bus')
+  if ('manifest' in mB) dienstB.heldenbeeld(mB.manifest.pakket, undefined, 'breed-d15-buiten-vast', webp)
+  const weer = dienstB.fotoAlsKlaar('Vehicles\\Proef\\Proef.bus')
+  rmSync(ini)
+  const weg = dienstB.fotoAlsKlaar('Vehicles\\Proef\\Proef.bus')
+  toets('registratie: in dezelfde sessie vergeet fotoAlsKlaar het heldenbeeld zodra de sleutel weg is', Boolean(weer?.startsWith('omsi3d://h/')) && weg === undefined, `met sleutel ${weer?.slice(0, 14)}, zonder ${weg}`)
+}
+
 async function main(): Promise<void> {
   console.log(`OMSI: ${OMSI}`)
   if (args.has('--nulmeting')) nulmeting()
   else if (args.has('--alles')) await alles()
+  else if (args.has('--f2')) await tegenlezingF2()
   else {
     await proefset()
     await protocol()
     await randgevallen()
+    await tegenlezingF2()
   }
   console.log(`\n${fouten === 0 ? 'ALLES GOED' : `${fouten} FOUT(EN)`}`)
   process.exitCode = fouten === 0 ? 0 : 1

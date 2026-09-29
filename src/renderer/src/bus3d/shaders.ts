@@ -114,6 +114,17 @@ vec3 hemelMetWolken(vec3 d) {
   return c;
 }
 
+/*
+ * De waas aan de horizon: de hemel daar, vaag (mipniveau 5), iets ontkleurd en
+ * lichter, zoals lucht in de verte. Het panorama loopt de laatste twee graden
+ * erin over, de vloer in de verte ook: zo is er geen harde lijn waar de wolken
+ * ophouden en geen band tussen hemel en vloer (beeldbeoordeling F2).
+ */
+vec3 waas(vec3 d) {
+  vec3 h = hemelZonderWolken(vec3(d.x, 0.001, d.z), 5.0);
+  return mix(h, vec3(dot(h, vec3(0.2126, 0.7152, 0.0722)) * 1.12), 0.35);
+}
+
 /** Wat een glad oppervlak in richting d ziet: hemel, of de vloer eronder (voor reflecties). */
 vec3 omgevingKleur(vec3 d) {
   vec3 horizon = hemelZonderWolken(vec3(d.x, 0.0, d.z) + vec3(0.0, 0.001, 0.0), 4.0);
@@ -132,13 +143,12 @@ const vec2 POISSON[16] = vec2[16](
   vec2(0.4432, -0.9751), vec2(0.5374, -0.4737), vec2(-0.2650, -0.4189), vec2(0.7920, 0.1909),
   vec2(-0.2419, 0.9971), vec2(-0.8141, 0.9144), vec2(0.1998, 0.7864), vec2(0.1438, -0.1410)
 );
-float schaduw(vec3 p, vec3 n) {
+float schaduw(vec3 p, vec3 n, float r) {
   vec3 q = p + n * uDivers.z;
   vec4 s = uSchaduwMat * vec4(q, 1.0);
   vec3 c = s.xyz * 0.5 + 0.5;
   if (c.x <= 0.0 || c.x >= 1.0 || c.y <= 0.0 || c.y >= 1.0 || c.z >= 1.0) return 1.0;
   float z = c.z - uDivers.w;
-  float r = uZonKleur.w;
   float som = texture(uSchaduwKaart, vec3(c.xy, z));
   for (int i = 0; i < 4; i++) som += texture(uSchaduwKaart, vec3(c.xy + POISSON[i] * r, z));
   if (som < 0.001 || som > 4.999) return som / 5.0;
@@ -243,7 +253,7 @@ void main() {
 
   vec3 L = uZonRicht.xyz;
   float NdL = dot(n, L);
-  float s = NdL > 0.0 ? schaduw(vWereld, n) : 0.0;
+  float s = NdL > 0.0 ? schaduw(vWereld, n, uZonKleur.w) : 0.0;
   vec3 zon = uZonKleur.rgb * max(NdL, 0.0) * s;
   vec3 licht = zon + uHemelLicht.rgb * (0.5 + 0.5 * n.y) * mix(uDivers2.w, 1.0, s) + uOmgeving.rgb;
   vec3 kleur = tex.rgb * uDiffuus.rgb * licht + tex.rgb * uEmissie;
@@ -370,8 +380,8 @@ void main() {
   vec4 a = uInvBeeldProj * vec4(vScherm, -1.0, 1.0);
   vec4 b = uInvBeeldProj * vec4(vScherm, 1.0, 1.0);
   vec3 d = normalize(b.xyz / b.w - a.xyz / a.w);
-  // Onder de horizon (voorbij de vloer): de kleur van de horizon.
-  vec3 c = d.y >= 0.0 ? hemelMetWolken(d) : hemelZonderWolken(vec3(d.x, 0.001, d.z), 5.0);
+  // Onder de horizon (voorbij de vloer): de waas. Erboven loopt het panorama de laatste twee graden in de waas over.
+  vec3 c = d.y >= 0.0 ? mix(waas(d), hemelMetWolken(d), smoothstep(0.0, 0.035, d.y)) : waas(d);
   uitKleur = uitvoer(c, 1.0);
 }
 `
@@ -408,17 +418,21 @@ void main() {
     uitKleur = vec4(0.0, 0.0, 0.0, clamp(occ * 0.7, 0.0, 0.7));
     return;
   }
-  float s = schaduw(vWereld, n);
+  // Op de vloer een zachtere rand dan op de bus (twee keer de straal): de schaduw eronder is zacht.
+  float s = schaduw(vWereld, n, uZonKleur.w * 2.0);
   vec3 zon = uZonKleur.rgb * max(uZonRicht.y, 0.0) * s * (1.0 - 0.35 * occ);
   vec3 rond = (uHemelLicht.rgb * mix(uDivers2.w, 1.0, s) + uOmgeving.rgb) * (1.0 - 0.9 * occ);
   vec3 kleur = uVloer.rgb * (zon + rond) * uOog.w;
-  // Naar de horizon toe gaat de vloer over in de kleur van de hemel daar: geen harde rand.
+  /*
+   * Lucht in de verte: vanaf een meter of vijftien loopt de vloer geleidelijk
+   * in de waas van de horizon over (uit bij 400 m, de rand van de schijf). Eerst
+   * gebeurde dat pas tussen 50 en 380 m, en door het perspectief lag die hele
+   * overgang in een paar beeldlijnen: een harde vloerrand (beeldbeoordeling F2).
+   */
   vec3 d = normalize(vWereld - uOog.xyz);
-  // Vaag (mipniveau 5): de onderste rij van het panorama zou anders als strepen over de vloer lopen.
-  vec3 horizon = hemelZonderWolken(vec3(d.x, 0.001, d.z), 5.0);
   float afstand = length(vWereld.xz - uOog.xz);
-  float f = smoothstep(uVloer.w * 0.12, uVloer.w * 0.95, afstand);
-  vec3 lin = mix(kleur, horizon, f);
+  float f = max(1.0 - exp(-max(afstand - 15.0, 0.0) / 110.0), smoothstep(uVloer.w * 0.8, uVloer.w * 0.98, afstand));
+  vec3 lin = mix(kleur, waas(d), f);
   uitKleur = uitvoer(lin, 1.0);
 }
 `

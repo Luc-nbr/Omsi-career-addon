@@ -197,7 +197,8 @@ export class Texturen {
     const lijst = texturen.map((t, i) =>
       benodigd.has(i) ? { ...t, oppervlak: Math.max(t.oppervlak, 0.05), uv: Math.max(t.uv, 0.05) } : { ...t, oppervlak: 0 }
     )
-    const plan = textuurPlan(lijst, budget)
+    // Zonder S3TC pakt deze werker DXT uit naar RGBA: dan rekent het plan ook zo (aanvalsverslag F2, punt 6).
+    const plan = textuurPlan(lijst, budget, { s3tc: this.mag.s3tc })
     this.laatstePlan = plan
     for (const sleutel of [...this.doelen.keys()]) if (typeof sleutel === 'number') this.doelen.delete(sleutel)
     const carrosserie = plan.carrosserie
@@ -277,6 +278,16 @@ export class Texturen {
     this.doelen.clear()
     this.rij = []
     this.generatie++
+  }
+
+  /**
+   * De grens van de LRU, en meteen opruimen: `zetPlan` ruimde nog op met de
+   * grens van het VORIGE plan, en zo kwam het venster na een tweede grote bus
+   * boven 300 MB (aanvalsverslag F2, punt 7).
+   */
+  zetLruGrens(bytes: number): void {
+    this.lruMax = Math.max(0, bytes)
+    this.ruimOp()
   }
 
   /** Wat geen doel meer is naar de LRU; boven 64 MB aan LRU gaat het oudste weg. */

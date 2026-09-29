@@ -85,7 +85,8 @@ export interface StandBericht {
 
 export type VanWerker =
   | { soort: 'gereed'; webgl: boolean; detail?: string; info?: Record<string, unknown> }
-  | { soort: 'beeld'; viewer: number; bitmap: ImageBitmap }
+  /** `laad`: bij welke bus (het nummer van zijn 'bus'-bericht) dit beeld hoort. */
+  | { soort: 'beeld'; viewer: number; bitmap: ImageBitmap; laad: number }
   | StandBericht
   | { soort: 'held'; viewer: number; pakket: string; kleurstelling?: string; sleutel: string; webp: ArrayBuffer }
   | {

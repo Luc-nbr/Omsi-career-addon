@@ -38,6 +38,8 @@ interface Aangemeld {
   ctx: ImageBitmapRenderingContext | null
   luister: ViewerLuisteraar
   beelden: number
+  /** Het nummer van de laatste bus die deze viewer vroeg; oudere beelden tellen niet. */
+  laad: number
 }
 
 export class Verbinding {
@@ -67,7 +69,14 @@ export class Verbinding {
       if (m.soort === 'gereed') gereed(m)
       else if (m.soort === 'beeld') {
         const v = this.viewers.get(m.viewer)
-        if (v?.ctx) {
+        /*
+         * Een beeld van de VORIGE bus dat nog onderweg was toen de volgende
+         * gevraagd werd: niet laten zien en niet als eerste beeld tellen. Anders
+         * stond de O560 in beeld onder het zijpaneel van de NLC (tegenlezing F2).
+         */
+        if (v && m.laad < v.laad) {
+          m.bitmap.close()
+        } else if (v?.ctx) {
           v.ctx.transferFromImageBitmap(m.bitmap)
           v.beelden++
           if (v.beelden === 1) v.luister.opEersteBeeld?.()
@@ -116,7 +125,7 @@ export class Verbinding {
   meld(doek: HTMLCanvasElement, luister: ViewerLuisteraar): ViewerHandvat {
     const id = ++this.volgendeViewer
     const ctx = doek.getContext('bitmaprenderer')
-    this.viewers.set(id, { doek, ctx, luister, beelden: 0 })
+    this.viewers.set(id, { doek, ctx, luister, beelden: 0, laad: 0 })
     const zelf = this
     return {
       id,
@@ -124,7 +133,10 @@ export class Verbinding {
       laad: (manifest, lak, bron, t0, licht, foto) => {
         const laad = ++zelf.volgendeLaad
         const v = zelf.viewers.get(id)
-        if (v) v.beelden = 0
+        if (v) {
+          v.beelden = 0
+          v.laad = laad
+        }
         zelf.stuur({ soort: 'bus', viewer: id, laad, manifest, lak, bron, t0, licht, foto })
         return laad
       },

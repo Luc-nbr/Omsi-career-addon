@@ -47,6 +47,9 @@ export interface ViewerStand {
   ontbrekend?: number
   /** Texturen in het manifest (voor bv.incomplete: meer dan 25% ontbrekend). */
   texturen?: number
+  /** Buitenmeshes volgens de cfg en hoeveel hun o3d missen (bv.incompleteModel: meer dan 25%). */
+  meshes?: number
+  meshesWeg?: number
 }
 
 interface Props {
@@ -149,8 +152,25 @@ export function BusViewer({
   const [foto, zetFoto] = useState<{ pad: string; url: string } | undefined>(
     fotoVooraf ? { pad: relatiefPad, url: fotoVooraf } : undefined
   )
-  const [fotoGeladen, zetFotoGeladen] = useState(false)
+  /** Welke foto er geladen is: een vlag voor 'een foto' bleef staan als de volgende bus een andere foto kreeg. */
+  const [geladenFoto, zetGeladenFoto] = useState<string | undefined>()
   const [eersteBeeld, zetEersteBeeld] = useState(false)
+  /**
+   * Staat er een foto of heldenbeeld, dan neemt het 3D-beeld pas over als het
+   * scherp is, na 1,5 s, of zodra je iets doet: anders zag je eerst een wit
+   * kleimodel over een mooie foto (beeldbeoordeling F2). Zonder foto meteen.
+   */
+  const [overnemen, zetOvernemen] = useState(false)
+  const overneemKlok = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const wachtOpOvernemen = useCallback((aan: boolean) => {
+    if (overneemKlok.current) clearTimeout(overneemKlok.current)
+    overneemKlok.current = undefined
+    zetOvernemen(false)
+    if (aan) overneemKlok.current = setTimeout(() => zetOvernemen(true), 1500)
+  }, [])
+  useEffect(() => () => {
+    if (overneemKlok.current) clearTimeout(overneemKlok.current)
+  }, [])
   const huidig = useRef<{ pad: string; kleur?: string; pakket?: string; vraag: number; manifest?: Bus3dManifest; lak?: Bus3dLak }>({
     pad: '',
     vraag: 0
@@ -194,11 +214,15 @@ export function BusViewer({
       opEersteBeeld: () => {
         if (pauzeRef.current) return
         zetEersteBeeld(true)
+        wachtOpOvernemen(true)
         getoond('3d')
       },
       opStand: (s) => {
         meld({
           ...standRef.current,
+          // Een fout van eerder (context weg, hersteld) geldt niet meer zodra er weer een stand komt (aanvalsverslag F2, punt 4).
+          reden: undefined,
+          detail: undefined,
           fase: s.fase,
           klaar: s.klaar,
           totaal: s.totaal,
@@ -207,6 +231,9 @@ export function BusViewer({
           meting: s.meting ?? standRef.current.meting,
           mijlpalen: { ...standRef.current.mijlpalen, ...s.mijlpalen }
         })
+        // Scherp NA het eerste beeld van deze lading: dan mag het 3D-beeld de foto vervangen
+        // (niet op een 'scherp' van vóór een pauze, dat bleef in de stand staan).
+        if (s.fase === 'scherp') zetOvernemen(true)
         if (s.meting) window.bus3d?.bus3dMeld(s.meting)
       },
       opFout: (f) => {
@@ -237,18 +264,32 @@ export function BusViewer({
     zetMaat()
     const ro = new ResizeObserver(zetMaat)
     ro.observe(kader)
-    // Een andere DPR (het venster naar een ander scherm, G8.3): opnieuw de maat.
-    const dprLuister = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
-    dprLuister.addEventListener('change', zetMaat)
+    /*
+     * Een andere DPR (het venster naar een ander scherm, G8.3): opnieuw de maat,
+     * en daarna luisteren op de NIEUWE DPR. Een vaste vraag op de DPR van het
+     * begin vuurde alleen bij de eerste wissel; een tweede (1,25 -> 1,5 zonder
+     * andere maat) liet het doek wazig (aanvalsverslag F2, punt 10).
+     */
+    let dprLuister: MediaQueryList | undefined
+    const opDpr = (): void => {
+      zetMaat()
+      luisterDpr()
+    }
+    const luisterDpr = (): void => {
+      dprLuister?.removeEventListener('change', opDpr)
+      dprLuister = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
+      dprLuister.addEventListener('change', opDpr)
+    }
+    luisterDpr()
     return () => {
       ro.disconnect()
-      dprLuister.removeEventListener('change', zetMaat)
+      dprLuister?.removeEventListener('change', opDpr)
       h.weg()
       handvatRef.current = undefined
     }
     // Eén keer per mount; onHandvat verandert de aanmelding niet.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [meld, getoond])
+  }, [meld, getoond, wachtOpOvernemen])
 
   // Een bus laden (nieuw pad), of alleen de lak wisselen (zelfde bus, andere kleurstelling).
   const laad = useCallback(
@@ -275,7 +316,10 @@ export function BusViewer({
       cur.kleur = kleur
       cur.pakket = undefined
       const t0 = klok()
-      if (nieuweBus) zetEersteBeeld(false)
+      if (nieuweBus) {
+        zetEersteBeeld(false)
+        wachtOpOvernemen(false)
+      }
       meld({ fase: 'bouwen', klaar: 0, totaal: 0 })
       const r = kaderRef.current?.getBoundingClientRect()
       void brug
@@ -304,7 +348,9 @@ export function BusViewer({
         bron: antwoord.bron,
         versleuteld: antwoord.manifest.telling.versleuteld,
         ontbrekend: antwoord.manifest.telling.ontbrekend,
-        texturen: antwoord.manifest.telling.texturen
+        texturen: antwoord.manifest.telling.texturen,
+        meshes: antwoord.manifest.telling.meshes,
+        meshesWeg: antwoord.manifest.telling.meshesWeg
       })
       // In pauze niet laden: dat gebeurt bij hervatten (de context is dan weg).
       if (pauzeRef.current) return
@@ -361,6 +407,7 @@ export function BusViewer({
     if (pauze) {
       h.pauze(true, true)
       zetEersteBeeld(false)
+      wachtOpOvernemen(false)
       try {
         doekRef.current?.getContext('bitmaprenderer')?.transferFromImageBitmap(null)
       } catch {
@@ -408,7 +455,11 @@ export function BusViewer({
   }, [autoFocus])
 
   // ------------------------------------------------------------ bediening (§6)
-  const invoer = (i: Parameters<ViewerHandvat['invoer']>[0]): void => handvatRef.current?.invoer(i)
+  const invoer = (i: Parameters<ViewerHandvat['invoer']>[0]): void => {
+    // Wie draait of zoomt, wil het 3D-beeld, ook als het nog niet scherp is.
+    zetOvernemen(true)
+    handvatRef.current?.invoer(i)
+  }
   const aanwijzers = useRef(new Map<number, { x: number; y: number }>())
   const knijp = useRef(0)
 
@@ -492,10 +543,16 @@ export function BusViewer({
   if (!fout && stand.ontbrekend && stand.texturen && stand.ontbrekend / (stand.ontbrekend + stand.texturen) > 0.25) {
     labels.push(t('bv.incomplete', { n: stand.ontbrekend }))
   }
+  // Meer dan een kwart van de buitenmeshes zonder o3d op deze pc: zeggen waarom de bus half leeg is (proefdraaier F2).
+  if (!fout && stand.meshesWeg && stand.meshes && stand.meshesWeg / stand.meshes > 0.25) {
+    labels.push(t('bv.incompleteModel', { n: stand.meshesWeg, totaal: stand.meshes }))
+  }
   if (!fout && licht) labels.push(t('bv.omsiRunning'))
 
   const fotoHier = foto && foto.pad === relatiefPad ? foto.url : undefined
-  const toon3d = eersteBeeld && !pauze && !fout
+  const fotoGeladen = Boolean(fotoHier) && geladenFoto === fotoHier
+  const fotoStaat = Boolean(fotoHier && fotoGeladen)
+  const toon3d = eersteBeeld && !pauze && !fout && (!fotoStaat || overnemen)
   const toonIcoon = !toon3d && (!fotoHier || !fotoGeladen)
   const herstelbaar = fout && stand.reden !== 'geen-webgl' && stand.reden !== 'versleuteld' && stand.reden !== 'geen-model'
 
@@ -513,12 +570,12 @@ export function BusViewer({
           alt=""
           draggable={false}
           onLoad={() => {
-            zetFotoGeladen(true)
+            zetGeladenFoto(fotoHier)
             document.documentElement.dataset.fotoMs = String(Math.round(performance.now()))
             getoond('foto')
           }}
           onError={() => {
-            zetFotoGeladen(false)
+            zetGeladenFoto(undefined)
             getoond('icoon')
           }}
         />

@@ -383,6 +383,8 @@ export function App(): JSX.Element {
   }>();
   const [bus3dWeg, setBus3dWeg] = useState(false);
   const bus3dAanvraag = useRef(0);
+  /** De stand van de schakelaar bij de vorige keer lezen (undefined: nog niet gelezen). */
+  const bus3dLaatst = useRef<boolean | undefined>(undefined);
 
   /*
    * Het maken van alle foto's in één keer: bij het installeren als vraag, en
@@ -1248,7 +1250,20 @@ export function App(): JSX.Element {
     // De schakelaar kan in de instellingen omgezet zijn; hier weer lezen.
     void window.career
       .settings()
-      .then((instellingen) => setBus3dAan(instellingen.bus3d === true))
+      .then((instellingen) => {
+        const aan = instellingen.bus3d === true;
+        /*
+         * Omgezet sinds de vorige keer: de foto's van de tegels opnieuw vragen
+         * (met de schakelaar de v4, zonder de v3b). Anders hielden de tegels
+         * na "uit" de foto v4 tot de app opnieuw startte (tegenlezing F2).
+         */
+        if (bus3dLaatst.current !== undefined && bus3dLaatst.current !== aan) {
+          gevraagdeFotos.current.clear();
+          setBusFotos({});
+        }
+        bus3dLaatst.current = aan;
+        setBus3dAan(aan);
+      })
       .catch(() => undefined);
   }, [opBusstap]);
 
