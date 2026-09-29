@@ -74,6 +74,12 @@ export function herkenOverlays(modules: string[], omsiPad: string): OverlayInOms
 
 export interface OmsiProces {
   pid: number
+  /**
+   * Wanneer het proces startte, zoals Windows het zegt (ISO, UTC). Met het pid
+   * samen is dat wie het is: een pid wordt na afloop hergebruikt, een starttijd
+   * niet. Leeg als Windows het niet wilde zeggen.
+   */
+  start?: string
   /** Wat Windows zegt: reageert het venster nog op berichten? */
   reageert: boolean
   modules: string[]
@@ -84,11 +90,18 @@ function powershell32(): string {
   return join(windows, 'SysWOW64', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
 }
 
+/*
+ * De starttijd als tekst met zeven decimalen, zodat twee keer lezen precies
+ * hetzelfde oplevert. `StartTime` lezen mag zonder beheerder voor processen van
+ * de eigen gebruiker -- en OMSI draait als de speler zelf.
+ */
+const START = `$s = $null; try { $s = $p.StartTime.ToUniversalTime().ToString('o') } catch { }`
+
 /** Het draaiende OMSI: of het reageert en welke modules het geladen heeft. */
 export function leesOmsiProces(procesnaam = 'Omsi'): Promise<OmsiProces | undefined> {
   const opdracht =
     `$p = Get-Process -Name '${procesnaam.replace(/'/g, "''")}' -ErrorAction SilentlyContinue | Select-Object -First 1; ` +
-    `if ($p) { [pscustomobject]@{ pid = $p.Id; reageert = $p.Responding; ` +
+    `if ($p) { ${START}; [pscustomobject]@{ pid = $p.Id; start = $s; reageert = $p.Responding; ` +
     `modules = @($p.Modules | ForEach-Object { $_.FileName }) } | ConvertTo-Json -Compress }`
   return new Promise((klaar) => {
     execFile(
@@ -101,13 +114,23 @@ export function leesOmsiProces(procesnaam = 'Omsi'): Promise<OmsiProces | undefi
           return
         }
         try {
-          const gelezen = JSON.parse(uit) as { pid: number; reageert: boolean; modules?: string[] | string }
+          const gelezen = JSON.parse(uit) as {
+            pid: number
+            start?: string | null
+            reageert: boolean
+            modules?: string[] | string
+          }
           const modules = Array.isArray(gelezen.modules)
             ? gelezen.modules
             : gelezen.modules
               ? [gelezen.modules]
               : []
-          klaar({ pid: gelezen.pid, reageert: gelezen.reageert !== false, modules })
+          klaar({
+            pid: gelezen.pid,
+            start: gelezen.start || undefined,
+            reageert: gelezen.reageert !== false,
+            modules
+          })
         } catch {
           klaar(undefined)
         }
@@ -117,14 +140,117 @@ export function leesOmsiProces(procesnaam = 'Omsi'): Promise<OmsiProces | undefi
 }
 
 /**
+ * Wie er nu achter een pid zit: de naam zonder `.exe` en de starttijd, of
+ * `weg` (er draait niets onder dat pid), of `onbekend` (PowerShell gaf geen
+ * antwoord: niet te starten, een time-out, onleesbare uitvoer).
+ *
+ * Die laatste twee waren eerst allebei `undefined`, en dan zei de knop "OMSI is
+ * al dicht" en verdween hij -- terwijl het vastgelopen OMSI nog draaide.
+ */
+export type ProcesOpPid = { naam: string; start?: string } | 'weg' | 'onbekend'
+
+export function procesMetPid(pid: number): Promise<ProcesOpPid> {
+  /*
+   * `exit 0` aan het eind: een `Get-Process` die niets vindt laat PowerShell
+   * anders met 1 eindigen, ook met SilentlyContinue, en dan was "weg" niet van
+   * een fout te onderscheiden. Een fout die het script afbreekt, komt daar niet.
+   */
+  const opdracht =
+    `$p = Get-Process -Id ${Math.trunc(pid)} -ErrorAction SilentlyContinue; ` +
+    `if ($p) { ${START}; [pscustomobject]@{ naam = $p.ProcessName; start = $s } | ConvertTo-Json -Compress }; exit 0`
+  return new Promise((klaar) => {
+    execFile(
+      powershell32(),
+      ['-NoProfile', '-NonInteractive', '-Command', opdracht],
+      { windowsHide: true, timeout: 15000 },
+      (fout, uit) => {
+        if (fout) {
+          klaar('onbekend')
+          return
+        }
+        // Afgelopen zonder fout en zonder uitvoer: `Get-Process` vond niets.
+        if (!uit.trim()) {
+          klaar('weg')
+          return
+        }
+        try {
+          const gelezen = JSON.parse(uit) as { naam: string; start?: string | null }
+          klaar(typeof gelezen?.naam === 'string' ? { naam: gelezen.naam, start: gelezen.start || undefined } : 'onbekend')
+        } catch {
+          klaar('onbekend')
+        }
+      }
+    )
+  })
+}
+
+/**
+ * `taskkill` op pid én naam: past een van de twee niet, dan sluit hij niets
+ * af. Het antwoord van taskkill telt niet (zie `sluitOmsi`); dit wacht alleen
+ * tot hij klaar is.
+ */
+export function taskkillOpNaam(pid: number, procesnaam: string): Promise<void> {
+  return new Promise<void>((klaar) => {
+    execFile(
+      'taskkill',
+      ['/F', '/FI', `PID eq ${Math.trunc(pid)}`, '/FI', `IMAGENAME eq ${procesnaam}.exe`],
+      { windowsHide: true },
+      () => klaar()
+    )
+  })
+}
+
+/**
+ * Hoe het afsluiten afliep. `al-dicht`: er draait onder dat pid geen OMSI meer
+ * -- het is uit zichzelf gestopt, of het pid is intussen van een ander
+ * programma, en dan is er niets afgesloten. `mislukt`: het draait nog, of
+ * Windows kon niet zeggen wie er onder het pid zit (dan is er ook niets
+ * afgesloten, en blijft de knop staan).
+ */
+export type Afsluiten = 'gesloten' | 'al-dicht' | 'mislukt'
+
+/**
  * OMSI afsluiten, op verzoek van de speler: een vastgelopen spel komt niet
  * meer uit zichzelf terug. De app doet dit nooit zonder dat de speler op de
  * knop drukt.
+ *
+ * WAAROM ZO VOORZICHTIG
+ * Het pid komt uit de melding over de vastloper, en tussen die melding en de
+ * klik kan een tijd zitten. Is OMSI intussen weg, dan geeft Windows dat pid aan
+ * het volgende programma dat start -- en `taskkill /PID` schoot dan dát af,
+ * wat het ook was. Nu eerst: draait onder dit pid nog een proces met deze
+ * naam en deze starttijd (zie `leesOmsiProces`)? En daarna laat taskkill het
+ * zelf nog eens nakijken met een filter op de naam, zodat ook in het laatste
+ * ogenblik niets anders geraakt kan worden. (Idee uit openOMSI: een proces is
+ * pid plus starttijd.)
  */
-export function sluitOmsi(pid: number): Promise<boolean> {
-  return new Promise((klaar) => {
-    execFile('taskkill', ['/PID', String(pid), '/F'], { windowsHide: true }, (fout) => klaar(!fout))
-  })
+export async function sluitOmsi(pid: number, start: string | undefined, procesnaam = 'Omsi'): Promise<Afsluiten> {
+  const nu = await procesMetPid(pid)
+  // Niet te zien wie er onder het pid zit: niets afsluiten, en de knop blijft.
+  if (nu === 'onbekend') return 'mislukt'
+  const zelfde = (p: Exclude<ProcesOpPid, 'onbekend'>): boolean =>
+    p !== 'weg' && p.naam.toLowerCase() === procesnaam.toLowerCase() && p.start === start
+  if (nu === 'weg' || nu.naam.toLowerCase() !== procesnaam.toLowerCase()) return 'al-dicht'
+  /*
+   * Een ander OMSI onder hetzelfde pid heeft een andere starttijd. Kon Windows
+   * die toen en nu allebei niet geven (OMSI als beheerder gestart), dan blijft
+   * alleen het filter op pid en naam over -- en dan lukt afsluiten zonder
+   * beheerder toch niet, en zegt de knop dat.
+   */
+  if (!zelfde(nu)) return 'al-dicht'
+  await taskkillOpNaam(pid, procesnaam)
+  /*
+   * Niet op de tekst van taskkill afgaan: die is vertaald ("GESLAAGD" op een
+   * Nederlandse Windows), en met filters slaagt hij ook als er niets paste.
+   * Gewoon kijken of het er nog is; afsluiten duurt soms een tel. Een
+   * `onbekend` telt niet als dicht: dan nog eens kijken.
+   */
+  for (let poging = 0; poging < 10; poging++) {
+    const daarna = await procesMetPid(pid)
+    if (daarna !== 'onbekend' && !zelfde(daarna)) return 'gesloten'
+    await new Promise((klaar) => setTimeout(klaar, 300))
+  }
+  return 'mislukt'
 }
 
 export interface LogfileStaart {

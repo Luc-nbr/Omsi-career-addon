@@ -74,11 +74,18 @@ export function ensurePlugin(
   }
 
   try {
-    mkdirSync(target, { recursive: true })
     let changed = false
     for (const { name, path } of sources) {
       const destination = join(target, name)
       if (existsSync(destination) && digest(destination) === digest(path!)) continue
+      /*
+       * De map pas maken als er echt iets neer moet. In alleen-bekijken
+       * (main/versiewacht.ts) weigert het schrijfslot ook een `mkdirSync` op
+       * een map die er al is; tot de tegenlezing van 29-09 stond die vóór het
+       * vergelijken, en kreeg elke start in die stand "de plugin kon niet in
+       * de OMSI-map gezet worden" op het startscherm, terwijl hij klopte.
+       */
+      if (!existsSync(target)) mkdirSync(target, { recursive: true })
       // Even vastgehouden door een scanner is geen reden om de update over te slaan.
       metNieuwePogingen(() => copyFileSync(path!, destination))
       changed = true

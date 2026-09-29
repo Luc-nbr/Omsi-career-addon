@@ -236,3 +236,23 @@
 .ad-rij > span:nth-child(2) {
   text-align: right;
 }
+
+/*
+ * Het vinkje bij programmacode: "ik vertrouw de maker". Een gewone regel met
+ * het vakje ervoor, niet het invoerveld van `.ad-naam`.
+ */
+.ad-vinkje {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 4px;
+  color: var(--vel-ink);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ad-vinkje input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}

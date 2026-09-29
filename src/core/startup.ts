@@ -1,6 +1,7 @@
-import { copyFileSync, existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { isEigenWeer } from './situation'
+import { leesCfg, schrijfCfg, schrijfVeilig } from './veilig'
 
 /**
  * OMSI zo laten opstarten dat de dienst al klaarstaat.
@@ -14,7 +15,16 @@ import { isEigenWeer } from './situation'
  * `options.cfg` is gewone tekst in de Windows-codering met CRLF. We lezen hem
  * als losse bytes (`latin1`) en schrijven hem zo terug: dan blijft alles wat we
  * niet aanraken byte voor byte staan, ook de Duitse umlauten in namen van
- * chauffeurs en weerstations.
+ * chauffeurs en weerstations. Sinds 0.4.9 via `leesCfg`/`schrijfCfg`
+ * (core/veilig.ts), zoals de instellingen van het spel: een options.cfg in
+ * UTF-16 blijft UTF-16, en er ligt nooit een half bestand.
+ *
+ * Ook `laststn.osn`, het weer ernaast en de kopieën gaan via `schrijfVeilig`
+ * (een tijdelijk bestand dat teruggelezen wordt, dan hernoemen). Het zijn
+ * kopieën byte voor byte, dus de codering (UTF-16 met BOM) gaat vanzelf mee.
+ * Met `copyFileSync` kon een afgebroken kopie blijven liggen -- en de kopie
+ * `.voor-omsi-enhancer` wordt maar één keer gemaakt, dus een halve bleef dat
+ * voorgoed.
  */
 
 export interface StartupResult {
@@ -59,10 +69,10 @@ export function presetStartup(
       !existsSync(target + BACKUP_SUFFIX) &&
       !existsSync(target + OLD_BACKUP_SUFFIX)
     ) {
-      copyFileSync(target, target + BACKUP_SUFFIX)
+      schrijfVeilig(target + BACKUP_SUFFIX, readFileSync(target))
       result.backup = target + BACKUP_SUFFIX
     }
-    copyFileSync(situationFile, target)
+    schrijfVeilig(target, readFileSync(situationFile))
     result.lastSituation = true
   } catch {
     // Geen schrijfrechten in de spelmap; dan kiest de speler de situatie zelf.
@@ -88,9 +98,9 @@ export function presetStartup(
        */
       const kopie = [target + BACKUP_SUFFIX, target + OLD_BACKUP_SUFFIX].find((pad) => existsSync(pad))
       if (kopie && existsSync(weer) && !existsSync(`${kopie}.owt`) && !isEigenWeer(weer)) {
-        copyFileSync(weer, `${kopie}.owt`)
+        schrijfVeilig(`${kopie}.owt`, readFileSync(weer))
       }
-      if (existsSync(`${situationFile}.owt`)) copyFileSync(`${situationFile}.owt`, weer)
+      if (existsSync(`${situationFile}.owt`)) schrijfVeilig(weer, readFileSync(`${situationFile}.owt`))
       /*
        * Heeft de situatie geen eigen weer, dan hoort het weer dat de app bij de
        * vorige rit koos er ook niet naast te blijven staan: OMSI zou het
@@ -108,12 +118,19 @@ export function presetStartup(
   return result
 }
 
-/** Zet `[last_map]` in options.cfg op deze kaart. */
+/**
+ * Zet `[last_map]` in options.cfg op deze kaart. Via `schrijfCfg`: in de
+ * codering die het bestand had, via een teruggelezen tijdelijk bestand. Tot
+ * 0.4.9 rechtstreeks met `writeFileSync` in `latin1` -- de enige plek die
+ * options.cfg nog zo schreef na ronde 1 van de veiligheid (28-09), en een
+ * options.cfg in UTF-16 las hier als één lange regel zonder `[last_map]`,
+ * waarna er een blok in de verkeerde codering achteraan kwam.
+ */
 export function setLastMap(omsiPath: string, mapFolder: string): boolean {
   const file = join(omsiPath, 'options.cfg')
   const value = `maps\\${mapFolder}\\global.cfg`
   try {
-    const text = readFileSync(file, 'latin1')
+    const text = leesCfg(file)
     const lines = text.split('\r\n')
     const at = lines.findIndex((line) => line.trim() === '[last_map]')
     if (at < 0) {
@@ -124,7 +141,7 @@ export function setLastMap(omsiPath: string, mapFolder: string): boolean {
     } else {
       lines[at + 1] = value
     }
-    writeFileSync(file, lines.join('\r\n'), 'latin1')
+    schrijfCfg(file, lines.join('\r\n'))
     return true
   } catch {
     return false
@@ -134,7 +151,7 @@ export function setLastMap(omsiPath: string, mapFolder: string): boolean {
 /** Leest welke kaart OMSI de vorige keer geladen had. */
 export function readLastMap(omsiPath: string): string | undefined {
   try {
-    const lines = readFileSync(join(omsiPath, 'options.cfg'), 'latin1').split('\r\n')
+    const lines = leesCfg(join(omsiPath, 'options.cfg')).split('\r\n')
     const at = lines.findIndex((line) => line.trim() === '[last_map]')
     if (at < 0) return undefined
     return lines[at + 1].match(/maps[\\/]([^\\/]+)[\\/]/i)?.[1]

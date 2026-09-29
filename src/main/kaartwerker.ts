@@ -1,5 +1,6 @@
 import { parentPort, workerData } from 'node:worker_threads'
 import { maakKaartlaag } from '../core/kaartlaag'
+import { sluitSchrijvenAf } from '../core/schrijfslot'
 import { actiesPerVariant, analyseerBusmap, busmappen, modelcfgsVan, type Busanalyse } from '../core/busklaar'
 import type { DutyRequest, VrijWanneer } from '../shared/api'
 import type { OmsiKeuze } from '../core/omloopvolgen'
@@ -93,7 +94,13 @@ interface Antwoord {
   detail?: string
 }
 
-const { omsiPath, userData } = workerData as { omsiPath: string; userData: string }
+const { omsiPath, userData, alleenIn } = workerData as { omsiPath: string; userData: string; alleenIn?: string[] }
+/*
+ * Alleen bekijken: dezelfde grens als in het hoofdproces, op het `fs` van deze
+ * thread (zie core/schrijfslot.ts). Vóór er iets gelezen of in de cache gezet
+ * wordt.
+ */
+if (alleenIn) sluitSchrijvenAf(alleenIn)
 const laag = maakKaartlaag(omsiPath, userData)
 
 /*

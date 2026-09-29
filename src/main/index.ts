@@ -157,11 +157,14 @@ import {
   type SpoorRegel
 } from '../core/rittenstaat'
 import {
+  InstallatieFout,
   installeerStappen,
   leesRegister,
   openBron,
   planStappen,
+  registreer,
   reserveMap,
+  ruimteVoor,
   schrijfRegister,
   verwijderStappen,
   type Plan
@@ -169,6 +172,7 @@ import {
 import { controleerBus, controleerKaart, type Controle } from '../core/addoncheck'
 import { ZipFout } from '../core/zip'
 import type { AddonOverzicht, AddonPlan } from '../shared/api'
+import { alleenBekijken, bewaakVersie, meldStartFout, stempel } from './versiewacht'
 import {
   FLITS,
   controleAanBoord,
@@ -230,7 +234,7 @@ import { startVrijeRit } from '../core/vrijstart'
 import { readTileList } from '../core/track'
 import { t } from '../shared/i18n'
 import { presetStartup } from '../core/startup'
-import { zetKopieMap } from '../core/veilig'
+import { inBekijkstand, zetKopieMap } from '../core/veilig'
 import { trailerOf } from '../core/trailer'
 import { spawnAtStop } from '../core/spawn'
 import { listMaps, readMapName } from '../core/timetable'
@@ -247,6 +251,7 @@ import {
   type OmsiMelding,
   type OmsiOverlays,
   type BeginRequest,
+  type BeginResult,
   type FreeCheck,
   type FreeRequest,
   type FreeResult,
@@ -266,6 +271,7 @@ import {
   type YardOption
 } from '../shared/api'
 import { defaultLayout, OVERLAY_RATES, type OverlayLayout } from '../shared/overlay'
+import { ritSleutel, uniekeRitten } from '../shared/traject'
 
 /*
  * Alles wat uit de OMSI-map komt, met zijn caches, staat in `core/kaartlaag.ts`.
@@ -286,12 +292,23 @@ function laag(): Kaartlaag {
  * Gebeurt als de speler een andere OMSI-map aanwijst of laat nakijken of er
  * kaarten bij zijn gekomen: dan klopt geen enkele cache meer. De werker krijgt
  * dezelfde opdracht, want die heeft zijn eigen kopie.
+ *
+ * De routes die het hoofdproces onthoudt (`routesVoor`) gaan mee, en de
+ * vensters horen het ook: die onthouden ze per venster (renderer/src/
+ * trajecten.ts). Anders bleef na een add-on die een `.ttr` bijwerkt de oude
+ * weg op de kaart staan tot de app opnieuw startte.
  */
 function vergeetKaarten(): void {
   kaartlaag = undefined
   for (const [soort, staand] of werkers) {
     werkers.delete(soort)
     staand.terminate().catch(() => undefined)
+  }
+  routeGeneratie += 1
+  routeGeheugen.clear()
+  routeOnderweg.clear()
+  for (const venster of BrowserWindow.getAllWindows()) {
+    if (!venster.isDestroyed()) venster.webContents.send('kaarten:vergeten')
   }
 }
 /**
@@ -407,7 +424,12 @@ function kaartWerker(soort: Werksoort): Worker {
   if (staand) return staand
 
   const gemaakt = new Worker(join(__dirname, 'kaartwerker.js'), {
-    workerData: { omsiPath: omsi(), userData: userData() }
+    /*
+     * `alleenIn`: in alleen-bekijken (main/versiewacht.ts) zet de werker het
+     * slot van het hoofdproces ook op zijn eigen `fs` -- een worker_thread heeft
+     * er een eigen. `userData()` is dan al de kopie.
+     */
+    workerData: { omsiPath: omsi(), userData: userData(), alleenIn: inBekijkstand() ? [userData()] : undefined }
   })
   gemaakt.on('message', (antwoord: WerkerAntwoord) => {
     const wachtend = werkerWacht.get(antwoord.id)
@@ -982,6 +1004,7 @@ async function bewaakOmsi(): Promise<void> {
         soort: 'vast',
         tijd: new Date().toISOString(),
         pid: proces.pid,
+        start: proces.start,
         overlays: omsiWacht.overlays
       })
     }
@@ -3106,9 +3129,20 @@ function schrijfBusknoppen(
 }
 
 async function zetBusknoppenAan(): Promise<
-  | { toegevoegd: number; gedeeld: number; geenPlek: number; omsiDraait?: boolean; onthouden?: number }
+  | { toegevoegd: number; gedeeld: number; geenPlek: number; omsiDraait?: boolean; onthouden?: number; fout?: 'bekijken' }
   | undefined
 > {
+  /*
+   * Alleen bekijken (main/versiewacht.ts): keyboard.cfg is van OMSI, en
+   * `fs` weigert het toch. Tot de tegenlezing van 29-09 ging dit verzoek
+   * gewoon in de wachtrij terwijl OMSI draaide, en zodra het dicht was
+   * probeerde `wachtOpOmsiDicht` het elke vijf tellen opnieuw -- met
+   * PowerShell en een schrijffout in het logboek, tot de app dicht ging.
+   */
+  if (inBekijkstand()) {
+    log('busknoppen niet bijgeschreven: alleen bekijken')
+    return { toegevoegd: 0, gedeeld: 0, geenPlek: 0, fout: 'bekijken' }
+  }
   /* Nu uitrekenen: terwijl OMSI draait weet de app welke bus en welke apparaten het zijn. */
   const acties = actiesVoorBusknoppen()
   const modelcfg = modelcfgNu()
@@ -3148,6 +3182,8 @@ async function zetBusknoppenAan(): Promise<
  * app, en vlak voordat de app OMSI zelf opstart.
  */
 async function schrijfStraks(waarom: string): Promise<void> {
+  /* Niet in alleen-bekijken; de wachtrij blijft staan voor de exe die wel mag schrijven. */
+  if (inBekijkstand()) return
   const wachtrij = readSettings(userData()).busknoppenStraks ?? {}
   const verkeerd = aantalVerbodenToetsen(omsi())
   if (Object.keys(wachtrij).length === 0 && verkeerd === 0) return
@@ -3157,7 +3193,16 @@ async function schrijfStraks(waarom: string): Promise<void> {
    * toets: daar stond OMSI van stil. Zie verlegVerbodenToetsen.
    */
   if (verkeerd > 0) {
-    verlegVerbodenToetsen(omsi())
+    /*
+     * In een eigen `try`: dit wordt ook aangeroepen vanuit de wacht op een
+     * dicht OMSI, zonder iemand die een fout opvangt, en een keyboard.cfg die
+     * vastzit werd daar een onafgehandelde belofte (tegenlezing 29-09).
+     */
+    try {
+      verlegVerbodenToetsen(omsi())
+    } catch (fout) {
+      logFout('knoppen van F10 en Shift+` halen', fout)
+    }
     knoppenStand = undefined
   }
   if (Object.keys(wachtrij).length === 0) return
@@ -3187,6 +3232,16 @@ async function schrijfStraks(waarom: string): Promise<void> {
  * core/busklaar.ts.
  */
 async function busKlaarmaken(sleutel: string, ids: string[]): Promise<Busklaaruitslag> {
+  /*
+   * Alleen bekijken: niets bewaren en niets in de wachtrij (zie
+   * zetBusknoppenAan). Eerst kwam het verzoek in de wachtrij terwijl OMSI
+   * draaide, en anders meldde het scherm "alle knoppen stonden er al" over
+   * knoppen die `fs` net geweigerd had.
+   */
+  if (inBekijkstand()) {
+    log(`bus niet klaargemaakt: alleen bekijken (${sleutel})`)
+    return { knoppen: 0, bijgeschreven: 0, gedeeld: 0, geenPlek: 0, fout: 'bekijken' }
+  }
   const alles = { ...(readSettings(userData()).busmodules ?? {}) }
   if (ids.length > 0) alles[sleutel] = ids
   else delete alles[sleutel]
@@ -3234,7 +3289,8 @@ async function busKlaarmaken(sleutel: string, ids: string[]): Promise<Busklaarui
  */
 let straksWacht: ReturnType<typeof setInterval> | undefined
 function wachtOpOmsiDicht(): void {
-  if (straksWacht) return
+  // In alleen-bekijken valt er niets bij te schrijven; zie zetBusknoppenAan.
+  if (straksWacht || inBekijkstand()) return
   let dicht = 0
   straksWacht = setInterval(() => {
     void (async () => {
@@ -4034,12 +4090,64 @@ async function routesVoor(
   folder: string,
   legs: Array<{ tripFile: string; stopIds: string[] }>
 ): Promise<TripRoute[]> {
-  try {
-    return await werkerVraag<TripRoute[]>({ soort: 'routes', folder, legs })
-  } catch (fout) {
-    logFout('routes via de werker', fout)
-    return laag().routes(folder, legs)
+  /*
+   * Elk traject één keer: een omloop van 26 ritten heeft er vaak maar een
+   * handvol verschillende (shared/traject.ts). Wat de werker al uitrekende,
+   * staat hier; wat hij nog uitrekent, wordt niet opnieuw gevraagd. Zo wacht
+   * de overlay of de telefoon niet in de rij achter een dienstenlijst van twee
+   * seconden voor een route die het hoofdvenster net binnenkreeg, en gaat
+   * elke route één keer over de brug.
+   */
+  const { uniek, plek } = uniekeRitten(legs)
+  const sleutels = uniek.map((leg) => `${folder}|${ritSleutel(leg)}`)
+  const nodig = uniek.filter((_leg, i) => !routeGeheugen.has(sleutels[i]) && !routeOnderweg.has(sleutels[i]))
+  if (nodig.length > 0) {
+    /*
+     * Wat een werker van vóór `vergeetKaarten()` nog terugstuurt, rekende met
+     * de oude kaart: dat gaat wel terug naar wie erom vroeg, maar niet meer in
+     * het geheugen.
+     */
+    const generatie = routeGeneratie
+    const vraag = (async (): Promise<TripRoute[]> => {
+      try {
+        return await werkerVraag<TripRoute[]>({ soort: 'routes', folder, legs: nodig })
+      } catch (fout) {
+        logFout('routes via de werker', fout)
+        return laag().routes(folder, nodig)
+      }
+    })()
+    nodig.forEach((leg, i) => {
+      const sleutel = `${folder}|${ritSleutel(leg)}`
+      const deze: Promise<TripRoute> = vraag
+        .then((routes) => {
+          if (routes[i] && generatie === routeGeneratie) bewaarRoute(sleutel, routes[i])
+          return routes[i]
+        })
+        .finally(() => {
+          // Alleen de eigen vraag weg: na `vergeetKaarten()` kan er al een nieuwe staan.
+          if (routeOnderweg.get(sleutel) === deze) routeOnderweg.delete(sleutel)
+        })
+      routeOnderweg.set(sleutel, deze)
+    })
   }
+  const routes = await Promise.all(sleutels.map((sleutel) => routeGeheugen.get(sleutel) ?? routeOnderweg.get(sleutel)))
+  return plek.map((i) => routes[i] ?? { points: [], guessed: [] })
+}
+
+/**
+ * Routes per kaart en rit, zoals de werker ze gaf; de oudste gaat eruit. Zie
+ * `routesVoor`. `vergeetKaarten()` leegt ze en hoogt `routeGeneratie` op: een
+ * bijgewerkte `.ttr` of een andere OMSI-map met een kaart van dezelfde naam
+ * heeft dezelfde sleutel, maar een andere weg.
+ */
+const routeGeheugen = new Map<string, TripRoute>()
+const routeOnderweg = new Map<string, Promise<TripRoute>>()
+let routeGeneratie = 0
+const ROUTEGEHEUGEN_MAX = 2000
+function bewaarRoute(sleutel: string, route: TripRoute): void {
+  routeGeheugen.delete(sleutel)
+  routeGeheugen.set(sleutel, route)
+  while (routeGeheugen.size > ROUTEGEHEUGEN_MAX) routeGeheugen.delete(routeGeheugen.keys().next().value as string)
 }
 
 /**
@@ -4065,13 +4173,17 @@ function apparaatBronnen(): ApparaatBronnen {
     },
     schermvorm: (id) => schermvormOp(id),
     textuur: (id) => schermtextuurOp(id),
+    /*
+     * Elk traject één keer, met zijn sleutel: JSON kent geen gedeelde
+     * voorwerpen, en per rit ging Wagen 3 op Krefrath met 859 kB over de wifi
+     * in plaats van een derde daarvan. De pagina zoekt per rit op sleutel.
+     */
     routes: async () => {
       const dienst = currentDuty()
       if (!dienst) return undefined
-      return routesVoor(
-        dienst.mapFolder,
-        dienst.legs.map(({ tripFile, stopIds }) => ({ tripFile, stopIds }))
-      )
+      const { uniek } = uniekeRitten(dienst.legs.map(({ tripFile, stopIds }) => ({ tripFile, stopIds })))
+      const routes = await routesVoor(dienst.mapFolder, uniek)
+      return { routes: uniek.map((leg, i) => ({ sleutel: ritSleutel(leg), route: routes[i] })) }
     },
     /*
      * Wat er op de telefoon van het toestel gebeurt. Dezelfde wegen als de
@@ -4179,6 +4291,8 @@ function registerHandlers(): void {
    * foutmelding hoort te plakken.
    */
   handle('app:version', () => __APP_VERSION__)
+  /* De bouwstempel bij dat nummer, en of deze exe alleen kijkt; zie main/versiewacht.ts. */
+  handle('app:bouw', () => ({ stempel: stempel(), alleenBekijken: alleenBekijken() }))
 
   /*
    * Hoe OMSI de vorige keer draaide. Alleen interessant als het volledig scherm
@@ -4657,12 +4771,17 @@ function registerHandlers(): void {
     omsiMelding = undefined
   })
 
-  /* Alleen op verzoek van de speler, met het pid uit de melding over de vastloper. */
-  handle('omsi:sluiten', async (_event, pid: number): Promise<boolean> => {
-    if (!omsiMelding || omsiMelding.soort !== 'vast' || omsiMelding.pid !== pid) return false
-    log(`vastgelopen OMSI (pid ${pid}) afgesloten op verzoek van de speler`)
-    omsiWacht.doorOnsGesloten = true
-    return sluitOmsi(pid)
+  /*
+   * Alleen op verzoek van de speler, met het pid uit de melding over de
+   * vastloper -- en alleen als onder dat pid nog hetzelfde OMSI draait (naam
+   * en starttijd; zie `sluitOmsi`).
+   */
+  handle('omsi:sluiten', async (_event, pid: number): Promise<'gesloten' | 'al-dicht' | 'mislukt'> => {
+    if (!omsiMelding || omsiMelding.soort !== 'vast' || omsiMelding.pid !== pid) return 'al-dicht'
+    const uit = await sluitOmsi(pid, omsiMelding.start, OMSI_PROCES)
+    log(`vastgelopen OMSI (pid ${pid}) afsluiten op verzoek van de speler: ${uit}`)
+    if (uit === 'gesloten') omsiWacht.doorOnsGesloten = true
+    return uit
   })
 
   handle('game:settings', async () => ({
@@ -5107,6 +5226,17 @@ function registerHandlers(): void {
    */
   handle('free:start', async (_event, request: FreeRequest): Promise<FreeResult> => {
     const folder = String(request.mapFolder)
+    /*
+     * Alleen bekijken (main/versiewacht.ts): START weigert meteen, met een
+     * eigen reden. Zonder dit hield `fs` het schrijven van de situatie wel
+     * tegen, maar kwam de speler op "schrijven mislukt: Alleen bekijken: niet
+     * geschreven naar ...\Situations" uit -- en draaide OMSI al, dan begon er
+     * een vrije rit zonder dat er iets klaarstond.
+     */
+    if (inBekijkstand()) {
+      log(`vrij rijden geweigerd: alleen bekijken (${folder})`)
+      return { running: false, launched: false, klaargezet: 'niets', fout: 'bekijken' }
+    }
     const instellingen = readSettings(userData())
     const yard = request.vehiclePath ? await wagenparkVoorStart(folder, request.vehiclePath, request.yard) : undefined
     const vehicle = request.vehiclePath
@@ -5293,8 +5423,21 @@ function registerHandlers(): void {
    * situatie wordt geschreven en als "Last Situation" klaargezet, en pas daarna
    * gaat het spel aan. Zo hoeft de chauffeur in OMSI alleen op Start te drukken.
    */
-  handle('duty:begin', async (_event, request: BeginRequest) => {
+  handle('duty:begin', async (_event, request: BeginRequest): Promise<BeginResult> => {
     const { duty, ibis } = request
+    /*
+     * Alleen bekijken (main/versiewacht.ts): er begint niets, vóór de
+     * begintijd in het profiel komt. `fs` hield het klaarzetten wel tegen en
+     * launchOmsi weigerde, maar dan stond er een begonnen dienst in de kopie,
+     * met "klaarzetten mislukt" in de voet -- en draaide OMSI al, dan liep die
+     * dienst gewoon, met een overlay en een telling die nergens heen gingen.
+     * Een dienst aannemen (en een examen) mag wel: dat is rondkijken, in de
+     * kopie.
+     */
+    if (inBekijkstand()) {
+      log(`dienst niet begonnen: alleen bekijken (${duty?.mapFolder ?? '?'}, omloop ${duty?.tourNumber ?? '?'})`)
+      return { connected: false, launched: false, running: false, fout: 'bekijken' }
+    }
     if (career?.activeDuty && !career.activeDuty.startedAt) {
       persist({ ...career, activeDuty: { ...career.activeDuty, startedAt: new Date().toISOString() } })
     }
@@ -5449,6 +5592,17 @@ function registerHandlers(): void {
    * sluit een overlay die de app voor dicht aanzag. Levert de werkelijke stand.
    */
   handle('overlay:set', (_event, duty: Duty | undefined, open: boolean, ibis?: IbisPlan) => {
+    /*
+     * Alleen bekijken (main/versiewacht.ts): geen overlay. START weigert daar
+     * al, maar een dienst die in het profiel al liep (de nieuwere exe ging
+     * midden in een dienst dicht) kon via "hervatten" gewoon verder, met een
+     * overlay en een telling die in de kopie terechtkwamen en bij het
+     * afsluiten weg waren (tegenlezing 29-09). Het scherm zegt waarom.
+     */
+    if (open && inBekijkstand()) {
+      log('overlay niet geopend: alleen bekijken')
+      return overlayIsOpen()
+    }
     if (open && (duty || vrijeRit)) openOverlay(duty ?? undefined, ibis)
     else if (!open) closeOverlay()
     return overlayIsOpen()
@@ -6044,7 +6198,9 @@ function registerHandlers(): void {
       return await klus()
     } catch (fout) {
       logFout('add-on-manager', fout)
-      return { fout: fout instanceof ZipFout ? fout.soort : 'fout', melding: fout instanceof Error ? fout.message : String(fout) } as {
+      // Een volle schijf is geen raadsel maar een melding: `ruimte`, en de installatie is teruggedraaid.
+      const soort = fout instanceof ZipFout ? fout.soort : fout instanceof InstallatieFout && fout.soort === 'ruimte' ? 'ruimte' : 'fout'
+      return { fout: soort, melding: fout instanceof Error ? fout.message : String(fout) } as {
         fout: string
       }
     } finally {
@@ -6060,10 +6216,21 @@ function registerHandlers(): void {
     andersAantal: plan.regels.filter((r) => r.staat === 'anders').length,
     overig: plan.overig.slice(0, 100),
     overigAantal: plan.overig.length,
+    geweigerd: plan.geweigerd.slice(0, 100),
+    geweigerdAantal: plan.geweigerd.length,
+    dubbel: plan.dubbel.slice(0, 100),
+    dubbelAantal: plan.dubbel.length,
+    teLang: plan.teLang.slice(0, 100),
+    teLangAantal: plan.teLang.length,
+    rommel: plan.rommel,
+    code: plan.code.slice(0, 50).map((r) => ({ doel: r.doel, staat: r.staat })),
+    nooit: plan.nooit.slice(0, 50),
     plekken: plan.plekken.slice(0, 60),
     bussen: plan.bussen,
     kaarten: plan.kaarten,
-    bytes: plan.regels.reduce((som, r) => som + r.grootte, 0)
+    bytes: plan.regels.reduce((som, r) => som + r.grootte, 0),
+    ruimte: ruimteVoor(plan, omsi(), userData(), false),
+    ruimteMetCode: ruimteVoor(plan, omsi(), userData(), true)
   })
 
   handle('addon:kies', async (_event, soort: 'zip' | 'map') => {
@@ -6086,23 +6253,32 @@ function registerHandlers(): void {
       }
     })
   )
-  handle('addon:installeer', (event, pad: string, naam?: string) =>
+  handle('addon:installeer', (event, pad: string, naam?: string, metCode?: boolean) =>
     eenTegelijk(async () => {
       // Bestanden overschrijven die OMSI open heeft, gaat mis of half.
       if (await isOmsiRunning()) return { fout: 'omsi' }
       if (addonPlan?.pad !== String(pad)) return { fout: 'plan' }
       const plan = { ...addonPlan.plan, naam: String(naam ?? '').trim().slice(0, 80) || addonPlan.plan.naam }
+      // Het venster zette de knop al uit; hier nog eens, want de schijf kan intussen voller zijn.
+      if (!ruimteVoor(plan, omsi(), userData(), metCode === true).past) return { fout: 'ruimte' }
       const bron = openBron(String(pad))
       try {
-        const uit = await inStukjes(installeerStappen(bron, plan, omsi(), userData()), event.sender, 'installeer')
-        const register = leesRegister(userData())
-        schrijfRegister(userData(), { addons: [...register.addons, uit.addon] })
-        log(`Add-on geïnstalleerd: ${uit.addon.naam} (${uit.geschreven} bestanden, ${uit.overschreven} overschreven)`)
+        const uit = await inStukjes(
+          installeerStappen(bron, plan, omsi(), userData(), new Date(), { metCode: metCode === true }),
+          event.sender,
+          'installeer'
+        )
+        // Lukt het register niet, dan gaat de installatie terug (`registreer`).
+        registreer(userData(), omsi(), uit)
+        log(
+          `Add-on geïnstalleerd: ${uit.addon.naam} (${uit.geschreven} bestanden, ${uit.overschreven} overschreven, ` +
+            `${uit.code} plugin, ${plan.geweigerd.length} geweigerd, ${plan.nooit.length} programma's niet)`
+        )
         addonPlan = undefined
         // Er kunnen bussen en kaarten bij zijn: de lijsten opnieuw lezen.
         vergeetKaarten()
         vehicleTrackers.clear()
-        return { id: uit.addon.id, geschreven: uit.geschreven, overschreven: uit.overschreven }
+        return { id: uit.addon.id, geschreven: uit.geschreven, overschreven: uit.overschreven, code: uit.code }
       } finally {
         bron.sluit()
       }
@@ -6388,6 +6564,15 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     /*
+     * Nog vóór het logboek: is deze exe ouder dan de versie die de
+     * gebruikersmap het laatst bijwerkte, dan eerst vragen -- alleen bekijken
+     * zet de app op een kopie van die map (main/versiewacht.ts).
+     */
+    if (bewaakVersie(__APP_VERSION__) === 'afsluiten') {
+      app.quit()
+      return
+    }
+    /*
      * Het logboek gaat als eerste aan, nog voor er iets gelezen wordt.
      *
      * Meldingen kwamen binnen als "hij hangt" en "hij is zomaar afgesloten", en
@@ -6397,10 +6582,12 @@ if (!app.requestSingleInstanceLock()) {
      */
     const pad = startLogboek(
       userData(),
-      `OMSI Enhancer ${__APP_VERSION__} start -- Electron ${process.versions.electron}, ` +
+      `OMSI Enhancer ${__APP_VERSION__} (${stempel()}) start -- Electron ${process.versions.electron}, ` +
         `Windows ${process.getSystemVersion?.() ?? ''}, ${process.arch}`
     )
     log(`gebruikersgegevens: ${userData()}`)
+    const bekijken = alleenBekijken()
+    if (bekijken) log(`alleen bekijken: de map werd bijgewerkt door ${bekijken.versie} (${bekijken.bouw ?? '?'}); er wordt niets opgeslagen`)
     /*
      * Knoppen die nog aan een toets moesten. De app kan dicht zijn geweest toen
      * OMSI afsloot; dan gebeurt het nu, of anders zodra OMSI dicht is. En
@@ -6412,7 +6599,13 @@ if (!app.requestSingleInstanceLock()) {
     } catch {
       // Nog geen OMSI gekozen; dan is er ook niets bijgeschreven.
     }
-    if (inDeWachtrij() > 0 || verkeerd > 0) {
+    /*
+     * Niet in alleen-bekijken: keyboard.cfg is van OMSI, en `fs` weigert het
+     * toch -- als onafgehandelde belofte in het logboek, en met een wachtrij
+     * elke vijf tellen opnieuw zodra OMSI dicht was. De wachtrij blijft staan
+     * voor de exe die wel mag schrijven.
+     */
+    if (!inBekijkstand() && (inDeWachtrij() > 0 || verkeerd > 0)) {
       void schrijfStraks('bij het starten van de app').then(() => {
         if (inDeWachtrij() > 0) wachtOpOmsiDicht()
       })
@@ -6514,7 +6707,8 @@ if (!app.requestSingleInstanceLock()) {
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
     })
-  })
+    // Een fout hierboven mag nooit een app zonder venster achterlaten; zie `meldStartFout`.
+  }).catch((fout) => meldStartFout(fout, Boolean(mainWindow && !mainWindow.isDestroyed())))
 
   app.on('before-quit', () => {
     stopApparaat()
