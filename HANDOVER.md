@@ -1231,6 +1231,16 @@ naar `http://<adres van de pc>:47810/n/<sleutel>/`. Het toestel opent daar
   niet.
 - Nog niet op een echte iPhone of Android gezien, alleen in een browser op
   telefoon- en tabletformaat.
+- **Volledig scherm en scherm aan** (29-09-2026, `renderer/src/wakker.ts`).
+  Over http op het thuisnetwerk mag Android geen echte webapp installeren
+  (een snelkoppeling opent in een tabblad met adresbalk) en geen Wake Lock
+  geven. Daarom: een vraag midden in beeld "Volledig scherm / Niet nu"
+  (`requestFullscreen` mag over http, maar alleen na een tik; gekozen staat in
+  localStorage `navVolScherm`, en de eerste tik na herladen zet het weer aan),
+  en een stil filmpje in een lus (webm en mp4 uit NoSleep.js, MIT) dat het
+  scherm aan houdt, met de Wake Lock als die er wel is. De server levert nu
+  ook stukken (Range, 206): Safari speelt anders geen video. Een iPhone kent
+  geen volledig scherm; daar blijft "Zet op beginscherm" de weg.
 
 **De icoontjes zijn nog maar half in gebruik.** De set staat er en is nagekeken:
 

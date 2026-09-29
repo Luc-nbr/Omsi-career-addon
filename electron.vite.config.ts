@@ -59,6 +59,12 @@ export default defineConfig({
        * schrijfwijze staan die een oudere iPhone niet leest.
        */
       target: ['chrome130', 'safari15'],
+      /*
+       * De stille filmpjes van wakker.ts altijd als bestand, ook als ze klein
+       * zijn: als data:-adres houdt de CSP van apparaat.html ze tegen (media-src
+       * valt onder default-src 'self'). De rest zoals Vite het wil.
+       */
+      assetsInlineLimit: (pad: string) => (/\.(mp4|webm)$/i.test(pad) ? false : undefined),
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/renderer/index.html'),
