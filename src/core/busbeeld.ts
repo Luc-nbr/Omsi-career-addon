@@ -1,6 +1,7 @@
+import { readFileSync } from 'node:fs'
 import { leesBusModel, zoekTextuurVan } from './busmodel'
 import { kleurstellingenVanBus, textuurSleutel, vervangingen } from './kleurstelling'
-import { leesTextuur, type Textuur } from './textuur'
+import { ontleedTextuur, pakBmpUit, type Textuur } from './textuur'
 import { leesO3dLezing } from './o3d'
 
 /**
@@ -327,10 +328,39 @@ function onthoudPlaat(pad: string, plaat: BusPlaat): BusPlaat {
 }
 
 /**
- * De tekening plus de texturen die wij zelf kunnen uitpakken.
+ * Eén textuur uitpakken voor de foto, gekozen op de INHOUD en niet op de naam.
  *
- * `.bmp`, `.png` en `.jpg` blijven liggen: die kan Electron in het hoofdproces
- * met `nativeImage` beter, en hier -- in een worker -- is dat niet te gebruiken.
+ * WAAROM OP DE INHOUD
+ * Hier stond: `.dds` en `.tga` pakt de werker uit, de rest doet het hoofdproces
+ * met `nativeImage`. Maar `nativeImage` leest geen BMP, en van de texturen die
+ * een kleurstelling noemt zijn er 667 een `.dds` die in werkelijkheid een BMP is
+ * en 74 een echte `.bmp`. Die werden allemaal grijs: 545 van de 2234
+ * kleurstellingen hadden minstens één grijze textuur (telling van 28-09-2026).
+ * `pakBmpUit` kan ze wel, en is in 84 van 84 echte BMP's gelijk aan wat
+ * Chromium ervan maakt (bus3d-ontwerp, bijlage B).
+ *
+ * `null` = niet hier: een PNG of JPEG (dat doet het hoofdproces), of iets wat
+ * niet te lezen is. Het hoofdproces kijkt dan zelf nog eens naar de inhoud.
+ */
+export function pakPlaatUit(pad: string): Textuur | null {
+  let bytes: Buffer
+  try {
+    bytes = readFileSync(pad)
+  } catch {
+    return null
+  }
+  const lezing = ontleedTextuur(bytes)
+  if (lezing.textuur) return lezing.textuur
+  if (lezing.soort === 'bmp') return pakBmpUit(bytes) ?? null
+  return null
+}
+
+/**
+ * De tekening plus de texturen die wij zelf kunnen uitpakken: DDS, TGA en BMP,
+ * herkend aan de inhoud (zie `pakPlaatUit`).
+ *
+ * PNG en JPEG blijven liggen: die kan Electron in het hoofdproces met
+ * `nativeImage` beter, en hier -- in een worker -- is dat niet te gebruiken.
  * Ze komen als `null` terug, zodat de aanroeper weet dat hij ze zelf moet doen.
  */
 export function bouwBusTekeningMetPlaten(
@@ -348,13 +378,8 @@ export function bouwBusTekeningMetPlaten(
       platen.set(pad, bekend)
       continue
     }
-    const soort = pad.slice(pad.lastIndexOf('.')).toLowerCase()
-    if (soort === '.dds' || soort === '.tga') {
-      const gelezen = leesTextuur(pad)
-      platen.set(pad, onthoudPlaat(pad, gelezen ? verkleinTextuur(gelezen, 512) : null))
-    } else {
-      platen.set(pad, onthoudPlaat(pad, null))
-    }
+    const gelezen = pakPlaatUit(pad)
+    platen.set(pad, onthoudPlaat(pad, gelezen ? verkleinTextuur(gelezen, 512) : null))
   }
   return { ...tekening, platen: [...platen] }
 }
