@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { basename, extname, join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { basename, join } from 'node:path'
 import { BrowserWindow, ipcMain, nativeImage } from 'electron'
 import { verkleinTextuur, type BusTekeningMetPlaten } from '../core/busbeeld'
 import { trailerOf } from '../core/trailer'
 import { log, logFout } from '../core/logboek'
-import { type Textuur } from '../core/textuur'
+import { pakBmpUit, type Textuur } from '../core/textuur'
 
 /**
  * Een foto van een bus maken, in een venster dat niemand ziet.
@@ -36,8 +36,12 @@ import { type Textuur } from '../core/textuur'
  * Dus hangen de foto's in een map met dit nummer erin. Verandert er iets aan
  * hoe een bus getekend wordt, dan gaat dit nummer omhoog en worden alle foto's
  * opnieuw gemaakt; de oude mappen ruimt `ruimOudeFotosOp` op.
+ *
+ * '3b' (29-09-2026): de BMP-fix. Dezelfde tekenaar, maar BMP's worden niet meer
+ * grijs; zonder nieuwe map bleven de grijze foto's van 545 kleurstellingen staan.
+ * `v4` is gereserveerd voor de foto uit de 3D-renderer (bus3d-ontwerp, §9).
  */
-const FOTO_VORM = 3
+const FOTO_VORM = '3b'
 
 /** Waar de foto's komen te staan, per versie van de tekenaar. */
 export function busfotoMap(userData: string): string {
@@ -355,22 +359,16 @@ async function tekenEen(
         return nummer
       }
 
-      let plaat: { breedte: number; hoogte: number; pixels: Uint8Array } | { bron: string } | undefined
-      const uitDeWerker = vanDeWerker.get(pad)
-      if (uitDeWerker) plaat = uitDeWerker
-      const soort = extname(pad).toLowerCase()
-      if (plaat) {
-        // al uitgepakt in de werker
-      } else if (soort === '.bmp' || soort === '.png' || soort === '.jpg' || soort === '.jpeg') {
-        /*
-         * Deze drie kent Electron zelf. Eerst gingen ze als gegevens-URL naar
-         * het venster, dat er een <img> van maakte -- en daar stond de tijd:
-         * het klaarzetten van de platen sprong van 154 ms naar 7300 ms zodra er
-         * zulke platen bij zaten. Hier uitpakken kost een fractie daarvan, en
-         * het venster hoeft alleen nog pixels te uploaden.
-         */
-        plaat = viaElectron(pad)
-      }
+      /*
+       * Wat de werker niet uitpakte, op de inhoud bekeken en niet op de naam:
+       * een `.tga` die een JPEG is, of een BMP die de werker niet kon lezen.
+       * PNG en JPEG kent Electron zelf. Eerst gingen ze als gegevens-URL naar
+       * het venster, dat er een <img> van maakte -- en daar stond de tijd: het
+       * klaarzetten van de platen sprong van 154 ms naar 7300 ms zodra er
+       * zulke platen bij zaten. Hier uitpakken kost een fractie daarvan, en het
+       * venster hoeft alleen nog pixels te uploaden.
+       */
+      const plaat = vanDeWerker.get(pad) ?? viaHoofdproces(pad)
       platenGeheugen.set(pad, plaat ?? null)
       if (!plaat) {
         perPad.set(pad, -1)
@@ -405,15 +403,44 @@ async function tekenEen(
 }
 
 /**
- * Een .bmp, .png of .jpg uitpakken met wat Electron al meebrengt.
+ * Een textuur die de werker liet liggen, gekozen op de inhoud.
+ *
+ * - PNG en JPEG: met `nativeImage`, dat die twee wel kent (uit de bytes, dus ook
+ *   als de extensie iets anders zegt).
+ * - BMP: `nativeImage` leest GEEN BMP -- daardoor werd elke BMP grijs, in 545
+ *   van de 2234 kleurstellingen. Normaal pakt de werker hem al uit
+ *   (`pakPlaatUit`); komt hij hier toch, dan is het een soort die `pakBmpUit`
+ *   niet kent (RLE, de oude OS/2-kop), en dan gaat hij als gegevens-URL naar het
+ *   venster, waar Chromium hem wel leest. Dat is traag, maar zeldzaam.
+ */
+function viaHoofdproces(pad: string): { breedte: number; hoogte: number; pixels: Uint8Array } | { bron: string } | undefined {
+  let bytes: Buffer
+  try {
+    bytes = readFileSync(pad)
+  } catch {
+    return undefined
+  }
+  if (bytes.length >= 2 && bytes[0] === 0x42 && bytes[1] === 0x4d) {
+    const uitgepakt = pakBmpUit(bytes)
+    if (uitgepakt) return verklein(uitgepakt, 512)
+    return { bron: `data:image/bmp;base64,${bytes.toString('base64')}` }
+  }
+  const png = bytes.length >= 4 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47
+  const jpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+  if (!png && !jpeg) return undefined
+  return viaElectron(bytes)
+}
+
+/**
+ * Een PNG of JPEG uitpakken met wat Electron al meebrengt.
  *
  * `getBitmap()` geeft de pixels in de volgorde blauw, groen, rood, alfa; WebGL
  * wil rood, groen, blauw, alfa. Dat omdraaien kost een doorloop en is de enige
  * reden dat deze functie meer is dan twee regels.
  */
-function viaElectron(pad: string): { breedte: number; hoogte: number; pixels: Uint8Array } | undefined {
+function viaElectron(bytes: Buffer): { breedte: number; hoogte: number; pixels: Uint8Array } | undefined {
   try {
-    const beeld = nativeImage.createFromPath(pad)
+    const beeld = nativeImage.createFromBuffer(bytes)
     if (beeld.isEmpty()) return undefined
     const maat = beeld.getSize()
     const bgra = beeld.getBitmap()
