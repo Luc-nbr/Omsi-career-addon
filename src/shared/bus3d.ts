@@ -312,6 +312,24 @@ function niveauBytes(t: Bus3dTextuur, b: number, h: number, rgba: boolean): numb
   return Math.max(1, Math.ceil(b / 4)) * Math.max(1, Math.ceil(h / 4)) * blokBytes(t)
 }
 
+/**
+ * Hoeveel niveaus er bij een DXT-textuur hooguit overgeslagen mogen worden.
+ *
+ * Het niveau waarmee we beginnen wordt op de GPU niveau 0, en WebGL weigert een
+ * S3TC-niveau 0 waarvan een zijde niet deelbaar is door 4 (INVALID_OPERATION,
+ * met `compressedTexImage2D` én met `texStorage2D`; gemeten in Electron 33 op
+ * 250x250, 256x186 en 2x2). Een keten van 1000x1000 met daaronder 125x125 of
+ * 3x3 mag wel: alleen het begin telt. Dus alleen een k waarbij beide zijden op
+ * niveau k deelbaar zijn door 4, en nooit voorbij het laatste niveau in het
+ * bestand. Omdat b >> k deelbaar door 4 betekent dat b deelbaar is door 2^(k+2),
+ * zijn de toegestane k precies 0 tot en met dit maximum.
+ */
+export function dxtMaxOverslaan(t: Pick<Bus3dTextuur, 'b' | 'h' | 'mips'>): number {
+  let k = 0
+  while (k + 1 < t.mips && ((t.b >> (k + 1)) & 3) === 0 && ((t.h >> (k + 1)) & 3) === 0 && t.b >> (k + 1) > 0 && t.h >> (k + 1) > 0) k++
+  return k
+}
+
 /** Bytes van een textuur vanaf niveau `k`, met de hele mipketen eronder. */
 function bytesVanaf(t: Bus3dTextuur, k: number): { bytes: number; b: number; h: number } {
   const rgba = t.soort !== 'dxt'
@@ -360,8 +378,9 @@ export function textuurPlan(texturen: Bus3dTextuur[], budgetBytes: number): Text
     let k = Math.max(0, Math.floor(Math.log2(d0 / DOEL_DICHTHEID)))
     const kap = t.soort === 'dxt' ? KAP_DXT : KAP_RGBA
     while (Math.max(t.b >> k, t.h >> k) > kap) k++
-    // Nooit meer overslaan dan het bestand niveaus heeft (DXT) of dan er zijde is.
-    const maxK = t.soort === 'dxt' ? Math.max(0, t.mips - 1) : Math.floor(Math.log2(Math.max(t.b, t.h)))
+    // Nooit meer overslaan dan het bestand niveaus heeft en WebGL als begin
+    // aanneemt (DXT, zie dxtMaxOverslaan), of dan er zijde is.
+    const maxK = t.soort === 'dxt' ? dxtMaxOverslaan(t) : Math.floor(Math.log2(Math.max(t.b, t.h)))
     k = Math.min(k, maxK)
     const r = bytesVanaf(t, k)
     regels.push({ id: t.id, overslaan: k, bytes: r.bytes, b: r.b, h: r.h, laden: true })
@@ -380,7 +399,7 @@ export function textuurPlan(texturen: Bus3dTextuur[], budgetBytes: number): Text
         if (!r.laden) continue
         if ((t === carrosserie) !== kandidaatCarrosserie) continue
         if (Math.max(r.b, r.h) <= BUDGET_BODEM) continue
-        if (t.soort === 'dxt' && stappen[i] + 1 >= t.mips) continue
+        if (t.soort === 'dxt' && stappen[i] + 1 > dxtMaxOverslaan(t)) continue
         const waarde = r.bytes / Math.max(t.oppervlak, 1e-6)
         if (waarde > besteWaarde) {
           besteWaarde = waarde

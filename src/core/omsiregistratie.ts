@@ -121,6 +121,11 @@ function iniTekst(pad: string): string | undefined {
  * Een ini zoals Windows' GetPrivateProfileString hem leest: secties en sleutels
  * zonder hoofdlettergevoel, spaties eromheen weg, `;` is commentaar, en bij een
  * dubbele sectie of sleutel telt de eerste.
+ *
+ * Een dubbele sectie wordt NIET samengevoegd: Windows zoekt alleen in de eerste
+ * `[addon.0]`, dus wat in de tweede staat (bijvoorbeeld een `SteamArtNr`) bestaat
+ * voor OMSI niet. Nagemeten met GetPrivateProfileString op een ini met twee keer
+ * `[addon.0]`: ArtNr uit de eerste, SteamArtNr leeg (29-09-2026).
  */
 export function leesIni(tekst: string): Map<string, Map<string, string>> {
   const secties = new Map<string, Map<string, string>>()
@@ -131,11 +136,9 @@ export function leesIni(tekst: string): Map<string, Map<string, string>> {
     const kop = /^\[(.*)\]$/.exec(r)
     if (kop) {
       const naam = kop[1].trim().toLowerCase()
-      huidig = secties.get(naam)
-      if (!huidig) {
-        huidig = new Map()
-        secties.set(naam, huidig)
-      }
+      // Een tweede sectie met dezelfde naam: haar regels gaan in een weggooimap.
+      huidig = new Map()
+      if (!secties.has(naam)) secties.set(naam, huidig)
       continue
     }
     const is = r.indexOf('=')
@@ -159,6 +162,18 @@ export function steamDlcs(omsiMap: string): Set<number> | undefined {
   return uit
 }
 
+/**
+ * Een nummer zoals Delphi's StrToInt het aanneemt: een Integer van 32 bits. Wat
+ * daarbuiten valt, weigert StrToInt (EConvertError), en dan telt de vermelding
+ * voor OMSI niet. Zonder deze grens werd ArtNr=4294979022 bij ons sleutel 11726
+ * (modulo 2^32), een sleutel die OMSI nooit bevestigt. Nul en negatief laten we
+ * ook weg: dan tonen we hooguit minder, nooit meer.
+ */
+export function artikelnummer(tekst: string | undefined): number | undefined {
+  const n = strToInt(tekst)
+  return Number.isInteger(n) && n > 0 && n <= 0x7fffffff ? n : undefined
+}
+
 /** Alles lezen, zonder geheugen. */
 export function leesOmsiRegistratie(omsiMap: string): OmsiRegistratie {
   const vingerafdruk = registratieVingerafdruk(omsiMap)
@@ -171,14 +186,14 @@ export function leesOmsiRegistratie(omsiMap: string): OmsiRegistratie {
     for (let n = 0; n < 1000; n++) {
       const sectie = secties.get(`addon.${n}`)
       if (!sectie) continue
-      const artNr = strToInt(sectie.get('artnr'))
-      if (!Number.isInteger(artNr) || artNr <= 0) continue
+      const artNr = artikelnummer(sectie.get('artnr'))
+      if (artNr === undefined) continue
       const steamRauw = sectie.get('steamartnr')
-      const steamArtNr = steamRauw !== undefined ? strToInt(steamRauw) : undefined
+      const steamArtNr = steamRauw !== undefined ? artikelnummer(steamRauw) : undefined
       let bevestigd = false
       let waarom: string
-      if (steamArtNr === undefined || !Number.isInteger(steamArtNr) || steamArtNr <= 0) {
-        waarom = 'geen SteamArtNr: winkelversie, niet na te gaan'
+      if (steamArtNr === undefined) {
+        waarom = !steamRauw ? 'geen SteamArtNr: winkelversie, niet na te gaan' : `SteamArtNr "${steamRauw}" is geen geldig nummer`
       } else if (!dlcs) {
         waarom = `SteamArtNr ${steamArtNr}, maar geen Steam-manifest van OMSI 2`
       } else if (!dlcs.has(steamArtNr)) {

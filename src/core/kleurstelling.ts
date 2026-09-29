@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { modelVanBus, zoekTextuurVan } from './busmodel'
 import { readOmsiLines } from './omsiFile'
@@ -56,14 +56,74 @@ function opNaam(a: string, b: string): number {
   return x < y ? -1 : x > y ? 1 : 0
 }
 
-const perModel = new Map<string, Kleurstellingen | undefined>()
+/**
+ * Het geheugen per `model.cfg`, met een vingerafdruk van alles waar de uitkomst
+ * van afhangt: de cfg, de CTC-map (een .cti erbij of eraf) en elk .cti-bestand
+ * (grootte en tijd). Klopt die niet meer, dan opnieuw lezen.
+ *
+ * Voorheen bleef een uitkomst voor altijd staan, per draad: een repaint die erbij
+ * kwam terwijl de app open stond, zag de werker 'bus3d' niet (de lak gaf geen
+ * vars en geen texturen) terwijl de controle het pakket wel verouderd noemde, en
+ * main (`kleurVars`) kon een ander nummer geven dan de werker (aanvalsverslag
+ * Bus3D F1, punt 9c). Nu lezen alle draden na een wijziging hetzelfde.
+ *
+ * De afdruk kost een `stat` van de cfg, een `readdir` van de CTC-map en een
+ * `stat` per .cti: gemeten over alle 131 CTC-mappen gemiddeld 1,4 ms, hooguit
+ * 8 ms (40 .cti's), tegen 3,6 s om alles opnieuw te lezen.
+ *
+ * Hooguit `MAX_BEWAARD` modellen; de langst niet gebruikte gaat eerst weg.
+ */
+interface Bewaard {
+  vinger: string
+  map?: string
+  uitkomst: Kleurstellingen | undefined
+}
+const perModel = new Map<string, Bewaard>()
+const MAX_BEWAARD = 32
+
+function stempel(pad: string): string {
+  try {
+    const st = statSync(pad)
+    return `${st.size}:${st.mtimeMs}`
+  } catch {
+    return '-'
+  }
+}
+
+/** De .cti-bestanden van een CTC-map in de volgorde van OMSI, of `undefined` als de map er niet is. */
+function ctiBestanden(map: string): string[] | undefined {
+  try {
+    return readdirSync(map)
+      .filter((naam) => naam.toLowerCase().endsWith('.cti'))
+      .sort(opNaam)
+  } catch {
+    return undefined
+  }
+}
+
+function vingerafdruk(cfgStempel: string, map: string | undefined, bestanden: string[] | undefined): string {
+  if (!map) return cfgStempel
+  if (!bestanden) return `${cfgStempel}|geen map`
+  return `${cfgStempel}|${bestanden.map((naam) => `${naam}=${stempel(join(map, naam))}`).join('|')}`
+}
 
 /** De kleurstellingen die bij een `model.cfg` horen, of niets als hij er geen heeft. */
 export function leesKleurstellingen(modelcfg: string): Kleurstellingen | undefined {
-  if (perModel.has(modelcfg)) return perModel.get(modelcfg)
-  const uitkomst = lees(modelcfg)
-  perModel.set(modelcfg, uitkomst)
-  return uitkomst
+  const bekend = perModel.get(modelcfg)
+  if (bekend) {
+    const nu = vingerafdruk(stempel(modelcfg), bekend.map, bekend.map ? ctiBestanden(bekend.map) : undefined)
+    if (nu === bekend.vinger) {
+      // Achteraan zetten: de langst niet gebruikte staat vooraan.
+      perModel.delete(modelcfg)
+      perModel.set(modelcfg, bekend)
+      return bekend.uitkomst
+    }
+  }
+  const gelezen = lees(modelcfg)
+  perModel.delete(modelcfg)
+  perModel.set(modelcfg, gelezen)
+  while (perModel.size > MAX_BEWAARD) perModel.delete(perModel.keys().next().value!)
+  return gelezen.uitkomst
 }
 
 /** Hetzelfde, vanaf het `.bus`-bestand. */
@@ -72,12 +132,18 @@ export function kleurstellingenVanBus(busPad: string): Kleurstellingen | undefin
   return modelcfg ? leesKleurstellingen(modelcfg) : undefined
 }
 
-function lees(modelcfg: string): Kleurstellingen | undefined {
+/**
+ * Lezen, met de vingerafdruk erbij. De stempels worden genomen VÓÓR de bestanden
+ * gelezen worden: verandert er tijdens het lezen iets, dan klopt de afdruk de
+ * volgende keer niet en wordt er opnieuw gelezen -- nooit andersom.
+ */
+function lees(modelcfg: string): Bewaard {
+  const cfgStempel = stempel(modelcfg)
   let regels: string[]
   try {
     regels = readOmsiLines(modelcfg)
   } catch {
-    return undefined
+    return { vinger: vingerafdruk(cfgStempel, undefined, undefined), uitkomst: undefined }
   }
 
   const modelmap = dirname(modelcfg)
@@ -99,16 +165,10 @@ function lees(modelcfg: string): Kleurstellingen | undefined {
       if (plek && standaard) plekken[plek] = standaard
     }
   }
-  if (!variabele || !map || !existsSync(map)) return undefined
-
-  let bestanden: string[]
-  try {
-    bestanden = readdirSync(map)
-      .filter((naam) => naam.toLowerCase().endsWith('.cti'))
-      .sort(opNaam)
-  } catch {
-    return undefined
-  }
+  if (!variabele || !map) return { vinger: vingerafdruk(cfgStempel, undefined, undefined), uitkomst: undefined }
+  const bestanden = ctiBestanden(map)
+  const vinger = vingerafdruk(cfgStempel, map, bestanden)
+  if (!bestanden) return { vinger, map, uitkomst: undefined }
 
   const lijst: Kleurstelling[] = []
   const opNaamGevonden = new Map<string, Kleurstelling>()
@@ -152,8 +212,8 @@ function lees(modelcfg: string): Kleurstellingen | undefined {
     }
   }
 
-  if (lijst.length === 0) return undefined
-  return { variabele, map, plekken, lijst }
+  if (lijst.length === 0) return { vinger, map, uitkomst: undefined }
+  return { vinger, map, uitkomst: { variabele, map, plekken, lijst } }
 }
 
 /**

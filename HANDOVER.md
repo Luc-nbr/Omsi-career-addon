@@ -713,14 +713,43 @@ verschuiven:
   dat er nooit ontwarde meetkunde op schijf staat;
 - de app schrijft niets in `addons.ini`, `RegAddons` of het Steam-manifest.
 
-**Proeven:** `scripts/probe-bus3d.ts` (proefset, T-G1, T-V1..T-V5, protocol;
-`--nulmeting`; `--alles [--diep]`), `scripts/probe-meshlijst.ts`,
+**Tegenlezing F1 (29-09), gerepareerd; elk punt heeft een proef in
+`probe-bus3d.ts` (randgevallen) die op de code van 1592f14 faalt:**
+- Registratie: een dubbele `[addon.N]` wordt niet samengevoegd (Windows leest
+  alleen de eerste), en `ArtNr`/`SteamArtNr` tellen alleen tussen 1 en
+  2147483647 (Delphi's StrToInt); anders werd 4294979022 sleutel 11726.
+- `textuurPlan`: een DXT-textuur slaat alleen niveaus over tot een begin waarvan
+  beide zijden deelbaar zijn door 4 (`dxtMaxOverslaan`); WebGL weigert anders
+  het begin (250x250, 2x2: INVALID_OPERATION in Electron 33).
+- CTC ook op de texturen die de cfg noemt (transmap, masker, light- en nightmap):
+  de `_trans` van de NLC bij "Rheinhausen" enz. (318 vervangingen, 66 bussen).
+- Main: de rij is per venster (`WebContents`); het herbouwen na de controle is
+  een achtergrondbeurt die nooit een vraag van de speler verdringt; de rustklok
+  van 120 s loopt alleen als er geen werkervraag loopt; mislukt het herbouwen
+  van een verouderd pakket, dan wordt het vergeten en krijgt het venster
+  `bus3d:vervangen`. Nieuw: `bus:stuk3d` (het venster meldt een onleesbaar
+  pakket; main vergeet het).
+- Cache: het zijspoor noemt de grootte van het `.b3d` (afgekapt = opnieuw
+  bouwen), `fsync` vóór het hernoemen, en de werker houdt de grens van 1 GB ook
+  tijdens een sessie aan (voorheen 4,5 GB na een volle ronde).
+- Bronnen van een pakket: de mappen van alle `[mesh]`-regels, de gelezen `.dsc`'s
+  en de map van de .bus. `leesSchermcfg` onthoudt ook de tijden van de mappen
+  van de meshes (een o3d die later verschijnt), en `leesKleurstellingen` toetst
+  zijn geheugen aan de cfg, de CTC-map en elke .cti (hooguit 32 modellen).
+- `--alles` gebruikt `listVehicles` (de buskeuze) plus alle .bus met
+  `[friendlyname]`.
+
+**Proeven:** `scripts/probe-bus3d.ts` (proefset, T-G1, T-V1..T-V5, protocol,
+randgevallen; `--nulmeting`; `--alles [--diep]`), `scripts/probe-meshlijst.ts`,
 `scripts/probe-bus3d-exe.cjs` (voorbereid; `--dev` draait al),
 `scripts/bus3d-proefset.json`.
 
 **Open:** DISABLED-blokken (een meshes.json van een rit met de SL92 nodig);
-Luc bekijkt de GS GU240 (sleutel 12411) één keer in OMSI; de opentijd van het
-3D-venster (F2); de exe-proef in de gebouwde exe.
+Luc bekijkt de GS GU240 (sleutel 12411) één keer in OMSI -- let op: dat is een
+KI-bus (M18 KI-Version); hij staat niet in de buskeuze, dus op deze pc is het
+icoon 'versleuteld' via de buskeuze niet te zien; de opentijd van het 3D-venster
+(F2); de exe-proef in de gebouwde exe; `bewaar: false` voor een fotoronde (F2,
+met foto v4); de preload voor `bus:stuk3d` (F2).
 
 ### 5.00 De planning van het busbedrijf — deel 0 staat (28-09-2026)
 

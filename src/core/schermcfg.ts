@@ -311,13 +311,51 @@ export function cfgRegels(pad: string): string[] {
   return tekst.split(/\r\n|\r|\n/)
 }
 
-const geheugen = new Map<string, { sleutel: string; cfg: ModelCfg }>()
+const geheugen = new Map<string, { sleutel: string; mappen: string[]; mapSleutel: string; cfg: ModelCfg }>()
+
+/** De wijzigingstijden van een rij mappen, als één tekst ('-' voor een map die er niet is). */
+function mapStempels(mappen: string[]): string {
+  return mappen
+    .map((map) => {
+      try {
+        return String(statSync(map).mtimeMs)
+      } catch {
+        return '-'
+      }
+    })
+    .join('|')
+}
+
+/**
+ * De mappen waar de [mesh]-regels van een cfg naar wijzen, zonder de schijf aan
+ * te raken: dezelfde paden als `ontleedSchermcfg` maakt (map van de cfg plus de
+ * regel). Een regel te veel (een '[mesh]' die eigenlijk een argument is) kost
+ * alleen een `stat` extra.
+ */
+function meshMappen(modelcfg: string, regels: string[]): string[] {
+  const map = dirname(modelcfg)
+  const uit = new Set<string>()
+  for (let i = 0; i < regels.length; i++) {
+    if (regels[i] !== '[mesh]') continue
+    const pad = regels[i + 1] ?? ''
+    if (!pad.trim()) continue
+    uit.add(dirname(join(map, ...pad.split(/[\\/]+/).filter(Boolean))).toLowerCase())
+  }
+  return [...uit]
+}
 
 /**
  * De cfg van een model, of `undefined` als hij niet te lezen is.
  *
  * Onthouden op pad, grootte en wijzigingstijd: de schermvorm vraagt hem twee
  * keer kort na elkaar op (eerst voor de getallen, dan voor de vorm).
+ *
+ * Eén ding in de uitkomst hangt niet van de cfg af maar van de schijf: of de o3d
+ * van een [mesh] bestaat (`bestaat`, en daarmee de mesh-nummers). Daarom telt
+ * ook de wijzigingstijd van de mappen van die o3d's mee: komt er een o3d bij of
+ * gaat er een weg, dan verandert die tijd en wordt de cfg opnieuw gelezen.
+ * Zonder dat zag een werker die de cfg al kende een later verschenen o3d nooit
+ * (aanvalsverslag Bus3D F1, punt 9b).
  */
 export function leesSchermcfg(modelcfg: string): ModelCfg | undefined {
   let sleutel: string
@@ -328,16 +366,23 @@ export function leesSchermcfg(modelcfg: string): ModelCfg | undefined {
     return undefined
   }
   const bekend = geheugen.get(modelcfg)
-  if (bekend && bekend.sleutel === sleutel) return bekend.cfg
+  if (bekend && bekend.sleutel === sleutel && bekend.mapSleutel === mapStempels(bekend.mappen)) return bekend.cfg
   let regels: string[]
   try {
     regels = cfgRegels(modelcfg)
   } catch {
     return undefined
   }
+  /*
+   * De mappen stempelen vóór de o3d's bekeken worden: verandert er tijdens het
+   * ontleden iets, dan klopt de stempel de volgende keer niet en wordt er
+   * opnieuw gelezen -- nooit andersom.
+   */
+  const mappen = meshMappen(modelcfg, regels)
+  const mapSleutel = mapStempels(mappen)
   const cfg = ontleedSchermcfg(modelcfg, regels)
   if (geheugen.size > 8) geheugen.clear()
-  geheugen.set(modelcfg, { sleutel, cfg })
+  geheugen.set(modelcfg, { sleutel, mappen, mapSleutel, cfg })
   return cfg
 }
 

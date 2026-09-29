@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import {
   closeSync,
+  fsyncSync,
   mkdirSync,
   openSync,
   readdirSync,
@@ -31,8 +32,14 @@ import { bouwBus3d, bus3dLak, pakketVerouderd, type Bus3dBouw, type Bus3dBron, t
  * Er is GEEN textuurcache: texturen stromen rechtstreeks uit de OMSI-map. Wat
  * hier staat is alleen geometrie; de NLC heeft 25 MB unieke geometrie.
  *
- * Grootte: een LRU van standaard 1 GB, opgeruimd bij het starten en na het
- * schrijven. Gebruik zet de tijd van het `.b3d` vooruit.
+ * Grootte: een LRU van standaard 1 GB, opgeruimd bij het starten (main) en na het
+ * schrijven zodra de grens overschreden wordt (de werker; zonder dat groeide de
+ * cache in één sessie tot 4,5 GB). Gebruik zet de tijd van het `.b3d` vooruit.
+ *
+ * Een pakket telt alleen als zijn `.b3d` precies zo groot is als het zijspoor
+ * zegt: een afgekapt bestand (stroom weg, schijf vol) wordt zo opnieuw gebouwd
+ * in plaats van eindeloos uit de cache te komen. Het `.b3d` gaat met `fsync` naar
+ * de schijf vóór het de echte naam krijgt.
  *
  * Geen Electron: de werker schrijft (hij heeft het pakket al in handen), main
  * leest het zijspoor, en de probe doet allebei.
@@ -49,6 +56,8 @@ export interface Bus3dZijspoor {
   /** De OMSI-map waaruit gebouwd is. */
   omsi: string
   manifest: Bus3dManifest
+  /** De grootte van het `.b3d` in bytes: klopt die niet, dan is het pakket stuk. */
+  bytes: number
   bronnen: Bus3dBron[]
   textuurBronnen: Bus3dTextuurBron[]
   /**
@@ -109,6 +118,9 @@ export class Bus3dCache {
     try {
       // In stukken van hooguit 1024 buffers (de grens van writev).
       for (let i = 0; i < delen.length; i += 1024) bytes += writevSync(fd, delen.slice(i, i + 1024))
+      // Eerst echt op de schijf, dan pas de echte naam: anders kan een stroomstoring
+      // een pakket met de goede naam en een halve inhoud achterlaten.
+      fsyncSync(fd)
     } finally {
       closeSync(fd)
     }
@@ -120,18 +132,35 @@ export class Bus3dCache {
       bus: bouw.manifest.bus,
       omsi: resolve(omsiMap),
       manifest: bouw.manifest,
+      bytes,
       bronnen: bouw.bronnen,
       textuurBronnen: bouw.textuurBronnen,
       geregistreerd: [...geregistreerd].sort((a, b) => a - b),
       gebouwd: Date.now()
     }
-    writeFileSync(`${this.zijspoorPad(pakket)}.tmp`, JSON.stringify(zijspoor))
+    const json = JSON.stringify(zijspoor)
+    writeFileSync(`${this.zijspoorPad(pakket)}.tmp`, json)
     renameSync(`${this.zijspoorPad(pakket)}.tmp`, this.zijspoorPad(pakket))
     // Het vorige pakket van deze bus mag weg: het heeft een ander id.
     const vorige = this.pakketVan(omsiMap, bouw.manifest.bus)
     writeFileSync(join(this.map, 'bus', busSleutel(omsiMap, bouw.manifest.bus)), pakket)
-    if (vorige && vorige !== pakket) this.gooiWeg(vorige)
+    let weg = 0
+    if (vorige && vorige !== pakket) weg = this.gooiWeg(vorige)
+    this.handhaafGrens(bytes + Buffer.byteLength(json) - weg)
     return { ms: Math.round(performance.now() - t0), bytes, zijspoor }
+  }
+
+  /**
+   * Wat er naar schatting in de cache staat; `undefined` = nog niet geteld. De
+   * werker telt één keer alles (`inhoud`) en houdt het daarna bij, zodat hij
+   * niet na elke schrijfbeurt de hele map hoeft te bekijken.
+   */
+  private geschat: number | undefined
+
+  /** Na een schrijfbeurt: boven de grens, dan de LRU (de oudste eerst weg). */
+  private handhaafGrens(erbij: number): void {
+    this.geschat = this.geschat === undefined ? this.inhoud().reduce((s, p) => s + p.bytes, 0) : this.geschat + erbij
+    if (this.geschat > this.grens) this.geschat = this.ruimOp().bytes
   }
 
   /** Welk pakket er voor deze bus staat (zonder te controleren of het nog klopt). */
@@ -152,11 +181,16 @@ export class Bus3dCache {
     return z && z.omsi.toLowerCase() === resolve(omsiMap).toLowerCase() ? z : undefined
   }
 
+  /**
+   * Het zijspoor van een pakket, als het `.b3d` erbij er heel staat: precies de
+   * grootte die het zijspoor noemt. Een afgekapt `.b3d` telt niet; dan wordt de
+   * bus opnieuw gebouwd (aanvalsverslag F1, punt 8).
+   */
   zijspoor(pakket: string): Bus3dZijspoor | undefined {
     try {
-      statSync(this.pakketPad(pakket))
+      const st = statSync(this.pakketPad(pakket))
       const z = JSON.parse(readFileSync(this.zijspoorPad(pakket), 'utf8')) as Bus3dZijspoor
-      return z.versie === 1 && z.pakket === pakket ? z : undefined
+      return z.versie === 1 && z.pakket === pakket && z.bytes === st.size ? z : undefined
     } catch {
       return undefined
     }
@@ -172,9 +206,42 @@ export class Bus3dCache {
     }
   }
 
-  private gooiWeg(pakket: string): void {
-    rmSync(this.pakketPad(pakket), { force: true })
-    rmSync(this.zijspoorPad(pakket), { force: true })
+  /** Een pakket van de schijf; geeft hoeveel bytes er weg zijn. */
+  private gooiWeg(pakket: string): number {
+    let bytes = 0
+    for (const pad of [this.pakketPad(pakket), this.zijspoorPad(pakket)]) {
+      try {
+        bytes += statSync(pad).size
+      } catch {
+        continue
+      }
+      rmSync(pad, { force: true })
+    }
+    return bytes
+  }
+
+  /**
+   * Eén pakket vergeten: het bestand, het zijspoor, en de wijzer van zijn bus als
+   * die nog naar dit pakket wijst. Voor een pakket dat verouderd is terwijl de
+   * herbouw mislukt (punt 7), en voor een pakket dat het venster stuk meldt.
+   */
+  vergeetPakket(pakket: string, omsiMap: string, bus?: string): void {
+    const relatief = bus ?? this.zijspoorOngetoetst(pakket)?.bus
+    const weg = this.gooiWeg(pakket)
+    if (this.geschat !== undefined) this.geschat -= weg
+    if (relatief && this.pakketVan(omsiMap, relatief) === pakket) {
+      rmSync(join(this.map, 'bus', busSleutel(omsiMap, relatief)), { force: true })
+    }
+  }
+
+  /** Het zijspoor zonder de toets op het `.b3d` (om een stuk pakket op te ruimen). */
+  private zijspoorOngetoetst(pakket: string): Bus3dZijspoor | undefined {
+    try {
+      const z = JSON.parse(readFileSync(this.zijspoorPad(pakket), 'utf8')) as Bus3dZijspoor
+      return z.versie === 1 && z.pakket === pakket ? z : undefined
+    } catch {
+      return undefined
+    }
   }
 
   /** Alles wat er staat: pakket, bytes, tijd. */
@@ -261,6 +328,7 @@ export class Bus3dCache {
       this.gooiWeg(pakket)
       weg++
     }
+    this.geschat = undefined
     return weg
   }
 }

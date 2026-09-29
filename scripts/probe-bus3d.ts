@@ -1,9 +1,9 @@
 /**
  * Bus3D, de proefbank van F0 en F1 (design/ontwerpen/bus3d.md §13, §14).
  *
- *   npx tsx scripts/probe-bus3d.ts                  de proefset: pakketten, tijden, T-G1, T-V1 t/m T-V5, protocol
+ *   npx tsx scripts/probe-bus3d.ts                  de proefset: pakketten, tijden, T-G1, T-V1 t/m T-V5, protocol, randgevallen
  *   npx tsx scripts/probe-bus3d.ts --nulmeting      v3 (de foto van nu) als referentie, per bus
- *   npx tsx scripts/probe-bus3d.ts --alles [--diep] alle bussen met [friendlyname]: 0 crashes, texturen
+ *   npx tsx scripts/probe-bus3d.ts --alles [--diep] listVehicles plus alle .bus met [friendlyname]: 0 crashes, texturen
  *
  * Alleen lezen in de OMSI-map. De schijfcache en de nagebootste OMSI-map voor de
  * protocolproef komen in een tijdelijke map, die aan het eind weggaat. Het
@@ -27,22 +27,33 @@
  * - Het protocol `omsi3d://` op een nagebootste OMSI-map: p/ en t/ (met Range),
  *   409 na een gewijzigd bestand, 403 als de sleutel uit de registratie
  *   verdwijnt, 404 op wat niet in het register staat, en 'vervangen' in de rij.
+ * - Het textuurplan: nooit een DXT-begin dat WebGL weigert (zijde niet deelbaar
+ *   door 4), synthetisch, per bus van de proefset en met --alles over alle bussen.
+ * - CTC op de texturen die de cfg noemt: de transmap van de NLC 12C bij
+ *   "Rheinhausen".
+ * - De randgevallen uit de tegenlezing van F1, op nagebootste mappen: de
+ *   registratielezer (dubbele sectie, ArtNr buiten Integer), de rustklok, de rij
+ *   met achtergrondbeurten, een mislukte herbouw na 'verouderd', een afgekapt
+ *   pakket en 'stuk', de bronnen (o3d die later verschijnt, .dsc), kleurstellingen
+ *   die erbij komen, en de cachegrens tijdens een sessie.
  */
 import { createHash } from 'node:crypto'
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, truncateSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { bouwBusTekening } from '../src/core/busbeeld'
-import { bouwBus3d } from '../src/core/bus3d'
+import { bouwBus3d, pakketVerouderd } from '../src/core/bus3d'
 import { Bus3dCache, bus3dWerk, type Bus3dOpdracht } from '../src/core/bus3dcache'
 import { findOmsiInstall } from '../src/core/install'
 import { ontleedO3d } from '../src/core/o3d'
-import { beschrijfRegistratie, omsiRegistratie } from '../src/core/omsiregistratie'
+import { leesKleurstellingen } from '../src/core/kleurstelling'
+import { beschrijfRegistratie, leesIni, leesOmsiRegistratie, omsiRegistratie } from '../src/core/omsiregistratie'
 import { leesPng } from '../src/core/png'
 import { ontleedTextuur, pakBmpUit } from '../src/core/textuur'
+import { listVehicles } from '../src/core/vehicles'
 import type { WebContents } from 'electron'
 import { maakBus3dDienst, type Bus3dWerkerModel } from '../src/main/bus3d'
-import { textuurPlan, type Bus3dManifest } from '../src/shared/bus3d'
+import { dxtMaxOverslaan, textuurPlan, type Bus3dAntwoord, type Bus3dLak, type Bus3dManifest, type Bus3dTextuur } from '../src/shared/bus3d'
 import { leesPakket } from '../src/shared/bus3dpak'
 import { ontwar } from '../src/shared/o3dhussel'
 
@@ -82,6 +93,23 @@ function routes(m: Bus3dManifest): string {
   const r = { dxt: 0, 'dxt-zonder-mips': 0, beeld: 0, eigen: 0 }
   for (const t of m.texturen) r[t.soort]++
   return `dxt ${r.dxt} / rtt ${r['dxt-zonder-mips']} / beeld ${r.beeld} / eigen ${r.eigen}`
+}
+
+/**
+ * WebGL weigert een S3TC-begin (niveau 0 op de GPU) waarvan een zijde niet
+ * deelbaar is door 4 (gemeten in Electron 33). Geeft de DXT-texturen waarvan het
+ * plan zo'n begin kiest, bij 160 MB en bij 96 MB (OMSI draait).
+ */
+function dxtBeginFout(m: Bus3dManifest): string[] {
+  const uit: string[] = []
+  for (const budget of [160, 96]) {
+    const plan = textuurPlan(m.texturen, budget * 1024 * 1024)
+    m.texturen.forEach((t, i) => {
+      const r = plan.regels[i]
+      if (t.soort === 'dxt' && r.laden && (r.b % 4 !== 0 || r.h % 4 !== 0)) uit.push(`${t.naam} ${t.b}x${t.h} -> ${r.b}x${r.h} (${budget} MB)`)
+    })
+  }
+  return uit
 }
 
 function planRegel(m: Bus3dManifest): string {
@@ -152,6 +180,8 @@ async function proefset(): Promise<void> {
     toets(`#${b.nr} ${b.naam}: verwacht ${b.verwacht}`, b.verwacht === 'pakket')
     toets(`#${b.nr} zijspoor en pakket warm terug`, Boolean(gevonden) && pak.kop.pakket === z.pakket)
     toets(`#${b.nr} 0 texturen onleesbaar`, m.telling.onleesbaar === 0, m.problemen.onleesbaar.map((o) => o.naam).join(', '))
+    const dxtFout = dxtBeginFout(m)
+    toets(`#${b.nr} textuurplan: elk DXT-begin deelbaar door 4 (160 en 96 MB)`, dxtFout.length === 0, dxtFout.slice(0, 4).join('; '))
     if (b.tijdNieuwMs) toets(`#${b.nr} nieuw ≤ ${b.tijdNieuwMs} ms`, ms <= b.tijdNieuwMs, `${Math.round(ms)} ms`)
     if (b.sleutels) toets(`#${b.nr} sleutels ${b.sleutels.join(',')}`, b.sleutels.every((s) => m.sleutels.includes(s)), m.sleutels.join(','))
   }
@@ -171,6 +201,48 @@ async function proefset(): Promise<void> {
         (r.alfa === undefined || mat!.alfa === r.alfa) &&
         (r.nietSchrijven === undefined || Boolean(mat!.nietSchrijven) === r.nietSchrijven)
       toets(`T-G1 ${r.o3d} groep ${r.groep}`, goed, mat ? `alfa ${mat.alfa}, noZwrite ${Boolean(mat.nietSchrijven)}` : 'niet gevonden')
+    }
+  }
+
+  // ---------------------------------------------------------- textuurplan: DXT-begin
+  console.log('\n== textuurPlan: een DXT-begin moet in beide zijden deelbaar zijn door 4 ==')
+  {
+    const dxt = (naam: string, b: number, h: number, mips: number, oppervlak: number): Bus3dTextuur => ({
+      id: createHash('sha1').update(naam).digest('hex'),
+      soort: 'dxt',
+      formaat: 'bc1',
+      srgb: true,
+      b,
+      h,
+      mips,
+      vorm: 'DXT1',
+      bytes: 0,
+      oppervlak,
+      uv: 1,
+      naam
+    })
+    // Een piepklein buitenoppervlak: de dichtheid wil zoveel mogelijk niveaus overslaan.
+    const klein = [dxt('Sticker 1000', 1000, 1000, 10, 1e-6), dxt('wzorek 64', 64, 64, 7, 1e-6), dxt('Seitenrollo 64x32', 64, 32, 7, 1e-6), dxt('werbung 512x372', 512, 372, 10, 1e-6), dxt('carrosserie 4096x2048', 4096, 2048, 13, 1e-6)]
+    const plan = textuurPlan(klein, 160 * 1024 * 1024)
+    const zijden = plan.regels.map((r) => `${r.b}x${r.h}`).join(', ')
+    toets('textuurPlan (dichtheid): 1000² -> 500², 64² -> 4², 64x32 -> 8x4, 512x372 blijft, 4096x2048 -> 8x4', zijden === '500x500, 4x4, 8x4, 512x372, 8x4', zijden)
+    // Het budget: een textuur die niet verder mag zakken, maakt de bus te zwaar in plaats van een ongeldig begin.
+    const budget = textuurPlan([dxt('Kasse 1000', 1000, 1000, 10, 100)], 1)
+    toets('textuurPlan (budget): 1000² zakt tot 500², niet tot 250²', budget.regels[0].b === 500 && budget.teZwaar, `${budget.regels[0].b}x${budget.regels[0].h}, te zwaar ${budget.teZwaar}`)
+    toets('dxtMaxOverslaan: 1000² 1, 250x298 0, 4096x2048 9', dxtMaxOverslaan({ b: 1000, h: 1000, mips: 10 }) === 1 && dxtMaxOverslaan({ b: 500, h: 596, mips: 10 }) === 0 && dxtMaxOverslaan({ b: 4096, h: 2048, mips: 13 }) === 9)
+  }
+
+  // ---------------------------------------------------------- CTC op de texturen die de cfg noemt
+  console.log('\n== CTC: een kleurstelling vervangt ook transmap, masker en lightmap ==')
+  {
+    const nlc = set.bussen.find((b) => b.naam === 'NLC 12C')!
+    const z = cache.zoek(OMSI, nlc.pad)
+    const trans = z?.manifest.texturen.findIndex((t) => t.naam.toLowerCase() === '12c_2d_01_trans.dds') ?? -1
+    toets('NLC 12C: 12C_2d_01_trans.dds (transmap) heeft zijn CTC-plek', trans >= 0 && z!.manifest.texturen[trans].ctc === 'Farbschema_12C_2door_trans', trans >= 0 ? String(z!.manifest.texturen[trans].ctc) : 'niet in het manifest')
+    if (z) {
+      const uit = (await bus3dWerk({ soort: 'bus3d:lak', pakket: z.pakket, kleurstelling: 'Rheinhausen' }, OMSI, cache)) as { lak: Bus3dLak }
+      const vervangen = uit.lak.texturen.find((x) => x.plek === trans)
+      toets('NLC 12C "Rheinhausen": de transmap wordt vervangen door Rheinhausen_Trans.dds', vervangen?.textuur.naam.toLowerCase() === 'rheinhausen_trans.dds', `${uit.lak.texturen.length} vervangen: ${uit.lak.texturen.map((x) => x.textuur.naam).join(', ')}`)
     }
   }
 
@@ -480,11 +552,331 @@ async function protocol(): Promise<void> {
   for (const r of logregels) console.log(`   ${r}`)
 }
 
+// ------------------------------------------------------------ randgevallen (de tegenlezing van F1)
+/*
+ * Elk punt uit de tegenlezing van F1 (aanvaller en proefdraaier) dat een fout
+ * bleek, met een proef die het vastlegt. Alles op nagebootste OMSI-mappen in de
+ * tijdelijke map; uit de echte installatie wordt alleen gekopieerd (één open o3d
+ * en zijn textuur) en, voor de cachegrens, gelezen.
+ */
+const OPEN_O3D = join(OMSI, 'Vehicles', 'HH20_EBus2021', 'Model', '21_aussen_weich3_#low.o3d')
+const OPEN_TEX = join(OMSI, 'Vehicles', 'HH20_EBus2021', 'Texture', 'newC2EG_#low.tga')
+const R = '\r\n'
+const busTekst = (naam: string): string =>
+  ['[friendlyname]', 'Proef', naam, 'Wit', '', '[model]', 'Model\\model.cfg', '', '[boundingbox]', '3', '14', '4', '0', '0', '2', ''].join(R)
+const slaap = (ms: number): Promise<void> => new Promise((k) => setTimeout(k, ms))
+const uitkomst = (u: Bus3dAntwoord | { reden: string }): string => ('manifest' in u ? 'pakket' : u.reden)
+
+/** Een nagebootste OMSI-map met Vehicles\Proef: één open o3d en zijn textuur, en de .bus-bestanden. */
+function nepOmsi(naam: string, cfg: string[], bussen: string[]): { nep: string; bib: string; busmap: string } {
+  const bib = join(tijdelijk, naam, 'steamapps')
+  const nep = join(bib, 'common', 'OMSI 2')
+  const busmap = join(nep, 'Vehicles', 'Proef')
+  mkdirSync(join(busmap, 'Model'), { recursive: true })
+  mkdirSync(join(busmap, 'Texture'), { recursive: true })
+  mkdirSync(join(nep, 'Texture'), { recursive: true })
+  writeFileSync(join(nep, 'addons.ini'), '')
+  copyFileSync(OPEN_O3D, join(busmap, 'Model', 'open.o3d'))
+  copyFileSync(OPEN_TEX, join(busmap, 'Texture', 'newC2EG_#low.tga'))
+  writeFileSync(join(busmap, 'Model', 'model.cfg'), cfg.join(R))
+  for (const b of bussen) writeFileSync(join(busmap, `${b}.bus`), busTekst(b))
+  return { nep, bib, busmap }
+}
+
+/**
+ * De dienst van main met een nagebootste werker zoals index.ts hem heeft: een
+ * vraag kan een vertraging krijgen, en `sluitWerker` laat iedereen die nog wacht
+ * falen (zoals `stuurWachtendenWeg` na `terminate`).
+ */
+function nepDienst(nep: string, ud: string, rust: number, vertraging: Record<string, number>, log: string[]): ReturnType<typeof maakBus3dDienst> {
+  const cache = new Bus3dCache(ud)
+  let werker = 1
+  const wachtend = new Set<(f: Error) => void>()
+  return maakBus3dDienst({
+    userData: () => ud,
+    omsi: () => nep,
+    werkerVraag: <T>(opdracht: Record<string, unknown>, tussen?: (b: unknown) => void): Promise<T> =>
+      new Promise<T>((klaar, fout) => {
+        const mijn = werker
+        wachtend.add(fout)
+        setTimeout(async () => {
+          try {
+            const uit = (await bus3dWerk(opdracht as Bus3dOpdracht, nep, cache, tussen)) as T
+            if (mijn !== werker) return
+            wachtend.delete(fout)
+            klaar(uit)
+          } catch (e) {
+            wachtend.delete(fout)
+            fout(e as Error)
+          }
+        }, vertraging[String(opdracht.soort)] ?? 0)
+      }),
+    sluitWerker: () => {
+      log.push('sluitWerker()')
+      werker++
+      for (const f of [...wachtend]) f(new Error('werker bus3d is gestopt (1)'))
+      wachtend.clear()
+    },
+    log: (r) => log.push(r),
+    logFout: (w, f) => log.push(`FOUT ${w}: ${String(f)}`),
+    tijden: { rust, stil: 20_000 }
+  })
+}
+
+/** Een venster dat alleen onthoudt wat main het stuurt. */
+function nepVenster(id: number): { venster: WebContents; vervangen: string[]; wachtOpVervangen: (ms: number) => Promise<string | undefined> } {
+  const vervangen: string[] = []
+  let wekker: ((p: string) => void) | undefined
+  const venster = {
+    id,
+    isDestroyed: () => false,
+    send: (kanaal: string, b: unknown) => {
+      if (kanaal !== 'bus3d:vervangen') return
+      vervangen.push(String(b))
+      wekker?.(String(b))
+    }
+  } as unknown as WebContents
+  const wachtOpVervangen = (ms: number): Promise<string | undefined> =>
+    new Promise((k) => {
+      wekker = k
+      setTimeout(() => k(undefined), ms)
+    })
+  return { venster, vervangen, wachtOpVervangen }
+}
+
+async function randgevallen(): Promise<void> {
+  console.log('\n== Randgevallen uit de tegenlezing van F1 ==')
+  const eenMesh = ['[mesh]', 'open.o3d', '']
+
+  // -------------------------------------------------------- registratie (aanval 1)
+  {
+    const { nep, bib } = nepOmsi('reg', eenMesh, [])
+    mkdirSync(join(nep, 'RegAddons'), { recursive: true })
+    writeFileSync(join(bib, 'appmanifest_252530.acf'), '"AppState"\n{\n\t"InstalledDepots"\n\t{\n\t\t"1889540"\n\t\t{\n\t\t\t"dlcappid"\t\t"1889540"\n\t\t}\n\t}\n}\n')
+    // Twee keer [addon.0]: Windows leest alleen de eerste (ArtNr 11111, zonder SteamArtNr).
+    writeFileSync(join(nep, 'RegAddons', 'Dubbel.ini'), '[addon.0]\r\nName=Eerste\r\nArtNr=11111\r\n\r\n[addon.0]\r\nName=Tweede\r\nArtNr=22222\r\nSteamArtNr=1889540\r\n')
+    // Buiten Integer: Delphi's StrToInt weigert; wij maakten er modulo 2^32 sleutel 11726 van.
+    writeFileSync(join(nep, 'RegAddons', 'Groot.ini'), '[addon.0]\r\nName=Groot\r\nArtNr=4294979022\r\nSteamArtNr=1889540\r\n')
+    writeFileSync(join(nep, 'RegAddons', 'Goed.ini'), '[addon.0]\r\nName=Goed\r\nArtNr=15657\r\nSteamArtNr=1889540\r\n')
+    const r = leesOmsiRegistratie(nep)
+    toets('registratie: dubbele [addon.0] niet samengevoegd, ArtNr > 2^31-1 geweigerd; alleen 15657', [...r.sleutels].join(',') === '15657', `sleutels [${[...r.sleutels].join(', ')}]; ${r.vermeldingen.map((v) => `${v.artNr}: ${v.waarom}`).join('; ')}`)
+    const ini = leesIni('[a]\r\nx=1\r\n[A]\r\nx=2\r\ny=3\r\n')
+    toets('leesIni: bij een dubbele sectie telt alleen de eerste', ini.get('a')?.get('x') === '1' && !ini.get('a')?.has('y'))
+  }
+
+  // -------------------------------------------------------- de rustklok (aanval 5)
+  {
+    const { nep } = nepOmsi('rust', eenMesh, ['A', 'B'])
+    const log: string[] = []
+    const vertraging: Record<string, number> = {}
+    const dienst = nepDienst(nep, join(tijdelijk, 'rust', 'ud'), 300, vertraging, log)
+    await dienst.model3d('Vehicles\\Proef\\A.bus') // klaar: de rustklok loopt (300 ms)
+    await slaap(250)
+    vertraging['bus3d:model'] = 200 // B begint 50 ms voor het eind van de rust en bouwt 200 ms
+    const b = await dienst.model3d('Vehicles\\Proef\\B.bus')
+    vertraging['bus3d:model'] = 0
+    toets('rustklok: een vraag die vlak voor de 120 s begint, wordt niet onder zich weggesloten', uitkomst(b) === 'pakket', `${uitkomst(b)}; ${log.filter((l) => l.startsWith('sluit') || l.startsWith('FOUT')).join(' | ')}`)
+    const voor = log.filter((l) => l === 'sluitWerker()').length
+    await slaap(450)
+    toets('rustklok: na de rust na de laatste vraag gaat de werker wel dicht', voor === 0 && log.filter((l) => l === 'sluitWerker()').length === 1, `sluitWerker voor ${voor}, erna ${log.filter((l) => l === 'sluitWerker()').length}`)
+  }
+
+  // -------------------------------------------------------- de rij en de achtergrond (aanval 2)
+  {
+    const { nep, busmap } = nepOmsi('rij', eenMesh, ['A', 'B', 'C', 'D'])
+    const log: string[] = []
+    const vertraging: Record<string, number> = {}
+    const dienst = nepDienst(nep, join(tijdelijk, 'rij', 'ud'), 60_000, vertraging, log)
+    const { venster } = nepVenster(1)
+    await dienst.model3d('Vehicles\\Proef\\A.bus', undefined, venster)
+    await dienst.model3d('Vehicles\\Proef\\B.bus', undefined, venster)
+    // (1) A komt uit de cache maar is verouderd; de speler klikt C en meteen D.
+    await slaap(20)
+    const later = new Date(Date.now() + 10_000)
+    utimesSync(join(busmap, 'A.bus'), later, later)
+    vertraging['bus3d:controle'] = 30
+    vertraging['bus3d:model'] = 150
+    const a = dienst.model3d('Vehicles\\Proef\\A.bus', undefined, venster)
+    await slaap(1)
+    const c = dienst.model3d('Vehicles\\Proef\\C.bus', undefined, venster)
+    await slaap(10)
+    const d = dienst.model3d('Vehicles\\Proef\\D.bus', undefined, venster)
+    const [ra, rc, rd] = await Promise.all([a, c, d])
+    toets(
+      'rij: de herbouw na de controle verdringt de nieuwste keuze van de speler niet',
+      uitkomst(ra) === 'pakket' && uitkomst(rc) === 'pakket' && uitkomst(rd) === 'pakket',
+      `A ${uitkomst(ra)}, C ${uitkomst(rc)}, D (de laatste keuze) ${uitkomst(rd)}`
+    )
+    // (2) B verouderd; terwijl de speler op C wacht, wacht de herbouw van B; de speler klikt D: die gaat voor.
+    await slaap(300)
+    log.length = 0
+    const later2 = new Date(Date.now() + 20_000)
+    utimesSync(join(busmap, 'B.bus'), later2, later2)
+    rmSync(join(tijdelijk, 'rij', 'ud', 'bus3d'), { recursive: true, force: true }) // alles nieuw, behalve B:
+    await (async () => {
+      vertraging['bus3d:model'] = 0
+      await dienst.model3d('Vehicles\\Proef\\B.bus', undefined, venster) // B nieuw in de cache
+      const nu = new Date(Date.now() + 30_000)
+      utimesSync(join(busmap, 'B.bus'), nu, nu) // en meteen verouderd
+    })()
+    log.length = 0
+    vertraging['bus3d:model'] = 150
+    const b2 = dienst.model3d('Vehicles\\Proef\\B.bus', undefined, venster) // cache; controle na 30 ms, dan herbouw in de wacht
+    await slaap(1)
+    const c2 = dienst.model3d('Vehicles\\Proef\\C.bus', undefined, venster) // bouwt 150 ms
+    await slaap(60)
+    const d2 = dienst.model3d('Vehicles\\Proef\\D.bus', undefined, venster) // vervangt de wachtende herbouw van B
+    const [rb2, rc2, rd2] = await Promise.all([b2, c2, d2])
+    await slaap(400)
+    const nieuw = log.filter((l) => l.includes('bron nieuw')).map((l) => /Proef\\(\w)\.bus/.exec(l)?.[1]).join('')
+    toets(
+      'rij: een vraag van de speler vervangt een wachtende achtergrondbeurt',
+      uitkomst(rb2) === 'pakket' && uitkomst(rc2) === 'pakket' && uitkomst(rd2) === 'pakket' && nieuw === 'CD',
+      `B ${uitkomst(rb2)}, C ${uitkomst(rc2)}, D ${uitkomst(rd2)}; nieuw gebouwd: ${nieuw}`
+    )
+    vertraging['bus3d:model'] = 0
+    vertraging['bus3d:controle'] = 0
+  }
+
+  // -------------------------------------------------------- verouderd en de herbouw mislukt (aanval 7)
+  {
+    const { nep, busmap } = nepOmsi('weg', eenMesh, ['A'])
+    const log: string[] = []
+    const dienst = nepDienst(nep, join(tijdelijk, 'weg', 'ud'), 60_000, {}, log)
+    const { venster, wachtOpVervangen } = nepVenster(2)
+    const eerst = await dienst.model3d('Vehicles\\Proef\\A.bus', undefined, venster)
+    const oud = 'manifest' in eerst ? eerst.manifest.pakket : ''
+    rmSync(join(busmap, 'Model'), { recursive: true, force: true }) // het model is weg
+    const gemeld = wachtOpVervangen(3000)
+    const tweede = await dienst.model3d('Vehicles\\Proef\\A.bus', undefined, venster) // nog het oude (eerst tonen)
+    const vervangen = await gemeld
+    const p = await dienst.antwoord(new Request(`omsi3d://p/${oud}`))
+    const derde = await dienst.model3d('Vehicles\\Proef\\A.bus', undefined, venster)
+    toets(
+      "verouderd + herbouw mislukt: het oude pakket vergeten, 'bus3d:vervangen' naar het venster, daarna de reden",
+      uitkomst(tweede) === 'pakket' && vervangen === oud && p.status === 404 && uitkomst(derde) === 'geen-model',
+      `tweede ${uitkomst(tweede)}, vervangen ${vervangen === oud ? 'gemeld' : String(vervangen)}, p/ ${p.status}, derde ${uitkomst(derde)}`
+    )
+  }
+
+  // -------------------------------------------------------- een afgekapt pakket (aanval 8)
+  {
+    const { nep } = nepOmsi('stuk', eenMesh, ['A'])
+    const log: string[] = []
+    const ud = join(tijdelijk, 'stuk', 'ud')
+    const dienst = nepDienst(nep, ud, 60_000, {}, log)
+    const eerst = await dienst.model3d('Vehicles\\Proef\\A.bus')
+    const id = 'manifest' in eerst ? eerst.manifest.pakket : ''
+    truncateSync(dienst.cache.pakketPad(id), 100)
+    const tweede = await dienst.model3d('Vehicles\\Proef\\A.bus')
+    const p = await dienst.antwoord(new Request(`omsi3d://p/${'manifest' in tweede ? tweede.manifest.pakket : id}`))
+    let leesbaar = 'ja'
+    try {
+      leesPakket(new Uint8Array(await p.arrayBuffer()))
+    } catch (e) {
+      leesbaar = (e as Error).message
+    }
+    toets('afgekapt .b3d: de volgende vraag bouwt opnieuw, p/ geeft een leesbaar pakket', log.filter((l) => l.includes('bron nieuw')).length === 2 && p.status === 200 && leesbaar === 'ja', `${log.filter((l) => l.includes('bron nieuw')).length} keer nieuw, p/ ${p.status}, leesPakket ${leesbaar}`)
+    // Het venster meldt een pakket stuk (bijvoorbeeld met de goede grootte maar kapotte inhoud): vergeten.
+    dienst.stuk(id)
+    const p2 = await dienst.antwoord(new Request(`omsi3d://p/${id}`))
+    await dienst.model3d('Vehicles\\Proef\\A.bus')
+    toets("'stuk' gemeld: p/ weg (404), de volgende vraag bouwt opnieuw", p2.status === 404 && log.filter((l) => l.includes('bron nieuw')).length === 3, `p/ ${p2.status}, ${log.filter((l) => l.includes('bron nieuw')).length} keer nieuw`)
+  }
+
+  // -------------------------------------------------------- bronnen: ontbrekende o3d, .dsc, cfg-geheugen (aanval 9a, 9b)
+  {
+    const { nep, busmap } = nepOmsi('bronnen', ['[mesh]', 'open.o3d', '', '[mesh]', 'later.o3d', ''], ['A'])
+    writeFileSync(join(busmap, 'A_ENG.dsc'), '[description]\r\nOude tekst\r\n[end]\r\n')
+    const cache = new Bus3dCache(join(tijdelijk, 'bronnen', 'ud'))
+    const bouw = async (): Promise<Bus3dWerkerModel> => (await bus3dWerk({ soort: 'bus3d:model', relatiefPad: 'Vehicles\\Proef\\A.bus', geregistreerd: [] }, nep, cache)) as Bus3dWerkerModel
+    const z1 = await bouw()
+    await slaap(30)
+    copyFileSync(OPEN_O3D, join(busmap, 'Model', 'later.o3d'))
+    const na1 = 'zijspoor' in z1 ? pakketVerouderd(z1.zijspoor.bronnen) : 'geen pakket'
+    const z2 = await bouw() // in DEZELFDE werker (hetzelfde proces): het cfg-geheugen moet later.o3d zien
+    toets(
+      'bronnen: een o3d die later verschijnt maakt het pakket verouderd, en de herbouw in dezelfde werker ziet hem',
+      'zijspoor' in z1 && z1.zijspoor.manifest.telling.stukken === 1 && Boolean(na1) && 'zijspoor' in z2 && z2.zijspoor.manifest.telling.stukken === 2,
+      `eerst ${'zijspoor' in z1 ? z1.zijspoor.manifest.telling.stukken : '-'} stuk, verouderd: ${na1 ? 'ja' : 'nee'}, daarna ${'zijspoor' in z2 ? z2.zijspoor.manifest.telling.stukken : '-'} stukken`
+    )
+    await slaap(30)
+    writeFileSync(join(busmap, 'A_ENG.dsc'), '[description]\r\nNieuwe, langere tekst\r\n[end]\r\n')
+    const na2 = 'zijspoor' in z2 ? pakketVerouderd(z2.zijspoor.bronnen) : undefined
+    const z3 = await bouw()
+    await slaap(30)
+    writeFileSync(join(busmap, 'A_FRA.dsc'), '[description]\r\nTexte\r\n[end]\r\n')
+    const na3 = 'zijspoor' in z3 ? pakketVerouderd(z3.zijspoor.bronnen) : undefined
+    toets(
+      'bronnen: een gewijzigde en een nieuwe .dsc maken het pakket verouderd',
+      Boolean(na2) && Boolean(na3) && 'zijspoor' in z3 && z3.zijspoor.manifest.beschrijvingen?.ENG === 'Nieuwe, langere tekst',
+      `gewijzigd: ${na2 ? 'verouderd' : 'niet gezien'}, nieuw: ${na3 ? 'verouderd' : 'niet gezien'}, ENG "${'zijspoor' in z3 ? z3.zijspoor.manifest.beschrijvingen?.ENG : '-'}"`
+    )
+  }
+
+  // -------------------------------------------------------- kleurstellingen die erbij komen (aanval 9c)
+  {
+    const cfg = ['[CTC]', 'Colorscheme', 'Texture', '', '[CTCTexture]', 'Plek', 'newC2EG_#low.tga', '', ...eenMesh]
+    const { nep, busmap } = nepOmsi('kleur', cfg, ['A'])
+    mkdirSync(join(busmap, 'Texture', 'Rep'), { recursive: true })
+    copyFileSync(OPEN_TEX, join(busmap, 'Texture', 'Rep', 'eerste.tga'))
+    copyFileSync(OPEN_TEX, join(busmap, 'Texture', 'Rep', 'tweede.tga'))
+    writeFileSync(join(busmap, 'Texture', 'a.cti'), ['[item]', 'Eerste', 'Plek', 'Rep\\eerste.tga', ''].join(R))
+    const cache = new Bus3dCache(join(tijdelijk, 'kleur', 'ud'))
+    const z = (await bus3dWerk({ soort: 'bus3d:model', relatiefPad: 'Vehicles\\Proef\\A.bus', geregistreerd: [] }, nep, cache)) as Bus3dWerkerModel
+    const pakket = 'zijspoor' in z ? z.zijspoor.pakket : ''
+    const lak = async (naam: string): Promise<Bus3dLak> => ((await bus3dWerk({ soort: 'bus3d:lak', pakket, kleurstelling: naam }, nep, cache)) as { lak: Bus3dLak }).lak
+    const eerste = await lak('Eerste')
+    await slaap(30)
+    writeFileSync(join(busmap, 'Texture', 'b.cti'), ['[item]', 'Tweede', 'Plek', 'Rep\\tweede.tga', ''].join(R))
+    const tweede = await lak('Tweede')
+    await slaap(30)
+    writeFileSync(join(busmap, 'Texture', 'a.cti'), ['[item]', 'Eerste', 'Plek', 'Rep\\eerste.tga', '', '[setvar]', 'spiegel', '1', ''].join(R))
+    const opnieuw = await lak('Eerste')
+    const main = leesKleurstellingen(join(busmap, 'Model', 'model.cfg'))
+    toets(
+      'kleurstellingen: een nieuwe .cti en een gewijzigde .cti ziet dezelfde werker meteen',
+      JSON.stringify(eerste.vars) === '[["Colorscheme",0]]' && eerste.texturen.length === 1 &&
+        JSON.stringify(tweede.vars) === '[["Colorscheme",1]]' && tweede.texturen.length === 1 &&
+        JSON.stringify(opnieuw.vars) === '[["Colorscheme",0],["spiegel",1]]' && main?.lijst.length === 2,
+      `Eerste ${JSON.stringify(eerste.vars)} (${eerste.texturen.length}), Tweede ${JSON.stringify(tweede.vars)} (${tweede.texturen.length}), Eerste daarna ${JSON.stringify(opnieuw.vars)}`
+    )
+  }
+
+  // -------------------------------------------------------- de cachegrens tijdens een sessie (aanval 6, proefdraaier 3)
+  {
+    const grens = 6 * 1048576
+    const cache = new Bus3dCache(join(tijdelijk, 'grens'), grens)
+    const reg = omsiRegistratie(OMSI)
+    const bussen = ['Vehicles\\MAN_SD200\\MAN_SD77.bus', 'Vehicles\\MAN_NL_NG\\MAN_EN92_main.bus', 'Vehicles\\HH_Stadtbus2017\\HHStadtbus2017_solo.bus']
+    const standen: string[] = []
+    let goed = true
+    for (const pad of bussen) {
+      const uit = (await bus3dWerk({ soort: 'bus3d:model', relatiefPad: pad, geregistreerd: [...reg.sleutels] }, OMSI, cache)) as Bus3dWerkerModel
+      const totaal = cache.inhoud().reduce((s, p) => s + p.bytes, 0)
+      const nieuwste = 'zijspoor' in uit && Boolean(cache.zijspoor(uit.zijspoor.pakket))
+      standen.push(`${basename(pad)} ${MB(totaal)} MB`)
+      if (totaal > grens || !nieuwste) goed = false
+    }
+    toets('cache: na elke schrijfbeurt onder de grens (6 MB), het nieuwste pakket blijft', goed && !cache.zoek(OMSI, bussen[0]), `${standen.join(', ')}; SD77 ${cache.zoek(OMSI, bussen[0]) ? 'nog' : 'weg'}`)
+  }
+}
+
 // ------------------------------------------------------------ alles
 async function alles(): Promise<void> {
-  console.log('\n== Alle bussen met [friendlyname] ==')
+  /*
+   * De lijst van de app (listVehicles: wat de buskeuze toont) samen met alle
+   * .bus-bestanden met [friendlyname] (ook KI-bussen en dummies die de app niet
+   * toont). Alleen [friendlyname] miste 8 bestuurbare bussen: HH-Stadtbus96/97,
+   * de C2G solo, MAN 21C 4door Voith, 10C 2/3door ZF en de O305 E2H 84
+   * (proefdraaier F1, bevinding 1).
+   */
+  console.log('\n== Alle bussen: listVehicles (de buskeuze) samen met elke .bus met [friendlyname] ==')
   const reg = omsiRegistratie(OMSI)
-  const paden: string[] = []
+  const app = listVehicles(OMSI).map((v) => v.relativePath)
+  const paden: string[] = [...app]
+  const gezien = new Set(app.map((p) => p.toLowerCase()))
+  let metNaam = 0
   const V = join(OMSI, 'Vehicles')
   for (const map of readdirSync(V)) {
     let namen: string[]
@@ -498,7 +890,11 @@ async function alles(): Promise<void> {
       const pad = join('Vehicles', map, n)
       try {
         const tekst = readFileSync(join(OMSI, pad), 'latin1')
-        if (/(^|\r?\n)\[friendlyname\]\r?\n/.test(tekst)) paden.push(pad)
+        if (!/(^|\r?\n)\[friendlyname\]\r?\n/.test(tekst)) continue
+        metNaam++
+        if (gezien.has(pad.toLowerCase())) continue
+        gezien.add(pad.toLowerCase())
+        paden.push(pad)
       } catch {
         // onleesbaar: telt niet als bus
       }
@@ -513,6 +909,8 @@ async function alles(): Promise<void> {
   let teZwaarPlan = 0
   const texturenUniek = new Map<string, { naam: string; soort: string; mime?: string }>()
   const doosFout: string[] = []
+  const dxtFout: string[] = []
+  console.log(`listVehicles ${app.length}, met [friendlyname] ${metNaam}, samen ${paden.length}`)
   for (const pad of paden) {
     const t0 = performance.now()
     try {
@@ -530,6 +928,7 @@ async function alles(): Promise<void> {
       for (const n of m.problemen.ontbrekend) ontbrekendNamen.add(n.toLowerCase())
       ontbrekendVerwijzingen += m.telling.ontbrekend
       if (textuurPlan(m.texturen, 160 * 1024 * 1024).teZwaar) teZwaarPlan++
+      for (const f of dxtBeginFout(m)) dxtFout.push(`${pad}: ${f}`)
       for (const b of uit.bouw.textuurBronnen) {
         const t = m.texturen.find((x) => x.id === b.id)!
         texturenUniek.set(b.pad.toLowerCase(), { naam: b.pad, soort: t.soort, mime: t.mime })
@@ -546,6 +945,7 @@ async function alles(): Promise<void> {
   toets(`--alles: 0 crashes over ${paden.length} bussen`, crashes.length === 0, `${crashes.length}`)
   toets('--alles: 0 texturen met een onleesbare kop', onleesbaar.size === 0, [...onleesbaar].slice(0, 8).map(([n, r]) => `${n} (${r})`).join('; '))
   toets('--alles: geen bus valt op de doostoets', doosFout.length === 0, doosFout.join(', '))
+  toets('--alles: het textuurplan kiest nergens een DXT-begin dat niet deelbaar is door 4 (160 en 96 MB)', dxtFout.length === 0, `${dxtFout.length}: ${dxtFout.slice(0, 4).join('; ')}`)
 
   if (args.has('--diep')) {
     // Ook de pixels: wat onze eigen lezers doen (eigen, BMP, PNG), moet uitkomen.
@@ -593,6 +993,7 @@ async function main(): Promise<void> {
   else {
     await proefset()
     await protocol()
+    await randgevallen()
   }
   console.log(`\n${fouten === 0 ? 'ALLES GOED' : `${fouten} FOUT(EN)`}`)
   process.exitCode = fouten === 0 ? 0 : 1

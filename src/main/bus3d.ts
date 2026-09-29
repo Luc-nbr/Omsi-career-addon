@@ -30,9 +30,13 @@ import {
  *   van het pakket 0 zijn of hier geregistreerd (Lucs keuze 1, §5.1). Is een
  *   sleutel verdwenen (add-on weg), dan vergeten we de pakketten met die sleutel
  *   en geeft `p/` 403;
- * - de RIJ per kanaal: één vraag bezig, hooguit één in de wacht; de nieuwste
- *   wint, een vervangen vraag krijgt `'vervangen'`. 20 s zonder voortgang: de
- *   werker weg en `'tijd'`. 120 s na de laatste vraag gaat de werker dicht.
+ * - de RIJ per kanaal (per venster, `WebContents`): één vraag bezig, hooguit één
+ *   in de wacht; de nieuwste wint, een vervangen vraag krijgt `'vervangen'`. Het
+ *   herbouwen van een verouderd pakket is een ACHTERGRONDBEURT: die vervangt
+ *   nooit een wachtende vraag van de speler, en een vraag van de speler vervangt
+ *   hem wel. 20 s zonder voortgang: de werker weg en `'tijd'`. 120 s nadat de
+ *   LAATSTE werkervraag klaar is gaat de werker dicht; de klok staat stil zolang
+ *   er een vraag loopt.
  *
  * Geen Electron tijdens het draaien: alleen typen. De probe
  * (scripts/probe-bus3d.ts) roept dezelfde dienst in node aan, met een eigen
@@ -61,11 +65,17 @@ export interface Bus3dDienst {
   /** `bus:model3d`: het manifest (uit de cache, of nieuw gebouwd) plus de lak. */
   model3d(relatiefPad: string, kleurstelling?: string, venster?: WebContents): Promise<Bus3dAntwoord>
   /** `bus:lak3d`: de lak van een andere kleurstelling voor een pakket dat er al is. */
-  lak3d(pakket: string, kleurstelling?: string): Promise<Bus3dLak | { reden: Bus3dReden }>
+  lak3d(pakket: string, kleurstelling?: string, venster?: WebContents): Promise<Bus3dLak | { reden: Bus3dReden }>
   /** Het protocol `omsi3d://`. */
   antwoord(vraag: Request): Promise<Response>
   /** De add-on-manager: pakketten van deze voertuigmappen (of alles) vergeten. */
   vergeet(mappen?: string[]): void
+  /**
+   * Het venster meldt dat een pakket niet te lezen is (`leesPakket` gooit): het
+   * pakket vergeten, zodat de volgende `bus:model3d` opnieuw bouwt in plaats van
+   * hetzelfde stuk te geven.
+   */
+  stuk(pakket: string): void
   /** Bij het starten: de LRU opruimen. */
   ruimOp(): void
   /** Voor de probe. */
@@ -116,24 +126,73 @@ export function maakBus3dDienst(af: Bus3dAfhankelijk): Bus3dDienst {
     for (const t of z.textuurBronnen) texturen.set(t.id, t)
   }
 
-  // ------------------------------------------------------------ de rij
+  // ------------------------------------------------------------ de werker en zijn rustklok
+  /*
+   * De rustklok loopt alleen als er geen enkele werkervraag loopt. Voorheen werd
+   * hij aan het eind van een beurt gezet en niet gestopt als de volgende begon:
+   * een vraag die net vóór de 120 s begon en langer bouwde dan de resttijd, zag
+   * de werker onder zich weggaan en kreeg 'fout' (aanvalsverslag F1, punt 5).
+   */
   let werkerTimer: ReturnType<typeof setTimeout> | undefined
-  const rust = (): void => {
-    if (werkerTimer) clearTimeout(werkerTimer)
-    werkerTimer = setTimeout(() => af.sluitWerker(), RUST_MS)
-    werkerTimer.unref?.()
+  let lopend = 0
+  async function vraagWerker<T>(opdracht: Record<string, unknown>, tussen?: (b: unknown) => void): Promise<T> {
+    lopend++
+    if (werkerTimer) {
+      clearTimeout(werkerTimer)
+      werkerTimer = undefined
+    }
+    try {
+      return await af.werkerVraag<T>(opdracht, tussen)
+    } finally {
+      lopend--
+      if (lopend === 0) {
+        werkerTimer = setTimeout(() => {
+          werkerTimer = undefined
+          if (lopend === 0) af.sluitWerker()
+        }, RUST_MS)
+        werkerTimer.unref?.()
+      }
+    }
   }
 
+  // ------------------------------------------------------------ de rij
   interface Beurt<T> {
     doe: () => Promise<T>
     klaar: (uit: T | { reden: Bus3dReden }) => void
   }
-  const kanalen = new Map<string, { bezig: boolean; wacht?: Beurt<unknown> }>()
-  function inDeRij<T>(kanaal: string, doe: () => Promise<T>): Promise<T | { reden: Bus3dReden }> {
+  /**
+   * Per kanaal: wat loopt, de vraag van de speler die wacht, en een
+   * achtergrondbeurt (herbouwen na de controle) die wacht. Na een beurt gaat de
+   * speler voor.
+   */
+  const kanalen = new Map<string, { bezig: boolean; wacht?: Beurt<unknown>; achtergrond?: Beurt<unknown> }>()
+  function inDeRij<T>(kanaal: string, doe: () => Promise<T>, achtergrond = false): Promise<T | { reden: Bus3dReden }> {
     return new Promise((klaar) => {
       const k = kanalen.get(kanaal) ?? { bezig: false }
       kanalen.set(kanaal, k)
       const beurt: Beurt<unknown> = { doe, klaar: klaar as (u: unknown) => void }
+      if (achtergrond) {
+        /*
+         * Een achtergrondbeurt vervangt nooit een vraag van de speler: wacht die
+         * er al een, dan vervalt deze (het oude pakket blijft staan en wordt bij
+         * de volgende vraag opnieuw gecontroleerd). Anders de nieuwste
+         * achtergrondbeurt.
+         */
+        if (k.wacht) {
+          beurt.klaar({ reden: 'vervangen' })
+          return
+        }
+        if (!k.bezig) {
+          void draai(kanaal, beurt)
+          return
+        }
+        k.achtergrond?.klaar({ reden: 'vervangen' })
+        k.achtergrond = beurt
+        return
+      }
+      // Een vraag van de speler vervangt een wachtende achtergrondbeurt.
+      k.achtergrond?.klaar({ reden: 'vervangen' })
+      k.achtergrond = undefined
       if (!k.bezig) {
         void draai(kanaal, beurt)
         return
@@ -153,12 +212,17 @@ export function maakBus3dDienst(af: Bus3dAfhankelijk): Bus3dDienst {
       beurt.klaar({ reden: 'fout' })
     } finally {
       k.bezig = false
-      rust()
-      const volgende = k.wacht
-      k.wacht = undefined
+      const volgende = k.wacht ?? k.achtergrond
+      if (volgende === k.wacht) k.wacht = undefined
+      else k.achtergrond = undefined
       if (volgende) void draai(kanaal, volgende)
+      else if (!k.wacht && !k.achtergrond) kanalen.delete(kanaal)
     }
   }
+
+  /** Het kanaal van een venster: elk venster zijn eigen rij (3D-venster, fotovenster). */
+  const kanaalVan = (soort: 'model' | 'lak', venster?: WebContents): string =>
+    `${soort}:${venster && typeof venster.id === 'number' ? venster.id : 0}`
 
   /** Een werkervraag met de stiltewacht: 20 s zonder voortgang is 'tijd'. */
   async function metWacht<T>(opdracht: Record<string, unknown>, tussen?: (b: unknown) => void): Promise<T | { reden: 'tijd' }> {
@@ -175,7 +239,7 @@ export function maakBus3dDienst(af: Bus3dAfhankelijk): Bus3dDienst {
     }
     wek()
     try {
-      const uit = await af.werkerVraag<T>(opdracht, (b) => {
+      const uit = await vraagWerker<T>(opdracht, (b) => {
         wek()
         tussen?.(b)
       })
@@ -259,7 +323,7 @@ export function maakBus3dDienst(af: Bus3dAfhankelijk): Bus3dDienst {
     const pad = String(relatiefPad ?? '')
     if (!/\.bus$/i.test(pad) || isAbsolute(pad) || pad.split(/[\\/]/).includes('..')) return { reden: 'geen-model', detail: 'geen .bus' }
     const vraag = ++volgnummer
-    const uit = await inDeRij('model', async (): Promise<Bus3dAntwoord> => {
+    const uit = await inDeRij(kanaalVan('model', venster), async (): Promise<Bus3dAntwoord> => {
       const t0 = Date.now()
       const reg = registratie()
       let z = cache.zoek(af.omsi(), pad)
@@ -283,25 +347,52 @@ export function maakBus3dDienst(af: Bus3dAfhankelijk): Bus3dDienst {
     return uit
   }
 
-  /** Eerst tonen, dan controleren (§4.2): zijn de bronnen veranderd, dan opnieuw en `bus3d:vervangen`. */
+  /**
+   * Eerst tonen, dan controleren (§4.2): zijn de bronnen veranderd, dan opnieuw
+   * bouwen, als achtergrondbeurt in de rij van het venster, en `bus3d:vervangen`.
+   *
+   * Mislukt dat herbouwen (het model is weg, een o3d kapot, de sleutel weg ...),
+   * dan wordt het oude pakket vergeten -- het klopt aantoonbaar niet meer -- en
+   * krijgt het venster ook `bus3d:vervangen`: het vraagt opnieuw en krijgt de
+   * reden (het icoon). Voorheen bleef het oude pakket dan voor altijd uit de
+   * cache komen (aanvalsverslag F1, punt 7). Alleen als de achtergrondbeurt
+   * vervangen is door een vraag van de speler, blijft het oude pakket staan; de
+   * volgende vraag naar deze bus controleert het opnieuw.
+   */
   async function controleer(z: Bus3dZijspoor, reg: ReadonlySet<number>, venster?: WebContents): Promise<void> {
     try {
-      const verouderd = await af.werkerVraag<string | undefined>({ soort: 'bus3d:controle', pakket: z.pakket })
+      const verouderd = await vraagWerker<string | undefined>({ soort: 'bus3d:controle', pakket: z.pakket })
       if (!verouderd) return
       af.log(`bus3d ${z.bus}: verouderd (${verouderd}); opnieuw`)
-      const nieuw = await inDeRij('model', () => bouw(z.bus, reg, venster))
-      if ('zijspoor' in nieuw && venster && !venster.isDestroyed()) venster.send('bus3d:vervangen', z.pakket)
+      const nieuw = await inDeRij(kanaalVan('model', venster), () => bouw(z.bus, reg), true)
+      if ('reden' in nieuw && nieuw.reden === 'vervangen') return
+      if ('zijspoor' in nieuw) {
+        if (nieuw.zijspoor.pakket !== z.pakket) pakketten.delete(z.pakket)
+      } else {
+        cache.vergeetPakket(z.pakket, af.omsi(), z.bus)
+        pakketten.delete(z.pakket)
+        af.log(`bus3d ${z.bus}: het verouderde pakket is vergeten (herbouwen gaf ${nieuw.reden})`)
+      }
+      if (venster && !venster.isDestroyed()) venster.send('bus3d:vervangen', z.pakket)
     } catch (fout) {
       af.logFout('bus3d controle', fout)
     }
   }
 
-  async function lak3d(pakket: string, kleurstelling?: string): Promise<Bus3dLak | { reden: Bus3dReden }> {
+  async function lak3d(pakket: string, kleurstelling?: string, venster?: WebContents): Promise<Bus3dLak | { reden: Bus3dReden }> {
     if (!isBus3dId(String(pakket))) return { reden: 'fout' }
     const z = cache.zijspoor(pakket)
     if (!z) return { reden: 'verouderd' }
-    const uit = await inDeRij('lak', async () => (await lak(z, kleurstelling)) ?? leegLak(kleurstelling))
+    const uit = await inDeRij(kanaalVan('lak', venster), async () => (await lak(z, kleurstelling)) ?? leegLak(kleurstelling))
     return uit
+  }
+
+  function stuk(pakket: string): void {
+    const id = String(pakket ?? '')
+    if (!isBus3dId(id)) return
+    cache.vergeetPakket(id, af.omsi())
+    pakketten.delete(id)
+    af.log(`bus3d: pakket ${id} stuk gemeld door het venster; vergeten, de volgende vraag bouwt opnieuw`)
   }
 
   // ------------------------------------------------------------ het protocol
@@ -352,7 +443,7 @@ export function maakBus3dDienst(af: Bus3dAfhankelijk): Bus3dDienst {
     }
   }
 
-  return { model3d, lak3d, antwoord, vergeet, ruimOp, cache }
+  return { model3d, lak3d, antwoord, vergeet, stuk, ruimOp, cache }
 }
 
 function zelfdeSet(lijst: number[] | undefined, set: ReadonlySet<number>): boolean {
@@ -413,9 +504,11 @@ export function registreerBus3dIpc(ipcMain: IpcMain, dienst: Bus3dDienst): void 
   ipcMain.handle('bus:model3d', (event: IpcMainInvokeEvent, relatiefPad: unknown, kleurstelling: unknown) =>
     dienst.model3d(String(relatiefPad ?? ''), typeof kleurstelling === 'string' ? kleurstelling : undefined, event.sender)
   )
-  ipcMain.handle('bus:lak3d', (_event: IpcMainInvokeEvent, pakket: unknown, kleurstelling: unknown) =>
-    dienst.lak3d(String(pakket ?? ''), typeof kleurstelling === 'string' ? kleurstelling : undefined)
+  ipcMain.handle('bus:lak3d', (event: IpcMainInvokeEvent, pakket: unknown, kleurstelling: unknown) =>
+    dienst.lak3d(String(pakket ?? ''), typeof kleurstelling === 'string' ? kleurstelling : undefined, event.sender)
   )
+  // Het venster kan een pakket niet lezen: vergeten, zodat [Opnieuw] echt opnieuw bouwt.
+  ipcMain.on('bus:stuk3d', (_event, pakket: unknown) => dienst.stuk(String(pakket ?? '')))
 }
 
 export type { Bus3dManifest }

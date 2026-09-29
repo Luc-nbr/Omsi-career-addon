@@ -129,8 +129,9 @@ const naarO3d = (p: V3): V3 => [p[0], p[2], p[1]]
 /**
  * De beschrijvingen uit de `.dsc`-bestanden naast de .bus: `<stam>_ENG.dsc`,
  * `_DEU.dsc`, `_FRA.dsc` ... De Duitse tekst staat vaak in de .bus zelf.
+ * `opBestand` hoort elk .dsc dat gelezen wordt (voor de bronnen van het pakket).
  */
-export function leesBeschrijvingen(busPad: string): Record<string, string> {
+export function leesBeschrijvingen(busPad: string, opBestand?: (pad: string) => void): Record<string, string> {
   const uit: Record<string, string> = {}
   const map = dirname(busPad)
   const stam = basename(busPad).replace(/\.[^.]+$/, '').toLowerCase()
@@ -143,6 +144,7 @@ export function leesBeschrijvingen(busPad: string): Record<string, string> {
   for (const naam of namen) {
     const m = /^(.*)_([a-z]{3})\.dsc$/i.exec(naam)
     if (!m || m[1].toLowerCase() !== stam) continue
+    opBestand?.(join(map, naam))
     let regels: string[]
     try {
       regels = readOmsiLines(join(map, naam))
@@ -529,6 +531,14 @@ export async function bouwBus3d(invoer: Bus3dBouwInvoer): Promise<Bus3dBouwUitko
         }
       })
     }
+    /*
+     * De mappen van ALLE [mesh]-regels als bron, ook van o3d's die er (nog) niet
+     * zijn of niet in beeld komen: verschijnt of verdwijnt er een, dan verandert
+     * de tijd van zijn map, en dan zijn de stukken en de mesh-nummers van het
+     * pakket niet meer goed. Een ontbrekende o3d was geen bron (aanvalsverslag
+     * F1, punt 9a), en bleef dan voor altijd weg.
+     */
+    for (const mesh of cfg.meshes) if (mesh.pad.trim()) stempel(dirname(mesh.bestand))
     for (const mesh of cfg.meshes) {
       if (!mesh.bestaat) continue
       if (hoogsteLod >= 0 && mesh.lod >= 0 && mesh.lod !== hoogsteLod) continue
@@ -706,15 +716,24 @@ export async function bouwBus3d(invoer: Bus3dBouwInvoer): Promise<Bus3dBouwUitko
     if (s === 'kapot') continue
     if (k.telt) s.gebruiktBuiten = true
     gekozen.push({ k, g: s })
-    // De texturen die de cfg zelf noemt (transmap, masker, bump, light- en nightmap, freetex).
+    /*
+     * De texturen die de cfg zelf noemt (transmap, masker, bump, light- en
+     * nightmap, freetex), MET hun CTC-plek: ook die vervangt een kleurstelling
+     * (de `_trans` van de NLC bij "Rheinhausen", SD80_trans, de maskers van de
+     * MAN SG ...). Zonder plek kreeg zo'n kleurstelling in 3D het doorzicht van de
+     * standaard: 318 vervangingen in 66 bussen (aanvalsverslag F1, punt 4).
+     */
+    const metPlek = (naam: string | undefined): void => {
+      if (naam) padVoorNaam(naam, k.d, ctcPerDeel[k.d].get(textuurSleutel(naam)))
+    }
     for (const mat of k.mesh.materialen) {
       for (const stand of [mat, ...mat.items]) {
-        if (stand.transmap && !/^\\S:/i.test(stand.transmap)) padVoorNaam(stand.transmap, k.d)
-        if (stand.envmapMasker) padVoorNaam(stand.envmapMasker, k.d)
-        if (stand.bumpmap) padVoorNaam(stand.bumpmap.textuur, k.d)
-        if (stand.lightmap) padVoorNaam(stand.lightmap.textuur, k.d)
-        if (stand.nightmap) padVoorNaam(stand.nightmap, k.d)
-        if (stand.freetex) padVoorNaam(stand.freetex.standaard, k.d)
+        if (stand.transmap && !/^\\S:/i.test(stand.transmap)) metPlek(stand.transmap)
+        if (stand.envmapMasker) metPlek(stand.envmapMasker)
+        if (stand.bumpmap) metPlek(stand.bumpmap.textuur)
+        if (stand.lightmap) metPlek(stand.lightmap.textuur)
+        if (stand.nightmap) metPlek(stand.nightmap)
+        if (stand.freetex) metPlek(stand.freetex.standaard)
       }
     }
   }
@@ -779,7 +798,7 @@ export async function bouwBus3d(invoer: Bus3dBouwInvoer): Promise<Bus3dBouwUitko
   const vermeldingen: Bus3dVermelding[] = []
   for (const { k, g } of gekozen) {
     const zoek = (naam: string): number | undefined => {
-      const p = padVoorNaam(naam, k.d)
+      const p = padVoorNaam(naam, k.d, ctcPerDeel[k.d].get(textuurSleutel(naam)))
       const i = p === undefined ? -1 : naarLijst[p]
       return i >= 0 ? i : undefined
     }
@@ -970,6 +989,13 @@ export async function bouwBus3d(invoer: Bus3dBouwInvoer): Promise<Bus3dBouwUitko
   }
 
   // ---------------------------------------------------------- bronnen en id
+  /*
+   * De beschrijvingen: elk gelezen .dsc is een bron, en de map van de .bus ook
+   * (daar komt een nieuwe `_ENG.dsc` bij). Zonder dat bleef een nieuwe tekst weg
+   * tot het pakket om een andere reden opnieuw gebouwd werd (punt 9a).
+   */
+  const beschrijvingen = leesBeschrijvingen(busPad, (pad) => stempel(pad))
+  stempel(dirname(busPad))
   for (const map of zoeker.bekekenMappen()) stempel(map)
   const bronLijst = [...bronnen.values()].sort((a, b) => (a.pad.toLowerCase() < b.pad.toLowerCase() ? -1 : 1))
   const h = createHash('sha1')
@@ -977,7 +1003,6 @@ export async function bouwBus3d(invoer: Bus3dBouwInvoer): Promise<Bus3dBouwUitko
   for (const b of bronLijst) h.update(`|${b.pad.toLowerCase()}|${b.grootte}|${b.mtime}`)
   const pakket = h.digest('hex')
 
-  const beschrijvingen = leesBeschrijvingen(busPad)
   const manifest: Bus3dManifest = {
     versie: 1,
     pakket,
