@@ -69,7 +69,9 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/preload/index.ts'),
-          busfoto: resolve(__dirname, 'src/preload/busfoto.ts')
+          busfoto: resolve(__dirname, 'src/preload/busfoto.ts'),
+          /* De smalle brug van het 3D-venster (bus3d-ontwerp §8.1). */
+          bus3d: resolve(__dirname, 'src/preload/bus3d.ts')
         }
       }
     }
@@ -100,9 +102,17 @@ export default defineConfig({
           /* Het verborgen venster dat een bus in beeld brengt. */
           busfoto: resolve(__dirname, 'src/renderer/busfoto.html'),
           /* De navigatie op een telefoon of tablet, via main/apparaat.ts. */
-          apparaat: resolve(__dirname, 'src/renderer/apparaat.html')
+          apparaat: resolve(__dirname, 'src/renderer/apparaat.html'),
+          /* Het 3D-venster van een bus (bus3d-ontwerp §8.1). */
+          bus3d: resolve(__dirname, 'src/renderer/bus3d.html')
         }
       }
-    }
+    },
+    /*
+     * De renderer-werker van het 3D-venster is een module-werker, en die start
+     * zelf nog een ontleder (TGA, BMP32, DXT op de processor). Als ES-module
+     * kan dat; het standaardformaat (iife) kent geen werker in een werker.
+     */
+    worker: { format: 'es' }
   }
 })

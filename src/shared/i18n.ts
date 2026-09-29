@@ -11,6 +11,7 @@
  */
 
 import { TEKST_BEDRIJFSRIT } from './tekst/bedrijfsrit'
+import { TEKST_BUSVIEWER } from './tekst/busviewer'
 import { TEKST_FUNDAMENT } from './tekst/fundament'
 import { TEKST_INVULLEN } from './tekst/invullen'
 import { TEKST_PLANNING } from './tekst/planning'
@@ -4895,7 +4896,8 @@ const TEXT = {
   ...TEKST_UITVAL,
   ...TEKST_INVULLEN,
   ...TEKST_BEDRIJFSRIT,
-  ...TEKST_VLOOTKAART
+  ...TEKST_VLOOTKAART,
+  ...TEKST_BUSVIEWER
 } as const
 
 /** Voor de proef: elke bron apart. */
@@ -4906,7 +4908,8 @@ export const TEKSTBRONNEN = {
   TEKST_UITVAL,
   TEKST_INVULLEN,
   TEKST_BEDRIJFSRIT,
-  TEKST_VLOOTKAART
+  TEKST_VLOOTKAART,
+  TEKST_BUSVIEWER
 } as const
 
 export type TextKey = keyof typeof TEXT

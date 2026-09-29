@@ -42,6 +42,7 @@ import {
   type VrijWanneer,
 } from "../../shared/api";
 import { formatDuration, formatTime } from "../../shared/format";
+import type { Bus3dKeuze } from "../../shared/bus3d";
 import { Dienstoverzicht } from "./Dienstoverzicht";
 import { DutyCard } from "./DutyCard";
 import { Flag } from "./Flag";
@@ -365,6 +366,25 @@ export function App(): JSX.Element {
    */
   const [busFotos, setBusFotos] = useState<Record<string, string>>({});
   const gevraagdeFotos = useRef(new Set<string>());
+  /*
+   * HET 3D-VENSTER (bus3d-ontwerp §8.1), achter de schakelaar `bus3d`.
+   *
+   * `bus3dAan` komt uit de instellingen en wordt opnieuw gelezen bij het
+   * betreden van de busstap: de schakelaar staat in een ander scherm.
+   * `bus3dInBeeld` is de bus die nu in het venster staat (de gevulde 3D-knop),
+   * `bus3dAanvraag` het volgnummer van de laatste vraag: een keuze met een
+   * ander nummer telt niet. `bus3dWeg`: het venster ging onverwacht dicht
+   * (bv.windowFailed, één keer).
+   */
+  const [bus3dAan, setBus3dAan] = useState(false);
+  const [bus3dInBeeld, setBus3dInBeeld] = useState<{
+    pad: string;
+    kleur?: string;
+  }>();
+  const [bus3dWeg, setBus3dWeg] = useState(false);
+  const bus3dAanvraag = useRef(0);
+  /** De stand van de schakelaar bij de vorige keer lezen (undefined: nog niet gelezen). */
+  const bus3dLaatst = useRef<boolean | undefined>(undefined);
 
   /*
    * Het maken van alle foto's in één keer: bij het installeren als vraag, en
@@ -1169,6 +1189,118 @@ export function App(): JSX.Element {
      */
     return assignment?.vehicle ?? (mode === "free" ? vrijeTip : undefined);
   }, [vehicleOverride, vehicles, assignment, mode, vrijeTip]);
+
+  /*
+   * Op de busstap, en alleen daar, telt een keuze uit het 3D-venster (§8.1).
+   * START maakt er een eind aan: in dienst en carriere zet hij `started`, bij
+   * vrij rijden `vrijBezig` (de stap blijft dan "bus", het rijscherm staat).
+   */
+  const opBusstap =
+    screen === "drive" && stap === "bus" && !started && !vrijBezig;
+  const opBusstapRef = useRef(opBusstap);
+  opBusstapRef.current = opBusstap;
+
+  /*
+   * De 3D-knop of een dubbelklik op een tegel: het 3D-venster met deze bus.
+   * Vanaf een kleurtegel met die kleurstelling in beeld; vanaf een
+   * uitvoeringstegel met de kleurstelling die nu voor die bus gekozen is.
+   */
+  const open3d = useCallback(
+    (bus: Vehicle, kleurstelling: string | undefined, vanKleurtegel: boolean) => {
+      const pad = bus.relativePath;
+      const delen = ontleedBus(bus);
+      const dezeBus = (vehicleOverride || vehicle?.relativePath) === pad;
+      const gekozenKleur = busKleur?.pad === pad ? busKleur.naam : undefined;
+      void window.career
+        .bus3dOpen({
+          doel: "buskeuze",
+          relatiefPad: pad,
+          kleurstelling: vanKleurtegel ? kleurstelling : gekozenKleur,
+          // Het vinkje: wat nu voor deze bus gekozen is (null = Standaard); een andere bus heeft er geen.
+          gekozen: dezeBus ? (gekozenKleur ?? null) : undefined,
+          titel: `${delen.merk} ${delen.type} ${delen.uitvoering}`.trim(),
+          naam: [delen.merk, delen.type, delen.uitvoering],
+          vorm: busvorm(delen.type + " " + delen.uitvoering),
+        })
+        .then((n) => {
+          if (n) bus3dAanvraag.current = n;
+        })
+        .catch(() => undefined);
+    },
+    [vehicleOverride, vehicle, busKleur],
+  );
+
+  /*
+   * [Kiezen] in het 3D-venster, door main getoetst: precies wat een klik op
+   * de tegel van die kleurstelling doet (of op de uitvoeringstegel als de bus
+   * geen kleurstellingen heeft). Niet meer op de busstap, of een ander
+   * volgnummer: dan telt hij niet.
+   */
+  const bus3dKeuze = useRef<(k: Bus3dKeuze) => void>(() => undefined);
+  bus3dKeuze.current = (k) => {
+    if (k.doel !== "buskeuze" || !opBusstapRef.current) return;
+    if (k.aanvraag !== bus3dAanvraag.current) return;
+    const bus = vehicles.find((v) => v.relativePath === k.relatiefPad);
+    if (!bus) return;
+    const pad = bus.relativePath;
+    const delen = ontleedBus(bus);
+    setBusMerk(delen.merk);
+    setBusType(delen.type);
+    setVehicleOverride(pad);
+    const lijst = kleurLijsten[pad];
+    if (k.kleurstelling || (lijst && lijst.lijst.length > 0)) {
+      setKleurBus(pad);
+      setBusKleur(k.kleurstelling ? { pad, naam: k.kleurstelling } : undefined);
+    } else {
+      setKleurBus(undefined);
+      setBusKleur(undefined);
+    }
+    setBusScherm("hof");
+  };
+  useEffect(() => {
+    const weg1 = window.career.opBus3dKeuze((k) => bus3dKeuze.current(k));
+    const weg2 = window.career.opBus3dVenster((m) => {
+      setBus3dInBeeld(
+        m.open && m.relatiefPad
+          ? { pad: m.relatiefPad, kleur: m.kleurstelling }
+          : undefined,
+      );
+      // De melding staat tot er weer een venster opengaat (of de busstap verlaten wordt).
+      if (m.gecrasht) setBus3dWeg(true);
+      else if (m.open) setBus3dWeg(false);
+    });
+    return () => {
+      weg1();
+      weg2();
+    };
+  }, []);
+
+  // De busstap verlaten (START, een andere stap, een ander scherm): het 3D-venster dicht.
+  useEffect(() => {
+    if (!opBusstap) {
+      if (bus3dAanvraag.current) window.career.bus3dSluit(bus3dAanvraag.current);
+      setBus3dWeg(false);
+      return;
+    }
+    // De schakelaar kan in de instellingen omgezet zijn; hier weer lezen.
+    void window.career
+      .settings()
+      .then((instellingen) => {
+        const aan = instellingen.bus3d === true;
+        /*
+         * Omgezet sinds de vorige keer: de foto's van de tegels opnieuw vragen
+         * (met de schakelaar de v4, zonder de v3b). Anders hielden de tegels
+         * na "uit" de foto v4 tot de app opnieuw startte (tegenlezing F2).
+         */
+        if (bus3dLaatst.current !== undefined && bus3dLaatst.current !== aan) {
+          gevraagdeFotos.current.clear();
+          setBusFotos({});
+        }
+        bus3dLaatst.current = aan;
+        setBus3dAan(aan);
+      })
+      .catch(() => undefined);
+  }, [opBusstap]);
 
   /** Voertuigen gegroepeerd per map, anders is de lijst van 351 onleesbaar. */
   const vehicleGroups = useMemo(() => {
@@ -4196,6 +4328,21 @@ export function App(): JSX.Element {
                 beeld: busFotos[kleurBus],
                 vorm: busvorm(kleurItem.type + " " + kleurItem.uitvoering),
                 gekozen: !gekozenKleur,
+                acties: bus3dAan
+                  ? [
+                      {
+                        label: t(language, "bv.open3d"),
+                        teken: "3d" as const,
+                        altijd: true,
+                        ingedrukt:
+                          bus3dInBeeld?.pad === kleurBus && !bus3dInBeeld.kleur,
+                        onDoen: () => open3d(kleurItem.bus, undefined, true),
+                      },
+                    ]
+                  : undefined,
+                onDubbel: bus3dAan
+                  ? () => open3d(kleurItem.bus, undefined, true)
+                  : undefined,
                 onDoen: () => {
                   setBusKleur(undefined);
                   setBusScherm("hof");
@@ -4208,6 +4355,22 @@ export function App(): JSX.Element {
                 beeld: busFotos[`${kleurBus}|${naam}`],
                 vorm: busvorm(kleurItem.type + " " + kleurItem.uitvoering),
                 gekozen: gekozenKleur === naam,
+                acties: bus3dAan
+                  ? [
+                      {
+                        label: t(language, "bv.open3d"),
+                        teken: "3d" as const,
+                        altijd: true,
+                        ingedrukt:
+                          bus3dInBeeld?.pad === kleurBus &&
+                          bus3dInBeeld.kleur === naam,
+                        onDoen: () => open3d(kleurItem.bus, naam, true),
+                      },
+                    ]
+                  : undefined,
+                onDubbel: bus3dAan
+                  ? () => open3d(kleurItem.bus, naam, true)
+                  : undefined,
                 onDoen: () => {
                   setBusKleur({ pad: kleurBus, naam });
                   setBusScherm("hof");
@@ -4514,6 +4677,21 @@ export function App(): JSX.Element {
             gekozen:
               (vehicleOverride || vehicle?.relativePath) ===
               item.bus.relativePath,
+            /* De 3D-knop en de dubbelklik (bus3d-ontwerp §8.1), alleen met de schakelaar. */
+            acties: bus3dAan
+              ? [
+                  {
+                    label: t(language, "bv.open3d"),
+                    teken: "3d" as const,
+                    altijd: true,
+                    ingedrukt: bus3dInBeeld?.pad === item.bus.relativePath,
+                    onDoen: () => open3d(item.bus, undefined, false),
+                  },
+                ]
+              : undefined,
+            onDubbel: bus3dAan
+              ? () => open3d(item.bus, undefined, false)
+              : undefined,
             onDoen: () => {
               /*
                * De bus vastleggen. Heeft hij kleurstellingen, dan eerst die
@@ -4879,8 +5057,11 @@ export function App(): JSX.Element {
             (omsiDraaitAl ||
               schermmodus === "volledig" ||
               plugin?.error ||
-              plugin?.changed) ? (
+              plugin?.changed ||
+              bus3dWeg) ? (
               <>
+                {/* Het 3D-venster ging onverwacht dicht; de tegels werken gewoon door (§9). */}
+                {bus3dWeg && <p>{t(language, "bv.windowFailed")}</p>}
                 {/*
                   Draait het spel al, dan heeft klaarzetten geen zin en wordt
                   START een vraag in plaats van een start. Dat hoort hier te

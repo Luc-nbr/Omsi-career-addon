@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, net, protocol, screen, shell } from 'electron'
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, nativeTheme, net, protocol, screen, shell } from 'electron'
 import {
   appendFileSync,
   cpSync,
@@ -208,6 +208,7 @@ import {
 import { triggersVan } from '../core/schermvorm'
 import type { Busanalyse, Busmap } from '../core/busklaar'
 import {
+  bestaandeBusfoto,
   busfotoAdres,
   busfotoAfgehandeld,
   busfotoMap,
@@ -215,6 +216,8 @@ import {
   ruimOudeFotosOp,
   sluitBusfotoVenster
 } from './busfoto'
+import { busfoto4Map, maakBusfoto4, type Busfoto4 } from './busfoto4'
+import { maakBus3dVenster, type Bus3dVenster } from './bus3dvenster'
 import type { BusTekeningMetPlaten } from '../core/busbeeld'
 import { kleurstellingenVanBus } from '../core/kleurstelling'
 import {
@@ -236,6 +239,7 @@ import { t } from '../shared/i18n'
 import { presetStartup } from '../core/startup'
 import { inBekijkstand, zetKopieMap } from '../core/veilig'
 import { trailerOf } from '../core/trailer'
+import { maakBus3dDienst, registreerBus3dIpc, type Bus3dDienst } from './bus3d'
 import { spawnAtStop } from '../core/spawn'
 import { listMaps, readMapName } from '../core/timetable'
 import type { Vehicle } from '../core/vehicles'
@@ -386,7 +390,11 @@ interface WerkerAntwoord {
  * 'bussen': een bus uitlezen om hem klaar te maken duurt tot een minuut. Op de
  * voorgrondwerker zou dat de kaarten en de dienstenlijst zo lang ophouden.
  */
-type Werksoort = 'voorgrond' | 'achtergrond' | 'fotos' | 'bussen'
+/*
+ * 'bus3d': het 3D-pakket van een bus (main/bus3d.ts). Eigen werker, zodat een
+ * vraag van het 3D-venster nooit achter een fotoronde of een busanalyse wacht.
+ */
+type Werksoort = 'voorgrond' | 'achtergrond' | 'fotos' | 'bussen' | 'bus3d'
 
 const werkers = new Map<Werksoort, Worker>()
 let volgendeOpdracht = 0
@@ -400,7 +408,10 @@ let volgendeOpdracht = 0
  * Daarom krijgt iedereen van die werker meteen een antwoord, ook al is het
  * "niet gelukt" -- daar staat een terugval op.
  */
-const werkerWacht = new Map<number, { werker: Worker; klaar: (antwoord: WerkerAntwoord) => void }>()
+const werkerWacht = new Map<
+  number,
+  { werker: Worker; klaar: (antwoord: WerkerAntwoord) => void; tussen?: (bericht: unknown) => void }
+>()
 
 /**
  * Iedereen die op déze werker wacht een antwoord geven, met reden.
@@ -431,7 +442,12 @@ function kaartWerker(soort: Werksoort): Worker {
      */
     workerData: { omsiPath: omsi(), userData: userData(), alleenIn: inBekijkstand() ? [userData()] : undefined }
   })
-  gemaakt.on('message', (antwoord: WerkerAntwoord) => {
+  gemaakt.on('message', (antwoord: WerkerAntwoord & { tussen?: unknown }) => {
+    // Een tussenbericht (bus3d: voortgang, de textuurlijst): de vraag blijft open.
+    if (antwoord.tussen !== undefined) {
+      werkerWacht.get(antwoord.id)?.tussen?.(antwoord.tussen)
+      return
+    }
     const wachtend = werkerWacht.get(antwoord.id)
     werkerWacht.delete(antwoord.id)
     wachtend?.klaar(antwoord)
@@ -451,6 +467,81 @@ function kaartWerker(soort: Werksoort): Worker {
   return gemaakt
 }
 
+/**
+ * Bus3D: de regie in main/bus3d.ts; hier alleen de aansluiting op de werker
+ * `'bus3d'`, het logboek en de mappen. Pas gemaakt als er iets gevraagd wordt.
+ */
+let bus3dDienst: Bus3dDienst | undefined
+function bus3d(): Bus3dDienst {
+  bus3dDienst ??= maakBus3dDienst({
+    userData,
+    omsi,
+    werkerVraag: (opdracht, tussen) => werkerVraag(opdracht, 'bus3d', tussen),
+    sluitWerker: () => sluitAchtergrondwerker('bus3d'),
+    log,
+    logFout,
+    // Zolang OMSI draait geen heldenbeeld wegschrijven (§9); `omsiDraaide` wordt elke halve minuut bijgewerkt.
+    omsiDraait: () => omsiDraaide,
+    // Tot F3 staat alles van het 3D-venster achter de schakelaar `bus3d` (standaard uit).
+    aan: () => readSettings(userData()).bus3d === true,
+    // Geen heldenbeeld: de foto die de tegel al heeft, zonder te tekenen (§9).
+    fotoTerugval: (relatiefPad, kleurstelling) => bestaandeFoto(relatiefPad, kleurstelling)
+  })
+  return bus3dDienst
+}
+
+/**
+ * De foto die de tegel al heeft, als adres: met de schakelaar eerst de v4, anders
+ * de v3b. Zonder te tekenen; voor het 3D-venster, dat nooit op een foto wacht.
+ */
+function bestaandeFoto(relatiefPad: string, kleurstelling?: string): string | undefined {
+  if (readSettings(userData()).bus3d === true) {
+    const v4 = busfoto4?.bestaand(relatiefPad, kleurstelling)
+    if (v4) return busfoto4Adres(v4)
+  }
+  const v3 = bestaandeBusfoto(userData(), relatiefPad, kleurstelling)
+  return v3 ? busfotoAdres(v3) : undefined
+}
+
+/** `omsibus://foto/v4/<naam>.webp`: de foto uit de 3D-renderer (main/busfoto4.ts). */
+function busfoto4Adres(bestand: string): string {
+  return `omsibus://foto/v4/${bestand.split(/[\\/]/).pop()}`
+}
+
+/*
+ * Het 3D-venster (main/bus3dvenster.ts) en het verborgen fotovenster van de
+ * foto v4 (main/busfoto4.ts). Gemaakt in registerHandlers, want ze hangen hun
+ * eigen IPC op.
+ */
+let bus3dVenster: Bus3dVenster | undefined
+let busfoto4: Busfoto4 | undefined
+
+/** De pagina `bus3d.html`, in dev van de server en anders uit de gebouwde map. */
+function bus3dPagina(): { url?: string; bestand?: string } {
+  return process.env.ELECTRON_RENDERER_URL
+    ? { url: `${process.env.ELECTRON_RENDERER_URL}/bus3d.html` }
+    : { bestand: join(__dirname, '../renderer/bus3d.html') }
+}
+
+/** De lijst uit "Appearance" van een bus; het lezen van de .cti-bestanden gaat naar de werker. */
+async function kleurstellingenVan(relatiefPad: string): Promise<BusKleurstellingen | undefined> {
+  try {
+    return await werkerVraag<BusKleurstellingen | undefined>({
+      soort: 'kleurstellingen',
+      busPad: join(omsi(), relatiefPad)
+    })
+  } catch (fout) {
+    logFout('kleurstellingen via de werker', fout)
+    return laag().kleurstellingen(join(omsi(), relatiefPad))
+  }
+}
+
+/** Het thema van de app als donker of licht, voor de achtergrond van een nieuw venster. */
+function isDonker(): boolean {
+  const thema = readSettings(userData()).theme ?? 'systeem'
+  return thema === 'donker' || (thema === 'systeem' && nativeTheme.shouldUseDarkColors)
+}
+
 /** De werker van het voorwerk wegsturen; het hoofdproces houdt niets van hem. */
 function sluitAchtergrondwerker(soort: Werksoort = 'achtergrond'): void {
   const staand = werkers.get(soort)
@@ -461,13 +552,14 @@ function sluitAchtergrondwerker(soort: Werksoort = 'achtergrond'): void {
 
 async function werkerVraag<T>(
   opdracht: Record<string, unknown>,
-  soort: Werksoort = 'voorgrond'
+  soort: Werksoort = 'voorgrond',
+  tussen?: (bericht: unknown) => void
 ): Promise<T> {
   const id = (volgendeOpdracht += 1)
   const antwoord = await new Promise<WerkerAntwoord>((klaar) => {
     try {
       const werker = kaartWerker(soort)
-      werkerWacht.set(id, { werker, klaar })
+      werkerWacht.set(id, { werker, klaar, tussen })
       werker.postMessage({ ...opdracht, id })
     } catch (fout) {
       werkerWacht.delete(id)
@@ -2238,6 +2330,8 @@ async function herstelStartscherm(): Promise<void> {
   const draait = await isOmsiRunning(`${OMSI_PROCES}.exe`)
   const netAf = omsiDraaide && !draait
   omsiDraaide = draait
+  // Het 3D-venster gaat in de lichte stand zolang OMSI draait (bus3d-ontwerp §9).
+  bus3dVenster?.omsiGewijzigd(draait)
   if (netAf) meldPluginLogboek('OMSI is net afgesloten')
   if (!netAf || !klaargezet) return
   try {
@@ -4279,6 +4373,7 @@ function handle(kanaal: string, doen: Vraag): void {
 }
 
 function registerHandlers(): void {
+  registreerBus3dIpc(ipcMain, bus3d())
   /*
     * Welke versie dit is. Het meldsjabloon in Discord vraagt er als eerste
     * regel om, en tot nu toe kon je hem alleen in de programmalijst van Windows
@@ -4451,6 +4546,16 @@ function registerHandlers(): void {
   handle(
     'bus:foto',
     async (_event, relatiefPad: string, kleurstelling?: string): Promise<string | undefined> => {
+      /*
+       * Met de schakelaar `bus3d` de foto v4 uit de 3D-renderer (bus3d-ontwerp
+       * §9); lukt die niet door een fout of de tijd, dan toch de v3b, zodat de
+       * tegel zijn foto niet kwijtraakt. Zonder schakelaar alleen de v3b.
+       */
+      if (readSettings(userData()).bus3d === true && busfoto4) {
+        const v4 = await busfoto4.foto(relatiefPad, kleurstelling || undefined)
+        // Ging de schakelaar intussen uit, dan hoort de tegel de v3b te krijgen.
+        if (v4 && readSettings(userData()).bus3d === true) return busfoto4Adres(v4)
+      }
       const bestand = await maakBusfoto(
         busfotoOpdracht(relatiefPad, 'voorgrond', kleurstelling || undefined)
       )
@@ -4461,18 +4566,46 @@ function registerHandlers(): void {
   /* De lijst uit "Appearance"; het lezen van de .cti-bestanden gaat naar de werker. */
   handle(
     'bus:kleurstellingen',
-    async (_event, relatiefPad: string): Promise<BusKleurstellingen | undefined> => {
-      try {
-        return await werkerVraag<BusKleurstellingen | undefined>({
-          soort: 'kleurstellingen',
-          busPad: join(omsi(), relatiefPad)
-        })
-      } catch (fout) {
-        logFout('kleurstellingen via de werker', fout)
-        return laag().kleurstellingen(join(omsi(), relatiefPad))
-      }
-    }
+    async (_event, relatiefPad: string): Promise<BusKleurstellingen | undefined> => kleurstellingenVan(relatiefPad)
   )
+
+  /*
+   * Het 3D-venster (bus3d-ontwerp §8.1) en de foto v4 (§9), met hun eigen IPC.
+   * Alles achter de schakelaar `bus3d`: zonder schakelaar opent `bus3d:open`
+   * niets en vraagt `bus:foto` de v3b.
+   */
+  bus3dVenster = maakBus3dVenster(ipcMain, {
+    hoofd: () => mainWindow,
+    aan: () => readSettings(userData()).bus3d === true,
+    preload: join(__dirname, '../preload/bus3d.js'),
+    pagina: bus3dPagina(),
+    instellingen: () => {
+      const s = readSettings(userData())
+      return { taal: s.language, thema: s.theme ?? 'systeem', rustig: s.animaties === 'uit' }
+    },
+    achtergrond: () => (isDonker() ? '#141a26' : '#f7f8f8'),
+    leesPlek: () => readSettings(userData()).bus3dVenster,
+    bewaarPlek: (plek) => {
+      try {
+        writeSettings(userData(), { bus3dVenster: plek })
+      } catch (fout) {
+        logFout('plek van het 3D-venster bewaren', fout)
+      }
+    },
+    peilOmsi: () => isOmsiRunning(`${OMSI_PROCES}.exe`),
+    fotoAlsKlaar: (relatiefPad, kleurstelling) => bus3d().fotoAlsKlaar(relatiefPad, kleurstelling, 'breed'),
+    kleurstellingen: (relatiefPad) => kleurstellingenVan(relatiefPad),
+    kleurstalen: (relatiefPad, tussen) => bus3d().kleurstalen(relatiefPad, tussen),
+    log
+  })
+  busfoto4 = maakBusfoto4(ipcMain, {
+    userData,
+    preload: join(__dirname, '../preload/bus3d.js'),
+    pagina: bus3dPagina(),
+    omsiDraait: () => omsiDraaide,
+    log,
+    registratie: () => bus3d().registratieStempel()
+  })
 
   handle('busfotos:stand', (): Promise<BusfotoStand> => busfotosStand())
 
@@ -5562,6 +5695,7 @@ function registerHandlers(): void {
      * en zetten we de situatie opnieuw klaar.
      */
     omsiDraaide = running || launched
+    bus3dVenster?.omsiGewijzigd(omsiDraaide)
     return {
       connected: Boolean(live?.alive),
       launched,
@@ -5653,7 +5787,20 @@ function registerHandlers(): void {
   handle('settings:read', () => readSettings(userData()))
 
   handle('settings:write', (_event, settings: Partial<Settings>) => {
+    const voor = readSettings(userData())
     const saved = writeSettings(userData(), settings)
+    /*
+     * Het 3D-venster: de schakelaar uit is het venster dicht (en geen knop meer
+     * op de tegels); taal, thema en beweging volgen meteen (bus3d-ontwerp §8.1).
+     */
+    if (voor.bus3d && !saved.bus3d) {
+      bus3dVenster?.sluitAlles('de schakelaar bus3d ging uit')
+      // Ook het verborgen fotovenster (met zijn WebGL-context): een lopende foto v4 komt dan niet meer op de tegel (aanvalsverslag F2, punt 9).
+      busfoto4?.sluit()
+    }
+    if (voor.language !== saved.language || voor.theme !== saved.theme || voor.animaties !== saved.animaties) {
+      bus3dVenster?.instellingenGewijzigd()
+    }
     // Een overlay die al openstaat hoort de nieuwe verversing meteen te volgen.
     if (overlayTimer) {
       clearInterval(overlayTimer)
@@ -6277,6 +6424,7 @@ function registerHandlers(): void {
         addonPlan = undefined
         // Er kunnen bussen en kaarten bij zijn: de lijsten opnieuw lezen.
         vergeetKaarten()
+        bus3d().vergeet(uit.addon.bussen)
         vehicleTrackers.clear()
         return { id: uit.addon.id, geschreven: uit.geschreven, overschreven: uit.overschreven, code: uit.code }
       } finally {
@@ -6308,6 +6456,7 @@ function registerHandlers(): void {
       rmSync(reserveMap(userData(), addon.id), { recursive: true, force: true })
       log(`Add-on verwijderd: ${addon.naam} (${uit.verwijderd} weg, ${uit.teruggezet} terug, ${uit.gewijzigd.length} aangepast en blijven staan)`)
       vergeetKaarten()
+      bus3d().vergeet(addon.bussen)
       vehicleTrackers.clear()
       return { verwijderd: uit.verwijderd, teruggezet: uit.teruggezet, gebleven: uit.gebleven, gewijzigd: uit.gewijzigd.slice(0, 50) }
     })
@@ -6481,7 +6630,13 @@ protocol.registerSchemesAsPrivileged([
    * De plaatjes van een nagebouwd apparaatscherm, voor de overlay: alleen op id
    * uit het register van de huidige bus (main/schermtexturen.ts), nooit op pad.
    */
-  { scheme: 'omsischerm', privileges: { standard: true, secure: true, supportFetchAPI: true } }
+  { scheme: 'omsischerm', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  /*
+   * Bus3D: pakketten, texturen en heldenbeelden op id (main/bus3d.ts). Zonder
+   * corsEnabled en zonder ACAO-kop: gemeten dat fetch zo werkt, vanuit de pagina
+   * en vanuit een module-werker (bus3d-ontwerp bijlage B).
+   */
+  { scheme: 'omsi3d', privileges: { standard: true, secure: true, supportFetchAPI: true } }
 ])
 
 /**
@@ -6507,6 +6662,14 @@ function busplaatje(request: Request): Promise<Response> {
   const leeg = (): Promise<Response> => Promise.resolve(new Response(null, { status: 404 }))
   const map = busfotoMap(userData())
   const naam = decodeURIComponent(new URL(request.url).pathname).replace(/^\/+/, '')
+  // De foto v4 uit de 3D-renderer (main/busfoto4.ts): eigen map, zelfde regel.
+  const v4 = /^v4\/([a-f0-9]{16}(-[a-f0-9]{8})?\.webp)$/i.exec(naam)?.[1]
+  if (v4) {
+    const map4 = busfoto4Map(userData())
+    const bestand4 = resolve(map4, v4)
+    if (!bestand4.startsWith(resolve(map4) + sep) || !existsSync(bestand4)) return leeg()
+    return net.fetch(pathToFileURL(bestand4).toString())
+  }
   if (!naam || !/^[a-f0-9]{8,40}\.png$/i.test(naam)) return leeg()
   const bestand = resolve(map, naam)
   if (!bestand.startsWith(resolve(map) + sep)) return leeg()
@@ -6648,6 +6811,8 @@ if (!app.requestSingleInstanceLock()) {
     protocol.handle('omsikaart', kaartplaatje)
     protocol.handle('omsibus', busplaatje)
     protocol.handle('omsischerm', schermplaatje)
+    protocol.handle('omsi3d', (vraag) => bus3d().antwoord(vraag))
+    bus3d().ruimOp()
     // Foto's van een oudere tekenaar horen niet meer getoond te worden.
     ruimOudeFotosOp(userData())
     protocol.handle('omsifoto', profielfoto)
@@ -6715,6 +6880,7 @@ if (!app.requestSingleInstanceLock()) {
     if (apparaatTimer) clearInterval(apparaatTimer)
     apparaatTimer = undefined
     sluitBusfotoVenster()
+    busfoto4?.sluit()
     closeOverlay()
     sluitLopendeDienstAf()
   })

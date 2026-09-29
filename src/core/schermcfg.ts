@@ -75,6 +75,15 @@ export interface CfgMateriaalstand {
   nightmap?: string
   /** `[matl_envmap] <tex> <sterkte>`: vastgelegd, niet getekend. */
   envmap?: string
+  /**
+   * De sterkte uit `[matl_envmap]` (tweede regel). OMSI: weerspiegeling =
+   * diffuse alfa x sterkte, verzadigd op 1 (SD202-carrosserieën schrijven 10).
+   */
+  envmapSterkte?: number
+  /** `[matl_envmap_mask] <tex>`: waar de weerspiegeling mag (bus3d §5.5). */
+  envmapMasker?: string
+  /** `[matl_bumpmap] <tex> <sterkte>`: alleen voor de weerspiegeling, later (bus3d F5). */
+  bumpmap?: { textuur: string; sterkte: number }
   /** `[texcoordtransX|Y] <var>`. */
   texcoordX?: string
   texcoordY?: string
@@ -100,6 +109,10 @@ export interface CfgMateriaal extends CfgMateriaalstand {
   tekst?: number
   adres?: 'clamp' | 'border'
   nietSchrijven?: boolean
+  /** `[matl_noZcheck]`: zonder dieptetoets getekend (bus3d §5.3). */
+  nietTesten?: boolean
+  /** `[useScriptTexture] k`: de k-de `[scripttexture]` van dit bestand (vanaf 0). */
+  scripttextuur?: number
   /** De `[matl_item]`'s van een `[matl_change]`: item 1, 2, ... */
   items: CfgMateriaalstand[]
   regel: number
@@ -163,6 +176,14 @@ export interface ModelCfg {
   tekst: CfgTekstblok[]
   /** De drempels van de `[LOD]`-groepen, in volgorde. */
   lods: number[]
+  /** `[scripttexture] b h`, in bestandsvolgorde; `[useScriptTexture] k` telt hierin. */
+  scripttexturen: { b: number; h: number; regel: number }[]
+  /**
+   * `[texchanges] <bestand>`: een chtex-cfg, ten opzichte van de VOERTUIGMAP
+   * (niet de map van de model.cfg). Geldt voor het hele model, ook al staat hij
+   * bij een mesh.
+   */
+  texchanges: string[]
 }
 
 /** Hoeveel regels een kop meeneemt. Alleen koppen die hier gelezen worden. */
@@ -194,7 +215,21 @@ const LENGTE: Record<string, number> = {
   '[texcoordtransX]': 1,
   '[texcoordtransY]': 1,
   '[matl_noZwrite]': 0,
-  '[alphascale]': 1
+  '[alphascale]': 1,
+  /*
+   * Erbij voor de 3D-weergave (bus3d §5.1). De aantallen regels zijn geteld over
+   * de 810 model-cfg's onder Vehicles (28-09-2026): noZcheck 3402 keer 0,
+   * envmap_mask 616 keer 1 (12 keer staat er nog een getal onder, dat OMSI dan
+   * als commentaar leest), bumpmap 6132 keer 2, scripttexture 937 keer 2,
+   * texchanges 19 keer 1. `-<DISABLED>-` staat er NIET bij: dat komt pas na een
+   * meting tegen meshes.json van de plugin (bus3d §5.1, scripts/probe-meshlijst.ts).
+   */
+  '[matl_noZcheck]': 0,
+  '[matl_envmap_mask]': 1,
+  '[matl_bumpmap]': 2,
+  '[scripttexture]': 2,
+  '[useScriptTexture]': 1,
+  '[texchanges]': 1
 }
 
 /**
@@ -276,13 +311,51 @@ export function cfgRegels(pad: string): string[] {
   return tekst.split(/\r\n|\r|\n/)
 }
 
-const geheugen = new Map<string, { sleutel: string; cfg: ModelCfg }>()
+const geheugen = new Map<string, { sleutel: string; mappen: string[]; mapSleutel: string; cfg: ModelCfg }>()
+
+/** De wijzigingstijden van een rij mappen, als één tekst ('-' voor een map die er niet is). */
+function mapStempels(mappen: string[]): string {
+  return mappen
+    .map((map) => {
+      try {
+        return String(statSync(map).mtimeMs)
+      } catch {
+        return '-'
+      }
+    })
+    .join('|')
+}
+
+/**
+ * De mappen waar de [mesh]-regels van een cfg naar wijzen, zonder de schijf aan
+ * te raken: dezelfde paden als `ontleedSchermcfg` maakt (map van de cfg plus de
+ * regel). Een regel te veel (een '[mesh]' die eigenlijk een argument is) kost
+ * alleen een `stat` extra.
+ */
+function meshMappen(modelcfg: string, regels: string[]): string[] {
+  const map = dirname(modelcfg)
+  const uit = new Set<string>()
+  for (let i = 0; i < regels.length; i++) {
+    if (regels[i] !== '[mesh]') continue
+    const pad = regels[i + 1] ?? ''
+    if (!pad.trim()) continue
+    uit.add(dirname(join(map, ...pad.split(/[\\/]+/).filter(Boolean))).toLowerCase())
+  }
+  return [...uit]
+}
 
 /**
  * De cfg van een model, of `undefined` als hij niet te lezen is.
  *
  * Onthouden op pad, grootte en wijzigingstijd: de schermvorm vraagt hem twee
  * keer kort na elkaar op (eerst voor de getallen, dan voor de vorm).
+ *
+ * Eén ding in de uitkomst hangt niet van de cfg af maar van de schijf: of de o3d
+ * van een [mesh] bestaat (`bestaat`, en daarmee de mesh-nummers). Daarom telt
+ * ook de wijzigingstijd van de mappen van die o3d's mee: komt er een o3d bij of
+ * gaat er een weg, dan verandert die tijd en wordt de cfg opnieuw gelezen.
+ * Zonder dat zag een werker die de cfg al kende een later verschenen o3d nooit
+ * (aanvalsverslag Bus3D F1, punt 9b).
  */
 export function leesSchermcfg(modelcfg: string): ModelCfg | undefined {
   let sleutel: string
@@ -293,16 +366,23 @@ export function leesSchermcfg(modelcfg: string): ModelCfg | undefined {
     return undefined
   }
   const bekend = geheugen.get(modelcfg)
-  if (bekend && bekend.sleutel === sleutel) return bekend.cfg
+  if (bekend && bekend.sleutel === sleutel && bekend.mapSleutel === mapStempels(bekend.mappen)) return bekend.cfg
   let regels: string[]
   try {
     regels = cfgRegels(modelcfg)
   } catch {
     return undefined
   }
+  /*
+   * De mappen stempelen vóór de o3d's bekeken worden: verandert er tijdens het
+   * ontleden iets, dan klopt de stempel de volgende keer niet en wordt er
+   * opnieuw gelezen -- nooit andersom.
+   */
+  const mappen = meshMappen(modelcfg, regels)
+  const mapSleutel = mapStempels(mappen)
   const cfg = ontleedSchermcfg(modelcfg, regels)
   if (geheugen.size > 8) geheugen.clear()
-  geheugen.set(modelcfg, { sleutel, cfg })
+  geheugen.set(modelcfg, { sleutel, mappen, mapSleutel, cfg })
   return cfg
 }
 
@@ -312,6 +392,8 @@ export function ontleedSchermcfg(modelcfg: string, regels: string[]): ModelCfg {
   const meshes: CfgMesh[] = []
   const tekst: CfgTekstblok[] = []
   const lods: number[] = []
+  const scripttexturen: ModelCfg['scripttexturen'] = []
+  const texchanges: string[] = []
 
   let mesh: CfgMesh | undefined
   let materiaal: CfgMateriaal | undefined
@@ -381,6 +463,17 @@ export function ontleedSchermcfg(modelcfg: string, regels: string[]): ModelCfg {
           raster: Number.isFinite(raster) ? raster & 0xffff : 1,
           geldig
         })
+        break
+      }
+      case '[scripttexture]': {
+        const b = strToInt(args(0))
+        const h = strToInt(args(1))
+        scripttexturen.push({ b: Number.isFinite(b) ? b : 0, h: Number.isFinite(h) ? h : 0, regel: i + 1 })
+        break
+      }
+      case '[texchanges]': {
+        const bestand = args(0).trim()
+        if (bestand) texchanges.push(bestand)
         break
       }
       case '[LOD]': {
@@ -508,6 +601,22 @@ export function ontleedSchermcfg(modelcfg: string, regels: string[]): ModelCfg {
       case '[matl_noZwrite]':
         materiaal.nietSchrijven = true
         return
+      case '[matl_noZcheck]':
+        materiaal.nietTesten = true
+        return
+      case '[useScriptTexture]': {
+        const k = geheel(args(0))
+        if (Number.isFinite(k) && k >= 0) materiaal.scripttextuur = k
+        return
+      }
+      case '[matl_envmap_mask]':
+        stand.envmapMasker = args(0).trim() || undefined
+        return
+      case '[matl_bumpmap]': {
+        const textuur = args(0).trim()
+        if (textuur) stand.bumpmap = { textuur, sterkte: getal(args(1)) || 0 }
+        return
+      }
       case '[matl_alpha]': {
         const a = geheel(args(0))
         stand.alfa = a === 1 ? 1 : a === 2 ? 2 : 0
@@ -537,9 +646,12 @@ export function ontleedSchermcfg(modelcfg: string, regels: string[]): ModelCfg {
       case '[matl_nightmap]':
         stand.nightmap = args(0).trim()
         return
-      case '[matl_envmap]':
+      case '[matl_envmap]': {
         stand.envmap = args(0).trim()
+        const sterkte = getal(args(1))
+        if (Number.isFinite(sterkte)) stand.envmapSterkte = sterkte
         return
+      }
       case '[texcoordtransX]':
         stand.texcoordX = args(0).trim()
         return
@@ -552,7 +664,7 @@ export function ontleedSchermcfg(modelcfg: string, regels: string[]): ModelCfg {
     }
   }
 
-  return { pad: modelcfg, map, meshes, tekst, lods }
+  return { pad: modelcfg, map, meshes, tekst, lods, scripttexturen, texchanges }
 }
 
 /**

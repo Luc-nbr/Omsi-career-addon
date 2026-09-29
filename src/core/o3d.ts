@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { isGehusseld, type HusselKop } from '../shared/o3dhussel'
 
 /**
  * OMSI's eigen 3D-modelformaat (.o3d).
@@ -18,8 +19,9 @@ import { readFileSync } from 'node:fs'
  * bestanden), 7 (7757), 4 (7062), 5 (5060) en 3 (3). Versie 1 begint meteen
  * daarna met blokken; vanaf versie 3 volgt eerst een vlagbyte, en vanaf versie 4
  * nog vier bytes erachter. Die vier zijn per addon gelijk (0x31b6, 0x32cd,
- * 0xffffffff ...) en zeggen ons niets; wat ze betekenen is niet nagemeten en ook
- * niet nodig.
+ * 0xffffffff ...): `ffffffff` is open, elk ander woord is het artikelnummer van
+ * het add-on waarmee de hoekpunten gehusseld zijn (12726 = 0x31b6 is OMSI 2 -
+ * Hamburg). Zie shared/o3dhussel.ts en core/omsiregistratie.ts.
  *
  * Elk blok begint met een kenbyte:
  *
@@ -135,6 +137,18 @@ export interface O3dModel {
   transform?: number[]
   /** Alleen gevuld als het bestand een beenderenblok heeft. */
   beenderen?: O3dBeen[]
+  /**
+   * Waar het hoekpuntblok in het bestand begint (byte), en de vlagbyte. Voor het
+   * 3D-pakket, dat elk blok byte voor byte overneemt (core/bus3d.ts).
+   */
+  hoekpuntBegin?: number
+  vlag?: number
+  /**
+   * Alleen bij `{ gehusseld: true }` en een gehusseld bestand: de kop die het
+   * ontwarren nodig heeft. De hoekpunten hierboven staan dan nog GEHUSSELD --
+   * ontwarren mag alleen na `magOntwarren` (shared/o3dhussel.ts).
+   */
+  hussel?: HusselKop
 }
 
 /** Waarom een bestand niet (helemaal) gelezen kon worden. */
@@ -202,15 +216,28 @@ export function leesO3d(pad: string): O3dModel | undefined {
   return leesO3dLezing(pad).model
 }
 
+/**
+ * Wat de lezer mag.
+ *
+ * `gehusseld`: een gehusseld bestand (versie >= 4, woord niet ffffffff) toch
+ * lezen, met de hoekpunten zoals ze in het bestand staan en de kop in
+ * `model.hussel`. Zonder deze optie blijft het de klacht `'versleuteld'`, zodat
+ * busbeeld.ts en schermvorm.ts niets merken. Alleen core/bus3d.ts zet hem aan,
+ * en die ontwart pas na de registratietoets (bus3d-ontwerp §5.1).
+ */
+export interface O3dOpties {
+  gehusseld?: boolean
+}
+
 /** Hetzelfde, maar met de reden erbij. */
-export function leesO3dLezing(pad: string): O3dLezing {
+export function leesO3dLezing(pad: string, opties?: O3dOpties): O3dLezing {
   let bytes: Buffer
   try {
     bytes = readFileSync(pad)
   } catch (fout) {
     return { klacht: 'onleesbaar', detail: (fout as Error).message }
   }
-  return ontleedO3d(bytes)
+  return ontleedO3d(bytes, opties)
 }
 
 /**
@@ -223,7 +250,7 @@ export function leesO3dLezing(pad: string): O3dLezing {
  * is `node:fs`-materiaal; er zit geen Electron in dit bestand, zodat het ook in
  * een worker_thread laadt.
  */
-export function ontleedO3d(bytes: Uint8Array): O3dLezing {
+export function ontleedO3d(bytes: Uint8Array, opties?: O3dOpties): O3dLezing {
   const buf = Buffer.isBuffer(bytes)
     ? bytes
     : Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)
@@ -242,7 +269,8 @@ export function ontleedO3d(bytes: Uint8Array): O3dLezing {
    * de vlag niet.
    */
   const versie = buf[2]
-  if (versie >= 4 && buf.length >= 8 && buf.readUInt32LE(4) !== 0xffffffff) {
+  const gehusseld = versie >= 4 && buf.length >= 8 && isGehusseld(versie, buf.readUInt32LE(4))
+  if (gehusseld && !opties?.gehusseld) {
     return {
       klacht: 'versleuteld',
       detail: `sleutel ${buf.readUInt32LE(4).toString(16)}`
@@ -259,10 +287,20 @@ export function ontleedO3d(bytes: Uint8Array): O3dLezing {
    * heten, en die zou de noodgreep afknippen. Vandaar: soepel alleen als streng
    * er niet uitkomt.
    */
-  const streng = ontleed(buf, false)
-  if (!streng.klacht) return streng
-  const soepel = ontleed(buf, true)
-  return soepel.klacht ? streng : soepel
+  let uit = ontleed(buf, false)
+  if (uit.klacht) {
+    const soepel = ontleed(buf, true)
+    if (!soepel.klacht) uit = soepel
+  }
+  if (gehusseld && uit.model) {
+    uit.model.hussel = {
+      versie,
+      vlag: buf[3],
+      sleutel: buf.readUInt32LE(4),
+      n: uit.model.vertices.length / 3
+    }
+  }
+  return uit
 }
 
 /** De eerste bytes als hex, voor in een foutmelding. */
@@ -290,7 +328,8 @@ function ontleed(buf: Buffer, soepel: boolean): O3dLezing {
     uvs: new Float32Array(0),
     triangles: new Uint32Array(0),
     materiaalPerDriehoek: new Uint16Array(0),
-    materialen: []
+    materialen: [],
+    vlag: versie >= 3 ? buf[3] : 0
   }
   const af = (klacht: O3dKlacht, detail: string): O3dLezing => ({ model, klacht, detail })
 
@@ -307,6 +346,7 @@ function ontleed(buf: Buffer, soepel: boolean): O3dLezing {
         return af('afgekapt', `${aantal} hoekpunten beloofd, ${buf.length - p} bytes over`)
       }
       vulHoekpunten(model, buf, p, aantal)
+      model.hoekpuntBegin = p
       p += aantal * 32
       continue
     }
