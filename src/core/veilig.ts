@@ -102,10 +102,12 @@ function vastgehouden(fout: unknown): boolean {
  *
  * Start een oudere exe dan de versie die de gebruikersmap het laatst
  * bijwerkte, en kiest de speler "alleen bekijken", dan schrijft de app nergens
- * (main/versiewacht.ts). Het meeste houdt `fs` zelf dan tegen; wat niet via
- * `fs` gaat -- `reg add` voor de Game Bar, OMSI starten -- vraagt het hier.
- * Tot 29-09 zette de knop voor de Game Bar in alleen-bekijken gewoon het
- * register om.
+ * (main/versiewacht.ts). Het meeste houdt `fs` zelf dan tegen
+ * (core/schrijfslot.ts); wat niet via `fs` gaat -- `reg add` voor de Game Bar,
+ * OMSI starten -- vraagt het hier. Tot 29-09 zette de knop voor de Game Bar in
+ * alleen-bekijken gewoon het register om. Sinds 0.4.9 vraagt START het ook
+ * (`free:start` en `duty:begin` in main/index.ts), zodat er een eigen melding
+ * komt in plaats van een schrijffout halverwege het klaarzetten.
  */
 let bekijkstand = false
 

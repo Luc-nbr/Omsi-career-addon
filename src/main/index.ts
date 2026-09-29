@@ -234,7 +234,7 @@ import { startVrijeRit } from '../core/vrijstart'
 import { readTileList } from '../core/track'
 import { t } from '../shared/i18n'
 import { presetStartup } from '../core/startup'
-import { zetKopieMap } from '../core/veilig'
+import { inBekijkstand, zetKopieMap } from '../core/veilig'
 import { trailerOf } from '../core/trailer'
 import { spawnAtStop } from '../core/spawn'
 import { listMaps, readMapName } from '../core/timetable'
@@ -251,6 +251,7 @@ import {
   type OmsiMelding,
   type OmsiOverlays,
   type BeginRequest,
+  type BeginResult,
   type FreeCheck,
   type FreeRequest,
   type FreeResult,
@@ -411,7 +412,12 @@ function kaartWerker(soort: Werksoort): Worker {
   if (staand) return staand
 
   const gemaakt = new Worker(join(__dirname, 'kaartwerker.js'), {
-    workerData: { omsiPath: omsi(), userData: userData() }
+    /*
+     * `alleenIn`: in alleen-bekijken (main/versiewacht.ts) zet de werker het
+     * slot van het hoofdproces ook op zijn eigen `fs` -- een worker_thread heeft
+     * er een eigen. `userData()` is dan al de kopie.
+     */
+    workerData: { omsiPath: omsi(), userData: userData(), alleenIn: inBekijkstand() ? [userData()] : undefined }
   })
   gemaakt.on('message', (antwoord: WerkerAntwoord) => {
     const wachtend = werkerWacht.get(antwoord.id)
@@ -5119,6 +5125,17 @@ function registerHandlers(): void {
    */
   handle('free:start', async (_event, request: FreeRequest): Promise<FreeResult> => {
     const folder = String(request.mapFolder)
+    /*
+     * Alleen bekijken (main/versiewacht.ts): START weigert meteen, met een
+     * eigen reden. Zonder dit hield `fs` het schrijven van de situatie wel
+     * tegen, maar kwam de speler op "schrijven mislukt: Alleen bekijken: niet
+     * geschreven naar ...\Situations" uit -- en draaide OMSI al, dan begon er
+     * een vrije rit zonder dat er iets klaarstond.
+     */
+    if (inBekijkstand()) {
+      log(`vrij rijden geweigerd: alleen bekijken (${folder})`)
+      return { running: false, launched: false, klaargezet: 'niets', fout: 'bekijken' }
+    }
     const instellingen = readSettings(userData())
     const yard = request.vehiclePath ? await wagenparkVoorStart(folder, request.vehiclePath, request.yard) : undefined
     const vehicle = request.vehiclePath
@@ -5305,8 +5322,21 @@ function registerHandlers(): void {
    * situatie wordt geschreven en als "Last Situation" klaargezet, en pas daarna
    * gaat het spel aan. Zo hoeft de chauffeur in OMSI alleen op Start te drukken.
    */
-  handle('duty:begin', async (_event, request: BeginRequest) => {
+  handle('duty:begin', async (_event, request: BeginRequest): Promise<BeginResult> => {
     const { duty, ibis } = request
+    /*
+     * Alleen bekijken (main/versiewacht.ts): er begint niets, vóór de
+     * begintijd in het profiel komt. `fs` hield het klaarzetten wel tegen en
+     * launchOmsi weigerde, maar dan stond er een begonnen dienst in de kopie,
+     * met "klaarzetten mislukt" in de voet -- en draaide OMSI al, dan liep die
+     * dienst gewoon, met een overlay en een telling die nergens heen gingen.
+     * Een dienst aannemen (en een examen) mag wel: dat is rondkijken, in de
+     * kopie.
+     */
+    if (inBekijkstand()) {
+      log(`dienst niet begonnen: alleen bekijken (${duty?.mapFolder ?? '?'}, omloop ${duty?.tourNumber ?? '?'})`)
+      return { connected: false, launched: false, running: false, fout: 'bekijken' }
+    }
     if (career?.activeDuty && !career.activeDuty.startedAt) {
       persist({ ...career, activeDuty: { ...career.activeDuty, startedAt: new Date().toISOString() } })
     }
@@ -6457,7 +6487,13 @@ if (!app.requestSingleInstanceLock()) {
     } catch {
       // Nog geen OMSI gekozen; dan is er ook niets bijgeschreven.
     }
-    if (inDeWachtrij() > 0 || verkeerd > 0) {
+    /*
+     * Niet in alleen-bekijken: keyboard.cfg is van OMSI, en `fs` weigert het
+     * toch -- als onafgehandelde belofte in het logboek, en met een wachtrij
+     * elke vijf tellen opnieuw zodra OMSI dicht was. De wachtrij blijft staan
+     * voor de exe die wel mag schrijven.
+     */
+    if (!inBekijkstand() && (inDeWachtrij() > 0 || verkeerd > 0)) {
       void schrijfStraks('bij het starten van de app').then(() => {
         if (inDeWachtrij() > 0) wachtOpOmsiDicht()
       })

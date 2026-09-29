@@ -216,7 +216,8 @@ export interface FreeResult {
   klaargezet: Klaargezet
   /** De naam van de plek waar de bus staat. */
   plek?: string
-  fout?: 'geenBus' | 'onvolledig' | 'geenPlek' | 'geenDienstregeling' | 'schrijven'
+  /** `bekijken`: de app draait alleen om te bekijken (main/versiewacht.ts) en zet niets klaar. */
+  fout?: 'geenBus' | 'onvolledig' | 'geenPlek' | 'geenDienstregeling' | 'schrijven' | 'bekijken'
   foutTekst?: string
 }
 
@@ -401,6 +402,12 @@ export interface BeginResult {
   prepared?: PreparedSituation
   /** Waarom het klaarzetten niet lukte; de overlay staat er dan alsnog. */
   prepareError?: string
+  /**
+   * `bekijken`: de app draait alleen om te bekijken (main/versiewacht.ts). Dan
+   * begint er niets: geen situatie, geen startscherm, geen OMSI, en de dienst
+   * krijgt geen begintijd.
+   */
+  fout?: 'bekijken'
 }
 
 export interface Assignment {

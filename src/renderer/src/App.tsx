@@ -1472,6 +1472,15 @@ export function App(): JSX.Element {
           return false;
         }
         /*
+         * Alleen bekijken (een oudere exe dan de laatste schrijver): main
+         * begint dan niets, en zegt dat. Geen "OMSI niet gestart", want er is
+         * niets misgegaan.
+         */
+        if (result.fout === "bekijken") {
+          setNote(t(language, "vw.start"));
+          return false;
+        }
+        /*
          * Ook een `duty:begin` die gewoon terugkomt kan betekenen dat er niets
          * draait. Main vangt het starten van het spel af: zegt de speler nee
          * tegen het UAC-venster, lukt PowerShell niet, of staat er geen
@@ -1711,6 +1720,8 @@ export function App(): JSX.Element {
         return t(language, "free.writeFailed", {
           reden: ("foutTekst" in uit ? uit.foutTekst : undefined) ?? "?",
         });
+      case "bekijken":
+        return t(language, "vw.start");
       default:
         return t(language, "free.noPlace", { map: kaart });
     }

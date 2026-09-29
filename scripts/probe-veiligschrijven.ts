@@ -15,6 +15,10 @@
  * 5. options.cfg met Windows-1252-tekens (€, é) gaat byte voor byte heen en weer.
  * 6. (29-09) Een bestand dat een ander programma openhoudt zonder "verwijderen"
  *    toe te staan, wordt toch geschreven (ter plekke, zoals tot 28-09).
+ * 7. (0.4.9) Wat een dienst en vrij rijden schrijven: `[last_map]` in
+ *    options.cfg (ook in UTF-16), de situatie en het weer, laststn.osn met het
+ *    weer en de kopieën ernaast. Codering blijft, en een onderbreking laat het
+ *    vorige bestand heel. Op 3880b6d faalt 7: zeven fouten.
  *
  * Op de oude code (vóór 28-09) faalt dit: keyboard.cfg werd rechtstreeks
  * overschreven en bleef half achter, een lege lijst werd gewoon geschreven, en
@@ -26,6 +30,9 @@ import { join } from 'node:path'
 import { readControllers, writeControllers } from '../src/core/omsiControllers'
 import { readKeyboard, writeKeyboard, type KeyBinding } from '../src/core/omsiKeys'
 import { readOptions, writeOptions } from '../src/core/omsiOptions'
+import { writeSituation } from '../src/core/situation'
+import { presetStartup, readLastMap, setLastMap } from '../src/core/startup'
+import { writeWeather } from '../src/core/weather'
 import { einde, klopt, nepOmsi, proefMap, schrijf } from './proefhulp'
 
 const basis = proefMap('veiligschrijven')
@@ -130,6 +137,146 @@ const cp1252 = Buffer.from('[last_map]\r\nmaps\\Stra\xdfe \x80 caf\xe9\r\n\r\n[m
 fs.writeFileSync(opties, cp1252)
 writeOptions(omsi, readOptions(omsi))
 klopt('5. options.cfg met € en é: heen en weer byte-identiek', fs.readFileSync(opties).equals(cp1252))
+
+/*
+ * 7. (0.4.9) Wat een dienst en vrij rijden in OMSI schrijven. Vrij rijden en
+ *    deel 0 van het busbedrijf kwamen tegelijk met ronde 1 binnen, en hun
+ *    schrijvers gingen er nog buitenom: `setLastMap` schreef options.cfg
+ *    rechtstreeks in latin1, de situatie en het weer met `writeFileSync`,
+ *    laststn.osn en zijn kopieën met `copyFileSync`. Op 3880b6d faalt dit
+ *    deel: UTF-16 wordt verminkt, en een onderbreking laat halve bestanden.
+ */
+const BOM = Buffer.from([0xff, 0xfe])
+const halfBezig = (map: string): string[] => fs.readdirSync(map).filter((n) => n.endsWith('.bezig'))
+/** `doe` draaien terwijl elke schrijfbeurt naar een pad met `bevat` erin halverwege omvalt. */
+function onderbreek(bevat: string, doe: () => unknown): string | undefined {
+  const echtW = fs.writeFileSync
+  const echtC = fs.copyFileSync
+  const half = (pad: fs.PathOrFileDescriptor, bytes: Buffer): never => {
+    echtW(pad, bytes.subarray(0, Math.floor(bytes.length / 2)))
+    throw new Error('onderbroken halverwege het schrijven')
+  }
+  ;(fs as { writeFileSync: unknown }).writeFileSync = (pad: fs.PathOrFileDescriptor, data: string | NodeJS.ArrayBufferView, ...rest: unknown[]) => {
+    if (String(pad).includes(bevat)) {
+      const codering = typeof rest[0] === 'string' ? (rest[0] as BufferEncoding) : 'utf8'
+      half(pad, typeof data === 'string' ? Buffer.from(data, codering) : Buffer.from(data.buffer, data.byteOffset, data.byteLength))
+    }
+    return (echtW as (...a: unknown[]) => void)(pad, data, ...rest)
+  }
+  ;(fs as { copyFileSync: unknown }).copyFileSync = (van: fs.PathLike, naar: fs.PathLike, ...rest: unknown[]) => {
+    if (String(naar).includes(bevat)) half(String(naar), fs.readFileSync(van))
+    return (echtC as (...a: unknown[]) => void)(van, naar, ...rest)
+  }
+  try {
+    doe()
+    return undefined
+  } catch (fout) {
+    return fout instanceof Error ? fout.message : String(fout)
+  } finally {
+    ;(fs as { writeFileSync: unknown }).writeFileSync = echtW
+    ;(fs as { copyFileSync: unknown }).copyFileSync = echtC
+  }
+}
+
+// 7a. [last_map] in een options.cfg in UTF-16.
+const optiesTekst = '[max_fps]\r\n60\r\n\r\n[last_map]\r\nmaps\\Oud\\global.cfg\r\n\r\n'
+fs.writeFileSync(opties, Buffer.concat([BOM, Buffer.from(optiesTekst, 'utf16le')]))
+const gezet = setLastMap(omsi, 'Proefkaart')
+const naSet = fs.readFileSync(opties)
+klopt(
+  `7a. [last_map] in een options.cfg in UTF-16 (${gezet ? 'gezet' : 'niet gezet'}): nog steeds UTF-16 met BOM, alleen die regel anders`,
+  gezet &&
+    naSet[0] === 0xff &&
+    naSet[1] === 0xfe &&
+    naSet.subarray(2).toString('utf16le') === optiesTekst.replace('maps\\Oud\\', 'maps\\Proefkaart\\')
+)
+klopt(`7a. readLastMap leest hem terug: ${readLastMap(omsi)}`, readLastMap(omsi) === 'Proefkaart')
+
+// 7b. Windows-1252 blijft byte voor byte, op de ene regel na.
+const optiesAnsi = (kaart: string): Buffer =>
+  Buffer.from(`[last_map]\r\nmaps\\${kaart}\\global.cfg\r\n\r\n[naam]\r\nJ\xfcrgen \x80 Stra\xdfe\r\n\r\n`, 'latin1')
+fs.writeFileSync(opties, optiesAnsi('Oud'))
+setLastMap(omsi, 'Proefkaart')
+klopt('7b. [last_map] in Windows-1252 (ü, €, ß): de rest byte voor byte', fs.readFileSync(opties).equals(optiesAnsi('Proefkaart')))
+
+// 7c. options.cfg halverwege onderbroken.
+let lastMapGezet = true
+onderbreek('options.cfg', () => {
+  lastMapGezet = setLastMap(omsi, 'Anders')
+})
+klopt(
+  `7c. options.cfg halverwege onderbroken: setLastMap ${lastMapGezet ? 'zegt ja' : 'zegt nee'}, het bestand is wat het was, geen .bezig (${halfBezig(omsi).join(', ') || 'geen'})`,
+  !lastMapGezet && fs.readFileSync(opties).equals(optiesAnsi('Proefkaart')) && halfBezig(omsi).length === 0
+)
+klopt('7c. een options.cfg die er niet is, wordt niet gemaakt', (() => {
+  const zonder = join(basis, 'zonder-opties')
+  fs.mkdirSync(zonder, { recursive: true })
+  return !setLastMap(zonder, 'Proefkaart') && !fs.existsSync(join(zonder, 'options.cfg'))
+})())
+
+// 7d. De situatie en het weer: UTF-16 met BOM, en een onderbreking laat de vorige heel.
+const situaties = join(omsi, 'Situations')
+const verzoek = { mapFolder: 'Proefkaart', name: 'OMSI Enhancer — proef', description: '', year: 2020, dayOfYear: 100, minutes: 600, weather: 'clear' as const }
+const eerste = writeSituation(omsi, verzoek)
+const osn = fs.readFileSync(eerste.file)
+const owt = fs.readFileSync(`${eerste.file}.owt`)
+klopt('7d. de situatie is UTF-16 met BOM, het weer ernaast ook', osn[0] === 0xff && osn[1] === 0xfe && owt[0] === 0xff && owt[1] === 0xfe)
+const situatieFout = onderbreek('OMSI Enhancer.osn', () => writeSituation(omsi, { ...verzoek, minutes: 700 }))
+klopt(
+  `7d. de situatie halverwege onderbroken (${situatieFout ?? 'geen fout'}): de vorige staat er heel, geen .bezig`,
+  situatieFout !== undefined && fs.readFileSync(eerste.file).equals(osn) && halfBezig(situaties).length === 0
+)
+const weerFout = onderbreek('.osn.owt', () => writeWeather(eerste.file, 'rain'))
+klopt(
+  `7d. het weer halverwege onderbroken (${weerFout ?? 'geen fout'}): het vorige staat er heel, geen .bezig`,
+  weerFout !== undefined && fs.readFileSync(`${eerste.file}.owt`).equals(owt) && halfBezig(situaties).length === 0
+)
+
+// 7e. laststn.osn, het weer ernaast en de kopieën.
+const kaartMap = join(omsi, 'maps', 'Proefkaart')
+fs.mkdirSync(kaartMap, { recursive: true })
+const eigenStand = Buffer.concat([BOM, Buffer.from('[map]\r\nmaps\\Proefkaart\\global.cfg\r\n\r\n[eigen rit]\r\n', 'utf16le')])
+const kaartWeer = Buffer.concat([BOM, Buffer.from('[name]\r\nWeer van de kaart\r\n\r\n', 'utf16le')])
+const laststn = join(kaartMap, 'laststn.osn')
+fs.writeFileSync(laststn, eigenStand)
+fs.writeFileSync(`${laststn}.owt`, kaartWeer)
+fs.writeFileSync(opties, optiesAnsi('Oud'))
+const klaar = presetStartup(omsi, 'Proefkaart', eerste.file)
+klopt(
+  `7e. presetStartup: laatste situatie ${klaar.lastSituation}, last_map ${klaar.lastMap}${klaar.weerFout ? `, weer: ${klaar.weerFout}` : ''}`,
+  klaar.lastSituation && klaar.lastMap && !klaar.weerFout
+)
+klopt(
+  '7e. laststn.osn en het weer zijn byte voor byte de situatie; de kopie en het weer van de kaart ernaast ook',
+  fs.readFileSync(laststn).equals(osn) &&
+    fs.readFileSync(`${laststn}.owt`).equals(owt) &&
+    fs.readFileSync(`${laststn}.voor-omsi-enhancer`).equals(eigenStand) &&
+    fs.readFileSync(`${laststn}.voor-omsi-enhancer.owt`).equals(kaartWeer) &&
+    fs.readFileSync(opties).equals(optiesAnsi('Proefkaart')) &&
+    halfBezig(kaartMap).length === 0
+)
+const tweede = writeSituation(omsi, { ...verzoek, minutes: 800, weather: 'fog' })
+const tweedeOsn = fs.readFileSync(tweede.file)
+let tweedeKlaar: ReturnType<typeof presetStartup> | undefined
+const laststnFout = onderbreek('laststn.osn', () => {
+  tweedeKlaar = presetStartup(omsi, 'Proefkaart', tweede.file)
+})
+klopt(
+  `7e. laststn.osn halverwege onderbroken (${laststnFout ?? (tweedeKlaar?.lastSituation ? 'klaargezet' : 'niet klaargezet')}): de vorige staat er heel, geen .bezig`,
+  !tweedeKlaar?.lastSituation && fs.readFileSync(laststn).equals(osn) && !tweedeOsn.equals(osn) && halfBezig(kaartMap).length === 0
+)
+// De kopie wordt maar één keer gemaakt; een halve bleef dus voorgoed.
+const andereKaart = join(omsi, 'maps', 'Proefkaart2')
+fs.mkdirSync(andereKaart, { recursive: true })
+const andereStand = Buffer.concat([BOM, Buffer.from('[map]\r\nmaps\\Proefkaart2\\global.cfg\r\n\r\n[nog een eigen rit]\r\n', 'utf16le')])
+fs.writeFileSync(join(andereKaart, 'laststn.osn'), andereStand)
+onderbreek('voor-omsi-enhancer', () => presetStartup(omsi, 'Proefkaart2', tweede.file))
+presetStartup(omsi, 'Proefkaart2', tweede.file)
+const andereKopie = join(andereKaart, 'laststn.osn.voor-omsi-enhancer')
+klopt(
+  '7e. de kopie van laststn.osn halverwege onderbroken: de volgende keer komt er een hele',
+  fs.existsSync(andereKopie) && fs.readFileSync(andereKopie).equals(andereStand) && halfBezig(andereKaart).length === 0
+)
 
 /*
  * 6. (29-09) Een ander programma houdt keyboard.cfg open met lezen en

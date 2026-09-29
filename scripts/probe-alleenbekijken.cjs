@@ -20,8 +20,17 @@
  *   `reg add`. Daarvoor vervangt de proef `execFileSync` door iets dat alleen
  *   opschrijft: faalt de wacht, dan raakt hij het echte register nog niet.
  *
+ * - (0.4.9) START weigert meteen met een eigen reden, bij vrij rijden en bij
+ *   een dienst, zonder begintijd in het profiel en zonder iets in OMSI; een
+ *   busbedrijf oprichten komt in de kopie;
+ * - (0.4.9) de kaartwerker krijgt de grens mee (`alleenIn`), en zet hem op
+ *   zijn eigen `fs`: dezelfde gebouwde werker schrijft zijn cache met de
+ *   grens niet buiten de kopie, en zonder wel -- het slot van het hoofdproces
+ *   geldt in een worker_thread niet.
+ *
  * Op de oude code (vóór 28-09) faalt dit: geen vraag, en alles werd in de
- * echte map geschreven. Het deel over de Game Bar faalt op d9eeeda.
+ * echte map geschreven. Het deel over de Game Bar faalt op d9eeeda, het deel
+ * over START en de werker op 3880b6d.
  */
 const { app, BrowserWindow } = require('electron')
 const { createHash } = require('node:crypto')
@@ -44,8 +53,30 @@ fs.writeFileSync(
 fs.writeFileSync(join(data, 'settings.json'), JSON.stringify({ language: 'nl', omsiPath: omsi, omsiConfirmed: true }))
 const nieuwer = { versie: '9.9.9', bouw: 'bouw fffffff · 2030-01-01 00:00 · setup', tijd: '2030-01-01T00:00:00.000Z' }
 fs.writeFileSync(join(data, 'laatst-geschreven.json'), JSON.stringify({ hoogste: nieuwer, laatst: nieuwer }))
+// Een bus met een wagenpark, zodat de werker iets in zijn cache te zetten heeft.
+fs.mkdirSync(join(omsi, 'Vehicles', 'Proefbus'), { recursive: true })
+fs.writeFileSync(join(omsi, 'Vehicles', 'Proefbus', 'Proef.hof'), '[name]\r\nProef\r\n\r\n[addterminus_list]\r\n1\r\nProefhalte\r\n\r\n')
+// Twee lege mappen voor de werker buiten de app om (zie onder), en de map van de plugin.
+const werkerBuiten = join(werk, 'werker-buiten')
+const werkerBinnen = join(werk, 'werker-binnen')
+fs.mkdirSync(werkerBuiten, { recursive: true })
+fs.mkdirSync(werkerBinnen, { recursive: true })
+fs.mkdirSync(join(werk, 'live'), { recursive: true })
 process.env.OMSI_ENHANCER_PROEFKEUZE = 'bekijken'
 process.env.OMSI_ENHANCER_PROEFPROCES = 'GeenOmsiProefBekijken'
+// Nooit de echte %LOCALAPPDATA%\OMSI Career.
+process.env.OMSI_ENHANCER_LIVEMAP = join(werk, 'live')
+
+// Welke werkers de app maakt, en met welke grens. De gebouwde app zoekt `Worker` bij elke aanroep op.
+const draden = require('node:worker_threads')
+const EchteWorker = draden.Worker
+const gemaakteWerkers = []
+draden.Worker = class extends EchteWorker {
+  constructor(bestand, opties) {
+    gemaakteWerkers.push(opties && opties.workerData)
+    super(bestand, opties)
+  }
+}
 
 // Wat Chromium zelf in de gebruikersmap zet; dat is geen gegevens van de app.
 const CHROMIUM = /^(Cache|Code Cache|GPUCache|DawnGraphiteCache|DawnWebGPUCache|blob_storage|Network|Shared Dictionary|Session Storage|Local Storage|SharedStorage.*|Local State|Preferences|lockfile)(\/|$)/
@@ -136,6 +167,70 @@ app.whenReady().then(async () => {
   }
   const regAdd = gevraagd.filter((g) => /^reg (add|delete)/.test(g))
   klopt(`de Game Bar-knop weigert (${knop}), zonder reg add (${regAdd.length})`, /"reden":"bekijken"/.test(knop) && regAdd.length === 0)
+
+  // (0.4.9) START weigert meteen, met een eigen reden. Eerst hield `fs` het schrijven tegen,
+  // en kwam de speler op "schrijven mislukt: Alleen bekijken: niet geschreven naar ..." uit.
+  const vrij = await js(
+    `window.career.startFree({ mapFolder: 'Proefkaart', vehiclePath: 'Vehicles\\\\Proefbus\\\\bus.bus' }).then((u) => JSON.stringify(u), (f) => 'fout: ' + f.message)`
+  )
+  klopt(`vrij rijden: START weigert (${vrij})`, /"fout":"bekijken"/.test(vrij) && /"klaargezet":"niets"/.test(vrij) && /"launched":false/.test(vrij))
+  const dienst = { mapFolder: 'Proefkaart', mapName: 'Proefkaart', lineFile: '1', tourNumber: '1', legs: [], start: 600, signOn: 590, days: 127, period: 0 }
+  const aangenomen = await js(
+    `window.career.confirmDuty({ duty: ${JSON.stringify(dienst)}, vehicle: null }, '', 'free').then((p) => p && p.state && p.state.activeDuty ? 'aangenomen' : 'niet aangenomen', (f) => 'fout: ' + f.message)`
+  )
+  const begonnen = await js(
+    `window.career.beginDuty({ duty: ${JSON.stringify(dienst)}, lineNumber: '1', terminus: '' }).then((u) => JSON.stringify(u), (f) => 'fout: ' + f.message)`
+  )
+  const profielen = fs.existsSync(join(kopie, 'profiles')) ? fs.readdirSync(join(kopie, 'profiles')).filter((n) => n.endsWith('.json') && n !== 'active.json') : []
+  const inProfiel = profielen.map((n) => JSON.parse(fs.readFileSync(join(kopie, 'profiles', n), 'utf8'))).find((p) => p.activeDuty)
+  klopt(
+    `een dienst: ${aangenomen} (in de kopie), START weigert (${begonnen}) zonder begintijd`,
+    aangenomen === 'aangenomen' && /"fout":"bekijken"/.test(begonnen) && /"launched":false/.test(begonnen) && Boolean(inProfiel) && !inProfiel.activeDuty.startedAt
+  )
+  const logboek = (() => {
+    try {
+      return fs.readFileSync(join(kopie, 'logs', 'omsi-enhancer.log'), 'utf8')
+    } catch {
+      return ''
+    }
+  })()
+  klopt('het logboek zegt waarom', /vrij rijden geweigerd: alleen bekijken/.test(logboek) && /dienst niet begonnen: alleen bekijken/.test(logboek))
+  await js(`window.career.cancelDuty()`)
+
+  const bedrijf = await js(
+    `window.career.bedrijfOprichten('Proef BV').then((p) => p && p.state && p.state.bedrijf ? 'opgericht' : 'niet opgericht', (f) => 'fout: ' + f.message)`
+  )
+  const bedrijfInKopie = profielen.some((n) => /Proef BV/.test(fs.readFileSync(join(kopie, 'profiles', n), 'utf8')))
+  klopt(`een busbedrijf oprichten: ${bedrijf}, in de kopie`, bedrijf === 'opgericht' && bedrijfInKopie)
+
+  // (0.4.9) De kaartwerker. Welke werkers de app maakte, en met welke grens.
+  if (gemaakteWerkers.length === 0) await js(`window.career.vehicles().then(() => 'ok', () => 'fout')`)
+  const grenzen = gemaakteWerkers.map((w) => JSON.stringify(w && w.alleenIn))
+  klopt(
+    `de app gaf ${gemaakteWerkers.length} werker(s) de kopie als grens mee: ${grenzen.join(', ')}`,
+    gemaakteWerkers.length > 0 &&
+      gemaakteWerkers.every((w) => w && Array.isArray(w.alleenIn) && w.alleenIn.length === 1 && w.alleenIn[0].toLowerCase() === kopie.toLowerCase() && w.userData.toLowerCase() === kopie.toLowerCase())
+  )
+  // Dezelfde gebouwde werker, met een gebruikersmap BUITEN de grens: schrijft hij daar zijn cache?
+  const vraagWerker = (workerData) =>
+    new Promise((klaar) => {
+      const w = new EchteWorker(join(__dirname, '..', 'out', 'main', 'kaartwerker.js'), { workerData })
+      const stop = (uit) => {
+        klaar(uit)
+        void w.terminate()
+      }
+      w.on('message', stop)
+      w.on('error', (fout) => stop({ ok: false, fout: String(fout) }))
+      w.postMessage({ id: 1, soort: 'hofaanbodrit', termini: ['Proefhalte'], busmap: 'Vehicles\\Proefbus' })
+    })
+  const cacheBuiten = () => fs.existsSync(join(werkerBuiten, 'kaartcache')) && fs.readdirSync(join(werkerBuiten, 'kaartcache')).length > 0
+  const met = await vraagWerker({ omsiPath: omsi, userData: werkerBuiten, alleenIn: [werkerBinnen] })
+  klopt(`de werker met grens (${met.ok ? 'antwoord' : `fout: ${met.fout}`}) zet zijn cache niet buiten de grens`, !cacheBuiten())
+  const zonder = await vraagWerker({ omsiPath: omsi, userData: werkerBuiten })
+  klopt(
+    `zonder grens zet dezelfde werker hem daar wel (${zonder.ok ? 'antwoord' : `fout: ${zonder.fout}`}): het slot van het hoofdproces geldt in de werker niet`,
+    cacheBuiten()
+  )
 
   echtSchrijven(join(werk, 'alleenbekijken.png'), (await main.capturePage()).toPNG())
   console.log(`afdruk: ${join(werk, 'alleenbekijken.png')}`)

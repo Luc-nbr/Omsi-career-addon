@@ -1,13 +1,7 @@
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  unlinkSync,
-  writeFileSync
-} from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync } from 'node:fs'
 import { basename, join, relative } from 'node:path'
 import { readOmsiLines, str } from './omsiFile'
+import { schrijfVeilig } from './veilig'
 import { writeWeather } from './weather'
 import type { WeatherKind } from '../shared/weather'
 
@@ -505,7 +499,15 @@ export function writeSituation(omsiPath: string, request: SituationRequest): Sit
       // Zit hij vast, dan blijft hij staan; dat is hooguit rommel.
     }
   }
-  writeFileSync(file, Buffer.concat([BOM, Buffer.from(lines.join('\r\n'), 'utf16le')]))
+  /*
+   * Via `schrijfVeilig` (core/veilig.ts): eerst een tijdelijk bestand naast de
+   * situatie dat teruggelezen wordt, dan hernoemen. Tot 0.4.9 rechtstreeks, en
+   * een afgebroken schrijfbeurt liet een halve situatie in OMSI's laadmenu --
+   * die presetStartup daarna ook nog als "Last Situation" kopieerde. De bytes
+   * gaan ongewijzigd door: UTF-16 met BOM, zoals OMSI het zelf schrijft. De
+   * tijdelijke naam eindigt op `.bezig`, dus OMSI ziet hem nooit als `.osn`.
+   */
+  schrijfVeilig(file, Buffer.concat([BOM, Buffer.from(lines.join('\r\n'), 'utf16le')]))
 
   /*
    * Het weer hoort bij de situatie. Wie het zelf kiest krijgt precies dat;
@@ -519,7 +521,7 @@ export function writeSituation(omsiPath: string, request: SituationRequest): Sit
     const vanKaart = request.weather ? undefined : findWeather(omsiPath, request.mapFolder)
     if (request.weather) writeWeather(file, request.weather)
     else if (vanKaart) {
-      copyFileSync(vanKaart, `${file}.owt`)
+      schrijfVeilig(`${file}.owt`, readFileSync(vanKaart))
       weerVan = relative(omsiPath, vanKaart)
     }
     /*

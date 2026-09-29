@@ -55,6 +55,8 @@ startscherm van OMSI goed te zetten gaat diezelfde situatie ook naar
 `maps\<kaart>\laststn.osn` -- daar leest OMSI "Last Situation" -- en wordt
 `[last_map]` in `options.cfg` op die kaart gezet. Van de bestaande `laststn.osn`
 blijft eenmalig een kopie staan als `laststn.osn.voor-omsi-career`. Verder niets.
+Sinds 0.4.9 gaat al dat schrijven via een teruggelezen tijdelijk bestand
+(`schrijfVeilig` in `core/veilig.ts`), in de codering die het bestand had.
 
 ---
 
@@ -129,6 +131,7 @@ blijft eenmalig een kopie staan als `laststn.osn.voor-omsi-career`. Verder niets
 | `logboek.ts` | Het logboek van de app zelf: `%APPDATA%\omsi-enhancer\logs\omsi-enhancer.log` |
 | `veilig.ts` | Schrijven via een tijdelijk bestand dat teruggelezen wordt; cfg's van OMSI in hun eigen codering |
 | `versiewacht.ts` | Wie schreef het laatst in de gebruikersmap (`laatst-geschreven.json`), de kopie om te bekijken, de bouwstempel |
+| `schrijfslot.ts` | Alleen bekijken: `fs` van een thread schrijft alleen nog binnen de kopie (hoofdproces én kaartwerker) |
 
 ### `src/shared/`
 
@@ -1997,10 +2000,9 @@ ronde faalt en nu slaagt (nagedraaid op een kopie van `b7f3d7b`).
   hernoemd. Een leeg bestand over een niet-leeg heen, en een lege lijst
   toetsen/apparaten/blokken over een volle, wordt geweigerd tenzij `leegMag`.
   De codering blijft: Windows-1252 (als `latin1`, byte voor byte) of UTF-16 met
-  BOM -- een UTF-16-keyboard.cfg las eerst als leeg. Niet gedaan:
-  `setLastMap` in `core/startup.ts` schrijft options.cfg nog rechtstreeks; die
-  regel zit in een bestand waar tegelijk aan Vrij rijden gewerkt werd, en is
-  één `schrijfCfg` na het samenvoegen.
+  BOM -- een UTF-16-keyboard.cfg las eerst als leeg. `setLastMap` in
+  `core/startup.ts` schreef options.cfg toen nog rechtstreeks (tegelijk aan
+  Vrij rijden gewerkt); sinds 0.4.9 ook via `schrijfCfg`, zie hieronder.
 - **Bouwstempel** (`__BOUW__` in `electron.vite.config.ts`, `stempel()` in
   `main/versiewacht.ts`): `bouw <korte hash>[+] · <jjjj-mm-dd uu:mm> ·
   <setup|draagbaar|dev>` achter het versienummer (`Versie.tsx`) en in de
@@ -2104,8 +2106,64 @@ die op `d9eeeda` faalt en nu slaagt.
   `reg add`), `-omsiafsluiten`, `-veiligschrijven`, `probe-alleenbekijken.cjs`
   en `schermafdruk-addons.cjs`; nieuw `probe-versiestart.cjs` (start de
   gebouwde app vier keer als eigen proces). Niet gedaan: het venster na een
-  mislukte kopie met eigen ogen gezien (de proef beantwoordt het), en
-  `setLastMap` in `startup.ts` (zie hierboven).
+  mislukte kopie met eigen ogen gezien (de proef beantwoordt het).
+
+**0.4.9: ronde 1 aangesloten op Vrij rijden en het busbedrijf** (29-09-2026,
+tak `claude/busbedrijf-samen`). Ronde 1 was gebouwd op `b7f3d7b`, zonder Vrij
+rijden en zonder deel 0; de merge (`3880b6d`) voegde zonder conflicten samen,
+maar wat die twee toevoegden ging nog buiten de veiligheid om. Elk punt faalt
+op `3880b6d` en slaagt nu.
+- **Alles wat een dienst en vrij rijden in OMSI schrijven gaat via
+  `schrijfVeilig`**: `setLastMap` en `readLastMap` via `schrijfCfg`/`leesCfg`
+  (options.cfg in UTF-16 bleef eerst niet heel: `split('\r\n')` vond niets en
+  er kwam een blok in `latin1` achteraan), de situatie en het weer
+  (`writeSituation`, `writeWeather`, de kopie van het weer van de kaart),
+  `laststn.osn` met zijn `.owt` en de eenmalige kopieën `.voor-omsi-enhancer`
+  (+ `.owt`) in `presetStartup`. Kopieën gaan als bytes (`readFileSync` →
+  `schrijfVeilig`), dus UTF-16 met BOM gaat ongewijzigd mee. Een onderbroken
+  `copyFileSync` liet een halve `laststn.osn`, en een halve eenmalige kopie
+  bleef dat voorgoed. De tijdelijke naam eindigt op `.bezig`, die OMSI nooit
+  als `.osn`/`.owt`/`.hof` leest. Erbij, al van eerder: de eenmalige kopie
+  `keyboard.omsi-enhancer.bak` (`bustoetsen.ts`) en `placeHof` (een nieuw
+  `.hof` naast een bus). Bewust niet: de plugin (`pluginInstall.ts`, een DLL
+  die OMSI vasthoudt; eigen pogingen en melding), de berichtjes aan de plugin
+  in `%LOCALAPPDATA%` (`opdracht.txt`, `vragen.txt`; niet van OMSI, en
+  `vragen.txt` gaat al via tijdelijk + hernoemen).
+- **START in alleen-bekijken weigert meteen** (`free:start`, `duty:begin`,
+  `FreeResult.fout`/`BeginResult.fout` = `'bekijken'`, tekst `vw.start`): eerst
+  hield `fs` het schrijven van de situatie tegen en zei de voet "schrijven
+  mislukt: Alleen bekijken: niet geschreven naar ...\Situations"; bij een dienst
+  kwam de begintijd in het profiel van de kopie, en draaide OMSI al, dan liep
+  een dienst of vrije rit met een overlay en een telling die nergens heen
+  gingen. Een dienst aannemen, een examen en het busbedrijf blijven kunnen:
+  dat is rondkijken, in de kopie. De wachtende busknoppen worden in
+  alleen-bekijken bij het starten niet geprobeerd (`schrijfStraks` gaf anders
+  een onafgehandelde EROFS).
+- **Het schrijfslot ook in de kaartwerker** (`core/schrijfslot.ts`, verhuisd
+  uit `main/versiewacht.ts`): een worker_thread heeft zijn eigen `fs`, en het
+  slot van het hoofdproces gold daar niet -- "de werker schrijft alleen zijn
+  cache, in de kopie" was een belofte, geen grens. De werker krijgt in
+  alleen-bekijken `alleenIn: [kopie]` mee en zet het slot zelf.
+- **Versiewacht en deel 0**: het busbedrijf en de planning staan in het profiel
+  (`career.bedrijf`, via `persist` → `saveCareer` → `schrijfVeilig`), dus in de
+  gebruikersmap; de notitie wie er schrijft komt bij het starten
+  (`bewaakVersie`) en geldt voor de hele map, ook voor die velden. Een 0.4.8
+  die een profiel van 0.4.9 met plan leest, krijgt de vraag.
+- Proeven: `probe-veiligschrijven.ts` deel 7 (UTF-16 en Windows-1252 in
+  options.cfg, onderbroken options.cfg/situatie/weer/laststn.osn/kopie; op
+  `3880b6d` 7 fouten), `probe-alleenbekijken.cjs` (START weigert bij vrij
+  rijden en een dienst, geen begintijd, busbedrijf in de kopie, de app geeft
+  elke werker de kopie als grens, en de gebouwde werker schrijft met grens
+  niet buiten de kopie en zonder wel; op `3880b6d` 5 fouten). De proef zet nu
+  ook `OMSI_ENHANCER_LIVEMAP`, zodat hij `%LOCALAPPDATA%\OMSI Career` nooit
+  aanraakt. `probe-vrijrijden.cjs` moest mee: zijn vangrail leidde alleen het
+  doel van een schrijfbeurt om, en `schrijfVeilig` leest het tijdelijke bestand
+  terug en hernoemt het -- nu gaat ook de bron van hernoemen om, en wat in de
+  omleiding staat wordt daar ook gelezen (als een laag over de spelmap).
+- Alle proeven uit de opdracht nagedraaid (ronde 1, Vrij rijden, de cloud, de
+  cfg's en toetsen); na elke Electron-proef waren Lucs `%APPDATA%\omsi-enhancer`,
+  `%APPDATA%\omsi-career`, `%LOCALAPPDATA%\OMSI Career` en de OMSI-map (hoofdmap,
+  Inputs, Situations, plugins, Weather, de kaartmappen en de .hof's) onveranderd.
 
 **Navigatie: doorzichtig, vaste zoom, en haltenamen die niet meer wegvallen**
 (28-09-2026). Drie vragen van gebruikers, via Luc.

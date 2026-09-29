@@ -1,10 +1,9 @@
 import { app, BrowserWindow, dialog } from 'electron'
 import fs from 'node:fs'
-import { constants } from 'node:fs'
-import { join, resolve, sep } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { logFout } from '../core/logboek'
 import { readSettings } from '../core/settings'
+import { sluitSchrijvenAf } from '../core/schrijfslot'
 import { zetBekijkstand } from '../core/veilig'
 import {
   bouwstempel,
@@ -47,10 +46,12 @@ export function alleenBekijken(): { versie: string; bouw?: string } | undefined 
  *
  * - Alleen bekijken: de app draait op een kopie van de gebruikersmap in de
  *   tijdelijke map, en schrijft verder nergens -- niet in de echte map, niet
- *   in OMSI, niet bij Steam, niet in het register (`sluitSchrijvenAf`,
- *   `zetBekijkstand`). Rondkijken kan, opslaan niet, en OMSI starten ook
- *   niet. Chromium volgt de kopie ook; alleen zijn eigen `Local State` komt
- *   nog in de echte map (geen gegevens van de app).
+ *   in OMSI, niet bij Steam, niet in het register (`sluitSchrijvenAf` in
+ *   core/schrijfslot.ts, ook in de kaartwerker; `zetBekijkstand`).
+ *   Rondkijken kan, opslaan niet; START (een dienst, vrij rijden) weigert
+ *   met een melding voordat er iets klaargezet wordt, en OMSI starten ook.
+ *   Chromium volgt de kopie ook; alleen zijn eigen `Local State` komt nog in
+ *   de echte map (geen gegevens van de app).
  * - Toch doorgaan: zoals altijd.
  * - Afsluiten: de app gaat meteen weer dicht.
  *
@@ -234,106 +235,4 @@ function toonInTitel(userData: string, versie: string): void {
     inhoud.on('page-title-updated', zet)
     inhoud.on('did-finish-load', zet)
   })
-}
-
-/*
- * NIETS SCHRIJVEN BUITEN DE KOPIE
- *
- * De app schrijft op tientallen plekken: profielen, instellingen, de
- * situatie en het weer in OMSI, keyboard.cfg, de plugin, Steams
- * localconfig.vdf. Bij elk daarvan een eigen vraag "mag dat nu?" zetten, kan
- * altijd één plek missen -- en wie er later een bijmaakt, weet er niets van.
- * Daarom zit de grens een laag lager: in alleen-bekijken weigeren de
- * schrijvende functies van `fs` zelf alles buiten de kopie, met de fout
- * EROFS ("alleen-lezen bestandssysteem"), die het scherm meldt zoals elke
- * andere fout. Het werkt omdat de gebouwde app `fs.writeFileSync(...)` bij
- * elke aanroep op het moduleobject opzoekt. Alleen in dit hoofdproces: de
- * kaartwerker schrijft alleen zijn cache, en die staat in de kopie.
- *
- * Twee dingen gaan niet via `fs`, en die kijken zelf naar `inBekijkstand`
- * (core/veilig.ts): de knop voor de Game Bar, die met `reg add` in het
- * register schrijft (core/overlayknop.ts), en OMSI starten (core/launch.ts)
- * -- de dienst startte het spel ook als het klaarzetten met EROFS mislukte.
- */
-const PADEN: Record<string, number[]> = {
-  writeFileSync: [0],
-  appendFileSync: [0],
-  copyFileSync: [1],
-  cpSync: [1],
-  renameSync: [0, 1],
-  rmSync: [0],
-  rmdirSync: [0],
-  unlinkSync: [0],
-  mkdirSync: [0],
-  truncateSync: [0],
-  symlinkSync: [1],
-  linkSync: [1],
-  utimesSync: [0],
-  createWriteStream: [0],
-  writeFile: [0],
-  appendFile: [0],
-  copyFile: [1],
-  cp: [1],
-  rename: [0, 1],
-  rm: [0],
-  rmdir: [0],
-  unlink: [0],
-  mkdir: [0],
-  truncate: [0],
-  symlink: [1],
-  link: [1]
-}
-
-function alsPad(waarde: unknown): string | undefined {
-  if (typeof waarde === 'string') return waarde
-  if (Buffer.isBuffer(waarde)) return waarde.toString()
-  if (waarde instanceof URL) return fileURLToPath(waarde)
-  return undefined
-}
-
-function schrijftBijOpenen(vlaggen: unknown): boolean {
-  if (vlaggen === undefined || vlaggen === null) return false
-  if (typeof vlaggen === 'number') {
-    const schrijf = constants.O_WRONLY | constants.O_RDWR | constants.O_CREAT | constants.O_TRUNC | constants.O_APPEND
-    return (vlaggen & schrijf) !== 0
-  }
-  return /[wa+]/.test(String(vlaggen))
-}
-
-export function sluitSchrijvenAf(toegestaan: string[]): void {
-  const grenzen = toegestaan.map((map) => resolve(map).toLowerCase())
-  const mag = (pad: string): boolean => {
-    const vol = resolve(pad).toLowerCase()
-    return grenzen.some((g) => vol === g || vol.startsWith(g + sep))
-  }
-  const weiger = (pad: string): Error =>
-    Object.assign(new Error(`Alleen bekijken: niet geschreven naar ${pad}`), { code: 'EROFS', path: pad })
-
-  const bewaak = (doel: Record<string, unknown>, naam: string, indexen: number[]): void => {
-    const origineel = doel[naam]
-    if (typeof origineel !== 'function') return
-    doel[naam] = function (this: unknown, ...args: unknown[]) {
-      for (const i of indexen) {
-        const pad = alsPad(args[i])
-        if (pad !== undefined && !mag(pad)) throw weiger(pad)
-      }
-      return (origineel as (...a: unknown[]) => unknown).apply(this, args)
-    }
-  }
-  const openen = (doel: Record<string, unknown>, naam: string): void => {
-    const origineel = doel[naam]
-    if (typeof origineel !== 'function') return
-    doel[naam] = function (this: unknown, ...args: unknown[]) {
-      const pad = alsPad(args[0])
-      if (pad !== undefined && schrijftBijOpenen(args[1]) && !mag(pad)) throw weiger(pad)
-      return (origineel as (...a: unknown[]) => unknown).apply(this, args)
-    }
-  }
-
-  const modules = [fs as unknown as Record<string, unknown>, fs.promises as unknown as Record<string, unknown>]
-  for (const doel of modules) {
-    for (const [naam, indexen] of Object.entries(PADEN)) bewaak(doel, naam, indexen)
-    openen(doel, 'openSync')
-    openen(doel, 'open')
-  }
 }

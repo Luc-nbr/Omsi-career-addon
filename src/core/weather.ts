@@ -1,5 +1,5 @@
-import { writeFileSync } from 'node:fs'
 import { WEATHER_PRESETS, type WeatherKind } from '../shared/weather'
+import { schrijfVeilig } from './veilig'
 
 /**
  * Het weer bij een situatie schrijven.
@@ -15,7 +15,10 @@ function block(tag: string, values: Array<string | number>): string[] {
   return [tag, ...values.map((value) => (typeof value === 'number' ? value.toFixed(6) : value)), '']
 }
 
-/** Schrijft het weerbestand dat bij een situatie hoort. */
+/**
+ * Schrijft het weerbestand dat bij een situatie hoort. Via `schrijfVeilig`,
+ * zoals de situatie zelf (sinds 0.4.9): een half weerbestand leest OMSI mee.
+ */
 export function writeWeather(situationFile: string, kind: WeatherKind): string {
   const preset = WEATHER_PRESETS[kind] ?? WEATHER_PRESETS.clear
   const lines = [
@@ -35,6 +38,6 @@ export function writeWeather(situationFile: string, kind: WeatherKind): string {
     ...block('[groundwet]', preset.groundwet)
   ]
   const file = `${situationFile}.owt`
-  writeFileSync(file, Buffer.concat([BOM, Buffer.from(lines.join('\r\n'), 'utf16le')]))
+  schrijfVeilig(file, Buffer.concat([BOM, Buffer.from(lines.join('\r\n'), 'utf16le')]))
   return file
 }
