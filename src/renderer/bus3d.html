@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Het 3D-venster (bus3d-ontwerp §8.1, §11.3): pakketten en texturen komen op id
+      via omsi3d:// (fetch, ook vanuit de renderer-werker), het heldenbeeld als
+      plaatje; de werker en zijn ontleder zijn module-werkers van deze pagina.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: omsi3d:; connect-src 'self' omsi3d:; worker-src 'self' blob:"
+    />
+    <title>3D</title>
+    <style>
+      html,
+      body,
+      #root {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #8fa7c0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/bus3d/venster.tsx"></script>
+  </body>
+</html>

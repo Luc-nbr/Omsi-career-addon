@@ -7,6 +7,7 @@ import { leesSchermcfg, materiaalcontexten, type CfgMateriaal, type CfgMateriaal
 import { ontleedO3d, type O3dModel } from './o3d'
 import { leesKleurstellingen, textuurSleutel, type Kleurstellingen } from './kleurstelling'
 import { trailerOf } from './trailer'
+import { busLijsten, busRust, type RustInvoerDeel } from './busrust'
 import { KOP_BYTES, textuurKop, type TextuurKop } from '../shared/beeldlezers'
 import { magOntwarren, ontwar } from '../shared/o3dhussel'
 import { PakStaart } from '../shared/bus3dpak'
@@ -1143,14 +1144,17 @@ export function kleurVarsVan(info: Kleurstellingen, naam: string): Array<[string
 }
 
 /**
- * De texturen die een kleurstelling vervangt, als plekken in `manifest.texturen`,
- * plus de vars. De ruststand zelf (zichtbaar, items, alphascale) komt in F2
- * (§5.2); tot dan is `zichtbaar` leeg.
+ * De lak van een kleurstelling: de texturen die ze vervangt (als plekken in
+ * `manifest.texturen`), de vars, en met de kop van het pakket erbij ook de
+ * ruststand -- zichtbaar, items, alphascale -- volgens de regels van §5.2
+ * (core/busrust.ts). Ook bij "Standaard" (`undefined`): dan zet de app niets,
+ * maar de meshes moeten nog steeds gekozen worden.
  */
 export function bus3dLak(
   omsiMap: string,
   manifest: Bus3dManifest,
-  kleurstelling: string | undefined
+  kleurstelling: string | undefined,
+  kop?: Bus3dPakKop
 ): { lak: Bus3dLak; textuurBronnen: Bus3dTextuurBron[] } {
   const t0 = performance.now()
   const lak: Bus3dLak = {
@@ -1165,7 +1169,24 @@ export function bus3dLak(
     ms: 0
   }
   const textuurBronnen: Bus3dTextuurBron[] = []
-  if (!kleurstelling) return { lak, textuurBronnen }
+  if (kop) {
+    const delen: RustInvoerDeel[] = []
+    for (const deel of manifest.delen) {
+      const busPad = join(omsiMap, deel.bus)
+      const bus = leesBusBestand(busPad)
+      delen.push({ busPad, modelcfg: bus?.model ? join(dirname(busPad), ...bus.model.split(/[\\/]+/)) : '' })
+    }
+    const rust = busRust(kop, delen, kleurstelling)
+    lak.zichtbaar = rust.zichtbaar
+    lak.items = rust.items
+    lak.alphascale = rust.alphascale
+    lak.onbekend = rust.onbekend
+    lak.vars = rust.vars
+  }
+  if (!kleurstelling) {
+    lak.ms = Math.round(performance.now() - t0)
+    return { lak, textuurBronnen }
+  }
   for (let d = 0; d < manifest.delen.length; d++) {
     const busPad = join(omsiMap, manifest.delen[d].bus)
     const bus = leesBusBestand(busPad)
@@ -1210,6 +1231,46 @@ export function bus3dLak(
   }
   lak.ms = Math.round(performance.now() - t0)
   return { lak, textuurBronnen }
+}
+
+/**
+ * De vingerafdruk van alles waar de lak van een kleurstelling van afhangt en wat
+ * niet al in het pakket-id zit: per deel de .bus, zijn scripts en constfiles, en
+ * de texturen die de kleurstelling vervangt. Grootte en tijd, geen inhoud: een
+ * handvol `stat`s. Voor de schijfcache `s/` (§4.2).
+ */
+export function lakStempel(omsiMap: string, manifest: Bus3dManifest, kleurstelling: string | undefined): string {
+  const h = createHash('sha1').update(`lak-1|${kleurstelling ?? ''}`)
+  const stempel = (pad: string): void => {
+    try {
+      const st = statSync(pad)
+      h.update(`|${pad.toLowerCase()}|${st.size}|${Math.round(st.mtimeMs)}`)
+    } catch {
+      h.update(`|${pad.toLowerCase()}|-`)
+    }
+  }
+  for (const deel of manifest.delen) {
+    const busPad = join(omsiMap, deel.bus)
+    stempel(busPad)
+    const { scripts, constfiles } = busLijsten(busPad)
+    for (const p of [...scripts, ...constfiles]) stempel(p)
+    if (!kleurstelling) continue
+    const bus = leesBusBestand(busPad)
+    if (!bus?.model) continue
+    const info = leesKleurstellingen(join(dirname(busPad), ...bus.model.split(/[\\/]+/)))
+    const gekozen = info?.lijst.find((item) => item.naam === kleurstelling)
+    for (const p of Object.values(gekozen?.texturen ?? {})) stempel(p)
+    // De .cti's zelf: een setvar die erbij komt verandert de lak, niet de texturen.
+    if (info?.map) {
+      stempel(info.map)
+      try {
+        for (const naam of readdirSync(info.map).sort()) if (/\.cti$/i.test(naam)) stempel(join(info.map, naam))
+      } catch {
+        // geen map: de stempel van de map zelf zegt het al
+      }
+    }
+  }
+  return h.digest('hex').slice(0, 24)
 }
 
 /** Kloppen de bronnen van een pakket nog? Geeft het eerste verschil, of niets. */

@@ -1,5 +1,6 @@
+import { createHash } from 'node:crypto'
 import { createReadStream, statSync } from 'node:fs'
-import { isAbsolute, resolve, sep } from 'node:path'
+import { basename, isAbsolute, resolve, sep } from 'node:path'
 import { Readable } from 'node:stream'
 import type { IpcMain, IpcMainInvokeEvent, WebContents } from 'electron'
 import { Bus3dCache, type Bus3dZijspoor } from '../core/bus3dcache'
@@ -11,6 +12,8 @@ import {
   type Bus3dAntwoord,
   type Bus3dLak,
   type Bus3dManifest,
+  type Bus3dMeting,
+  type Bus3dOmgeving,
   type Bus3dReden,
   type Bus3dVoortgang
 } from '../shared/bus3d'
@@ -24,7 +27,7 @@ import {
  *
  * - het REGISTER: welk id bij welk bestand hoort. Het venster vraagt alles op id
  *   via `omsi3d://` -- `p/<id>` een pakket, `t/<id>` een textuur (of een plak
- *   ervan, met een Range-kop), `h/<id>` een heldenbeeld (F2) -- nooit op pad,
+ *   ervan, met een Range-kop), `h/<id>` een heldenbeeld -- nooit op pad,
  *   zoals `omsischerm` en de apparaatserver;
  * - de REGISTRATIETOETS: vóór het tonen, en bij elk `p/`, moet elke o3d-sleutel
  *   van het pakket 0 zijn of hier geregistreerd (Lucs keuze 1, §5.1). Is een
@@ -54,6 +57,13 @@ export interface Bus3dAfhankelijk {
   logFout: (wat: string, fout: unknown) => void
   /** Test: kortere wachttijden. */
   tijden?: { stil?: number; rust?: number }
+  /**
+   * Draait OMSI? Dan schrijven we geen heldenbeeld weg (§9): de schijf en de
+   * GPU zijn dan van het spel.
+   */
+  omsiDraait?: () => boolean
+  /** Staat de schakelaar `bus3d` aan (instellingen, tot F3 standaard uit)? Zonder deze functie: aan. */
+  aan?: () => boolean
 }
 
 /** Wat de werker op `bus3d:model` terugstuurt. */
@@ -66,6 +76,18 @@ export interface Bus3dDienst {
   model3d(relatiefPad: string, kleurstelling?: string, venster?: WebContents): Promise<Bus3dAntwoord>
   /** `bus:lak3d`: de lak van een andere kleurstelling voor een pakket dat er al is. */
   lak3d(pakket: string, kleurstelling?: string, venster?: WebContents): Promise<Bus3dLak | { reden: Bus3dReden }>
+  /** `bus:omgeving3d`: hemel en wolken van "Buiten" (§5.6), met hun texturen in het register. */
+  omgeving3d(): Promise<Bus3dOmgeving>
+  /** `bus:heldenbeeld`: het beeld dat het venster maakte toen de bus scherp stond (§9). */
+  heldenbeeld(pakket: string, kleurstelling: string | undefined, sleutel: string, webp: Uint8Array): boolean
+  /**
+   * `bus:fotoAlsKlaar`: het heldenbeeld van deze bus en kleurstelling als
+   * `omsi3d://h/<id>`, zonder te wachten en zonder te tekenen; anders niets
+   * (de foto v4 komt er later bij).
+   */
+  fotoAlsKlaar(relatiefPad: string, kleurstelling?: string, verhouding?: 'breed' | 'smal'): string | undefined
+  /** `bus:meld3d`: een meting van het venster, voor het logboek (§11.3). */
+  meld(meting: Bus3dMeting): void
   /** Het protocol `omsi3d://`. */
   antwoord(vraag: Request): Promise<Response>
   /** De add-on-manager: pakketten van deze voertuigmappen (of alles) vergeten. */
@@ -304,8 +326,12 @@ export function maakBus3dDienst(af: Bus3dAfhankelijk): Bus3dDienst {
     return { zijspoor: uit.zijspoor }
   }
 
+  /*
+   * Ook bij "Standaard" (geen kleurstelling): de app zet dan niets, maar de
+   * ruststand -- welke meshes, welk materiaal -- moet nog steeds uitgerekend
+   * worden (§5.2).
+   */
   async function lak(z: Bus3dZijspoor, kleurstelling: string | undefined): Promise<Bus3dLak | undefined> {
-    if (!kleurstelling) return undefined
     const uit = await metWacht<{ lak: Bus3dLak; textuurBronnen: Bus3dTextuurBron[] } | { reden: Bus3dReden }>({
       soort: 'bus3d:lak',
       pakket: z.pakket,
@@ -313,7 +339,12 @@ export function maakBus3dDienst(af: Bus3dAfhankelijk): Bus3dDienst {
     })
     if ('reden' in uit) return undefined
     for (const t of uit.textuurBronnen) texturen.set(t.id, t)
-    af.log(`bus3d lak ${z.bus} ${kleurstelling}: bron ${uit.lak.bron}, ${uit.lak.ms} ms, ${uit.lak.texturen.length} texturen vervangen, onbekend [${uit.lak.onbekend.join(', ')}]`)
+    const zichtbaar = [...uit.lak.zichtbaar].filter((c) => c === '1').length
+    af.log(
+      `bus3d lak ${z.bus} ${kleurstelling ?? '(standaard)'}: bron ${uit.lak.bron}, ${uit.lak.ms} ms, ` +
+        `${uit.lak.texturen.length} texturen vervangen, ${zichtbaar} van ${uit.lak.zichtbaar.length} vermeldingen zichtbaar, ` +
+        `onbekend [${uit.lak.onbekend.slice(0, 12).join(', ')}${uit.lak.onbekend.length > 12 ? ` ... (${uit.lak.onbekend.length})` : ''}]`
+    )
     return uit.lak
   }
 
@@ -342,7 +373,7 @@ export function maakBus3dDienst(af: Bus3dAfhankelijk): Bus3dDienst {
       }
       const l = await lak(z, kleurstelling)
       if (bron === 'cache') void controleer(z, reg, venster)
-      return { manifest: z.manifest, lak: l }
+      return { manifest: z.manifest, lak: l, bron }
     })
     return uit
   }
@@ -425,7 +456,85 @@ export function maakBus3dDienst(af: Bus3dAfhankelijk): Bus3dDienst {
       }
       return stroom(t.pad, t.mime, vraag)
     }
+    if (soort === 'h') {
+      const pad = helden.get(id)
+      if (!pad) return new Response(null, { status: 404 })
+      return stroom(pad, 'image/webp', vraag)
+    }
     return new Response(null, { status: 404 })
+  }
+
+  // ------------------------------------------------------------ omgeving
+  let omgeving: { waarde: Bus3dOmgeving; bronnen: Bus3dTextuurBron[] } | undefined
+  async function omgeving3d(): Promise<Bus3dOmgeving> {
+    // Eén keer gelezen; is een bestand veranderd, dan opnieuw (anders gaf t/ 409).
+    const geldig = omgeving?.bronnen.every((b) => {
+      try {
+        const st = statSync(b.pad)
+        return st.size === b.grootte && Math.round(st.mtimeMs) === b.mtime
+      } catch {
+        return false
+      }
+    })
+    if (!omgeving || !geldig) {
+      const uit = await vraagWerker<{ omgeving: Bus3dOmgeving; textuurBronnen: Bus3dTextuurBron[] }>({ soort: 'bus3d:omgeving' })
+      omgeving = { waarde: uit.omgeving, bronnen: uit.textuurBronnen }
+      af.log(`bus3d omgeving: hemel ${uit.omgeving.hemel?.naam ?? 'geen (eigen verloop)'}, wolken ${uit.omgeving.wolken?.naam ?? 'geen'}`)
+    }
+    for (const t of omgeving.bronnen) texturen.set(t.id, t)
+    return omgeving.waarde
+  }
+
+  // ------------------------------------------------------------ heldenbeelden (§9)
+  /** `h/<id>` -> het bestand; het id is een sha1 van de bestandsnaam, nooit een pad. */
+  const helden = new Map<string, string>()
+  const heldId = (pad: string): string => createHash('sha1').update(`h|${basename(pad).toLowerCase()}`).digest('hex')
+  const HELD_SLEUTEL = /^(breed|smal)-d(1|15|2)-buiten-vast$/
+
+  function heldenbeeld(pakket: string, kleurstelling: string | undefined, sleutel: string, webp: Uint8Array): boolean {
+    if (!isBus3dId(pakket) || !HELD_SLEUTEL.test(sleutel) || !pakketten.has(pakket)) return false
+    if (af.aan && !af.aan()) return false
+    if (af.omsiDraait?.()) return false
+    // Alleen een echte WebP van redelijke maat: RIFF....WEBP, hooguit 4 MB.
+    const b = webp
+    const riff = b.length > 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46
+    const isWebp = riff && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50
+    if (!isWebp || b.length > 4 * 1024 * 1024) return false
+    try {
+      const pad = cache.schrijfHeld(pakket, kleurstelling, sleutel, b)
+      helden.set(heldId(pad), pad)
+      af.log(`bus3d heldenbeeld: ${pakket.slice(0, 8)} ${kleurstelling ?? '(standaard)'} ${sleutel}, ${(b.length / 1024).toFixed(0)} kB`)
+      return true
+    } catch (fout) {
+      af.logFout('bus3d heldenbeeld', fout)
+      return false
+    }
+  }
+
+  function fotoAlsKlaar(relatiefPad: string, kleurstelling?: string, verhouding?: 'breed' | 'smal'): string | undefined {
+    const pad = String(relatiefPad ?? '')
+    if (!/\.bus$/i.test(pad) || isAbsolute(pad) || pad.split(/[\\/]/).includes('..')) return undefined
+    const z = cache.zoek(af.omsi(), pad)
+    if (!z) return undefined
+    const klassen = verhouding === 'smal' ? ['smal', 'breed'] : ['breed', 'smal']
+    const sleutels = klassen.flatMap((k) => ['d2', 'd15', 'd1'].map((d) => `${k}-${d}-buiten-vast`))
+    const gevonden = cache.zoekHeld(z.pakket, kleurstelling, sleutels)
+    if (!gevonden) return undefined
+    const id = heldId(gevonden)
+    helden.set(id, gevonden)
+    return `omsi3d://h/${id}`
+  }
+
+  function meld(meting: Bus3dMeting): void {
+    const m = meting as Partial<Bus3dMeting>
+    const n = (w: unknown): string => (typeof w === 'number' && Number.isFinite(w) ? String(Math.round(w)) : '?')
+    const d = (w: unknown): string => (typeof w === 'number' && Number.isFinite(w) ? w.toFixed(1) : '?')
+    if (!isBus3dId(String(m.pakket ?? ''))) return
+    af.log(
+      `bus3d beeld ${String(m.pakket).slice(0, 8)}: bron ${m.bron === 'nieuw' ? 'nieuw' : 'cache'}, eerste beeld ${n(m.eersteBeeldMs)} ms, ` +
+        `scherp ${n(m.scherpMs)} ms, beeldtijd p50 ${d(m.p50)} / p95 ${d(m.p95)} ms, ` +
+        `GPU ${n(typeof m.gpuBytes === 'number' ? m.gpuBytes / 1048576 : undefined)} MB (texturen ${n(m.texturenMB)} MB), DPR ${d(m.dpr)}, ${n(m.driehoeken)} driehoeken`
+    )
   }
 
   function vergeet(mappen?: string[]): void {
@@ -443,7 +552,7 @@ export function maakBus3dDienst(af: Bus3dAfhankelijk): Bus3dDienst {
     }
   }
 
-  return { model3d, lak3d, antwoord, vergeet, stuk, ruimOp, cache }
+  return { model3d, lak3d, omgeving3d, heldenbeeld, fotoAlsKlaar, meld, antwoord, vergeet, stuk, ruimOp, cache }
 }
 
 function zelfdeSet(lijst: number[] | undefined, set: ReadonlySet<number>): boolean {
@@ -509,6 +618,27 @@ export function registreerBus3dIpc(ipcMain: IpcMain, dienst: Bus3dDienst): void 
   )
   // Het venster kan een pakket niet lezen: vergeten, zodat [Opnieuw] echt opnieuw bouwt.
   ipcMain.on('bus:stuk3d', (_event, pakket: unknown) => dienst.stuk(String(pakket ?? '')))
+  ipcMain.handle('bus:omgeving3d', () => dienst.omgeving3d())
+  ipcMain.handle('bus:heldenbeeld', (_event, pakket: unknown, kleurstelling: unknown, sleutel: unknown, webp: unknown) =>
+    webp instanceof Uint8Array || webp instanceof ArrayBuffer
+      ? dienst.heldenbeeld(
+          String(pakket ?? ''),
+          typeof kleurstelling === 'string' ? kleurstelling : undefined,
+          String(sleutel ?? ''),
+          webp instanceof Uint8Array ? webp : new Uint8Array(webp)
+        )
+      : false
+  )
+  ipcMain.handle('bus:fotoAlsKlaar', (_event, relatiefPad: unknown, kleurstelling: unknown, verhouding: unknown) =>
+    dienst.fotoAlsKlaar(
+      String(relatiefPad ?? ''),
+      typeof kleurstelling === 'string' ? kleurstelling : undefined,
+      verhouding === 'smal' ? 'smal' : 'breed'
+    )
+  )
+  ipcMain.on('bus:meld3d', (_event, meting: unknown) => {
+    if (meting && typeof meting === 'object') dienst.meld(meting as Bus3dMeting)
+  })
 }
 
 export type { Bus3dManifest }

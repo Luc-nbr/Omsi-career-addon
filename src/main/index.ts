@@ -464,7 +464,11 @@ function bus3d(): Bus3dDienst {
     werkerVraag: (opdracht, tussen) => werkerVraag(opdracht, 'bus3d', tussen),
     sluitWerker: () => sluitAchtergrondwerker('bus3d'),
     log,
-    logFout
+    logFout,
+    // Zolang OMSI draait geen heldenbeeld wegschrijven (§9); `omsiDraaide` wordt elke halve minuut bijgewerkt.
+    omsiDraait: () => omsiDraaide,
+    // Tot F3 staat alles van het 3D-venster achter de schakelaar `bus3d` (standaard uit).
+    aan: () => readSettings(userData()).bus3d === true
   })
   return bus3dDienst
 }

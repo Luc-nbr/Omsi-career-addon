@@ -189,8 +189,12 @@ export interface Bus3dLak {
   /** Precies kleurVars(): de CTC-index plus de setvars, zoals de app het in de situatie zet. */
   vars: Array<[string, number]>
   bron: 'script' | 'regels' | 'omsi'
-  /** Een teken per vermelding ('1' zichtbaar); leeg = nog niet berekend (F2). */
+  /** Een teken per vermelding ('1' zichtbaar); leeg = onbekend, dan telt alles als zichtbaar. */
   zichtbaar: string
+  /**
+   * `[matl_change]`: welk item (0 = het materiaal zelf, 1 = het eerste
+   * `[matl_item]` ...). De sleutel is `itemSleutel(vermelding, materiaal)`.
+   */
   items: Record<number, number>
   alphascale: Record<string, number>
   animaties?: Float32Array
@@ -209,8 +213,26 @@ export interface Bus3dVoortgang {
 }
 
 export type Bus3dAntwoord =
-  | { manifest: Bus3dManifest; lak?: Bus3dLak }
+  | { manifest: Bus3dManifest; lak?: Bus3dLak; bron?: 'cache' | 'nieuw' }
   | { reden: Bus3dReden; detail?: string }
+
+/**
+ * De smalle brug van het 3D-venster (preload/bus3d.ts, `window.bus3d`): alleen
+ * wat de viewer nodig heeft, geen profielen, paden of instellingen (§8.1). Het
+ * venster eromheen (vraag, kiezen, sluiten) voegt er zijn eigen delen aan toe.
+ */
+export interface Bus3dBrug {
+  busModel3d(relatiefPad: string, kleurstelling?: string): Promise<Bus3dAntwoord>
+  busLak3d(pakket: string, kleurstelling?: string): Promise<Bus3dLak | { reden: Bus3dReden }>
+  busOmgeving3d(): Promise<Bus3dOmgeving>
+  busHeldenbeeld(pakket: string, kleurstelling: string | undefined, sleutel: string, webp: ArrayBuffer): Promise<boolean>
+  busFotoAlsKlaar(relatiefPad: string, kleurstelling?: string, verhouding?: 'breed' | 'smal'): Promise<string | undefined>
+  bus3dMeld(meting: Bus3dMeting): void
+  /** Het venster kan een pakket niet lezen: main vergeet het (`bus:stuk3d`). */
+  bus3dStuk(pakket: string): void
+  opBus3dVoortgang(luister: (v: Bus3dVoortgang) => void): () => void
+  opBus3dVervangen(luister: (pakket: string) => void): () => void
+}
 
 export interface Bus3dMeting {
   pakket: string
@@ -263,6 +285,176 @@ export function beschrijvingVoor(manifest: Bus3dManifest, taal: string, grens = 
   tekst ??= manifest.beschrijving
   if (!tekst) return undefined
   return tekst.length > grens ? `${tekst.slice(0, grens - 1).trimEnd()}…` : tekst
+}
+
+/**
+ * De omgeving "Buiten" (§5.6): de hemel uit `[sky_textures]` van envir.cfg
+ * (overdag de eerste) en de wolken van het weer "Cumulus 1" uit
+ * Weather/clouds.cfg, als texturen op id zoals die van de bus. Ontbreekt er
+ * iets, dan tekent de renderer een eigen verloop.
+ */
+export interface Bus3dOmgeving {
+  hemel?: Bus3dTextuur
+  wolken?: Bus3dTextuur
+  /** Hoeveel meter één herhaling van de wolkentextuur beslaat (clouds.cfg). */
+  wolkMaat: number
+}
+
+/** De sleutel van een `[matl_change]`-keuze in `Bus3dLak.items`. */
+export function itemSleutel(vermelding: number, materiaal: number): number {
+  return vermelding * 4096 + materiaal
+}
+
+/**
+ * De sleutel van een heldenbeeld (§9): verhoudingsklasse (breed vanaf 1,45),
+ * DPR-klasse en omgeving. Het thema hoort er niet bij: Buiten hangt er niet van af.
+ */
+export function heldenSleutel(verhouding: number, dpr: number): string {
+  const klasse = verhouding >= 1.45 ? 'breed' : 'smal'
+  const scherpte = dpr >= 1.75 ? 'd2' : dpr >= 1.25 ? 'd15' : 'd1'
+  return `${klasse}-${scherpte}-buiten-vast`
+}
+
+// ------------------------------------------------------------ de ruststand (§5.2)
+
+/**
+ * De standaardwaarden die de motor zet vóór `{init}` (idee uit openOMSI,
+ * vehicle.rs:831-892). Namen in kleine letters: OMSI kijkt niet naar
+ * hoofdletters.
+ */
+export const MOTORSTANDAARD: Readonly<Record<string, number>> = {
+  envir_brightness: 1,
+  giventicket: -1,
+  wearlifespan: 1,
+  dirt_norm: 0,
+  dirtrate: 0,
+  preciprate: 0,
+  streetcond: 0,
+  axle_springfactor_0_l: 1,
+  axle_springfactor_0_r: 1,
+  axle_springfactor_1_l: 1,
+  axle_springfactor_1_r: 1,
+  axle_springfactor_2_l: 1,
+  axle_springfactor_2_r: 1
+}
+
+/** Wat de regels per deel (voorwagen, aanhanger) weten, met namen in kleine letters. */
+export interface RustDeel {
+  /** `kleurVars`: de CTC-index plus de setvars van de kleurstelling van dit deel. */
+  kleurVars: Record<string, number>
+  /** Wat de scripts letterlijk zetten in `{init}` en `{frame}` (`startwaardenVan`). */
+  startwaarden: Record<string, number>
+  /** Voor `[alphascale]`: variabelen die een script via een curve uit Envir_Brightness zet, bij daglicht. */
+  daglicht: Record<string, number>
+}
+
+/** Wat de regels van een vermelding nodig hebben. */
+export interface RustVermelding {
+  deel: number
+  zicht: Array<[string, number]>
+  materialen: Array<{ wissel?: { variabele: string; items: unknown[] }; alfaSchaal?: string } | null>
+}
+
+/**
+ * `[alphascale]` op naam, als geen script en geen curve iets zegt (§5.2): regen,
+ * vuil, korrel, dashboardgloed, parasieten, vorst en beslag staan overdag bij
+ * droog weer uit. `Szyby*` staat er NIET in: dat is het glas zelf van de
+ * Kajosoft-bussen (47 vermeldingen in model_o530_e2_2.cfg).
+ */
+const ALFA_NUL = [/^rain_/i, /^dirt_/i, /_grain$/i, /^dash_/i, /^para_/i, /^mroz/i, /^beschlag_/i]
+
+/**
+ * De ruststand volgens de regels van §5.2, zolang er geen OSC-machine is (F3),
+ * en als terugval daarna. Puur, ook voor de probe.
+ *
+ * `[visible]` en `[matl_change]`, per variabele, in deze voorrang:
+ *  1. `kleurVars` (die wint van wat `{init}` letterlijk toekent, zoals in het spel);
+ *  2. de startwaarden uit de scripts;
+ *  3. de alias: bij `vis_<rest>` de waarde van `vis_CTI_<rest>` of `vis_SV_<rest>`
+ *     (zo zet de NLC spiegels, deuren en matrix, setvar.osc:510-519);
+ *  4. de standaardwaarden van de motor;
+ *  5. 0 als een vermelding 0 gebruikt;
+ *  6. anders de laagste waarde.
+ * Zichtbaar is |waarde - w| < 0,5 (openOMSI; de plugin-afdruk beslist in F3).
+ *
+ * `[alphascale]`: een curve bij daglicht, dan kleurVars, dan de lijst op naam
+ * (0), dan de startwaarden en de motor, anders 1.
+ */
+export function rustRegels(
+  vermeldingen: RustVermelding[],
+  delen: RustDeel[]
+): Pick<Bus3dLak, 'zichtbaar' | 'items' | 'alphascale' | 'onbekend'> {
+  // Welke waarden de vermeldingen per (deel, variabele) gebruiken.
+  const gebruikt = new Map<string, number[]>()
+  const noteer = (d: number, naam: string, w: number): void => {
+    const k = `${d}|${naam.toLowerCase()}`
+    const lijst = gebruikt.get(k)
+    if (lijst) lijst.push(w)
+    else gebruikt.set(k, [w])
+  }
+  for (const v of vermeldingen) {
+    for (const [naam, w] of v.zicht) noteer(v.deel, naam, w)
+    for (const m of v.materialen) if (m?.wissel) noteer(v.deel, m.wissel.variabele, 0)
+  }
+  const onbekend = new Set<string>()
+  const geheugen = new Map<string, number>()
+  const bron = (d: number, naam: string): number | undefined => {
+    const deel = delen[d] ?? delen[0]
+    if (!deel) return undefined
+    return deel.kleurVars[naam] ?? deel.startwaarden[naam]
+  }
+  const waarde = (d: number, naamRuw: string): number => {
+    const naam = naamRuw.toLowerCase()
+    const k = `${d}|${naam}`
+    const bekend = geheugen.get(k)
+    if (bekend !== undefined) return bekend
+    let w = bron(d, naam)
+    if (w === undefined && naam.startsWith('vis_')) {
+      const rest = naam.slice(4)
+      w = bron(d, `vis_cti_${rest}`) ?? bron(d, `vis_sv_${rest}`)
+    }
+    w ??= MOTORSTANDAARD[naam]
+    if (w === undefined) {
+      const lijst = gebruikt.get(k) ?? []
+      w = lijst.length === 0 || lijst.includes(0) ? 0 : Math.min(...lijst)
+      onbekend.add(naamRuw)
+    }
+    geheugen.set(k, w)
+    return w
+  }
+
+  let zichtbaar = ''
+  const items: Record<number, number> = {}
+  const alphascale: Record<string, number> = {}
+  vermeldingen.forEach((v, i) => {
+    const zien = v.zicht.every(([naam, w]) => Math.abs(waarde(v.deel, naam) - w) < 0.5)
+    zichtbaar += zien ? '1' : '0'
+    v.materialen.forEach((m, k) => {
+      if (m?.wissel) {
+        const w = Math.round(waarde(v.deel, m.wissel.variabele))
+        items[itemSleutel(i, k)] = w >= 0 && w <= m.wissel.items.length ? w : 0
+      }
+      if (m?.alfaSchaal && alphascale[m.alfaSchaal] === undefined) {
+        const naam = m.alfaSchaal.toLowerCase()
+        const deel = delen[v.deel] ?? delen[0]
+        /*
+         * De lijst op naam gaat vóór de startwaarden: die nemen ook een waarde
+         * binnen een {if} mee, en regen, vorst en beslag zet een script juist
+         * onder een voorwaarde (Kajosoft: `1 (S.L.mroz)` bij vorst onder -10
+         * graden, cockpit.osc:2410).
+         */
+        const a =
+          deel?.daglicht[naam] ??
+          deel?.kleurVars[naam] ??
+          (ALFA_NUL.some((r) => r.test(naam)) ? 0 : undefined) ??
+          deel?.startwaarden[naam] ??
+          MOTORSTANDAARD[naam] ??
+          1
+        alphascale[m.alfaSchaal] = Math.max(0, Math.min(1, a))
+      }
+    })
+  })
+  return { zichtbaar, items, alphascale, onbekend: [...onbekend].sort() }
 }
 
 /** Een id zoals het register ze uitgeeft: 40 kleine hextekens. */

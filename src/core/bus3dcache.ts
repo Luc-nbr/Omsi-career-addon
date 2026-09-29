@@ -6,6 +6,7 @@ import {
   openSync,
   readdirSync,
   readFileSync,
+  readSync,
   renameSync,
   rmSync,
   statSync,
@@ -15,8 +16,9 @@ import {
 } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { schrijfPakket } from '../shared/bus3dpak'
-import type { Bus3dManifest } from '../shared/bus3d'
-import { bouwBus3d, bus3dLak, pakketVerouderd, type Bus3dBouw, type Bus3dBron, type Bus3dTextuurBron } from './bus3d'
+import type { Bus3dLak, Bus3dManifest, Bus3dPakKop } from '../shared/bus3d'
+import { bouwBus3d, bus3dLak, lakStempel, pakketVerouderd, type Bus3dBouw, type Bus3dBron, type Bus3dTextuurBron } from './bus3d'
+import { leesBus3dOmgeving } from './bus3domgeving'
 
 /**
  * DE SCHIJFCACHE VAN BUS3D (bus3d-ontwerp §4.2)
@@ -196,6 +198,29 @@ export class Bus3dCache {
     }
   }
 
+  /**
+   * Alleen de JSON-kop van een `.b3d` (de vermeldingen en stukken, zonder de
+   * geometrie): wat de ruststand nodig heeft. De kop staat vooraan; de staart
+   * met de hoekpunten wordt niet gelezen.
+   */
+  leesKop(pakket: string): Bus3dPakKop | undefined {
+    let fd: number | undefined
+    try {
+      fd = openSync(this.pakketPad(pakket), 'r')
+      const begin = Buffer.alloc(8)
+      if (readSync(fd, begin, 0, 8, 0) < 8 || begin.toString('latin1', 0, 4) !== 'B3D1') return undefined
+      const lengte = begin.readUInt32LE(4)
+      const json = Buffer.alloc(lengte)
+      if (readSync(fd, json, 0, lengte, 8) < lengte) return undefined
+      const kop = JSON.parse(json.toString('utf8')) as Bus3dPakKop
+      return kop.versie === 1 && kop.pakket === pakket ? kop : undefined
+    } catch {
+      return undefined
+    } finally {
+      if (fd !== undefined) closeSync(fd)
+    }
+  }
+
   /** Gebruikt: de tijd vooruit, zodat de LRU hem als laatste weggooit. */
   raak(pakket: string): void {
     const nu = new Date()
@@ -206,10 +231,10 @@ export class Bus3dCache {
     }
   }
 
-  /** Een pakket van de schijf; geeft hoeveel bytes er weg zijn. */
+  /** Een pakket van de schijf, met zijn heldenbeelden; geeft hoeveel bytes er weg zijn. */
   private gooiWeg(pakket: string): number {
     let bytes = 0
-    for (const pad of [this.pakketPad(pakket), this.zijspoorPad(pakket)]) {
+    for (const pad of [this.pakketPad(pakket), this.zijspoorPad(pakket), ...this.heldenVan(pakket), ...this.standenVan(pakket)]) {
       try {
         bytes += statSync(pad).size
       } catch {
@@ -218,6 +243,100 @@ export class Bus3dCache {
       rmSync(pad, { force: true })
     }
     return bytes
+  }
+
+  // ------------------------------------------------------------ de ruststand (§4.2: s/)
+  /*
+   * `s/<pakket>-<stempel>.json`: de lak van een kleurstelling -- de ruststand en
+   * de vervangen texturen. De stempel (`lakStempel`) volgt de scripts, de .bus en
+   * de texturen van de kleurstelling; het pakket-id de rest. Zo kost een warme
+   * lak ook na een nieuwe werker geen scripts lezen (tot 570 ms bij de NLC).
+   */
+  private standPad(pakket: string, stempel: string): string {
+    return join(this.map, 's', `${pakket}-${stempel}.json`)
+  }
+
+  private standenVan(pakket: string): string[] {
+    try {
+      return readdirSync(join(this.map, 's'))
+        .filter((naam) => naam.startsWith(`${pakket}-`))
+        .map((naam) => join(this.map, 's', naam))
+    } catch {
+      return []
+    }
+  }
+
+  leesStand(pakket: string, stempel: string): { lak: Bus3dLak; textuurBronnen: Bus3dTextuurBron[] } | undefined {
+    try {
+      const uit = JSON.parse(readFileSync(this.standPad(pakket, stempel), 'utf8')) as { lak: Bus3dLak; textuurBronnen: Bus3dTextuurBron[] }
+      return uit?.lak && Array.isArray(uit.textuurBronnen) ? uit : undefined
+    } catch {
+      return undefined
+    }
+  }
+
+  schrijfStand(pakket: string, stempel: string, stand: { lak: Bus3dLak; textuurBronnen: Bus3dTextuurBron[] }): void {
+    try {
+      mkdirSync(join(this.map, 's'), { recursive: true })
+      const pad = this.standPad(pakket, stempel)
+      // Hooguit 8 standen per pakket (§4.1): de oudste weg.
+      const bestaand = this.standenVan(pakket)
+        .map((p) => ({ p, t: statSync(p).mtimeMs }))
+        .sort((a, b) => a.t - b.t)
+      for (const oud of bestaand.slice(0, Math.max(0, bestaand.length - 7))) rmSync(oud.p, { force: true })
+      writeFileSync(`${pad}.${process.pid}.tmp`, JSON.stringify(stand))
+      renameSync(`${pad}.${process.pid}.tmp`, pad)
+    } catch {
+      // Niet erg: dan wordt hij de volgende keer opnieuw uitgerekend.
+    }
+  }
+
+  // ------------------------------------------------------------ heldenbeelden (§9)
+  /*
+   * `h/<pakket>-<kleur>-<sleutel>.webp`: het beeld dat het 3D-venster maakte
+   * zodra de bus helemaal scherp stond. Een plaatje, geen meetkunde (§5.1), dus
+   * het mag op schijf. Het hoort bij zijn pakket en gaat met dat pakket weg --
+   * ook als een sleutel uit de registratie verdwijnt.
+   */
+  private heldNaam(pakket: string, kleurstelling: string | undefined, sleutel: string): string {
+    const kleur = createHash('sha1').update(`kleur|${kleurstelling ?? ''}`).digest('hex').slice(0, 16)
+    return `${pakket}-${kleur}-${sleutel}.webp`
+  }
+
+  heldPad(pakket: string, kleurstelling: string | undefined, sleutel: string): string {
+    return join(this.map, 'h', this.heldNaam(pakket, kleurstelling, sleutel))
+  }
+
+  private heldenVan(pakket: string): string[] {
+    try {
+      return readdirSync(join(this.map, 'h'))
+        .filter((naam) => naam.startsWith(`${pakket}-`))
+        .map((naam) => join(this.map, 'h', naam))
+    } catch {
+      return []
+    }
+  }
+
+  /** Een heldenbeeld wegschrijven (tijdelijk bestand, dan hernoemen). */
+  schrijfHeld(pakket: string, kleurstelling: string | undefined, sleutel: string, webp: Uint8Array): string {
+    mkdirSync(join(this.map, 'h'), { recursive: true })
+    const pad = this.heldPad(pakket, kleurstelling, sleutel)
+    writeFileSync(`${pad}.${process.pid}.tmp`, webp)
+    renameSync(`${pad}.${process.pid}.tmp`, pad)
+    return pad
+  }
+
+  /** Het heldenbeeld van een pakket en kleurstelling met deze sleutels, de eerste die er is. */
+  zoekHeld(pakket: string, kleurstelling: string | undefined, sleutels: string[]): string | undefined {
+    for (const sleutel of sleutels) {
+      const pad = this.heldPad(pakket, kleurstelling, sleutel)
+      try {
+        if (statSync(pad).size > 0) return pad
+      } catch {
+        // niet dit
+      }
+    }
+    return undefined
   }
 
   /**
@@ -338,6 +457,7 @@ export type Bus3dOpdracht =
   | { soort: 'bus3d:model'; relatiefPad: string; geregistreerd: number[] }
   | { soort: 'bus3d:lak'; pakket: string; kleurstelling?: string }
   | { soort: 'bus3d:controle'; pakket: string }
+  | { soort: 'bus3d:omgeving' }
 
 /**
  * Wat de werker `'bus3d'` doet, los van de werker zelf: de probe roept precies
@@ -347,8 +467,10 @@ export type Bus3dOpdracht =
  *
  * - `bus3d:model`: bouwen en naar de cache schrijven; geeft het zijspoor (voor
  *   main) of een reden.
- * - `bus3d:lak`: de texturen en vars van een kleurstelling.
+ * - `bus3d:lak`: de texturen en vars van een kleurstelling, met de ruststand
+ *   (ook bij "Standaard", `kleurstelling` leeg).
  * - `bus3d:controle`: het eerste bronbestand dat veranderd is, of niets.
+ * - `bus3d:omgeving`: de hemel en de wolken van "Buiten" uit de installatie.
  */
 export async function bus3dWerk(
   opdracht: Bus3dOpdracht,
@@ -370,10 +492,17 @@ export async function bus3dWerk(
     const geschreven = cache.schrijf(uit.bouw, omsiMap, geregistreerd)
     return { zijspoor: geschreven.zijspoor, tijden: { ...uit.bouw.tijden, schrijven: geschreven.ms }, doostoets: uit.bouw.doostoets }
   }
+  if (opdracht.soort === 'bus3d:omgeving') return leesBus3dOmgeving(omsiMap)
   const z = cache.zijspoor(opdracht.pakket)
   if (opdracht.soort === 'bus3d:lak') {
     if (!z) return { reden: 'verouderd' }
-    return bus3dLak(omsiMap, z.manifest, opdracht.kleurstelling)
+    const t0 = performance.now()
+    const stempel = lakStempel(omsiMap, z.manifest, opdracht.kleurstelling)
+    const bekend = cache.leesStand(opdracht.pakket, stempel)
+    if (bekend) return { ...bekend, lak: { ...bekend.lak, ms: Math.round(performance.now() - t0) } }
+    const uit = bus3dLak(omsiMap, z.manifest, opdracht.kleurstelling, cache.leesKop(opdracht.pakket))
+    cache.schrijfStand(opdracht.pakket, stempel, uit)
+    return uit
   }
   return z ? pakketVerouderd(z.bronnen) : 'pakket weg'
 }

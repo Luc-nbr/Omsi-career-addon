@@ -323,11 +323,22 @@ async function proefset(): Promise<void> {
     for (const e of readdirSync(map, { withFileTypes: true })) {
       const p = join(map, e.name)
       if (e.isDirectory()) loop(p)
-      else if (!/[\\/]p[\\/][0-9a-f]{40}\.(b3d|json)$/.test(p) && !/[\\/]bus[\\/][0-9a-f]{40}$/.test(p)) vreemd.push(p)
+      else if (
+        !/[\\/]p[\\/][0-9a-f]{40}\.(b3d|json)$/.test(p) &&
+        !/[\\/]bus[\\/][0-9a-f]{40}$/.test(p) &&
+        // F2: de ruststand (s/: zichtbaarheid en vars) en heldenbeelden (h/: plaatjes) zijn geen meetkunde.
+        !/[\\/]s[\\/][0-9a-f]{40}-[0-9a-f]{24}\.json$/.test(p) &&
+        !/[\\/]h[\\/][0-9a-f]{40}-[0-9a-f]{16}-[a-z0-9-]+\.webp$/.test(p)
+      )
+        vreemd.push(p)
     }
   }
   loop(cacheMap)
-  toets('T-V5 in de cache alleen p/<id>.b3d, p/<id>.json en bus/<id>', vreemd.length === 0, vreemd.slice(0, 3).join(', '))
+  toets(
+    'T-V5 in de cache alleen p/<id>.b3d, p/<id>.json, bus/<id>, s/<id>-<stempel>.json en h/<id>-...webp',
+    vreemd.length === 0,
+    vreemd.slice(0, 3).join(', ')
+  )
   let blokken = 0
   let gelijk = 0
   let ontwardOpSchijf = 0

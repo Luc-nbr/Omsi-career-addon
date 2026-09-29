@@ -148,6 +148,12 @@ export interface Settings {
    * schijf, want tussen "gevraagd" en "OMSI dicht" kan de app ook dichtgaan.
    */
   busknoppenStraks?: Record<string, string[]>
+  /**
+   * De eigen 3D-weergave van een bus (design/ontwerpen/bus3d.md). Tot de
+   * ruststand via de scripts er is (F3) staat hij standaard UIT: zonder deze
+   * schakelaar blijft de app precies zoals hij was.
+   */
+  bus3d?: boolean
 }
 
 /**
@@ -233,7 +239,8 @@ export function readSettings(userDataPath: string): Settings {
       apparaatSleutel: geldigeSleutel(raw.apparaatSleutel),
       apparaatPoort: geldigePoort(raw.apparaatPoort),
       busmodules: geldigeModules(raw.busmodules),
-      busknoppenStraks: geldigeWachtrij(raw.busknoppenStraks)
+      busknoppenStraks: geldigeWachtrij(raw.busknoppenStraks),
+      bus3d: raw.bus3d === true ? true : undefined
     }
   } catch {
     return {
@@ -328,7 +335,8 @@ export function writeSettings(userDataPath: string, settings: Partial<Settings>)
     busknoppenStraks:
       settings.busknoppenStraks && typeof settings.busknoppenStraks === 'object'
         ? geldigeWachtrij(settings.busknoppenStraks)
-        : current.busknoppenStraks
+        : current.busknoppenStraks,
+    bus3d: typeof settings.bus3d === 'boolean' ? settings.bus3d || undefined : current.bus3d
   }
   const path = settingsPath(userDataPath)
   mkdirSync(dirname(path), { recursive: true })
