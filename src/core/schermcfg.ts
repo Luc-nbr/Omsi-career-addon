@@ -75,6 +75,15 @@ export interface CfgMateriaalstand {
   nightmap?: string
   /** `[matl_envmap] <tex> <sterkte>`: vastgelegd, niet getekend. */
   envmap?: string
+  /**
+   * De sterkte uit `[matl_envmap]` (tweede regel). OMSI: weerspiegeling =
+   * diffuse alfa x sterkte, verzadigd op 1 (SD202-carrosserieën schrijven 10).
+   */
+  envmapSterkte?: number
+  /** `[matl_envmap_mask] <tex>`: waar de weerspiegeling mag (bus3d §5.5). */
+  envmapMasker?: string
+  /** `[matl_bumpmap] <tex> <sterkte>`: alleen voor de weerspiegeling, later (bus3d F5). */
+  bumpmap?: { textuur: string; sterkte: number }
   /** `[texcoordtransX|Y] <var>`. */
   texcoordX?: string
   texcoordY?: string
@@ -100,6 +109,10 @@ export interface CfgMateriaal extends CfgMateriaalstand {
   tekst?: number
   adres?: 'clamp' | 'border'
   nietSchrijven?: boolean
+  /** `[matl_noZcheck]`: zonder dieptetoets getekend (bus3d §5.3). */
+  nietTesten?: boolean
+  /** `[useScriptTexture] k`: de k-de `[scripttexture]` van dit bestand (vanaf 0). */
+  scripttextuur?: number
   /** De `[matl_item]`'s van een `[matl_change]`: item 1, 2, ... */
   items: CfgMateriaalstand[]
   regel: number
@@ -163,6 +176,14 @@ export interface ModelCfg {
   tekst: CfgTekstblok[]
   /** De drempels van de `[LOD]`-groepen, in volgorde. */
   lods: number[]
+  /** `[scripttexture] b h`, in bestandsvolgorde; `[useScriptTexture] k` telt hierin. */
+  scripttexturen: { b: number; h: number; regel: number }[]
+  /**
+   * `[texchanges] <bestand>`: een chtex-cfg, ten opzichte van de VOERTUIGMAP
+   * (niet de map van de model.cfg). Geldt voor het hele model, ook al staat hij
+   * bij een mesh.
+   */
+  texchanges: string[]
 }
 
 /** Hoeveel regels een kop meeneemt. Alleen koppen die hier gelezen worden. */
@@ -194,7 +215,21 @@ const LENGTE: Record<string, number> = {
   '[texcoordtransX]': 1,
   '[texcoordtransY]': 1,
   '[matl_noZwrite]': 0,
-  '[alphascale]': 1
+  '[alphascale]': 1,
+  /*
+   * Erbij voor de 3D-weergave (bus3d §5.1). De aantallen regels zijn geteld over
+   * de 810 model-cfg's onder Vehicles (28-09-2026): noZcheck 3402 keer 0,
+   * envmap_mask 616 keer 1 (12 keer staat er nog een getal onder, dat OMSI dan
+   * als commentaar leest), bumpmap 6132 keer 2, scripttexture 937 keer 2,
+   * texchanges 19 keer 1. `-<DISABLED>-` staat er NIET bij: dat komt pas na een
+   * meting tegen meshes.json van de plugin (bus3d §5.1, scripts/probe-meshlijst.ts).
+   */
+  '[matl_noZcheck]': 0,
+  '[matl_envmap_mask]': 1,
+  '[matl_bumpmap]': 2,
+  '[scripttexture]': 2,
+  '[useScriptTexture]': 1,
+  '[texchanges]': 1
 }
 
 /**
@@ -312,6 +347,8 @@ export function ontleedSchermcfg(modelcfg: string, regels: string[]): ModelCfg {
   const meshes: CfgMesh[] = []
   const tekst: CfgTekstblok[] = []
   const lods: number[] = []
+  const scripttexturen: ModelCfg['scripttexturen'] = []
+  const texchanges: string[] = []
 
   let mesh: CfgMesh | undefined
   let materiaal: CfgMateriaal | undefined
@@ -381,6 +418,17 @@ export function ontleedSchermcfg(modelcfg: string, regels: string[]): ModelCfg {
           raster: Number.isFinite(raster) ? raster & 0xffff : 1,
           geldig
         })
+        break
+      }
+      case '[scripttexture]': {
+        const b = strToInt(args(0))
+        const h = strToInt(args(1))
+        scripttexturen.push({ b: Number.isFinite(b) ? b : 0, h: Number.isFinite(h) ? h : 0, regel: i + 1 })
+        break
+      }
+      case '[texchanges]': {
+        const bestand = args(0).trim()
+        if (bestand) texchanges.push(bestand)
         break
       }
       case '[LOD]': {
@@ -508,6 +556,22 @@ export function ontleedSchermcfg(modelcfg: string, regels: string[]): ModelCfg {
       case '[matl_noZwrite]':
         materiaal.nietSchrijven = true
         return
+      case '[matl_noZcheck]':
+        materiaal.nietTesten = true
+        return
+      case '[useScriptTexture]': {
+        const k = geheel(args(0))
+        if (Number.isFinite(k) && k >= 0) materiaal.scripttextuur = k
+        return
+      }
+      case '[matl_envmap_mask]':
+        stand.envmapMasker = args(0).trim() || undefined
+        return
+      case '[matl_bumpmap]': {
+        const textuur = args(0).trim()
+        if (textuur) stand.bumpmap = { textuur, sterkte: getal(args(1)) || 0 }
+        return
+      }
       case '[matl_alpha]': {
         const a = geheel(args(0))
         stand.alfa = a === 1 ? 1 : a === 2 ? 2 : 0
@@ -537,9 +601,12 @@ export function ontleedSchermcfg(modelcfg: string, regels: string[]): ModelCfg {
       case '[matl_nightmap]':
         stand.nightmap = args(0).trim()
         return
-      case '[matl_envmap]':
+      case '[matl_envmap]': {
         stand.envmap = args(0).trim()
+        const sterkte = getal(args(1))
+        if (Number.isFinite(sterkte)) stand.envmapSterkte = sterkte
         return
+      }
       case '[texcoordtransX]':
         stand.texcoordX = args(0).trim()
         return
@@ -552,7 +619,7 @@ export function ontleedSchermcfg(modelcfg: string, regels: string[]): ModelCfg {
     }
   }
 
-  return { pad: modelcfg, map, meshes, tekst, lods }
+  return { pad: modelcfg, map, meshes, tekst, lods, scripttexturen, texchanges }
 }
 
 /**

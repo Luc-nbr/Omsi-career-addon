@@ -232,6 +232,7 @@ import { t } from '../shared/i18n'
 import { presetStartup } from '../core/startup'
 import { zetKopieMap } from '../core/veilig'
 import { trailerOf } from '../core/trailer'
+import { maakBus3dDienst, registreerBus3dIpc, type Bus3dDienst } from './bus3d'
 import { spawnAtStop } from '../core/spawn'
 import { listMaps, readMapName } from '../core/timetable'
 import type { Vehicle } from '../core/vehicles'
@@ -369,7 +370,11 @@ interface WerkerAntwoord {
  * 'bussen': een bus uitlezen om hem klaar te maken duurt tot een minuut. Op de
  * voorgrondwerker zou dat de kaarten en de dienstenlijst zo lang ophouden.
  */
-type Werksoort = 'voorgrond' | 'achtergrond' | 'fotos' | 'bussen'
+/*
+ * 'bus3d': het 3D-pakket van een bus (main/bus3d.ts). Eigen werker, zodat een
+ * vraag van het 3D-venster nooit achter een fotoronde of een busanalyse wacht.
+ */
+type Werksoort = 'voorgrond' | 'achtergrond' | 'fotos' | 'bussen' | 'bus3d'
 
 const werkers = new Map<Werksoort, Worker>()
 let volgendeOpdracht = 0
@@ -383,7 +388,10 @@ let volgendeOpdracht = 0
  * Daarom krijgt iedereen van die werker meteen een antwoord, ook al is het
  * "niet gelukt" -- daar staat een terugval op.
  */
-const werkerWacht = new Map<number, { werker: Worker; klaar: (antwoord: WerkerAntwoord) => void }>()
+const werkerWacht = new Map<
+  number,
+  { werker: Worker; klaar: (antwoord: WerkerAntwoord) => void; tussen?: (bericht: unknown) => void }
+>()
 
 /**
  * Iedereen die op déze werker wacht een antwoord geven, met reden.
@@ -409,7 +417,12 @@ function kaartWerker(soort: Werksoort): Worker {
   const gemaakt = new Worker(join(__dirname, 'kaartwerker.js'), {
     workerData: { omsiPath: omsi(), userData: userData() }
   })
-  gemaakt.on('message', (antwoord: WerkerAntwoord) => {
+  gemaakt.on('message', (antwoord: WerkerAntwoord & { tussen?: unknown }) => {
+    // Een tussenbericht (bus3d: voortgang, de textuurlijst): de vraag blijft open.
+    if (antwoord.tussen !== undefined) {
+      werkerWacht.get(antwoord.id)?.tussen?.(antwoord.tussen)
+      return
+    }
     const wachtend = werkerWacht.get(antwoord.id)
     werkerWacht.delete(antwoord.id)
     wachtend?.klaar(antwoord)
@@ -429,6 +442,23 @@ function kaartWerker(soort: Werksoort): Worker {
   return gemaakt
 }
 
+/**
+ * Bus3D: de regie in main/bus3d.ts; hier alleen de aansluiting op de werker
+ * `'bus3d'`, het logboek en de mappen. Pas gemaakt als er iets gevraagd wordt.
+ */
+let bus3dDienst: Bus3dDienst | undefined
+function bus3d(): Bus3dDienst {
+  bus3dDienst ??= maakBus3dDienst({
+    userData,
+    omsi,
+    werkerVraag: (opdracht, tussen) => werkerVraag(opdracht, 'bus3d', tussen),
+    sluitWerker: () => sluitAchtergrondwerker('bus3d'),
+    log,
+    logFout
+  })
+  return bus3dDienst
+}
+
 /** De werker van het voorwerk wegsturen; het hoofdproces houdt niets van hem. */
 function sluitAchtergrondwerker(soort: Werksoort = 'achtergrond'): void {
   const staand = werkers.get(soort)
@@ -439,13 +469,14 @@ function sluitAchtergrondwerker(soort: Werksoort = 'achtergrond'): void {
 
 async function werkerVraag<T>(
   opdracht: Record<string, unknown>,
-  soort: Werksoort = 'voorgrond'
+  soort: Werksoort = 'voorgrond',
+  tussen?: (bericht: unknown) => void
 ): Promise<T> {
   const id = (volgendeOpdracht += 1)
   const antwoord = await new Promise<WerkerAntwoord>((klaar) => {
     try {
       const werker = kaartWerker(soort)
-      werkerWacht.set(id, { werker, klaar })
+      werkerWacht.set(id, { werker, klaar, tussen })
       werker.postMessage({ ...opdracht, id })
     } catch (fout) {
       werkerWacht.delete(id)
@@ -4167,6 +4198,7 @@ function handle(kanaal: string, doen: Vraag): void {
 }
 
 function registerHandlers(): void {
+  registreerBus3dIpc(ipcMain, bus3d())
   /*
     * Welke versie dit is. Het meldsjabloon in Discord vraagt er als eerste
     * regel om, en tot nu toe kon je hem alleen in de programmalijst van Windows
@@ -6101,6 +6133,7 @@ function registerHandlers(): void {
         addonPlan = undefined
         // Er kunnen bussen en kaarten bij zijn: de lijsten opnieuw lezen.
         vergeetKaarten()
+        bus3d().vergeet(uit.addon.bussen)
         vehicleTrackers.clear()
         return { id: uit.addon.id, geschreven: uit.geschreven, overschreven: uit.overschreven }
       } finally {
@@ -6132,6 +6165,7 @@ function registerHandlers(): void {
       rmSync(reserveMap(userData(), addon.id), { recursive: true, force: true })
       log(`Add-on verwijderd: ${addon.naam} (${uit.verwijderd} weg, ${uit.teruggezet} terug, ${uit.gewijzigd.length} aangepast en blijven staan)`)
       vergeetKaarten()
+      bus3d().vergeet(addon.bussen)
       vehicleTrackers.clear()
       return { verwijderd: uit.verwijderd, teruggezet: uit.teruggezet, gebleven: uit.gebleven, gewijzigd: uit.gewijzigd.slice(0, 50) }
     })
@@ -6305,7 +6339,13 @@ protocol.registerSchemesAsPrivileged([
    * De plaatjes van een nagebouwd apparaatscherm, voor de overlay: alleen op id
    * uit het register van de huidige bus (main/schermtexturen.ts), nooit op pad.
    */
-  { scheme: 'omsischerm', privileges: { standard: true, secure: true, supportFetchAPI: true } }
+  { scheme: 'omsischerm', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  /*
+   * Bus3D: pakketten, texturen en heldenbeelden op id (main/bus3d.ts). Zonder
+   * corsEnabled en zonder ACAO-kop: gemeten dat fetch zo werkt, vanuit de pagina
+   * en vanuit een module-werker (bus3d-ontwerp bijlage B).
+   */
+  { scheme: 'omsi3d', privileges: { standard: true, secure: true, supportFetchAPI: true } }
 ])
 
 /**
@@ -6455,6 +6495,8 @@ if (!app.requestSingleInstanceLock()) {
     protocol.handle('omsikaart', kaartplaatje)
     protocol.handle('omsibus', busplaatje)
     protocol.handle('omsischerm', schermplaatje)
+    protocol.handle('omsi3d', (vraag) => bus3d().antwoord(vraag))
+    bus3d().ruimOp()
     // Foto's van een oudere tekenaar horen niet meer getoond te worden.
     ruimOudeFotosOp(userData())
     protocol.handle('omsifoto', profielfoto)

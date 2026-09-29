@@ -1402,3 +1402,31 @@ Met verkleinen naar ≤ 1024 duurt de decode ongeveer even lang.
 - K/ons/harnas/run1.log:20-28, K/ons/harnas/telling-lak.out.txt:1.
 - D/vram3.out.txt; D/spike/uitslag-file.json, uitslag-http.json, bmpref.json.
 - D/sleutels/sleutels.out.txt, perbus.out.txt, ontwar.out.txt, doos.out.txt, allebussen.out.txt, combis.out.txt, buiten.out.txt, exe.out.txt.
+
+---
+
+## Bijlage D: stand van de bouw (29-09-2026, tak `claude/bus3d`)
+
+**Gebouwd:** stap 0, F0 en F1. Zie HANDOVER.md §5.000 voor de bestanden.
+
+**Gemeten** (Lucs pc, node, bronnen in de OS-cache; `scripts/probe-bus3d.ts`):
+
+| | SD77 | O560 E6 | NLC 12C | NLC 18C | C2 GN | Urbanway 18 | HH20 | NL202 |
+|---|---|---|---|---|---|---|---|---|
+| Pakket nieuw (bouwen + schrijven) | 79-143 ms | 280-336 | 349-431 | 507-590 | 228-294 | 213-288 | 203-283 | 76-95 |
+| Warm (zijspoor + pakket lezen) | 4-7 ms | 9 | 15-27 | 20-22 | 10-12 | 11-12 | 7-9 | 4-6 |
+| Geometrie | 2,1 MB | 13,7 | 25,1 | 34,1 | 15,2 | 19,5 | 4,5 | 2,0 |
+| Textuurplan bij 160 MB (met transmaps en maskers) | 56 MB | 113 | 159 | 158 | 155 | 158 | 160 | 78 |
+
+- Klaar-eisen F1: SD77 ≤ 0,4 s en NLC ≤ 1,2 s gehaald. Over alle 395 bussen met `[friendlyname]`: 393 pakketten, 1 `'versleuteld'` (GS GU240), 1 zonder model (GS LU200), **0 crashes**, bouwen p50 321 ms, p95 681 ms, max 958 ms. 3058 unieke texturen: **0 onleesbaar**; 2743 door onze eigen lezers helemaal uitgepakt, 315 JPEG/RLE-BMP alleen op de kop (Chromium); 84 textuurnamen (797 verwijzingen) echt ontbrekend.
+- T-G1, T-V1 (582/582), T-V3 (25 van 26), T-V4 (22 versleuteld, 4 MAN NL/NG een pakket), T-V5 (6586 gehusselde blokken byte voor byte gelijk aan de bron) en de protocolproef slagen.
+- Het o3d-lezen ging van 530 naar 150 ms bij de NLC door acht bestanden tegelijk te lezen: een bestand openen kost op Windows ongeveer 0,75 ms, ook warm.
+- De nulmeting van v3 staat in de uitvoer van `probe-bus3d.ts --nulmeting` (NLC 12C 983 ms lezen, HH20 en NL202 een icoon).
+
+**Afwijkingen van het ontwerp, met reden**
+- **Doostoets (§16):** alleen breedte en hoogte, tegen [boundingbox] samen met de gemeten doos (1e-99e percentiel) van de open hoekpunten. De letterlijke regel ([boundingbox] + 0,5 m op alle assen) wees de Volvo 7900 18 m af (zijn doos houdt 1,2 m vóór de cabine op) en de gelede Hamburger van 1992 (doos van 1 tot 3 m hoog). Een waaier zit in breedte en hoogte; de tegenproef (sleutel + 1) geeft 2,2-3,5% buiten bij een geregistreerde sleutel en 40-51% bij sleutel 0, tegen 0,00-0,09% met de goede sleutel.
+- **Winkelversie:** een vermelding zonder `SteamArtNr` telt niet (alleen sleutel 0), zoals §5.1 zegt; het sleutelonderzoek raadde "accepteren" aan.
+- **Route `beeld`** gaat op de inhoud, ook bij een verkeerde extensie (main geeft het juiste MIME-type); §5.7 zette een verkeerde extensie bij `eigen`.
+- **Foto's van de BMP-fix** in `busfotos/v3b`, zodat de grijze foto's opnieuw gemaakt worden; `v4` blijft voor de renderer.
+- **Nog niet in F1:** de lak geeft alleen de vervangen texturen en de vars (`zichtbaar` leeg tot F2), geen `bus3d:stalen`, geen geometrie-LRU in de werker (het pakket komt van schijf), `h/` geeft 404, de CSP en de instelling `bus3d` komen met het venster in F2.
+- **DISABLED:** nog niet beslist: op deze pc is er geen meshes.json van een rit met de SL92. De enige afdruk (Kajosoft o530 e3_3) is ouder dan de cfg: `Tabley-Kun\Mercedes-Benz-Stern.o3d` kwam er op 28-09 bij, en precies die mesh scheelt.

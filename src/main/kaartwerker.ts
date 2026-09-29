@@ -4,6 +4,7 @@ import { actiesPerVariant, analyseerBusmap, busmappen, modelcfgsVan, type Busana
 import type { DutyRequest, VrijWanneer } from '../shared/api'
 import type { OmsiKeuze } from '../core/omloopvolgen'
 import type { Monster } from '../core/kaartherkenning'
+import { Bus3dCache, bus3dWerk } from '../core/bus3dcache'
 
 /**
  * Het zware werk, buiten het hoofdproces.
@@ -82,6 +83,14 @@ type Opdracht =
   // De planning van het busbedrijf: de dienst voor OMSI en het lijnplan voor de vlootkaart.
   | { id: number; soort: 'dienstduty'; folder: string; deel: { lineFile: string; tourNumber: string; days: number; ritten: string[] } }
   | { id: number; soort: 'lijnplan'; folder: string; lineFiles: string[]; anker: string; dag: number }
+  /*
+   * Bus3D (design/ontwerpen/bus3d.md §4.1), op een eigen werker `'bus3d'`: een
+   * pakket bouwen en naar de schijfcache schrijven, de lak van een kleurstelling,
+   * en nakijken of de bronnen van een pakket nog kloppen.
+   */
+  | { id: number; soort: 'bus3d:model'; relatiefPad: string; geregistreerd: number[] }
+  | { id: number; soort: 'bus3d:lak'; pakket: string; kleurstelling?: string }
+  | { id: number; soort: 'bus3d:controle'; pakket: string }
 
 interface Antwoord {
   id: number
@@ -105,8 +114,30 @@ const laag = maakKaartlaag(omsiPath, userData)
  */
 const analyses = new Map<string, Busanalyse>()
 
+/*
+ * Bus3D werkt met `await` (de bestanden gaan parallel, zie core/bus3d.ts), en
+ * stuurt tussendoor berichten: `{ id, tussen }` -- de voortgang, en zodra de
+ * textuurlijst er is die lijst, zodat het venster al texturen ophaalt terwijl
+ * de rest nog gebouwd wordt (§4.1).
+ */
+let bus3dCache: Bus3dCache | undefined
+
 parentPort?.on('message', (opdracht: Opdracht) => {
   const begin = Date.now()
+  if (opdracht.soort === 'bus3d:model' || opdracht.soort === 'bus3d:lak' || opdracht.soort === 'bus3d:controle') {
+    bus3dCache ??= new Bus3dCache(userData)
+    bus3dWerk(opdracht, omsiPath, bus3dCache, (tussen) => parentPort?.postMessage({ id: opdracht.id, tussen })).then(
+      (uitkomst) => parentPort?.postMessage({ id: opdracht.id, ok: true, ms: Date.now() - begin, uitkomst } satisfies Antwoord),
+      (fout) =>
+        parentPort?.postMessage({
+          id: opdracht.id,
+          ok: false,
+          ms: Date.now() - begin,
+          fout: fout instanceof Error ? fout.message : String(fout)
+        } satisfies Antwoord)
+    )
+    return
+  }
   try {
     let uitkomst: unknown
     let detail: string | undefined

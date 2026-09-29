@@ -1,0 +1,601 @@
+/**
+ * Bus3D, de proefbank van F0 en F1 (design/ontwerpen/bus3d.md §13, §14).
+ *
+ *   npx tsx scripts/probe-bus3d.ts                  de proefset: pakketten, tijden, T-G1, T-V1 t/m T-V5, protocol
+ *   npx tsx scripts/probe-bus3d.ts --nulmeting      v3 (de foto van nu) als referentie, per bus
+ *   npx tsx scripts/probe-bus3d.ts --alles [--diep] alle bussen met [friendlyname]: 0 crashes, texturen
+ *
+ * Alleen lezen in de OMSI-map. De schijfcache en de nagebootste OMSI-map voor de
+ * protocolproef komen in een tijdelijke map, die aan het eind weggaat. Het
+ * register van Windows wordt niet aangeraakt; Lucs gegevens ook niet.
+ *
+ * WAT HIER GETOETST WORDT
+ * - Per bus van de proefset (scripts/bus3d-proefset.json): het pakket nieuw
+ *   (bouwen en schrijven, twee keer; de tweede telt, met de bronnen in de
+ *   OS-cache) en warm (zijspoor en pakket lezen), de textuurroutes, het
+ *   textuurplan bij 160 MB, ontbrekend tegen onleesbaar, de doostoets.
+ *   Klaar-eis F1: SD77 ≤ 0,4 s en NLC ≤ 1,2 s nieuw.
+ * - T-G1: de [matl]-koppeling op de SD77.
+ * - T-V1: de tweeling `21_aussen_weich3` exact.
+ * - T-V2: ontwarde bussen in breedte en hoogte binnen de doos + 0,5 m (de
+ *   doostoets van core/bus3d.ts), en de tegenproef: met sleutel + 1 valt de bus erop.
+ * - T-V3: 25 van de 26 icoonbussen een pakket, de GS GU240 `'versleuteld'` (12411).
+ * - T-V4: met een lege registratie geven de 21 bussen met een geregistreerde
+ *   sleutel `'versleuteld'` en de 4 MAN NL/NG (sleutel 0) niet.
+ * - T-V5: in de cache staat van elke gehusselde o3d het blok byte voor byte
+ *   zoals in het bronbestand, en verder geen hoekpuntbestand.
+ * - Het protocol `omsi3d://` op een nagebootste OMSI-map: p/ en t/ (met Range),
+ *   409 na een gewijzigd bestand, 403 als de sleutel uit de registratie
+ *   verdwijnt, 404 op wat niet in het register staat, en 'vervangen' in de rij.
+ */
+import { createHash } from 'node:crypto'
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { basename, join } from 'node:path'
+import { bouwBusTekening } from '../src/core/busbeeld'
+import { bouwBus3d } from '../src/core/bus3d'
+import { Bus3dCache, bus3dWerk, type Bus3dOpdracht } from '../src/core/bus3dcache'
+import { findOmsiInstall } from '../src/core/install'
+import { ontleedO3d } from '../src/core/o3d'
+import { beschrijfRegistratie, omsiRegistratie } from '../src/core/omsiregistratie'
+import { leesPng } from '../src/core/png'
+import { ontleedTextuur, pakBmpUit } from '../src/core/textuur'
+import type { WebContents } from 'electron'
+import { maakBus3dDienst, type Bus3dWerkerModel } from '../src/main/bus3d'
+import { textuurPlan, type Bus3dManifest } from '../src/shared/bus3d'
+import { leesPakket } from '../src/shared/bus3dpak'
+import { ontwar } from '../src/shared/o3dhussel'
+
+const omsi = findOmsiInstall()
+if (!omsi) {
+  console.error('Geen OMSI 2-installatie gevonden.')
+  process.exit(1)
+}
+const OMSI: string = omsi
+const set = JSON.parse(readFileSync(join(__dirname, 'bus3d-proefset.json'), 'utf8')) as {
+  bussen: Array<{ nr: number; naam: string; pad: string; verwacht: 'pakket' | 'versleuteld'; tijdNieuwMs?: number; sleutels?: number[] }>
+  volgorde: string[]
+  disabled: string
+  tg1: { pad: string; regels: Array<{ o3d: string; groep: number; alfa?: number; nietSchrijven?: boolean }> }
+  tv3: { bussen: string[]; icoon: string[]; nul: string[] }
+  tweeling: { gehusseld: string; open: string; hoekpunten: number }
+}
+const args = new Set(process.argv.slice(2))
+const MB = (b: number): string => (b / 1048576).toFixed(1)
+
+let fouten = 0
+function toets(naam: string, goed: boolean, detail = ''): void {
+  if (!goed) fouten++
+  console.log(`${goed ? 'GOED' : 'FOUT'}  ${naam}${detail ? `: ${detail}` : ''}`)
+}
+
+const tijdelijk = mkdtempSync(join(tmpdir(), 'probe-bus3d-'))
+process.on('exit', () => rmSync(tijdelijk, { recursive: true, force: true }))
+
+async function bouwEnSchrijf(cache: Bus3dCache, pad: string, geregistreerd: ReadonlySet<number>): Promise<{ uit: Bus3dWerkerModel; ms: number }> {
+  const t0 = performance.now()
+  const uit = (await bus3dWerk({ soort: 'bus3d:model', relatiefPad: pad, geregistreerd: [...geregistreerd] }, OMSI, cache)) as Bus3dWerkerModel
+  return { uit, ms: performance.now() - t0 }
+}
+
+function routes(m: Bus3dManifest): string {
+  const r = { dxt: 0, 'dxt-zonder-mips': 0, beeld: 0, eigen: 0 }
+  for (const t of m.texturen) r[t.soort]++
+  return `dxt ${r.dxt} / rtt ${r['dxt-zonder-mips']} / beeld ${r.beeld} / eigen ${r.eigen}`
+}
+
+function planRegel(m: Bus3dManifest): string {
+  const plan = textuurPlan(m.texturen, 160 * 1024 * 1024)
+  const i = m.texturen.findIndex((t) => t.ctc && t.ctc === plan.carrosserie)
+  const c = i >= 0 ? `${m.texturen[i].naam} ${m.texturen[i].b}x${m.texturen[i].h} -> ${plan.regels[i].b}x${plan.regels[i].h}` : 'geen CTC'
+  return `plan ${MB(plan.bytes)} MB${plan.teZwaar ? ' TE ZWAAR' : ''}, carrosserie ${c}`
+}
+
+// ------------------------------------------------------------ nulmeting (v3)
+function nulmeting(): void {
+  console.log('\n== Nulmeting: de foto van nu (v3, core/busbeeld.ts), warm (tweede keer) ==')
+  const paden = [...set.bussen.map((b) => b.pad), ...set.volgorde, set.disabled]
+  for (const pad of paden) {
+    bouwBusTekening(join(OMSI, pad))
+    const t0 = performance.now()
+    const t = bouwBusTekening(join(OMSI, pad))
+    const ms = Math.round(performance.now() - t0)
+    console.log(
+      `v3 ${pad}: ` +
+        (t
+          ? `${t.driehoeken} driehoeken, ${t.stukken.length} stukken, ${new Set(t.stukken.map((s) => s.textuur)).size} texturen, ` +
+            `${t.versleuteld} versleuteld, ${t.overgeslagen} overgeslagen, ${ms} ms`
+          : `geen tekening (icoon), ${ms} ms`)
+    )
+  }
+}
+
+// ------------------------------------------------------------ de proefset
+async function proefset(): Promise<void> {
+  const reg = omsiRegistratie(OMSI)
+  console.log(`registratie: ${beschrijfRegistratie(reg)}`)
+  for (const v of reg.vermeldingen) console.log(`  ${v.bron} [${v.sectie}] ${v.naam}: ArtNr ${v.artNr}, ${v.waarom}`)
+  toets(
+    'registratie = {12726, 13005, 13730, 13887, 15657}, alle bevestigd door het Steam-manifest',
+    [12726, 13005, 13730, 13887, 15657].every((s) => reg.sleutels.has(s)) && reg.vermeldingen.every((v) => v.bevestigd),
+    [...reg.sleutels].join(', ')
+  )
+
+  const cache = new Bus3dCache(join(tijdelijk, 'ud'))
+  console.log('\n== De proefset: pakket nieuw (bouwen + schrijven, 2e keer) en warm ==')
+  const manifesten = new Map<string, Bus3dManifest>()
+  for (const b of set.bussen) {
+    await bouwEnSchrijf(cache, b.pad, reg.sleutels)
+    const { uit, ms } = await bouwEnSchrijf(cache, b.pad, reg.sleutels)
+    if ('reden' in uit) {
+      console.log(`#${b.nr} ${b.naam}: ${uit.reden} -- ${uit.detail} (${Math.round(ms)} ms)`)
+      toets(`#${b.nr} ${b.naam}: verwacht ${b.verwacht}`, b.verwacht === uit.reden, uit.reden)
+      if (b.sleutels) toets(`#${b.nr} sleutel ${b.sleutels.join(',')} genoemd`, b.sleutels.every((s) => uit.sleutels?.includes(s)), String(uit.sleutels))
+      continue
+    }
+    const z = uit.zijspoor
+    const m = z.manifest
+    manifesten.set(b.pad, m)
+    // Warm: wat main doet (zijspoor) plus wat het venster ophaalt (het pakket).
+    const tw = performance.now()
+    const gevonden = cache.zoek(OMSI, b.pad)
+    const pak = leesPakket(readFileSync(cache.pakketPad(z.pakket)))
+    const warm = performance.now() - tw
+    console.log(
+      `#${b.nr} ${b.naam}: nieuw ${Math.round(ms)} ms (${JSON.stringify(uit.tijden)}), warm ${Math.round(warm)} ms; ` +
+        `${m.telling.driehoeken} driehoeken, ${m.telling.stukken} stukken, ${m.telling.vermeldingen} vermeldingen, ` +
+        `${m.telling.texturen} texturen (${routes(m)}), ontbrekend ${m.telling.ontbrekend}, onleesbaar ${m.telling.onleesbaar}, ` +
+        `ontward ${m.telling.ontward}, versleuteld ${m.telling.versleuteld}, geometrie ${MB(m.bytes.geometrie)} MB, ${planRegel(m)}` +
+        (uit.doostoets ? `, doos ${JSON.stringify(uit.doostoets)}` : '')
+    )
+    if (m.problemen.onleesbaar.length) console.log(`   onleesbaar: ${JSON.stringify(m.problemen.onleesbaar)}`)
+    toets(`#${b.nr} ${b.naam}: verwacht ${b.verwacht}`, b.verwacht === 'pakket')
+    toets(`#${b.nr} zijspoor en pakket warm terug`, Boolean(gevonden) && pak.kop.pakket === z.pakket)
+    toets(`#${b.nr} 0 texturen onleesbaar`, m.telling.onleesbaar === 0, m.problemen.onleesbaar.map((o) => o.naam).join(', '))
+    if (b.tijdNieuwMs) toets(`#${b.nr} nieuw ≤ ${b.tijdNieuwMs} ms`, ms <= b.tijdNieuwMs, `${Math.round(ms)} ms`)
+    if (b.sleutels) toets(`#${b.nr} sleutels ${b.sleutels.join(',')}`, b.sleutels.every((s) => m.sleutels.includes(s)), m.sleutels.join(','))
+  }
+
+  // ---------------------------------------------------------- T-G1
+  console.log('\n== T-G1: de [matl]-koppeling op de SD77 ==')
+  const sd = cache.zoek(OMSI, set.tg1.pad)
+  if (!sd) toets('T-G1 pakket SD77', false)
+  else {
+    const pak = leesPakket(readFileSync(cache.pakketPad(sd.pakket)))
+    for (const r of set.tg1.regels) {
+      const stuk = pak.kop.stukken.findIndex((s) => s.o3d.toLowerCase() === r.o3d.toLowerCase())
+      const verm = pak.kop.vermeldingen.find((v) => v.stuk === stuk)
+      const mat = verm?.materialen[r.groep]
+      const goed =
+        Boolean(mat) &&
+        (r.alfa === undefined || mat!.alfa === r.alfa) &&
+        (r.nietSchrijven === undefined || Boolean(mat!.nietSchrijven) === r.nietSchrijven)
+      toets(`T-G1 ${r.o3d} groep ${r.groep}`, goed, mat ? `alfa ${mat.alfa}, noZwrite ${Boolean(mat.nietSchrijven)}` : 'niet gevonden')
+    }
+  }
+
+  // ---------------------------------------------------------- T-V1
+  console.log('\n== T-V1: de tweeling ==')
+  {
+    const a = readFileSync(join(OMSI, set.tweeling.gehusseld))
+    const b = ontleedO3d(readFileSync(join(OMSI, set.tweeling.open))).model!
+    const la = ontleedO3d(a, { gehusseld: true }).model!
+    const n = la.hussel!.n
+    const blok = new Float32Array(new Uint8Array(a.subarray(la.hoekpuntBegin!, la.hoekpuntBegin! + n * 32)).buffer)
+    let voor = 0
+    for (let i = 0; i < n; i++) if (blok[i * 8] === b.vertices[i * 3] && blok[i * 8 + 1] === b.vertices[i * 3 + 1] && blok[i * 8 + 2] === b.vertices[i * 3 + 2]) voor++
+    ontwar(blok, la.hussel!)
+    let pos = 0
+    let nor = 0
+    for (let i = 0; i < n; i++) {
+      if (blok[i * 8] === b.vertices[i * 3] && blok[i * 8 + 1] === b.vertices[i * 3 + 1] && blok[i * 8 + 2] === b.vertices[i * 3 + 2]) pos++
+      if (blok[i * 8 + 3] === b.normals[i * 3] && blok[i * 8 + 4] === b.normals[i * 3 + 1] && blok[i * 8 + 5] === b.normals[i * 3 + 2]) nor++
+    }
+    toets(
+      `T-V1 21_aussen_weich3 (sleutel ${la.hussel!.sleutel}, versie ${la.hussel!.versie}, vlag ${la.hussel!.vlag})`,
+      n === set.tweeling.hoekpunten && pos === n && nor === n,
+      `${n} hoekpunten; posities gelijk vóór ontwarren ${voor}, erna ${pos}; normalen ${nor}`
+    )
+  }
+
+  // ---------------------------------------------------------- T-V3 en T-V2
+  console.log('\n== T-V3 (en T-V2): de 26 icoonbussen met de registratie van deze pc ==')
+  let pakketten = 0
+  for (const pad of set.tv3.bussen) {
+    const { uit } = await bouwEnSchrijf(cache, pad, reg.sleutels)
+    const icoon = set.tv3.icoon.includes(pad)
+    if ('reden' in uit) {
+      toets(`T-V3 ${pad}`, icoon && uit.reden === 'versleuteld' && Boolean(uit.sleutels?.includes(12411)), `${uit.reden}: ${uit.detail}`)
+      continue
+    }
+    pakketten++
+    const m = uit.zijspoor.manifest
+    const d = uit.doostoets as { gehusseld: number; gehusseldBuiten: number; open: number; openBuiten: number } | undefined
+    const pct = d && d.gehusseld ? (100 * d.gehusseldBuiten) / d.gehusseld : 0
+    const pctOpen = d && d.open ? (100 * d.openBuiten) / d.open : 0
+    toets(
+      `T-V3 ${pad}`,
+      !icoon,
+      `pakket, sleutels [${m.sleutels.join(', ')}], ontward ${m.telling.ontward}, versleuteld ${m.telling.versleuteld}; ` +
+        `T-V2 doos (breedte en hoogte): gehusseld buiten ${pct.toFixed(2)}%, open ${pctOpen.toFixed(2)}%`
+    )
+    if (d && d.gehusseld) toets(`T-V2 ${pad}`, pct <= 1, `${pct.toFixed(2)}% buiten de doos + 0,5 m`)
+    // Tegenproef: dezelfde blokken met een verkeerde sleutel moeten een waaier geven.
+    if (d && d.gehusseld) {
+      const tegen = tegenproef(cache, uit.zijspoor.pakket, m)
+      toets(`T-V2 tegenproef ${pad} (sleutel + 1)`, tegen > 1, `${tegen.toFixed(1)}% buiten`)
+    }
+  }
+  toets('T-V3 25 van de 26 een pakket', pakketten === 25, `${pakketten}`)
+
+  // ---------------------------------------------------------- T-V4
+  console.log('\n== T-V4: dezelfde 26 met een lege registratie (alleen sleutel 0) ==')
+  const leeg = new Bus3dCache(join(tijdelijk, 'leeg'))
+  let versleuteld = 0
+  let nulGoed = 0
+  for (const pad of set.tv3.bussen) {
+    const { uit } = await bouwEnSchrijf(leeg, pad, new Set())
+    if (set.tv3.nul.includes(pad)) {
+      if (!('reden' in uit)) nulGoed++
+      else toets(`T-V4 ${pad} (sleutel 0)`, false, uit.reden)
+    } else if ('reden' in uit && uit.reden === 'versleuteld') versleuteld++
+    else toets(`T-V4 ${pad}`, false, 'reden' in uit ? uit.reden : 'toch een pakket')
+  }
+  toets('T-V4 lege registratie: 22 versleuteld (21 + GU240), de 4 MAN NL/NG een pakket', versleuteld === 22 && nulGoed === 4, `${versleuteld} versleuteld, ${nulGoed} van 4`)
+
+  // ---------------------------------------------------------- T-V5
+  console.log('\n== T-V5: geen ontwarde meetkunde op schijf ==')
+  const cacheMap = cache.map
+  const vreemd: string[] = []
+  const loop = (map: string): void => {
+    for (const e of readdirSync(map, { withFileTypes: true })) {
+      const p = join(map, e.name)
+      if (e.isDirectory()) loop(p)
+      else if (!/[\\/]p[\\/][0-9a-f]{40}\.(b3d|json)$/.test(p) && !/[\\/]bus[\\/][0-9a-f]{40}$/.test(p)) vreemd.push(p)
+    }
+  }
+  loop(cacheMap)
+  toets('T-V5 in de cache alleen p/<id>.b3d, p/<id>.json en bus/<id>', vreemd.length === 0, vreemd.slice(0, 3).join(', '))
+  let blokken = 0
+  let gelijk = 0
+  let ontwardOpSchijf = 0
+  let grootZijspoor = 0
+  for (const { pakket } of cache.inhoud()) {
+    const z = cache.zijspoor(pakket)!
+    if (statSync(join(cacheMap, 'p', `${pakket}.json`)).size > 4 * 1048576) grootZijspoor++
+    const pak = leesPakket(readFileSync(cache.pakketPad(pakket)))
+    const o3ds = z.bronnen.filter((b) => /\.o3d$/i.test(b.pad))
+    for (const s of pak.kop.stukken) {
+      if (!s.hussel) continue
+      blokken++
+      const opgeslagen = pak.staart.subarray(s.hoekpunten.off, s.hoekpunten.off + s.hoekpunten.len)
+      const h = createHash('sha1').update(opgeslagen).digest('hex')
+      let raak = false
+      for (const b of o3ds.filter((o) => basename(o.pad).toLowerCase() === s.o3d.toLowerCase())) {
+        const bytes = readFileSync(b.pad)
+        const m = ontleedO3d(bytes, { gehusseld: true }).model
+        if (!m?.hoekpuntBegin) continue
+        const bron = bytes.subarray(m.hoekpuntBegin, m.hoekpuntBegin + m.hussel!.n * 32)
+        if (createHash('sha1').update(bron).digest('hex') === h) raak = true
+      }
+      if (raak) gelijk++
+      // En het is echt niet het ontwarde blok (tenzij ontwarren niets verandert).
+      const kopie = new Float32Array(new Uint8Array(opgeslagen).buffer)
+      const voor = createHash('sha1').update(new Uint8Array(kopie.buffer)).digest('hex')
+      ontwar(kopie, { ...s.hussel, n: s.n })
+      if (createHash('sha1').update(new Uint8Array(kopie.buffer)).digest('hex') === voor) ontwardOpSchijf++
+    }
+  }
+  toets('T-V5 elk gehusseld blok byte voor byte gelijk aan het bronbestand', blokken > 0 && gelijk === blokken, `${gelijk} van ${blokken}`)
+  toets('T-V5 geen enkel opgeslagen blok is al ontward', ontwardOpSchijf === 0, `${ontwardOpSchijf}`)
+  toets('T-V5 zijsporen klein (geen meetkunde erin)', grootZijspoor === 0)
+}
+
+/**
+ * De tegenproef van de doostoets: de gehusselde blokken uit het pakket met
+ * sleutel + 1 ontwarren en tellen hoeveel er in breedte of hoogte buiten de doos
+ * + 0,5 m valt. De doos zoals in core/bus3d.ts: [boundingbox] samen met de open
+ * hoekpunten (hier grof: hun uitersten zonder de verste 1%).
+ */
+function tegenproef(cache: Bus3dCache, pakket: string, m: Bus3dManifest): number {
+  const pak = leesPakket(readFileSync(cache.pakketPad(pakket)))
+  const lo = [...m.doos.min]
+  const hi = [...m.doos.max]
+  const open: number[][] = [[], []]
+  for (const s of pak.kop.stukken) {
+    if (s.hussel) continue
+    const f = new Float32Array(pak.staart.slice(s.hoekpunten.off, s.hoekpunten.off + s.hoekpunten.len).buffer)
+    for (let o = 0; o < f.length; o += 64) {
+      open[0].push(f[o] + m.delen[s.deel].verschuiving[0])
+      open[1].push(f[o + 1] + m.delen[s.deel].verschuiving[1])
+    }
+  }
+  for (let k = 0; k < 2; k++) {
+    if (open[k].length < 64) continue
+    open[k].sort((a, b) => a - b)
+    lo[k] = Math.min(lo[k], open[k][Math.floor(open[k].length * 0.01)])
+    hi[k] = Math.max(hi[k], open[k][Math.floor(open[k].length * 0.99)])
+  }
+  let n = 0
+  let buiten = 0
+  for (const s of pak.kop.stukken) {
+    if (!s.hussel) continue
+    const f = new Float32Array(pak.staart.slice(s.hoekpunten.off, s.hoekpunten.off + s.hoekpunten.len).buffer)
+    ontwar(f, { ...s.hussel, sleutel: s.hussel.sleutel + 1, n: s.n })
+    const v = m.delen[s.deel].verschuiving
+    for (let o = 0; o < f.length; o += 8) {
+      n++
+      const x = f[o] + v[0]
+      const y = f[o + 1] + v[1]
+      if (x < lo[0] - 0.5 || x > hi[0] + 0.5 || y < lo[1] - 0.5 || y > hi[1] + 0.5) buiten++
+    }
+  }
+  return n ? (100 * buiten) / n : 0
+}
+
+// ------------------------------------------------------------ het protocol op een nagebootste OMSI-map
+async function protocol(): Promise<void> {
+  console.log('\n== Protocol omsi3d:// en de registratietoets, op een nagebootste OMSI-map ==')
+  const bib = join(tijdelijk, 'steam', 'steamapps')
+  const nep = join(bib, 'common', 'OMSI 2')
+  const busmap = join(nep, 'Vehicles', 'Proef')
+  mkdirSync(join(busmap, 'Model'), { recursive: true })
+  mkdirSync(join(busmap, 'Texture'), { recursive: true })
+  mkdirSync(join(nep, 'RegAddons'), { recursive: true })
+  mkdirSync(join(nep, 'Texture'), { recursive: true })
+  writeFileSync(join(nep, 'addons.ini'), '')
+  // Eén gehusselde o3d (sleutel 15657) en één open o3d, met hun texturen.
+  const bronBus = join(OMSI, 'Vehicles', 'HH20_EBus2021')
+  const o3ds = ['21_aussen_weich3.o3d', '21_aussen_weich3_#low.o3d']
+  for (const o of o3ds) copyFileSync(join(bronBus, 'Model', o), join(busmap, 'Model', o))
+  const namen = new Set<string>()
+  for (const o of o3ds) for (const m of ontleedO3d(readFileSync(join(bronBus, 'Model', o)), { gehusseld: true }).model!.materialen) if (m.textuur) namen.add(m.textuur)
+  // En een DXT-textuur met mipketen, voor de Range-proef: de carrosserie van de SD77 volstaat niet (BMP); neem de NLC.
+  const dxt = join(OMSI, 'Vehicles', 'MAN_NewLionsCity', 'Texture', '12C_2d_01.dds')
+  copyFileSync(dxt, join(busmap, 'Texture', 'dxtproef.dds'))
+  for (const naam of namen) {
+    for (const map of [join(bronBus, 'Texture'), join(OMSI, 'Texture')]) {
+      try {
+        copyFileSync(join(map, naam), join(busmap, 'Texture', naam))
+        break
+      } catch {
+        // volgende map
+      }
+    }
+  }
+  const cfg = [
+    '[mesh]',
+    '21_aussen_weich3.o3d',
+    '',
+    '[mesh]',
+    '21_aussen_weich3_#low.o3d',
+    '[matl]',
+    [...namen][0] ?? 'x.dds',
+    '0',
+    '[matl_transmap]',
+    'dxtproef.dds',
+    ''
+  ].join('\r\n')
+  writeFileSync(join(busmap, 'Model', 'model.cfg'), cfg)
+  const bus = (naam: string): string =>
+    ['[friendlyname]', 'Proef', naam, 'Wit', '', '[model]', 'Model\\model.cfg', '', '[boundingbox]', '3', '14', '4', '0', '0', '2', ''].join('\r\n')
+  for (const n of ['Proef', 'Proef2', 'Proef3']) writeFileSync(join(busmap, `${n}.bus`), bus(n))
+  const ini = join(nep, 'RegAddons', 'Linie20_15657.ini')
+  writeFileSync(ini, '[addon.0]\r\nName=Proef Linie 20\r\nArtNr=15657\r\nSteamname=Proef\r\nSteamArtNr=1889540')
+  writeFileSync(join(bib, 'appmanifest_252530.acf'), '"AppState"\n{\n\t"InstalledDepots"\n\t{\n\t\t"1889540"\n\t\t{\n\t\t\t"dlcappid"\t\t"1889540"\n\t\t}\n\t}\n}\n')
+
+  const ud = join(tijdelijk, 'ud-protocol')
+  const werkCache = new Bus3dCache(ud)
+  const logregels: string[] = []
+  let vertraging = 0
+  const dienst = maakBus3dDienst({
+    userData: () => ud,
+    omsi: () => nep,
+    werkerVraag: async <T>(opdracht: Record<string, unknown>, tussen?: (b: unknown) => void): Promise<T> => {
+      if (vertraging) await new Promise((k) => setTimeout(k, vertraging))
+      return (await bus3dWerk(opdracht as Bus3dOpdracht, nep, werkCache, tussen)) as T
+    },
+    sluitWerker: () => undefined,
+    log: (r) => logregels.push(r),
+    logFout: (w, f) => logregels.push(`FOUT ${w}: ${String(f)}`),
+    tijden: { rust: 50 }
+  })
+  const antwoord = await dienst.model3d('Vehicles\\Proef\\Proef.bus')
+  if (!('manifest' in antwoord)) {
+    toets('protocol: pakket van de nagebootste bus', false, `${antwoord.reden} ${antwoord.detail ?? ''}`)
+    return
+  }
+  const m = antwoord.manifest
+  toets('protocol: pakket met sleutel 15657 (geregistreerd, bevestigd)', m.sleutels.includes(15657), `sleutels [${m.sleutels.join(', ')}]`)
+  const haal = (url: string, kop?: Record<string, string>): Promise<Response> => dienst.antwoord(new Request(url, { headers: kop }))
+  const p = await haal(`omsi3d://p/${m.pakket}`)
+  const pBytes = new Uint8Array(await p.arrayBuffer())
+  const opSchijf = readFileSync(dienst.cache.pakketPad(m.pakket))
+  toets('protocol: p/<id> geeft het pakket', p.status === 200 && Buffer.compare(Buffer.from(pBytes), opSchijf) === 0, `${p.status}, ${pBytes.length} bytes`)
+  const t = m.texturen.find((x) => x.naam === 'dxtproef.dds')
+  if (!t?.niveaus || t.niveaus.length < 2) toets('protocol: DXT-textuur met mipketen in het manifest', false, JSON.stringify(t))
+  else {
+    const van = t.niveaus[1].off
+    const tot = t.niveaus[t.niveaus.length - 1].off + t.niveaus[t.niveaus.length - 1].len - 1
+    const r = await haal(`omsi3d://t/${t.id}`, { Range: `bytes=${van}-${tot}` })
+    const stuk = new Uint8Array(await r.arrayBuffer())
+    const echt = readFileSync(join(busmap, 'Texture', 'dxtproef.dds')).subarray(van, tot + 1)
+    toets('protocol: t/<id> met Range geeft de DXT-niveaus 1..n (206)', r.status === 206 && Buffer.compare(Buffer.from(stuk), echt) === 0, `${r.status}, ${stuk.length} bytes (${t.b}x${t.h}, ${t.mips} niveaus, ${t.soort})`)
+    const heel = await haal(`omsi3d://t/${t.id}`)
+    toets('protocol: t/<id> zonder Range geeft het hele bestand', heel.status === 200 && (await heel.arrayBuffer()).byteLength === t.bytes)
+    // Het bestand verandert (een nieuwe versie van de add-on): 409.
+    const later = new Date(Date.now() + 5000)
+    utimesSync(join(busmap, 'Texture', 'dxtproef.dds'), later, later)
+    const r409 = await haal(`omsi3d://t/${t.id}`)
+    toets('protocol: t/<id> na een gewijzigd bestand geeft 409', r409.status === 409, `${r409.status}`)
+  }
+  toets('protocol: onbekend id geeft 404', (await haal(`omsi3d://t/${'0'.repeat(40)}`)).status === 404)
+  toets('protocol: een pad in plaats van een id geeft 404', (await haal('omsi3d://t/..%5C..%5CWindows%5Cwin.ini')).status === 404)
+
+  // De rij: drie vragen tegelijk; de middelste wordt vervangen door de laatste.
+  vertraging = 30
+  const [a1, a2, a3] = await Promise.all([
+    dienst.model3d('Vehicles\\Proef\\Proef2.bus'),
+    dienst.model3d('Vehicles\\Proef\\Proef3.bus'),
+    dienst.model3d('Vehicles\\Proef\\Proef.bus')
+  ])
+  vertraging = 0
+  toets(
+    "rij: de middelste van drie vragen krijgt 'vervangen', de nieuwste wint",
+    'manifest' in a1 && 'reden' in a2 && a2.reden === 'vervangen' && 'manifest' in a3,
+    `${'reden' in a1 ? a1.reden : 'pakket'} / ${'reden' in a2 ? a2.reden : 'pakket'} / ${'reden' in a3 ? a3.reden : 'pakket'}`
+  )
+
+  // Het tussenbericht `lijst`: de texturen staan al in het register terwijl de werker nog bouwt.
+  let tijdensLijst: Promise<Response> | undefined
+  let padenInBericht = false
+  const soorten: string[] = []
+  const venster = {
+    isDestroyed: () => false,
+    send: (kanaal: string, b: { stap?: string; lijst?: Array<{ id: string; naam: string }> }) => {
+      if (kanaal !== 'bus3d:voortgang') return
+      soorten.push(String(b.stap))
+      if (b.stap !== 'lijst') return
+      if ('bronnen' in b || JSON.stringify(b).includes(tijdelijk.replace(/\\/g, '\\\\'))) padenInBericht = true
+      const t = b.lijst?.find((x) => x.naam === 'dxtproef.dds')
+      if (t) tijdensLijst = haal(`omsi3d://t/${t.id}`)
+    }
+  } as unknown as WebContents
+  await dienst.model3d('Vehicles\\Proef\\Proef3.bus', undefined, venster)
+  const tijdens = await tijdensLijst
+  toets(
+    'voortgang: bij het tussenbericht lijst werkt t/<id> al (200), zonder paden naar het venster',
+    tijdens?.status === 200 && !padenInBericht,
+    `berichten ${soorten.join(', ')}; t/ ${tijdens?.status}`
+  )
+
+  // De add-on gaat weg: de sleutel is niet meer geregistreerd.
+  rmSync(ini)
+  const p403 = await haal(`omsi3d://p/${m.pakket}`)
+  toets('registratie: p/<id> na het verdwijnen van de sleutel geeft 403 (of 404: vergeten)', p403.status === 403 || p403.status === 404, `${p403.status}`)
+  const opnieuw = await dienst.model3d('Vehicles\\Proef\\Proef.bus')
+  toets("registratie: daarna geeft de bus 'versleuteld' (het icoon)", 'reden' in opnieuw && opnieuw.reden === 'versleuteld', 'reden' in opnieuw ? `${opnieuw.reden}: ${opnieuw.detail}` : 'pakket')
+  toets('registratie: logregels "bus3d sleutels"', logregels.some((r) => r.startsWith('bus3d sleutels: geregistreerd [15657]')), logregels.filter((r) => r.startsWith('bus3d sleutels')).join(' | '))
+  console.log('logregels van de dienst:')
+  for (const r of logregels) console.log(`   ${r}`)
+}
+
+// ------------------------------------------------------------ alles
+async function alles(): Promise<void> {
+  console.log('\n== Alle bussen met [friendlyname] ==')
+  const reg = omsiRegistratie(OMSI)
+  const paden: string[] = []
+  const V = join(OMSI, 'Vehicles')
+  for (const map of readdirSync(V)) {
+    let namen: string[]
+    try {
+      namen = readdirSync(join(V, map))
+    } catch {
+      continue
+    }
+    for (const n of namen) {
+      if (!/\.bus$/i.test(n)) continue
+      const pad = join('Vehicles', map, n)
+      try {
+        const tekst = readFileSync(join(OMSI, pad), 'latin1')
+        if (/(^|\r?\n)\[friendlyname\]\r?\n/.test(tekst)) paden.push(pad)
+      } catch {
+        // onleesbaar: telt niet als bus
+      }
+    }
+  }
+  const redenen: Record<string, number> = {}
+  const crashes: string[] = []
+  const tijden: number[] = []
+  const onleesbaar = new Map<string, string>()
+  const ontbrekendNamen = new Set<string>()
+  let ontbrekendVerwijzingen = 0
+  let teZwaarPlan = 0
+  const texturenUniek = new Map<string, { naam: string; soort: string; mime?: string }>()
+  const doosFout: string[] = []
+  for (const pad of paden) {
+    const t0 = performance.now()
+    try {
+      const uit = await bouwBus3d({ omsiMap: OMSI, relatiefPad: pad, geregistreerd: reg.sleutels })
+      tijden.push(performance.now() - t0)
+      if (!uit.bouw) {
+        redenen[uit.reden] = (redenen[uit.reden] ?? 0) + 1
+        if (uit.detail.startsWith('doostoets')) doosFout.push(pad)
+        if (args.has('--uitgebreid') || uit.reden !== 'geen-model') console.log(`  ${pad}: ${uit.reden} -- ${uit.detail}`)
+        continue
+      }
+      redenen.pakket = (redenen.pakket ?? 0) + 1
+      const m = uit.bouw.manifest
+      for (const o of m.problemen.onleesbaar) onleesbaar.set(o.naam, o.reden)
+      for (const n of m.problemen.ontbrekend) ontbrekendNamen.add(n.toLowerCase())
+      ontbrekendVerwijzingen += m.telling.ontbrekend
+      if (textuurPlan(m.texturen, 160 * 1024 * 1024).teZwaar) teZwaarPlan++
+      for (const b of uit.bouw.textuurBronnen) {
+        const t = m.texturen.find((x) => x.id === b.id)!
+        texturenUniek.set(b.pad.toLowerCase(), { naam: b.pad, soort: t.soort, mime: t.mime })
+      }
+    } catch (fout) {
+      crashes.push(`${pad}: ${(fout as Error).stack ?? String(fout)}`)
+    }
+  }
+  tijden.sort((a, b) => a - b)
+  const q = (f: number): number => Math.round(tijden[Math.min(tijden.length - 1, Math.floor(f * (tijden.length - 1)))] ?? 0)
+  console.log(`bussen: ${paden.length}; uitkomst ${JSON.stringify(redenen)}; tijd (bouwen, niet schrijven) p50 ${q(0.5)} ms, p95 ${q(0.95)} ms, max ${q(1)} ms`)
+  console.log(`texturen: ${texturenUniek.size} unieke bestanden; ontbrekend ${ontbrekendNamen.size} namen (${ontbrekendVerwijzingen} verwijzingen); textuurplan te zwaar bij 160 MB: ${teZwaarPlan}`)
+  for (const c of crashes.slice(0, 5)) console.log(`  CRASH ${c}`)
+  toets(`--alles: 0 crashes over ${paden.length} bussen`, crashes.length === 0, `${crashes.length}`)
+  toets('--alles: 0 texturen met een onleesbare kop', onleesbaar.size === 0, [...onleesbaar].slice(0, 8).map(([n, r]) => `${n} (${r})`).join('; '))
+  toets('--alles: geen bus valt op de doostoets', doosFout.length === 0, doosFout.join(', '))
+
+  if (args.has('--diep')) {
+    // Ook de pixels: wat onze eigen lezers doen (eigen, BMP, PNG), moet uitkomen.
+    let goed = 0
+    const slecht: string[] = []
+    let alleenKop = 0
+    for (const { naam, soort, mime } of texturenUniek.values()) {
+      if (soort === 'dxt' || soort === 'dxt-zonder-mips') {
+        const l = ontleedTextuur(readFileSync(naam))
+        if (l.textuur) goed++
+        else slecht.push(`${basename(naam)}: ${l.klacht} ${l.detail}`)
+        continue
+      }
+      if (soort === 'eigen') {
+        const b = readFileSync(naam)
+        const l = ontleedTextuur(b)
+        if (l.textuur || pakBmpUit(b)) goed++
+        else slecht.push(`${basename(naam)}: ${l.klacht} ${l.detail}`)
+        continue
+      }
+      if (mime === 'image/png') {
+        if (leesPng(readFileSync(naam))) goed++
+        else slecht.push(`${basename(naam)}: PNG`)
+        continue
+      }
+      if (mime === 'image/bmp') {
+        const b = readFileSync(naam)
+        // RLE en OS/2 kent pakBmpUit niet; die doet Chromium (alleen de kop is hier na te gaan).
+        if (pakBmpUit(b)) goed++
+        else alleenKop++
+        continue
+      }
+      alleenKop++ // JPEG: decodeert Chromium; de kop is gelezen
+    }
+    console.log(`--diep: ${goed} uitgepakt, ${alleenKop} alleen de kop (JPEG, RLE-BMP: Chromium), ${slecht.length} mislukt`)
+    for (const s of slecht.slice(0, 10)) console.log(`  ${s}`)
+    toets('--diep: 0 texturen die onze lezers niet uitpakken', slecht.length === 0)
+  }
+}
+
+async function main(): Promise<void> {
+  console.log(`OMSI: ${OMSI}`)
+  if (args.has('--nulmeting')) nulmeting()
+  else if (args.has('--alles')) await alles()
+  else {
+    await proefset()
+    await protocol()
+  }
+  console.log(`\n${fouten === 0 ? 'ALLES GOED' : `${fouten} FOUT(EN)`}`)
+  process.exitCode = fouten === 0 ? 0 : 1
+}
+
+void main()

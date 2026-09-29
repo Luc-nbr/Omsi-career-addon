@@ -665,6 +665,63 @@ hoort niet onder je handen opnieuw op te komen (`probe-beweging.cjs`,
 
 ## 5. Openstaand werk
 
+### 5.000 Bus3D, de eigen 3D-weergave — stap 0, F0 en F1 staan (29-09-2026)
+
+Ontwerp: `design/ontwerpen/bus3d.md` (met Lucs keuzes van 28-09). Tak
+`claude/bus3d`. **Voor de speler verandert er nog niets** behalve de BMP-fix:
+er is nog geen 3D-venster (F2), geen preload `bus3d` en geen knop.
+
+- **Stap 0, de BMP-fix in de busfoto:** de werker kiest op de inhoud
+  (`pakPlaatUit` in `core/busbeeld.ts`), het hoofdproces ook (`viaHoofdproces` in
+  `main/busfoto.ts`). Kleurstellingen met een grijze textuur: 547 → 0
+  (`scripts/probe-busfoto-bmp.ts`). De foto's staan nu in `busfotos/v3b`; `v4`
+  is voor de foto uit de 3D-renderer.
+- **Het pakket** (`core/bus3d.ts`, in de werker `'bus3d'`): per bus de geometrie
+  per (deel, o3d), de vermeldingen uit de model.cfg (lezer `schermcfg.ts`, nu
+  ook `[matl_noZcheck]`, `[matl_envmap_mask]`, `[matl_bumpmap]`,
+  `[scripttexture]`/`[useScriptTexture]`, `[texchanges]`), de materialen, en de
+  textuurlijst met alleen de KOPPEN (`textuurKop`/`ddsPlakken` in
+  `shared/beeldlezers.ts`). Texturen zoeken zoals OMSI: per map eerst exact, dan
+  dds/bmp/tga/jpg/png, dan de volgende map. De o3d's en koppen worden parallel
+  gelezen (8 tegelijk): een o3d openen kost op Windows 0,75 ms, ook warm.
+- **Schijfcache** `userData/bus3d/v1/` (`core/bus3dcache.ts`): `p/<id>.b3d`
+  (formaat in `shared/bus3dpak.ts`), `p/<id>.json` (alleen voor main: manifest,
+  bronnen, textuurpaden) en `bus/<sha1>`. LRU 1 GB. Geen textuurcache.
+- **Main** (`main/bus3d.ts`): register op id, het protocol `omsi3d://` (`p/`,
+  `t/` met Range, 409 na een gewijzigd bestand, 403 als een sleutel verdwijnt),
+  de rij per kanaal (nieuwste wint, `'vervangen'`), 20 s stilte = `'tijd'`, de
+  werker dicht na 120 s rust. IPC `bus:model3d` en `bus:lak3d` staan; de
+  preload komt in F2. In index.ts alleen: Werksoort `'bus3d'`, tussenberichten
+  van de werker (`{ id, tussen }`), het schema, en `vergeet` bij de add-on-manager.
+- **`shared/beeldlezers.ts`**: de uitpakkers van `core/textuur.ts` (DDS, TGA,
+  BMP) zonder `Buffer`, zodat de renderer-werker ze straks ook heeft.
+  `core/textuur.ts` geeft alles door; nagemeten op 12.057 bestanden onder
+  Vehicles: tot op de byte gelijk.
+
+**Versleutelde modellen (Lucs keuze 1): we tonen wat OMSI op deze pc toont.**
+Het woord in een o3d-kop is het artikelnummer van het add-on.
+`core/omsiregistratie.ts` leest `addons.ini` en `RegAddons\*.ini` en bevestigt
+een vermelding alleen als de `SteamArtNr` als geïnstalleerde DLC in
+`steamapps\appmanifest_252530.acf` staat (zonder Steam of zonder SteamArtNr:
+niet te bevestigen, dan alleen sleutel 0). `shared/o3dhussel.ts` ontwart in
+eigen code (idee uit openOMSI, nagelezen in Omsi.exe). Regels die niet mogen
+verschuiven:
+- een sleutel die niet geregistreerd is, ontwarren we NIET; >10% van de
+  buiten-o3d's weg = `'versleuteld'` (icoon);
+- het pakket bewaart elk hoekpuntblok byte voor byte zoals in het bronbestand;
+  ontwarren gebeurt alleen in het geheugen. `probe-bus3d.ts` (T-V5) controleert
+  dat er nooit ontwarde meetkunde op schijf staat;
+- de app schrijft niets in `addons.ini`, `RegAddons` of het Steam-manifest.
+
+**Proeven:** `scripts/probe-bus3d.ts` (proefset, T-G1, T-V1..T-V5, protocol;
+`--nulmeting`; `--alles [--diep]`), `scripts/probe-meshlijst.ts`,
+`scripts/probe-bus3d-exe.cjs` (voorbereid; `--dev` draait al),
+`scripts/bus3d-proefset.json`.
+
+**Open:** DISABLED-blokken (een meshes.json van een rit met de SL92 nodig);
+Luc bekijkt de GS GU240 (sleutel 12411) één keer in OMSI; de opentijd van het
+3D-venster (F2); de exe-proef in de gebouwde exe.
+
 ### 5.00 De planning van het busbedrijf — deel 0 staat (28-09-2026)
 
 Ontwerp: `design/ontwerpen/busbedrijf-planning.md`. Deel 0 is het fundament
