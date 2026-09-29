@@ -17,8 +17,11 @@
  *   haltebordjes en op hoeveel plekken, hoe lang `map:routes` duurde en hoe
  *   groot het antwoord was, en de beeldtijden bij het eerste tekenen, bij
  *   slepen en bij zoomen (echte muisinvoer via sendInputEvent);
- * - in de overlay: wat de navigatie tekent en welke routes hij vraagt;
- * - de telefoon: hoe groot `api/routes` is;
+ * - in de overlay: wat de navigatie tekent en welke routes hij vraagt, met de
+ *   bus van "OMSI" op de route van de rit;
+ * - de telefoon: hoe groot `api/routes` is, en wat de tablet tekent;
+ * - `kaarten:vergeten`: het rijscherm vraagt zijn routes opnieuw en tekent
+ *   daarna hetzelfde;
  * - en een dienst uit de dienstmodus, de langste die de lijst op Krefrath
  *   geeft, op dezelfde manier. Het toeval in de dienstenlijst ligt vast: de
  *   werkers krijgen een vaste reeks voor Math.random, zodat voor en na
@@ -83,7 +86,12 @@ const profielPad = join(map, 'profiles', `${actiefId}.json`)
 /* ---- de dienstregeling, om de omloop te kiezen zoals OMSI hem doorgeeft ---- */
 const kernPad = join(mkdtempSync(join(tmpdir(), 'omsi-lijnen-kern-')), 'kern.cjs')
 require('esbuild').buildSync({
-  stdin: { contents: "export { loadMap } from './src/core/timetable'", resolveDir: join(__dirname, '..'), loader: 'ts' },
+  stdin: {
+    contents:
+      "export { loadMap } from './src/core/timetable'\nexport { readTileGrid } from './src/core/geo'\nexport { readTileList } from './src/core/track'",
+    resolveDir: join(__dirname, '..'),
+    loader: 'ts'
+  },
   bundle: true,
   platform: 'node',
   format: 'cjs',
@@ -109,6 +117,9 @@ if (!omloop || !rit) {
   console.log(`omloop ${LIJN}/${OMLOOP} om ${VERTREK} niet gevonden; proef overgeslagen`)
   process.exit(0)
 }
+/* Het tegelraster, om de bus van "OMSI" op de route te zetten (tegel + plek op de tegel). */
+const raster = kern.readTileGrid(kaart.path)
+const tegels = kern.readTileList(kaart.path)
 
 /* ---- "OMSI draait": een eigen procesje met een eigen naam ---- */
 const nepMap = mkdtempSync(join(tmpdir(), 'omsi-lijnen-proces-'))
@@ -565,6 +576,50 @@ app.whenReady().then(async () => {
 
   const hoofdVragen = routeVragen.slice(vragenVoor).filter((v) => v.van === 'hoofd').map(vatSamen)
   const overlayVragen = routeVragen.slice(vragenVoor).filter((v) => v.van === 'overlay').map(vatSamen)
+
+  /*
+   * De bus op de route van de rit die "OMSI" rijdt, een paar stappen van 12 m
+   * op een derde van de rit. Stond hij op tegel 0, dan volgde de navigatie in
+   * de overlay en op de tablet een bus ver buiten de route, en telde de nieuwe
+   * bouw daar 0 punten (alles buiten beeld weggeknipt) tegen 2.090 van de oude
+   * -- dat zei niets over wat je bij het rijden ziet.
+   */
+  let busOpRoute = false
+  {
+    let route
+    for (const v of routeVragen) {
+      v.legs.forEach((leg, i) => {
+        if (!route && leg.tripFile.toLowerCase() === rit.tripFile.toLowerCase() && v.uit[i]?.points?.length >= 8) route = v.uit[i]
+      })
+    }
+    if (route && raster) {
+      const p = route.points
+      const tot = [0]
+      for (let i = 2; i < p.length; i += 2) tot.push(tot[tot.length - 1] + Math.hypot(p[i] - p[i - 2], p[i + 1] - p[i - 1]))
+      const opAfstand = (a) => {
+        let k = 1
+        while (k < tot.length - 1 && tot[k] < a) k++
+        const t = tot[k] > tot[k - 1] ? (a - tot[k - 1]) / (tot[k] - tot[k - 1]) : 0
+        return { x: p[(k - 1) * 2] + (p[k * 2] - p[(k - 1) * 2]) * t, y: p[(k - 1) * 2 + 1] + (p[k * 2 + 1] - p[(k - 1) * 2 + 1]) * t }
+      }
+      const tegelNr = new Map(tegels.map((t, i) => [`${t.tx},${t.ty}`, i]))
+      const begin = tot[tot.length - 1] / 3
+      for (let stap = 0; stap < 8; stap++) {
+        const { x, y } = opAfstand(begin + stap * 12)
+        const plek = raster.at(x, y)
+        const tile = tegelNr.get(`${plek.tx},${plek.ty}`)
+        if (tile === undefined) break
+        const verder = opAfstand(begin + stap * 12 + 5)
+        const richting = Math.atan2(verder.x - x, verder.y - y)
+        mem = { ...mem, tile, x: plek.localX, y: 0, z: plek.localZ, qx: 0, qy: Math.sin(richting / 2), qz: 0, qw: Math.cos(richting / 2) }
+        klok += 2
+        schrijfLive()
+        busOpRoute = true
+        await wacht(500)
+      }
+      await wacht(2500)
+    }
+  }
   const overlayTelling = overlay() ? await telKaart(overlay(), '.nav-wrap .route-canvas') : null
 
   /* De telefoon: wat `api/routes` over het netwerk stuurt. */
@@ -620,6 +675,7 @@ app.whenReady().then(async () => {
   console.log(`kaart: ${JSON.stringify(kaartTelling)}`)
   for (const v of hoofdVragen) console.log(`routes (hoofdvenster): ${JSON.stringify(v)}`)
   for (const v of overlayVragen) console.log(`routes (overlay): ${JSON.stringify(v)}`)
+  console.log(`bus op de route: ${busOpRoute}`)
   console.log(`overlay-kaart: ${JSON.stringify(overlayTelling)}`)
   console.log(`telefoon api/routes: ${JSON.stringify(telefoon)}`)
   console.log(`tablet-kaart: ${JSON.stringify(tabletKaart)}`)
@@ -629,7 +685,31 @@ app.whenReady().then(async () => {
   console.log(`zoomen: ${JSON.stringify(vrijBeelden.zoomen)}`)
   for (const [laag, uit] of Object.entries(ontleed)) console.log(`slepen ${laag}: ${JSON.stringify(uit)}`)
 
+  /*
+   * Het hoofdproces vergat de kaarten (andere OMSI-map, nakijken, add-on): het
+   * venster hoort `kaarten:vergeten`, leegt zijn routes (trajecten.ts) en vraagt
+   * ze opnieuw. Daarna hoort dezelfde kaart er weer te staan.
+   */
+  const voorVergeten = await wachtOpRust(hoofd, KIES)
+  const vragenVoorVergeten = routeVragen.length
+  hoofd.webContents.send('kaarten:vergeten')
+  for (let i = 0; i < 40 && !routeVragen.slice(vragenVoorVergeten).some((v) => v.van === 'hoofd'); i++) await wacht(100)
+  const naVergeten = await wachtOpRust(hoofd, KIES)
+  const opnieuwGevraagd = routeVragen.slice(vragenVoorVergeten).filter((v) => v.van === 'hoofd')
+  console.log(
+    `kaarten:vergeten: ${opnieuwGevraagd.length} nieuwe vraag van het hoofdvenster (${opnieuwGevraagd.reduce((s, v) => s + v.legs.length, 0)} ritten); ` +
+      `kaart daarna gelijk: ${JSON.stringify(naVergeten) === JSON.stringify(voorVergeten)} ${JSON.stringify(naVergeten)}`
+  )
+
   /* ---- 3. Stoppen, en een dienst uit de dienstmodus ---- */
+  /*
+   * De bus weer naar tegel 0: staat de bus van OMSI op de kaart, dan past de
+   * dienstkaart zich niet opnieuw in, en dan meet de dienst hieronder een ander
+   * beeld dan de vorige bouw (dat gedrag is ouder dan deze proef).
+   */
+  mem = { ...mem, tile: 0, x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 }
+  schrijfLive()
+  await wacht(1500)
   await js(hoofd, `document.querySelector('.startknop')?.click()`)
   await wachtOp(`document.querySelectorAll('.hub-tegel').length > 0`, 40)
   await wacht(800)

@@ -292,12 +292,23 @@ function laag(): Kaartlaag {
  * Gebeurt als de speler een andere OMSI-map aanwijst of laat nakijken of er
  * kaarten bij zijn gekomen: dan klopt geen enkele cache meer. De werker krijgt
  * dezelfde opdracht, want die heeft zijn eigen kopie.
+ *
+ * De routes die het hoofdproces onthoudt (`routesVoor`) gaan mee, en de
+ * vensters horen het ook: die onthouden ze per venster (renderer/src/
+ * trajecten.ts). Anders bleef na een add-on die een `.ttr` bijwerkt de oude
+ * weg op de kaart staan tot de app opnieuw startte.
  */
 function vergeetKaarten(): void {
   kaartlaag = undefined
   for (const [soort, staand] of werkers) {
     werkers.delete(soort)
     staand.terminate().catch(() => undefined)
+  }
+  routeGeneratie += 1
+  routeGeheugen.clear()
+  routeOnderweg.clear()
+  for (const venster of BrowserWindow.getAllWindows()) {
+    if (!venster.isDestroyed()) venster.webContents.send('kaarten:vergeten')
   }
 }
 /**
@@ -4058,6 +4069,12 @@ async function routesVoor(
   const sleutels = uniek.map((leg) => `${folder}|${ritSleutel(leg)}`)
   const nodig = uniek.filter((_leg, i) => !routeGeheugen.has(sleutels[i]) && !routeOnderweg.has(sleutels[i]))
   if (nodig.length > 0) {
+    /*
+     * Wat een werker van vóór `vergeetKaarten()` nog terugstuurt, rekende met
+     * de oude kaart: dat gaat wel terug naar wie erom vroeg, maar niet meer in
+     * het geheugen.
+     */
+    const generatie = routeGeneratie
     const vraag = (async (): Promise<TripRoute[]> => {
       try {
         return await werkerVraag<TripRoute[]>({ soort: 'routes', folder, legs: nodig })
@@ -4068,24 +4085,31 @@ async function routesVoor(
     })()
     nodig.forEach((leg, i) => {
       const sleutel = `${folder}|${ritSleutel(leg)}`
-      routeOnderweg.set(
-        sleutel,
-        vraag
-          .then((routes) => {
-            bewaarRoute(sleutel, routes[i])
-            return routes[i]
-          })
-          .finally(() => routeOnderweg.delete(sleutel))
-      )
+      const deze: Promise<TripRoute> = vraag
+        .then((routes) => {
+          if (routes[i] && generatie === routeGeneratie) bewaarRoute(sleutel, routes[i])
+          return routes[i]
+        })
+        .finally(() => {
+          // Alleen de eigen vraag weg: na `vergeetKaarten()` kan er al een nieuwe staan.
+          if (routeOnderweg.get(sleutel) === deze) routeOnderweg.delete(sleutel)
+        })
+      routeOnderweg.set(sleutel, deze)
     })
   }
   const routes = await Promise.all(sleutels.map((sleutel) => routeGeheugen.get(sleutel) ?? routeOnderweg.get(sleutel)))
   return plek.map((i) => routes[i] ?? { points: [], guessed: [] })
 }
 
-/** Routes per kaart en rit, zoals de werker ze gaf; de oudste gaat eruit. Zie `routesVoor`. */
+/**
+ * Routes per kaart en rit, zoals de werker ze gaf; de oudste gaat eruit. Zie
+ * `routesVoor`. `vergeetKaarten()` leegt ze en hoogt `routeGeneratie` op: een
+ * bijgewerkte `.ttr` of een andere OMSI-map met een kaart van dezelfde naam
+ * heeft dezelfde sleutel, maar een andere weg.
+ */
 const routeGeheugen = new Map<string, TripRoute>()
 const routeOnderweg = new Map<string, Promise<TripRoute>>()
+let routeGeneratie = 0
 const ROUTEGEHEUGEN_MAX = 2000
 function bewaarRoute(sleutel: string, route: TripRoute): void {
   routeGeheugen.delete(sleutel)

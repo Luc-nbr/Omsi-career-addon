@@ -295,10 +295,18 @@ export function schermPad(punten: number[], beeld: Beeld): string {
  * wijst de ene dienst na de andere aan, de overlay krijgt bij elke wissel van
  * rit een nieuwe kopie van de dienst, en telkens staan er ritten in die al
  * binnen zijn. Wat nog onderweg is, wordt niet nog eens gevraagd.
+ *
+ * Vergeet het hoofdproces de kaarten (andere OMSI-map, nakijken, een add-on
+ * die een `.ttr` bijwerkt), dan vergeet dit geheugen ze ook: de sleutel blijft
+ * dezelfde, de weg niet. `routeGeneratie` telt dan op, en RouteMap vraagt met
+ * die teller opnieuw (`volgRoutes`).
  */
 const GEHEUGEN_MAX = 800
 const geheugen = new Map<string, TripRoute>()
 const onderweg = new Map<string, Promise<TripRoute | undefined>>()
+let generatie = 0
+const volgers = new Set<() => void>()
+let aangemeld = false
 
 const sleutelIn = (kaart: string, leg: RitVraag): string => `${kaart}|${ritSleutel(leg)}`
 
@@ -309,8 +317,44 @@ function bewaar(sleutel: string, route: TripRoute): void {
   while (geheugen.size > GEHEUGEN_MAX) geheugen.delete(geheugen.keys().next().value as string)
 }
 
+/**
+ * Eén keer per venster meeluisteren met het hoofdproces. Pas bij het eerste
+ * gebruik: op de telefoonpagina bestaat `window.career` nog niet als deze
+ * module geladen wordt, en daar is er ook geen hoofdproces om naar te luisteren
+ * (apparaat.tsx roept `vergeetRoutes` zelf aan).
+ */
+function meldAan(): void {
+  if (aangemeld) return
+  aangemeld = true
+  window.career?.opKaartenVergeten?.(vergeetRoutes)
+}
+
+/** Alles vergeten; wat nog onderweg is, komt niet meer in het geheugen. */
+export function vergeetRoutes(): void {
+  generatie += 1
+  geheugen.clear()
+  onderweg.clear()
+  for (const volger of volgers) volger()
+}
+
+/** Telt op bij elk `vergeetRoutes`; voor `useSyncExternalStore`. */
+export function routeGeneratie(): number {
+  meldAan()
+  return generatie
+}
+
+/** Horen wanneer het geheugen geleegd is; geeft een opzegfunctie terug. */
+export function volgRoutes(volger: () => void): () => void {
+  meldAan()
+  volgers.add(volger)
+  return () => {
+    volgers.delete(volger)
+  }
+}
+
 /** De routes van deze ritten als ze allemaal al binnen zijn; anders niets. */
 export function routesUitGeheugen(kaart: string, legs: RitVraag[]): TripRoute[] | undefined {
+  meldAan()
   const uit: TripRoute[] = []
   for (const leg of legs) {
     const route = geheugen.get(sleutelIn(kaart, leg))
@@ -326,22 +370,27 @@ export function routesUitGeheugen(kaart: string, legs: RitVraag[]): TripRoute[] 
  * hoofdproces, en dan elke rit één keer.
  */
 export async function haalRoutes(kaart: string, legs: RitVraag[]): Promise<Array<TripRoute | undefined>> {
+  meldAan()
   const { uniek, plek } = uniekeRitten(legs.map(({ tripFile, stopIds }) => ({ tripFile, stopIds })))
   const nodig = uniek.filter((leg) => {
     const sleutel = sleutelIn(kaart, leg)
     return !geheugen.has(sleutel) && !onderweg.has(sleutel)
   })
   if (nodig.length > 0) {
+    const toen = generatie
     const vraag = window.career.routes(kaart, nodig) as Promise<Array<TripRoute | undefined>>
     nodig.forEach((leg, i) => {
       const sleutel = sleutelIn(kaart, leg)
-      const een = vraag
+      const een: Promise<TripRoute | undefined> = vraag
         .then((gevonden) => {
           const route = gevonden?.[i]
-          if (route) bewaar(sleutel, route)
+          // Van vóór een `vergeetRoutes`: wel teruggeven, niet onthouden.
+          if (route && toen === generatie) bewaar(sleutel, route)
           return route
         })
-        .finally(() => onderweg.delete(sleutel))
+        .finally(() => {
+          if (onderweg.get(sleutel) === een) onderweg.delete(sleutel)
+        })
       onderweg.set(sleutel, een)
     })
   }

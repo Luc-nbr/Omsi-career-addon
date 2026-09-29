@@ -2213,6 +2213,38 @@ elk beeld opnieuw omgerekend naar het scherm. Slepen: 76-90 ms per beeld.
 - Niet gedaan: de trajecten nog eens samenvoegen waar ze elkaar alleen
   gedeeltelijk overlappen (heen en terug door dezelfde straat, andere
   haltes); dat zijn echt andere lijnen.
+- **Na de tegenlezing en de proefdraai** (zelfde dag):
+  - *Onthouden routes vergeten.* `vergeetKaarten()` (andere OMSI-map,
+    nakijken, wagenpark, add-on) leegde de nieuwe routecaches niet: een add-on
+    die de `.ttr` van een bestaande kaart bijwerkt, heeft dezelfde sleutel en
+    liet de oude weg staan tot een herstart. Nu leegt hij `routeGeheugen` en
+    `routeOnderweg`, telt `routeGeneratie` op (een laat antwoord van een oude
+    werker gaat niet meer in het geheugen) en stuurt `kaarten:vergeten` naar
+    elk venster; `trajecten.ts` leegt dan zijn geheugen en RouteMap vraagt
+    opnieuw (`useSyncExternalStore` op `routeGeneratie`). De telefoonpagina
+    hoort dat niet; die leegt zijn routes als hij de kaart opnieuw haalt.
+  - *Wedloop in RouteMap.* Het effect las het routegeheugen opnieuw: kwam
+    een eerdere vraag binnen tussen het tekenen en het passieve effect, dan
+    stopte het effect zonder vraag en bleef de kaart op rechte lijnen staan
+    tot de dienst veranderde. Nu kijkt het naar wat de tekening had;
+    `haalRoutes` stuurt voor wat al binnen is niets naar het hoofdproces.
+  - *Namen bij een gedeeld bord.* Twee ids op één plek hebben vaak een andere
+    naam ("Eckertalstausee" en "SB_Eckertalstausee", 17 plekken op Region
+    Grundorf V4). De volgende halte en de haltes van de rit die rijdt dragen
+    weer hun eigen naam; `consider` streept het hele bord af, zodat er maar
+    één naam bij staat.
+  - `probe-lijneneenmaal.cjs` zet de bus nu op de route voor overlay en
+    tablet (op tegel 0 knipte de nieuwe bouw alles weg: "0 punten"), zet hem
+    terug voor de dienst, en stuurt `kaarten:vergeten` om het opnieuw vragen
+    na te lopen.
+  - Open voor Luc: de flauwe trajecten op het rijscherm van Vrij rijden
+    (`route-other`, rgb 51,80,111 op 2,5 px) zijn op HamburgLi20 nauwelijks
+    van het wegennet te onderscheiden, en tijdens een korte leegrit is er
+    bijna niets fel. Dat voorop zetten was geen onderdeel van de wens; eerst
+    was de hele omloop fel. Ook ouder dan deze tak: het rijscherm van Vrij
+    rijden toont de bus niet en knipt de gereden rit niet af, en de
+    dienstkaart past zich niet opnieuw in zolang de bus van OMSI op de kaart
+    staat.
 
 **Navigatie: doorzichtig, vaste zoom, en haltenamen die niet meer wegvallen**
 (28-09-2026). Drie vragen van gebruikers, via Luc.

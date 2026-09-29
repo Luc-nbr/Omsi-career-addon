@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type JSX,
   type PointerEvent as ReactPointerEvent
 } from 'react'
@@ -17,10 +18,12 @@ import { useT } from './language'
 import { RoadLayer } from './roadLayer'
 import {
   haalRoutes,
+  routeGeneratie,
   routesUitGeheugen,
   schermPad,
   trajectenVan,
   vereenvoudigd,
+  volgRoutes,
   type Beeld,
   type Stuk
 } from './trajecten'
@@ -385,18 +388,32 @@ export function RouteMap({
   const routeKey = `${duty?.mapFolder ?? ''}|${(duty?.legs ?? [])
     .map((leg) => `${leg.tripFile}:${leg.stopIds.join(',')}`)
     .join(';')}`
+  /*
+   * Telt op als het hoofdproces de kaarten vergat (trajecten.ts): de onthouden
+   * routes zijn dan weg, en deze kaart vraagt ze opnieuw.
+   */
+  const generatie = useSyncExternalStore(volgRoutes, routeGeneratie, routeGeneratie)
+  const vraagSleutel = `${generatie}|${routeKey}`
   const [opgehaald, setOpgehaald] = useState<{ sleutel: string; routes: Array<TripRoute | undefined> }>()
   const routes = useMemo(() => {
-    if (opgehaald?.sleutel === routeKey) return opgehaald.routes
+    if (opgehaald?.sleutel === vraagSleutel) return opgehaald.routes
     // Zonder dienst valt er geen weg te plannen; de kaart blijft dan het net.
     if (!duty || duty.legs.length === 0) return undefined
     return routesUitGeheugen(duty.mapFolder, duty.legs)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeKey, opgehaald])
+  }, [vraagSleutel, opgehaald])
   useEffect(() => {
-    if (!duty || duty.legs.length === 0 || routesUitGeheugen(duty.mapFolder, duty.legs)) return undefined
+    /*
+     * Alleen als deze tekening ze niet al had. Niet het geheugen opnieuw
+     * lezen: kwam een antwoord van een eerdere vraag binnen tussen het tekenen
+     * en dit effect, dan had de tekening nog niets, gaf het geheugen nu wel
+     * iets, en bleef de kaart zonder vraag en zonder nieuwe tekening op rechte
+     * lijnen staan. Voor wat al binnen is, stuurt `haalRoutes` niets naar het
+     * hoofdproces.
+     */
+    if (!duty || duty.legs.length === 0 || routes) return undefined
     let current = true
-    const sleutel = routeKey
+    const sleutel = vraagSleutel
     haalRoutes(duty.mapFolder, duty.legs)
       .then((found) => {
         if (current) setOpgehaald({ sleutel, routes: found })
@@ -406,7 +423,7 @@ export function RouteMap({
       current = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeKey])
+  }, [vraagSleutel])
 
   /** Waar de route ligt, met wat lucht eromheen. */
   const bounds = useMemo(() => {
@@ -1139,7 +1156,8 @@ export function RouteMap({
     const breedte = (tekst: string): number => tekst.length * 5.7 + 6
     const consider = (stop: StopPoint, strong: boolean): void => {
       if (!stop.name || gedaan.has(stop.id)) return
-      gedaan.add(stop.id)
+      // Eén naam per bord: de andere haltes op die plek zijn daarmee ook gedaan.
+      for (const id of borden.van.get(stop.id)?.ids ?? [stop.id]) gedaan.add(id)
       const [sx, sy] = toScreen(stop.x, stop.y)
       if (sx < -50 || sy < -20 || sx > size.w + 50 || sy > size.h + 20) return
       const kort = stop.name.includes(', ') ? stop.name.slice(stop.name.indexOf(', ') + 2) : undefined
@@ -1162,28 +1180,36 @@ export function RouteMap({
         }
       }
     }
-    // Een naam per bord: haltes op dezelfde plek delen het bord en dus de naam.
-    const bordVan = (stop: RouteStop): { stop: RouteStop; ids: string[] } | undefined => borden.van.get(stop.id)
-    const rijdtNog = (bord: { ids: string[] } | undefined): boolean =>
-      Boolean(bord?.ids.some((id) => passedStops.get(id) !== true))
-    const volgende = nextStopId ? borden.van.get(nextStopId) : undefined
+    /*
+     * Een naam per bord (`consider` streept de hele plek af), maar wel de naam
+     * van de halte waar het om gaat. Twee ids op één plek hebben vaak een
+     * andere naam ("Eckertalstausee" en "SB_Eckertalstausee"); de volgende
+     * halte en de haltes van deze rit dragen hun eigen naam, en een bord dat
+     * nog komt de naam van de halte daar die nog komt.
+     */
+    const rijdtNog = (stop: RouteStop): boolean => passedStops.get(stop.id) !== true
+    const nogTeGaan = (bord: { stop: RouteStop; ids: string[] }): StopPoint | undefined => {
+      const id = bord.ids.find((id) => passedStops.get(id) !== true)
+      return id === undefined ? undefined : id === bord.stop.id ? bord.stop : (byId.get(id) ?? bord.stop)
+    }
+    const volgende = nextStopId ? routeStops.find((stop) => stop.id === nextStopId) : undefined
     if (showRouteNames) {
-      if (volgende) consider(volgende.stop, true)
+      if (volgende) consider(volgende, true)
       if (activeLeg !== undefined) {
-        for (const stop of legs[activeLeg] ?? []) {
-          const bord = bordVan(stop)
-          if (bord && rijdtNog(bord)) consider(bord.stop, true)
-        }
+        for (const stop of legs[activeLeg] ?? []) if (rijdtNog(stop)) consider(stop, true)
       }
     }
-    if (start) consider(bordVan(start)?.stop ?? start, true)
+    if (start) consider(start, true)
     if (showRouteNames) {
-      for (const bord of borden.lijst) if (rijdtNog(bord)) consider(bord.stop, true)
+      for (const bord of borden.lijst) {
+        const stop = nogTeGaan(bord)
+        if (stop) consider(stop, true)
+      }
       for (const bord of borden.lijst) consider(bord.stop, false)
     }
     if (showOtherNames) for (const stop of otherStops) consider(stop, false)
     return result
-  }, [start, borden, otherStops, showRouteNames, showOtherNames, toScreen, size, signR, bezet, passedStops, nextStopId, activeLeg, legs])
+  }, [start, borden, routeStops, byId, otherStops, showRouteNames, showOtherNames, toScreen, size, signR, bezet, passedStops, nextStopId, activeLeg, legs])
 
   /*
    * ELKE LIJN ÉÉN KEER
@@ -1467,7 +1493,9 @@ export function RouteMap({
           </text>
         ))}
 
-        {hoveredStop && !labels.some((label) => label.key === hoveredStop.id) && (
+        {/* Staat er al een naam bij dit bord (misschien van een andere halte op die plek), dan geen tweede. */}
+        {hoveredStop &&
+          !labels.some((label) => (borden.van.get(hoveredStop.id)?.ids ?? [hoveredStop.id]).includes(label.key)) && (
           <text
             className="map-label map-label-strong"
             x={toScreen(hoveredStop.x, hoveredStop.y)[0] + signR + 5}
