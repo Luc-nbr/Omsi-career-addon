@@ -41,6 +41,7 @@ import {
 import { bouwBusTekeningMetPlaten, type BusTekeningMetPlaten } from './busbeeld'
 import { kleurstellingenVanBus } from './kleurstelling'
 import type { BusKleurstellingen } from '../shared/api'
+import { ritSleutel } from '../shared/traject'
 import { readMapData, readTileGrid, type Lane, type MapGeometry } from './geo'
 import { leesUitCache, schrijfInCache, vingerafdruk } from './kaartcache'
 import { LaneNetwork, routeForTrip, routeZonderHaltes, type TripRoute } from './routing'
@@ -755,8 +756,15 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
       const loaded = laag.map(folder)
       const geometry = laag.geometrie(folder)
       const stopAt = new Map(geometry.stops.map((stop) => [stop.id, stop]))
+      /*
+       * Per traject één keer, ook tussen twee vragen door: een omloop rijdt de
+       * hele dag dezelfde paar ritten (Wagen 3 op Krefrath: 26 ritten, 9
+       * trajecten). Ritten met dezelfde sleutel krijgen hetzelfde voorwerp
+       * terug, en dat gaat dan ook maar één keer over de brug naar het scherm
+       * -- structured clone houdt gedeelde voorwerpen gedeeld.
+       */
       return legs.map((leg) => {
-        const sleutel = `${folder}|${leg.tripFile}|${leg.stopIds.join(',')}`
+        const sleutel = `${folder}|${ritSleutel(leg)}`
         const cached = routeCache.get(sleutel)
         if (cached) return cached
         const stops = leg.stopIds.map((id) => stopAt.get(id)).filter((stop) => stop !== undefined)

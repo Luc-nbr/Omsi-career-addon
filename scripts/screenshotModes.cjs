@@ -310,7 +310,7 @@ app.whenReady().then(async () => {
            if (!doel) return 'geen kaart'
            const telling = {
              elementen: svg.querySelectorAll('*').length,
-             lijnen: svg.querySelectorAll('polyline').length,
+             lijnen: svg.querySelectorAll('polyline, path').length,
              tekst: svg.querySelectorAll('text').length,
              groepen: svg.querySelectorAll('g').length
            }

@@ -28,6 +28,12 @@ const api: CareerApi = {
     ipcRenderer.on('kaarten:warm', heen)
     return () => ipcRenderer.removeListener('kaarten:warm', heen)
   },
+  /** Het hoofdproces vergat de kaarten (andere OMSI-map, nakijken, add-on). */
+  opKaartenVergeten: (luisteraar: () => void) => {
+    const heen = (): void => luisteraar()
+    ipcRenderer.on('kaarten:vergeten', heen)
+    return () => ipcRenderer.removeListener('kaarten:vergeten', heen)
+  },
   busfotosStand: () => ipcRenderer.invoke('busfotos:stand'),
   busfotosMaken: () => ipcRenderer.invoke('busfotos:maken'),
   busfotosStoppen: () => ipcRenderer.invoke('busfotos:stoppen'),

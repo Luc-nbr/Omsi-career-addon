@@ -686,6 +686,13 @@ export interface CareerApi extends BedrijfPlanApi {
   kaartenVoorbereiden(): Promise<KaartenStand>
   /** Meeluisteren met het klaarzetten; geeft een opzegfunctie terug. */
   opKaartenWarm(luisteraar: (stand: KaartenStand) => void): () => void
+  /**
+   * Het hoofdproces vergat wat het van de kaarten wist (andere OMSI-map,
+   * nakijken, een wagenpark of add-on erbij); wat een venster ervan onthoudt,
+   * zoals de routes in `renderer/src/trajecten.ts`, klopt dan ook niet meer.
+   * Geeft een opzegfunctie terug.
+   */
+  opKaartenVergeten(luisteraar: () => void): () => void
   /** Hoeveel bussen er al een foto hebben. */
   busfotosStand(): Promise<BusfotoStand>
   /**
