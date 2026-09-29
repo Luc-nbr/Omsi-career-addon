@@ -1,5 +1,6 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { leesCfg, schrijfCfg } from './veilig'
 
 /**
  * De toetsindeling van OMSI.
@@ -51,7 +52,7 @@ export function readKeyboard(omsiPath: string, defaults = false): KeyBinding[] {
 export function readKeyboardFile(file: string): KeyBinding[] {
   if (!existsSync(file)) return []
 
-  const lines = readFileSync(file, 'latin1').split('\r\n').map((line) => line.trim())
+  const lines = leesCfg(file).split('\r\n').map((line) => line.trim())
   const bindings: KeyBinding[] = []
   let section = 'game'
   for (let i = 0; i < lines.length; i++) {
@@ -77,8 +78,21 @@ export function readKeyboardFile(file: string): KeyBinding[] {
  * Het bestand wordt opnieuw opgebouwd in de volgorde van de secties die er
  * stonden; OMSI leest het zo terug. Wat er verder in `modifiers` staat gaat
  * onveranderd mee.
+ *
+ * Via `schrijfCfg`: eerst een tijdelijk bestand dat teruggelezen wordt, in de
+ * codering die het bestand al had. En een lege lijst over een bestand met
+ * bindingen heen wordt geweigerd, tenzij `leegMag` -- een lege lijst komt uit
+ * een fout (een bestand dat niet te lezen was), en daarna kon je in OMSI niets
+ * meer.
  */
-export function writeKeyboard(omsiPath: string, bindings: KeyBinding[]): void {
+export function writeKeyboard(
+  omsiPath: string,
+  bindings: KeyBinding[],
+  opties: { leegMag?: boolean } = {}
+): void {
+  if (bindings.length === 0 && !opties.leegMag && readKeyboard(omsiPath).length > 0) {
+    throw new Error('keyboard.cfg niet geschreven: alle toetsen zouden verdwijnen.')
+  }
   const sections: string[] = []
   for (const binding of bindings) {
     if (!sections.includes(binding.section)) sections.push(binding.section)
@@ -94,7 +108,7 @@ export function writeKeyboard(omsiPath: string, bindings: KeyBinding[]): void {
   // OMSI sluit het bestand af met een lege regel; zonder deze staat er één
   // regeleinde minder dan in het bestand dat het spel zelf schrijft.
   lines.push('')
-  writeFileSync(keyboardPath(omsiPath), lines.join('\r\n'), 'latin1')
+  schrijfCfg(keyboardPath(omsiPath), lines.join('\r\n'), opties)
 }
 
 /** De namen van de scancodes, zoals OMSI ze in zijn eigen menu toont. */

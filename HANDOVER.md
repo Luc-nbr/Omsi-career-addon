@@ -127,6 +127,8 @@ blijft eenmalig een kopie staan als `laststn.osn.voor-omsi-career`. Verder niets
 | `overlayLayout.ts` | Indeling van de overlay, in `overlay.json` |
 | `kaartlaag.ts` | Alles wat uit de OMSI-map komt, met zijn caches; draait in het hoofdproces **en** in de werker |
 | `logboek.ts` | Het logboek van de app zelf: `%APPDATA%\omsi-enhancer\logs\omsi-enhancer.log` |
+| `veilig.ts` | Schrijven via een tijdelijk bestand dat teruggelezen wordt; cfg's van OMSI in hun eigen codering |
+| `versiewacht.ts` | Wie schreef het laatst in de gebruikersmap (`laatst-geschreven.json`), de kopie om te bekijken, de bouwstempel |
 
 ### `src/shared/`
 
@@ -1942,6 +1944,169 @@ gedownload hebt (Luc koos optie 1; veel makers verbieden verspreiden).
   add-on van een paar gigabyte, en de foutcontrole op een echte kaart --
   vooral of objecten hun `model/` en `texture/` echt zo vinden.
 
+**Veiligheid, ronde 1 uit openOMSI** (28-09-2026, tak `claude/openomsi-ronde1`).
+Acht punten uit een vergelijking met openOMSI (MIT; alleen ideeën
+overgenomen, geen code). Elk punt heeft een proef die op de code van vóór deze
+ronde faalt en nu slaagt (nagedraaid op een kopie van `b7f3d7b`).
+- **Zip slip en rommel** (`veiligPad` in `core/zip.ts`, `isRommel`,
+  `schrijfpad` en `magSchrijven` in `core/addon.ts`). De zip-lezer gaf namen
+  door zoals ze in de zip stonden en `opSchijf` plakte ze met `join` aan de
+  OMSI-map: `Vehicles/../../BUITEN.txt` kwam naast de OMSI-map. Nu weigert de
+  bron elk pad met `..`, een absoluut pad, een stationsletter, een `:` (NTFS-
+  stroom), een apparaatnaam (CON, nul.txt, COM1...), een deel dat op punt of
+  spatie eindigt en tekens die Windows niet toelaat; vlak voor het schrijven
+  kijkt `schrijfpad` nog eens (en of het resultaat ín de OMSI-map ligt), en
+  `magSchrijven` laat alleen paden onder een OMSI-map toe -- nooit de hoofdmap
+  met `Omsi.exe` en `options.cfg`. `opSchijf` zelf blijft ruim: de
+  foutcontrole volgt er paden met `..` uit OMSI's eigen bestanden mee (lezen).
+  `__MACOSX/`, `._*`, `Thumbs.db`, `desktop.ini` en `.DS_Store` worden
+  overgeslagen. Het plan toont "N bestanden geweigerd" met de namen.
+- **Programmacode** (`IS_CODE`, `NOOIT`): `.dll`/`.opl` staan in het plan
+  apart (`plan.code`) en gaan alleen mee met het vinkje "ik vertrouw de maker"
+  (`installeerStappen(..., { metCode })`, `addon:installeer` derde argument);
+  `.exe`, `.bat`, `.cmd`, `.ps1`, `.vbs`, `.scr`, `.msi` en verwanten worden
+  nooit neergezet. Blok "Programmacode" in `Addons.tsx`.
+- **Vrije ruimte** (`vrijeRuimte`, `ruimteVoor`): nodig op de schijf van OMSI
+  is wat er geschreven wordt, op die van de gebruikersmap wat overschreven
+  wordt (dat gaat naar de reserve); op één schijf samen. Marge: een twintigste,
+  minstens 256 MB. Past het niet, dan staat de knop uit en toont het venster
+  "Nodig 3,4 GB · vrij 2,1 GB op de schijf van OMSI (D:\)". Het hoofdproces
+  kijkt vlak voor het installeren nog eens. Gaat het schrijven halverwege mis
+  (ENOSPC of wat ook), dan draait `installeerStappen` alles terug: nieuwe
+  bestanden weg, overschreven bestanden terug uit de reserve, lege mappen en
+  de reserve van die poging weg; het venster krijgt `{ fout: 'ruimte' }`.
+- **Meer mapsoorten** (`SOORTEN` in `plaatsVan`): naast bus (`.bus`/`.ovh`) en
+  kaart (`global.cfg`) nu ook `.sco` → Sceneryobjects, `.sli` → Splines, `.hum`
+  → Humans, `.otp` → TicketPacks, en plat (alleen de bijbehorende bestanden,
+  zonder eigen map) `.owt` → Weather, `.oft` → Fonts, `.odr` → Drivers, `.zug`
+  → Trains, `.osn` → Situations, `.opl` → plugins. Plat of een map per pakket
+  is afgelezen aan Lucs Steam-OMSI (alleen gelezen; `probe-mapsoorten.ts` kijkt
+  het bij elke run na). Losse bestanden zonder map krijgen de naam van de
+  add-on als pakketnaam. Een map met naast zijn `.sco` ook een `Vehicles` of
+  `Splines` is een verzameling (regel 2), zoals bij openOMSI.
+- **OMSI afsluiten** (`sluitOmsi` in `core/omsiProces.ts`): de melding over een
+  vastloper onthoudt naast het pid de starttijd van het proces
+  (`OmsiMelding.start`, uit `Get-Process ... StartTime`, zonder beheerder). De
+  knop sluit alleen af als onder dat pid nog een `Omsi.exe` met die starttijd
+  draait, en dan met `taskkill /F /FI "PID eq ..." /FI "IMAGENAME eq Omsi.exe"`.
+  Anders "OMSI is al dicht". Of het lukte, ziet de app aan het proces zelf, niet
+  aan de (vertaalde) tekst van taskkill.
+- **OMSI-bestanden veilig schrijven** (`schrijfVeilig`, `leesCfg`, `schrijfCfg`
+  in `core/veilig.ts`): keyboard.cfg, options.cfg en gamectrler.cfg gaan via
+  een tijdelijk bestand dat teruggelezen en vergeleken wordt, en pas dan
+  hernoemd. Een leeg bestand over een niet-leeg heen, en een lege lijst
+  toetsen/apparaten/blokken over een volle, wordt geweigerd tenzij `leegMag`.
+  De codering blijft: Windows-1252 (als `latin1`, byte voor byte) of UTF-16 met
+  BOM -- een UTF-16-keyboard.cfg las eerst als leeg. Niet gedaan:
+  `setLastMap` in `core/startup.ts` schrijft options.cfg nog rechtstreeks; die
+  regel zit in een bestand waar tegelijk aan Vrij rijden gewerkt werd, en is
+  één `schrijfCfg` na het samenvoegen.
+- **Bouwstempel** (`__BOUW__` in `electron.vite.config.ts`, `stempel()` in
+  `main/versiewacht.ts`): `bouw <korte hash>[+] · <jjjj-mm-dd uu:mm> ·
+  <setup|draagbaar|dev>` achter het versienummer (`Versie.tsx`) en in de
+  eerste regel van elke sessie in het logboek. `+` = gebouwd met onvastgelegde
+  wijzigingen. De variant weet pas de draaiende app: `PORTABLE_EXECUTABLE_DIR`
+  (die zet de draagbare exe van electron-builder) of `app.isPackaged`.
+- **Oudere exe's** (`core/versiewacht.ts`, `main/versiewacht.ts`): de eerste
+  opslag via `schrijfVeilig` in de gebruikersmap noteert in
+  `laatst-geschreven.json` wie er schreef (versie en bouwstempel; de hoogste
+  blijft staan; sinds 29-09 bij het starten en met de bouw, zie hieronder). Start een oudere versie, dan eerst een venster "Bijgewerkt
+  door 0.4.9, deze exe is 0.4.1" met Alleen bekijken (standaard, ook bij
+  wegklikken), Toch doorgaan en Afsluiten, en een uitleg. Alleen bekijken zet
+  de app op een kopie van de gebruikersmap in `%TEMP%` (zonder caches, logboek
+  en add-on-reserve) en laat `fs` zelf alles buiten die kopie weigeren met
+  EROFS -- geen profielen, geen OMSI, geen Steam. Titel en versieregel zeggen
+  "alleen bekijken". Chromium volgt de kopie ook; alleen zijn `Local State`
+  komt nog in de echte map. Dit werkt pas tussen versies die het allebei
+  kennen: een exe van vóór deze ronde kijkt niet. `OMSI_ENHANCER_PROEFKEUZE`
+  (bekijken/doorgaan/afsluiten) beantwoordt de vraag in een proef.
+- Proeven: `probe-zipslip.ts`, `probe-programmacode.ts`, `probe-ruimte.ts`,
+  `probe-mapsoorten.ts`, `probe-omsiafsluiten.ts` (met een eigen nepproces:
+  een kopie van de 32-bits PING.EXE als NepOmsiProef.exe),
+  `probe-veiligschrijven.ts`, `probe-versiewacht.ts`, en in Electron
+  `probe-bouwstempel.cjs` en `probe-alleenbekijken.cjs`; `schermafdruk-addons.cjs`
+  laat het plan zien. Gedeeld gereedschap in `scripts/proefhulp.ts`; met
+  `PROEF_MAP=<map>` werken ze in een eigen map. De gebouwde draagbare exe is
+  met een eigen `--user-data-dir` en een nagebouwde OMSI-map gestart: de
+  eerste logregel zei `bouw cd06dcd · ... · draagbaar`. Niet gedaan: de vraag
+  van de versiewacht met eigen ogen als venster (de proef beantwoordt hem
+  zonder venster), en de installer uit deze tak in `release/` gezet -- die
+  hoort daar pas na het samenvoegen met de lopende bouw.
+
+**Tegenlezing van ronde 1** (29-09-2026, zelfde tak). Een aanvaller en een
+proefdraaier liepen ronde 1 na; dit is wat echt fout bleek, elk met een proef
+die op `d9eeeda` faalt en nu slaagt.
+- **Versiewacht, dezelfde versie** (`isNieuwer` in `core/versiewacht.ts`):
+  alleen het versienummer telde, en na elke wijziging heet elke nieuwe exe
+  0.4.7 -- precies de oude draagbare uit CLAUDE.md zag dus niets. De notitie
+  heeft nu ook `hash`, `gebouwd` (ISO, uit `__BOUW__.iso`) en `variant`; bij
+  hetzelfde nummer is een bouw nieuwer als hij later gebouwd is met een andere
+  hash. Nooit bij `dev` of zonder bouwtijd. Het venster zegt dan "Bijgewerkt
+  door 0.4.7 (bouw bbbbbbb), deze exe is 0.4.7 (bouw cd06dcd)".
+- **Meteen noteren** (`bewaakVersie`): de notitie kwam pas bij de eerste
+  opslag via `schrijfVeilig`, en instellingen, overlay-indeling en het
+  add-onregister gaan daar buitenom. Nu bij het starten (na "toch doorgaan"
+  ook). Het haakje `zetNaOpslaan` in `veilig.ts` is weg.
+- **Alleen bekijken als de kopie niet lukt** (`zetOpKopie`,
+  `vraagNaMislukteKopie`): een vastgehouden bestand liet `cpSync` gooien vóór
+  het logboek, en de app draaide zonder venster door met het slot in handen --
+  elke volgende start stopte meteen. Nu: halve kopie weg, en de vraag
+  Afsluiten (standaard) of Toch doorgaan. Daarnaast vangt `meldStartFout` elke
+  fout in `whenReady` van `index.ts`: zonder venster een melding en
+  `app.exit(1)`, met venster alleen het logboek. `OMSI_ENHANCER_PROEFKEUZE_KOPIE`
+  beantwoordt de tweede vraag in een proef.
+- **Alleen bekijken buiten `fs` om** (`zetBekijkstand`/`inBekijkstand` in
+  `veilig.ts`): de Game Bar-knop schreef met `reg add` in het register, en de
+  dienst startte OMSI ook als het klaarzetten met EROFS mislukte. `zetKnop`
+  geeft nu reden `bekijken`, `launchOmsi` weigert met EROFS.
+- **Twee bestanden voor één plek** (`planStappen`): `Zomer/zon.owt` en
+  `Winter/zon.owt` (plat naar `Weather`), of `a.cfg` en `A.CFG`, schreven
+  allebei; het tweede maakte een "reserve" van het eerste, en verwijderen liet
+  een bestand van de add-on staan met de melding "gewijzigd". Nu gaat het
+  eerste mee en staat de rest in `plan.dubbel`; `installeerStappen` slaat een
+  tweede schrijfbeurt naar hetzelfde doel ook zelf over.
+- **Register na installeren** (`registreer`): lukte `addons.json` niet, dan
+  stond de add-on in OMSI en kende de app hem niet. Nu gaat de installatie dan
+  terug en komt er `InstallatieFout('ruimte'|'fout')`.
+- **Terugdraaien laat geen lege mappen** (`draaiTerug`): de map van elk doel
+  telt mee, ook als het bestand er nog niet was (een kapot bestand in de zip).
+- **Nooit neerzetten, meer soorten** (`NOOIT`): `.url`, `.scf`,
+  `.library-ms`, `.searchConnector-ms`, `.website` -- de verkenner haalt daar
+  zelf een pictogram van een netwerkpad en stuurt dan de NTLM-hash mee -- en
+  `.jar`, `.msc`, `.inf`, `.chm`, `.sys`, `.drv`, `.ocx` en verwanten.
+- **Naam van de zip** (`pakketNaam`): `Bomen v1..zip` gaf de pakketmap
+  `Bomen v1.`, die `veiligPad` weigert; alle losse bestanden werden
+  "geweigerd". Nu opgeschoond, anders `Add-on`.
+- **`Sounds` en `Scripts`** staan in `OMSI_MAPPEN` (Lucs OMSI heeft ze, met
+  de AI-auto's); `Gras` is eruit (bestaat niet, de grastexturen staan in
+  `Texture`). `probe-mapsoorten` kijkt na dat elke map uit de lijst echt bestaat.
+- **Te lange paden** (`MAX_PAD`, `plan.teLang`): vanaf 260 tekens kan OMSI
+  (32-bits) een bestand niet openen; zulke bestanden komen niet neer en het
+  plan zegt waarom.
+- **Een zip die over zijn grootte liegt** (`zip.ts`): `inflateRawSync` met
+  `maxOutputLength` = de opgegeven grootte, en niet meer lezen dan er staat;
+  een zipbom wordt "beschadigd" zonder eerst in het geheugen te passen.
+- **OMSI afsluiten zonder antwoord van PowerShell** (`procesMetPid` geeft nu
+  een proces, `weg` of `onbekend`): een fout of time-out werd "OMSI is al
+  dicht" en de knop verdween. `onbekend` wordt `mislukt`, en telt na taskkill
+  niet als dicht. Het script eindigt op `exit 0`: een `Get-Process` die niets
+  vindt gaf anders exitcode 1. `taskkillOpNaam` apart, zodat de proef het
+  filter op naam zelf nakijkt.
+- **Schrijven naast een programma dat het bestand openhoudt**
+  (`schrijfVeilig`): hernoemen lukt niet over een bestand dat een ander open
+  heeft zonder "verwijderen" te delen, waar gewoon overschrijven wel lukte.
+  Nu na de laatste poging ter plekke overschrijven met de teruggelezen inhoud,
+  en daarna het bestand zelf teruglezen.
+- Kleine teksten: "1 bestand" in plaats van "1 bestanden" in het plan, en de
+  rommelregel zegt "zoals" (hij noemde desktop.ini ook als die er niet was).
+- Proeven: uitgebreid `probe-ruimte`, `-programmacode`, `-zipslip`,
+  `-mapsoorten`, `-versiewacht` (met `execFileSync` nagebootst: nooit een echt
+  `reg add`), `-omsiafsluiten`, `-veiligschrijven`, `probe-alleenbekijken.cjs`
+  en `schermafdruk-addons.cjs`; nieuw `probe-versiestart.cjs` (start de
+  gebouwde app vier keer als eigen proces). Niet gedaan: het venster na een
+  mislukte kopie met eigen ogen gezien (de proef beantwoordt het), en
+  `setLastMap` in `startup.ts` (zie hierboven).
+
 **Navigatie: doorzichtig, vaste zoom, en haltenamen die niet meer wegvallen**
 (28-09-2026). Drie vragen van gebruikers, via Luc.
 - **Achtergrond uit** (`PanelState.glas`, knop met een vierkantje in de
@@ -2059,6 +2224,13 @@ Er staan probes in `scripts/`:
   postvak en de kaart voor de telefoon.
 - `probe-addon.ts` — de add-on-manager op een nagebouwde OMSI-map: zip lezen,
   waar alles hoort, plan, installeren met reserve, verwijderen, foutcontrole.
+- Veiligheidsronde 28-09 (zie §5, "Veiligheid, ronde 1 uit openOMSI"):
+  `probe-zipslip.ts`, `probe-programmacode.ts`, `probe-ruimte.ts`,
+  `probe-mapsoorten.ts`, `probe-omsiafsluiten.ts`, `probe-veiligschrijven.ts`,
+  `probe-versiewacht.ts`, `probe-bouwstempel.cjs`, `probe-alleenbekijken.cjs`
+  en `schermafdruk-addons.cjs`. Allemaal in een eigen map (`PROEF_MAP`), nooit
+  de echte OMSI of gebruikersmap; de afsluitproef start en sluit alleen zijn
+  eigen nepproces.
 - `probe-onderweg.ts` — flitspalen (welke borden, welke kant, boete),
   gebeurtenissen, het rapport van de controleurs en wat er van het loon af gaat.
 - `probe-kaartmogelijkheden.ts` — proef 0 voor een busbedrijf-modus, alleen

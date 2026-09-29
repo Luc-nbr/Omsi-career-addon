@@ -165,7 +165,7 @@ const api: CareerApi = {
   addonKies: (soort) => ipcRenderer.invoke('addon:kies', soort),
   addonPad: (bestand) => webUtils.getPathForFile(bestand),
   addonPlan: (pad) => ipcRenderer.invoke('addon:plan', pad),
-  addonInstalleer: (pad, naam) => ipcRenderer.invoke('addon:installeer', pad, naam),
+  addonInstalleer: (pad, naam, metCode) => ipcRenderer.invoke('addon:installeer', pad, naam, metCode),
   addonLijst: () => ipcRenderer.invoke('addon:lijst'),
   addonVerwijder: (id) => ipcRenderer.invoke('addon:verwijder', id),
   addonInhoud: () => ipcRenderer.invoke('addon:inhoud'),
@@ -175,6 +175,7 @@ const api: CareerApi = {
     ipcRenderer.on('addon:voortgang', heen)
     return () => ipcRenderer.removeListener('addon:voortgang', heen)
   },
+  bouw: () => ipcRenderer.invoke('app:bouw'),
   omsiState: () => ipcRenderer.invoke('omsi:state'),
   confirmOmsi: (path) => ipcRenderer.invoke('omsi:confirm', path),
   browseOmsi: () => ipcRenderer.invoke('omsi:browse'),

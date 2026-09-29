@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import react from '@vitejs/plugin-react'
@@ -13,10 +14,36 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
  */
 const versie = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf8')).version
 
+/*
+ * De bouwstempel: welke broncode (korte git-hash, met een + als er
+ * onvastgelegde wijzigingen in zaten) en wanneer. Tussen twee versienummers
+ * worden er soms tien exe's gebouwd, en een oude draagbare exe met hetzelfde
+ * nummer was niet van een nieuwe te onderscheiden. Of het de installatie of de
+ * draagbare is, weet pas de draaiende app; zie main/versiewacht.ts.
+ */
+function bouw(): { hash: string; tijd: string; iso: string } {
+  const git = (...args: string[]): string =>
+    execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+  let hash = 'onbekend'
+  try {
+    hash = git('rev-parse', '--short=7', 'HEAD')
+    if (git('status', '--porcelain', '--untracked-files=no')) hash += '+'
+  } catch {
+    // Geen git (een zip van de broncode): dan blijft het "onbekend".
+  }
+  const nu = new Date()
+  const twee = (n: number): string => String(n).padStart(2, '0')
+  const tijd =
+    `${nu.getFullYear()}-${twee(nu.getMonth() + 1)}-${twee(nu.getDate())} ` +
+    `${twee(nu.getHours())}:${twee(nu.getMinutes())}`
+  // `iso` (UTC) om bouwen te vergelijken, `tijd` om te lezen; zie core/versiewacht.ts.
+  return { hash, tijd, iso: nu.toISOString() }
+}
+
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
-    define: { __APP_VERSION__: JSON.stringify(versie) },
+    define: { __APP_VERSION__: JSON.stringify(versie), __BOUW__: JSON.stringify(bouw()) },
     /*
      * Twee ingangen: de app zelf, en de werker die kaarten uitleest. Die tweede
      * draait als worker_thread naast het hoofdproces, dus hij moet als eigen

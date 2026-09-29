@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { AXIS_SLOTS, type ControllerConfig } from '../shared/controllers'
+import { leesCfg, schrijfCfg } from './veilig'
 
 export { AXIS_FUNCTIONS, AXIS_SLOTS } from '../shared/controllers'
 export type { ControllerAxis, ControllerButton, ControllerConfig } from '../shared/controllers'
@@ -37,7 +38,7 @@ export function readControllers(omsiPath: string): ControllerConfig[] {
    * YOKE USB " met een spatie op het eind; die spatie hoort bij de naam waarmee
    * OMSI het apparaat herkent, dus bijsnijden zou de koppeling verbreken.
    */
-  const lines = readFileSync(file, 'latin1').split('\r\n')
+  const lines = leesCfg(file).split('\r\n')
   const tag = (at: number): string => (lines[at] ?? '').trim()
 
   const controllers: ControllerConfig[] = []
@@ -88,8 +89,20 @@ export function readControllers(omsiPath: string): ControllerConfig[] {
  * Schrijft de apparaten terug in dezelfde vorm als OMSI ze noteert: een lege
  * regel voor elk `[ctrl]`, de blokken in dezelfde volgorde, en een lege regel
  * na elk blok.
+ *
+ * Via `schrijfCfg` (tijdelijk bestand, teruglezen, codering behouden). Geen
+ * apparaten meer over een bestand met apparaten heen wordt geweigerd, tenzij
+ * `leegMag`: het scherm kan geen apparaat weghalen, dus een lege lijst is een
+ * fout, en OMSI zou daarna al je assen en knoppen kwijt zijn.
  */
-export function writeControllers(omsiPath: string, controllers: ControllerConfig[]): void {
+export function writeControllers(
+  omsiPath: string,
+  controllers: ControllerConfig[],
+  opties: { leegMag?: boolean } = {}
+): void {
+  if (controllers.length === 0 && !opties.leegMag && readControllers(omsiPath).length > 0) {
+    throw new Error('gamectrler.cfg niet geschreven: alle apparaten zouden verdwijnen.')
+  }
   const lines: string[] = []
   for (const controller of controllers) {
     lines.push('', '[ctrl]', controller.name, controller.selected ? '1' : '0', '', '[axis]')
@@ -103,5 +116,5 @@ export function writeControllers(omsiPath: string, controllers: ControllerConfig
   }
   // OMSI sluit af met een lege regel achter het laatste blok.
   lines.push('')
-  writeFileSync(controllerPath(omsiPath), lines.join('\r\n'), 'latin1')
+  schrijfCfg(controllerPath(omsiPath), lines.join('\r\n'), opties)
 }

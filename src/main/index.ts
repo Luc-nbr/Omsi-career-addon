@@ -157,11 +157,14 @@ import {
   type SpoorRegel
 } from '../core/rittenstaat'
 import {
+  InstallatieFout,
   installeerStappen,
   leesRegister,
   openBron,
   planStappen,
+  registreer,
   reserveMap,
+  ruimteVoor,
   schrijfRegister,
   verwijderStappen,
   type Plan
@@ -169,6 +172,7 @@ import {
 import { controleerBus, controleerKaart, type Controle } from '../core/addoncheck'
 import { ZipFout } from '../core/zip'
 import type { AddonOverzicht, AddonPlan } from '../shared/api'
+import { alleenBekijken, bewaakVersie, meldStartFout, stempel } from './versiewacht'
 import {
   FLITS,
   controleAanBoord,
@@ -982,6 +986,7 @@ async function bewaakOmsi(): Promise<void> {
         soort: 'vast',
         tijd: new Date().toISOString(),
         pid: proces.pid,
+        start: proces.start,
         overlays: omsiWacht.overlays
       })
     }
@@ -4179,6 +4184,8 @@ function registerHandlers(): void {
    * foutmelding hoort te plakken.
    */
   handle('app:version', () => __APP_VERSION__)
+  /* De bouwstempel bij dat nummer, en of deze exe alleen kijkt; zie main/versiewacht.ts. */
+  handle('app:bouw', () => ({ stempel: stempel(), alleenBekijken: alleenBekijken() }))
 
   /*
    * Hoe OMSI de vorige keer draaide. Alleen interessant als het volledig scherm
@@ -4657,12 +4664,17 @@ function registerHandlers(): void {
     omsiMelding = undefined
   })
 
-  /* Alleen op verzoek van de speler, met het pid uit de melding over de vastloper. */
-  handle('omsi:sluiten', async (_event, pid: number): Promise<boolean> => {
-    if (!omsiMelding || omsiMelding.soort !== 'vast' || omsiMelding.pid !== pid) return false
-    log(`vastgelopen OMSI (pid ${pid}) afgesloten op verzoek van de speler`)
-    omsiWacht.doorOnsGesloten = true
-    return sluitOmsi(pid)
+  /*
+   * Alleen op verzoek van de speler, met het pid uit de melding over de
+   * vastloper -- en alleen als onder dat pid nog hetzelfde OMSI draait (naam
+   * en starttijd; zie `sluitOmsi`).
+   */
+  handle('omsi:sluiten', async (_event, pid: number): Promise<'gesloten' | 'al-dicht' | 'mislukt'> => {
+    if (!omsiMelding || omsiMelding.soort !== 'vast' || omsiMelding.pid !== pid) return 'al-dicht'
+    const uit = await sluitOmsi(pid, omsiMelding.start, OMSI_PROCES)
+    log(`vastgelopen OMSI (pid ${pid}) afsluiten op verzoek van de speler: ${uit}`)
+    if (uit === 'gesloten') omsiWacht.doorOnsGesloten = true
+    return uit
   })
 
   handle('game:settings', async () => ({
@@ -6044,7 +6056,9 @@ function registerHandlers(): void {
       return await klus()
     } catch (fout) {
       logFout('add-on-manager', fout)
-      return { fout: fout instanceof ZipFout ? fout.soort : 'fout', melding: fout instanceof Error ? fout.message : String(fout) } as {
+      // Een volle schijf is geen raadsel maar een melding: `ruimte`, en de installatie is teruggedraaid.
+      const soort = fout instanceof ZipFout ? fout.soort : fout instanceof InstallatieFout && fout.soort === 'ruimte' ? 'ruimte' : 'fout'
+      return { fout: soort, melding: fout instanceof Error ? fout.message : String(fout) } as {
         fout: string
       }
     } finally {
@@ -6060,10 +6074,21 @@ function registerHandlers(): void {
     andersAantal: plan.regels.filter((r) => r.staat === 'anders').length,
     overig: plan.overig.slice(0, 100),
     overigAantal: plan.overig.length,
+    geweigerd: plan.geweigerd.slice(0, 100),
+    geweigerdAantal: plan.geweigerd.length,
+    dubbel: plan.dubbel.slice(0, 100),
+    dubbelAantal: plan.dubbel.length,
+    teLang: plan.teLang.slice(0, 100),
+    teLangAantal: plan.teLang.length,
+    rommel: plan.rommel,
+    code: plan.code.slice(0, 50).map((r) => ({ doel: r.doel, staat: r.staat })),
+    nooit: plan.nooit.slice(0, 50),
     plekken: plan.plekken.slice(0, 60),
     bussen: plan.bussen,
     kaarten: plan.kaarten,
-    bytes: plan.regels.reduce((som, r) => som + r.grootte, 0)
+    bytes: plan.regels.reduce((som, r) => som + r.grootte, 0),
+    ruimte: ruimteVoor(plan, omsi(), userData(), false),
+    ruimteMetCode: ruimteVoor(plan, omsi(), userData(), true)
   })
 
   handle('addon:kies', async (_event, soort: 'zip' | 'map') => {
@@ -6086,23 +6111,32 @@ function registerHandlers(): void {
       }
     })
   )
-  handle('addon:installeer', (event, pad: string, naam?: string) =>
+  handle('addon:installeer', (event, pad: string, naam?: string, metCode?: boolean) =>
     eenTegelijk(async () => {
       // Bestanden overschrijven die OMSI open heeft, gaat mis of half.
       if (await isOmsiRunning()) return { fout: 'omsi' }
       if (addonPlan?.pad !== String(pad)) return { fout: 'plan' }
       const plan = { ...addonPlan.plan, naam: String(naam ?? '').trim().slice(0, 80) || addonPlan.plan.naam }
+      // Het venster zette de knop al uit; hier nog eens, want de schijf kan intussen voller zijn.
+      if (!ruimteVoor(plan, omsi(), userData(), metCode === true).past) return { fout: 'ruimte' }
       const bron = openBron(String(pad))
       try {
-        const uit = await inStukjes(installeerStappen(bron, plan, omsi(), userData()), event.sender, 'installeer')
-        const register = leesRegister(userData())
-        schrijfRegister(userData(), { addons: [...register.addons, uit.addon] })
-        log(`Add-on geïnstalleerd: ${uit.addon.naam} (${uit.geschreven} bestanden, ${uit.overschreven} overschreven)`)
+        const uit = await inStukjes(
+          installeerStappen(bron, plan, omsi(), userData(), new Date(), { metCode: metCode === true }),
+          event.sender,
+          'installeer'
+        )
+        // Lukt het register niet, dan gaat de installatie terug (`registreer`).
+        registreer(userData(), omsi(), uit)
+        log(
+          `Add-on geïnstalleerd: ${uit.addon.naam} (${uit.geschreven} bestanden, ${uit.overschreven} overschreven, ` +
+            `${uit.code} plugin, ${plan.geweigerd.length} geweigerd, ${plan.nooit.length} programma's niet)`
+        )
         addonPlan = undefined
         // Er kunnen bussen en kaarten bij zijn: de lijsten opnieuw lezen.
         vergeetKaarten()
         vehicleTrackers.clear()
-        return { id: uit.addon.id, geschreven: uit.geschreven, overschreven: uit.overschreven }
+        return { id: uit.addon.id, geschreven: uit.geschreven, overschreven: uit.overschreven, code: uit.code }
       } finally {
         bron.sluit()
       }
@@ -6388,6 +6422,15 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     /*
+     * Nog vóór het logboek: is deze exe ouder dan de versie die de
+     * gebruikersmap het laatst bijwerkte, dan eerst vragen -- alleen bekijken
+     * zet de app op een kopie van die map (main/versiewacht.ts).
+     */
+    if (bewaakVersie(__APP_VERSION__) === 'afsluiten') {
+      app.quit()
+      return
+    }
+    /*
      * Het logboek gaat als eerste aan, nog voor er iets gelezen wordt.
      *
      * Meldingen kwamen binnen als "hij hangt" en "hij is zomaar afgesloten", en
@@ -6397,10 +6440,12 @@ if (!app.requestSingleInstanceLock()) {
      */
     const pad = startLogboek(
       userData(),
-      `OMSI Enhancer ${__APP_VERSION__} start -- Electron ${process.versions.electron}, ` +
+      `OMSI Enhancer ${__APP_VERSION__} (${stempel()}) start -- Electron ${process.versions.electron}, ` +
         `Windows ${process.getSystemVersion?.() ?? ''}, ${process.arch}`
     )
     log(`gebruikersgegevens: ${userData()}`)
+    const bekijken = alleenBekijken()
+    if (bekijken) log(`alleen bekijken: de map werd bijgewerkt door ${bekijken.versie} (${bekijken.bouw ?? '?'}); er wordt niets opgeslagen`)
     /*
      * Knoppen die nog aan een toets moesten. De app kan dicht zijn geweest toen
      * OMSI afsloot; dan gebeurt het nu, of anders zodra OMSI dicht is. En
@@ -6514,7 +6559,8 @@ if (!app.requestSingleInstanceLock()) {
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
     })
-  })
+    // Een fout hierboven mag nooit een app zonder venster achterlaten; zie `meldStartFout`.
+  }).catch((fout) => meldStartFout(fout, Boolean(mainWindow && !mainWindow.isDestroyed())))
 
   app.on('before-quit', () => {
     stopApparaat()

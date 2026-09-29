@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { logFout } from './logboek'
-import { bewaarKopie, schrijfVeilig } from './veilig'
+import { bewaarKopie, inBekijkstand, schrijfVeilig } from './veilig'
 
 /**
  * Overlays uitzetten vanuit de app.
@@ -72,6 +72,8 @@ export type Reden =
   | 'lezen'
   | 'schrijven'
   | 'register'
+  /** De app draait alleen om te bekijken (zie main/versiewacht.ts). */
+  | 'bekijken'
 
 export interface KnopStand {
   /** Staat de overlay aan? `undefined` als het niet vast te stellen is. */
@@ -626,5 +628,10 @@ export function leesKnoppen(): OverlayKnoppen {
 }
 
 export function zetKnop(welke: Schakelbaar, aan: boolean): Uitkomst {
+  /*
+   * Alleen bekijken: niets omzetten. Steams bestand hield `fs` daar al tegen,
+   * maar de Game Bar gaat met `reg add` het register in, en dat ziet `fs` niet.
+   */
+  if (inBekijkstand()) return { gelukt: false, reden: 'bekijken' }
   return welke === 'steam' ? zetSteam(aan) : zetGameBar(aan)
 }
