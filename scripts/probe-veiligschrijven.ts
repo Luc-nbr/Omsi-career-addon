@@ -19,6 +19,11 @@
  *    options.cfg (ook in UTF-16), de situatie en het weer, laststn.osn met het
  *    weer en de kopieën ernaast. Codering blijft, en een onderbreking laat het
  *    vorige bestand heel. Op 3880b6d faalt 7: zeven fouten.
+ * 8. (tegenlezing 29-09) Hernoemen lukt niet en het tijdelijke bestand wil
+ *    niet weg, maar het bestand zelf is ter plekke geschreven: dat is
+ *    gelukt, geen fout. En een leeg weerbestand van de kaart ("zoals de
+ *    kaart") laat het weer van de vorige rit niet staan. Op 09905c1 faalt 8:
+ *    drie fouten.
  *
  * Op de oude code (vóór 28-09) faalt dit: keyboard.cfg werd rechtstreeks
  * overschreven en bleef half achter, een lege lijst werd gewoon geschreven, en
@@ -277,6 +282,68 @@ klopt(
   '7e. de kopie van laststn.osn halverwege onderbroken: de volgende keer komt er een hele',
   fs.existsSync(andereKopie) && fs.readFileSync(andereKopie).equals(andereStand) && halfBezig(andereKaart).length === 0
 )
+
+/*
+ * 8a. (tegenlezing 29-09) Een scanner houdt het verse `.bezig`-bestand langer
+ *     vast dan de nieuwe pogingen duren: hernoemen lukt niet, en weghalen ook
+ *     niet. schrijfVeilig schrijft dan ter plekke en leest terug -- dat is
+ *     gelukt. Op 09905c1 ging de fout van het weghalen toch door, en zei
+ *     setLastMap "mislukt" over een options.cfg met de nieuwe kaart erin.
+ */
+{
+  fs.writeFileSync(opties, optiesAnsi('Oud'))
+  const echtRename = fs.renameSync
+  const echtUnlink = fs.unlinkSync
+  const bezet = (pad: string): never => {
+    throw Object.assign(new Error(`EBUSY: resource busy or locked, '${pad}'`), { code: 'EBUSY' })
+  }
+  ;(fs as { renameSync: unknown }).renameSync = (van: fs.PathLike, naar: fs.PathLike) =>
+    String(van).endsWith('.bezig') ? bezet(String(van)) : echtRename(van, naar)
+  ;(fs as { unlinkSync: unknown }).unlinkSync = (pad: fs.PathLike) =>
+    String(pad).endsWith('.bezig') ? bezet(String(pad)) : echtUnlink(pad)
+  let gezet8: boolean
+  try {
+    gezet8 = setLastMap(omsi, 'Nieuw')
+  } finally {
+    ;(fs as { renameSync: unknown }).renameSync = echtRename
+    ;(fs as { unlinkSync: unknown }).unlinkSync = echtUnlink
+  }
+  klopt(
+    `8a. hernoemen en weghalen van .bezig lukken niet: setLastMap zegt ${gezet8 ? 'ja' : 'nee'}, options.cfg heeft de nieuwe kaart`,
+    gezet8 && fs.readFileSync(opties).equals(optiesAnsi('Nieuw'))
+  )
+  for (const rest of halfBezig(omsi)) fs.unlinkSync(join(omsi, rest))
+}
+
+/*
+ * 8b. (tegenlezing 29-09) De vorige rit koos regen; op de kaart staat naast
+ *     laststn.osn een leeg weerbestand. "Zoals de kaart" nam dat lege bestand
+ *     als het weer van de kaart, schrijfVeilig weigerde het over de regen
+ *     heen te zetten, en de regen bleef naast de situatie staan -- en ging
+ *     met presetStartup mee naar laststn.osn.owt.
+ */
+{
+  const kaart8 = join(omsi, 'maps', 'Leegweer')
+  fs.mkdirSync(kaart8, { recursive: true })
+  const verzoek8 = { mapFolder: 'Leegweer', name: 'OMSI Enhancer — proef', description: '', year: 2020, dayOfYear: 100, minutes: 600 }
+  const vorige = writeSituation(omsi, { ...verzoek8, weather: 'rain' as const })
+  const regen = fs.readFileSync(`${vorige.file}.owt`)
+  const laststn8 = join(kaart8, 'laststn.osn')
+  fs.writeFileSync(laststn8, Buffer.concat([BOM, Buffer.from('[map]\r\nmaps\\Leegweer\\global.cfg\r\n\r\n', 'utf16le')]))
+  fs.writeFileSync(`${laststn8}.owt`, Buffer.alloc(0))
+  const nu = writeSituation(omsi, verzoek8)
+  const naast = fs.existsSync(`${nu.file}.owt`) ? fs.readFileSync(`${nu.file}.owt`) : undefined
+  klopt(
+    `8b. leeg weer op de kaart: naast de situatie ${naast ? `${naast.length} bytes${naast.equals(regen) ? ', de regen van de vorige rit' : ''}` : 'geen weer'} (weer van: ${nu.weerVan ?? '-'})`,
+    !naast?.equals(regen)
+  )
+  const klaar8 = presetStartup(omsi, 'Leegweer', nu.file)
+  const naLaststn = fs.readFileSync(`${laststn8}.owt`)
+  klopt(
+    `8b. presetStartup (${klaar8.lastSituation ? 'klaargezet' : 'niet klaargezet'}): laststn.osn.owt is ${naLaststn.equals(regen) ? 'de regen van de vorige rit' : `${naLaststn.length} bytes, niet de regen`}`,
+    klaar8.lastSituation && !naLaststn.equals(regen)
+  )
+}
 
 /*
  * 6. (29-09) Een ander programma houdt keyboard.cfg open met lezen en

@@ -10,6 +10,10 @@
  * - (29-09) bij hetzelfde versienummer telt de bouw: een oudere bouw van 0.4.7
  *   ziet dat een nieuwere 0.4.7 schreef, maar niet bij dezelfde hash, een
  *   ontwikkelversie of een notitie zonder bouwtijd;
+ * - (tegenlezing 29-09) een ontwikkelstart met hetzelfde nummer neemt de plek
+ *   van een gebouwde exe niet over, en twee bouwen met onvastgelegde
+ *   wijzigingen op dezelfde commit (hash met +) zijn niet gelijk: dan telt de
+ *   bouwtijd. Op 09905c1 faalt dat deel: drie fouten;
  * - de kopie om te bekijken neemt profielen en instellingen mee, maar niet de
  *   caches van Chromium, het logboek of de reservekopieën van add-ons;
  * - (29-09) in alleen-bekijken zet de knop voor de Game Bar niets in het
@@ -96,6 +100,28 @@ klopt('een nieuwere versie wordt de hoogste', leesSchrijvers(data)?.hoogste.vers
   const dev = join(map, 'zelfde-dev')
   noteerSchrijver(dev, exe('0.4.7', 'ddddddd', '2026-10-09T10:00:00.000Z', 'dev'))
   klopt('zelfde versie: een notitie van een ontwikkelversie waarschuwt een gebouwde 0.4.7 niet', nieuwereSchrijver(dev, oud) === undefined)
+
+  // (tegenlezing 29-09) Een ontwikkelstart op een map waar een gebouwde 0.4.7 de hoogste is.
+  const devNa = join(map, 'dev-na-setup')
+  noteerSchrijver(devNa, nieuw)
+  noteerSchrijver(devNa, exe('0.4.7', 'eeeeeee', '2026-10-09T10:00:00.000Z', 'dev'))
+  klopt(
+    `zelfde versie: een ontwikkelstart neemt de plek van de gebouwde niet over (hoogste: ${leesSchrijvers(devNa)?.hoogste.variant})`,
+    leesSchrijvers(devNa)?.hoogste.hash === 'bbbbbbb' && leesSchrijvers(devNa)?.laatst.variant === 'dev'
+  )
+  klopt('zelfde versie: na een ontwikkelstart krijgt de oude draagbare nog steeds de vraag', nieuwereSchrijver(devNa, oud)?.hash === 'bbbbbbb')
+  noteerSchrijver(devNa, exe('0.4.8', 'eeeeeee', '2026-10-09T11:00:00.000Z', 'dev'))
+  klopt('een ontwikkelversie met een hoger nummer wordt wel de hoogste', leesSchrijvers(devNa)?.hoogste.versie === '0.4.8')
+
+  // (tegenlezing 29-09) Twee bouwen met onvastgelegde wijzigingen op dezelfde commit.
+  const vuil = join(map, 'vuile-bouw')
+  const vuilOud = exe('0.4.9', '09905c1+', '2026-09-29T10:00:00.000Z', 'draagbaar')
+  const vuilNieuw = exe('0.4.9', '09905c1+', '2026-09-29T13:00:00.000Z', 'setup')
+  noteerSchrijver(vuil, vuilNieuw)
+  const vw = nieuwereSchrijver(vuil, vuilOud)
+  klopt(`vuile bouw: de draagbare van 12:00 ziet dat die van 15:00 op dezelfde commit schreef (${vw?.bouw ?? 'geen waarschuwing'})`, vw?.gebouwd === vuilNieuw.gebouwd)
+  klopt('vuile bouw: de draagbare van dezelfde bouw (zelfde tijd) niet', nieuwereSchrijver(vuil, { ...vuilNieuw, variant: 'draagbaar' }) === undefined)
+  klopt('vuile bouw: die van 15:00 zelf niet', nieuwereSchrijver(vuil, vuilNieuw) === undefined)
 }
 
 // De kopie om te bekijken.

@@ -85,13 +85,21 @@ export function leesSchrijvers(userData: string): Schrijvers | undefined {
  * ontwikkelversie (`dev`: die bouwt bij elke start opnieuw, en zegt dus niets
  * over wat er in de map staat), zonder bouwtijd (een notitie van vóór 29-09),
  * of met dezelfde hash (dezelfde broncode, twee keer gebouwd).
+ *
+ * Dezelfde hash met een `+` erachter is níét dezelfde broncode: dat is een
+ * bouw met onvastgelegde wijzigingen op die commit, en tussen twee commits
+ * worden er zo soms tien gebouwd (CLAUDE.md: na elke wijziging). Tot de
+ * tegenlezing van 29-09 telden twee vuile bouwen op dezelfde commit als
+ * gelijk, en zag een oude draagbare van 12:00 niet dat die van 15:00 de map
+ * had bijgewerkt. Nu beslist dan de bouwtijd; de setup en de draagbare van
+ * één bouw hebben dezelfde tijd en blijven gelijk.
  */
 export function isNieuwer(a: Wie, b: Wie): boolean {
   const versies = vergelijkVersies(a.versie, b.versie)
   if (versies !== 0) return versies > 0
   if (a.variant === 'dev' || b.variant === 'dev') return false
   if (typeof a.gebouwd !== 'string' || typeof b.gebouwd !== 'string') return false
-  if (a.hash && a.hash === b.hash) return false
+  if (a.hash && a.hash === b.hash && !a.hash.endsWith('+')) return false
   return a.gebouwd > b.gebouwd
 }
 
@@ -99,11 +107,24 @@ export function isNieuwer(a: Wie, b: Wie): boolean {
  * Noteren dat deze exe schreef. De hoogste blijft staan als die nieuwer is:
  * wie na 0.4.9 een keer met 0.4.1 "toch doorgaan" koos, krijgt de vraag de
  * volgende keer weer -- de profielen zijn nog steeds van 0.4.9.
+ *
+ * Een ontwikkelversie met hetzelfde nummer neemt de plek van een gebouwde
+ * niet over. `isNieuwer` zegt bij `dev` altijd nee, dus zonder deze regel
+ * werd één ontwikkelstart op de echte map de hoogste -- en daarna kreeg een
+ * oude draagbare exe met dat nummer de vraag niet meer (tegenlezing 29-09).
+ * Een ontwikkelversie met een hoger nummer wordt wel de hoogste: die schreef
+ * profielen van dat nummer.
  */
 export function noteerSchrijver(userData: string, wie: Wie, nu = new Date()): void {
   const ik: Schrijver = { ...wie, tijd: nu.toISOString() }
   const eerder = leesSchrijvers(userData)
-  const hoogste = eerder && isNieuwer(eerder.hoogste, ik) ? eerder.hoogste : ik
+  const blijft =
+    eerder !== undefined &&
+    (isNieuwer(eerder.hoogste, ik) ||
+      (ik.variant === 'dev' &&
+        eerder.hoogste.variant !== 'dev' &&
+        vergelijkVersies(eerder.hoogste.versie, ik.versie) === 0))
+  const hoogste = blijft ? eerder.hoogste : ik
   schrijfVeilig(join(userData, SCHRIJVER_BESTAND), `${JSON.stringify({ hoogste, laatst: ik }, undefined, 2)}\n`)
 }
 
@@ -122,7 +143,10 @@ export function nieuwereSchrijver(userData: string, wie: Wie): Schrijver | undef
  * probe-alleenbekijken.cjs: na het omzetten schrijft Chromium daar, en in de
  * echte map alleen nog `Local State`), het logboek, en de reservekopieën van
  * add-ons -- die kunnen gigabytes zijn en worden bij bekijken nooit gelezen.
- * `Local Storage` gaat wel mee: daar onthoudt het scherm kleine keuzes.
+ * `Local Storage` gaat wel mee: daar onthoudt het scherm kleine keuzes. En
+ * de `kaartcache` en de `busfotos` ook (bij Luc samen zo'n 165 MB, vóór het
+ * venster): zonder kaartcache leest de werker bij het rondkijken elke kaart
+ * opnieuw, en dat duurt langer dan het kopiëren.
  */
 const NIET_MEE = new Set(
   [

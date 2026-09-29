@@ -71,7 +71,19 @@ export function schrijfVeilig(
       if (!readFileSync(pad).equals(bytes)) {
         throw new Error(`Niet geschreven: ${basename(pad)} kwam anders terug dan hij geschreven werd.`)
       }
-      unlinkSync(tijdelijk)
+      /*
+       * Het bestand staat er nu, teruggelezen. Dat het tijdelijke niet weg
+       * wil, maakt dat niet ongedaan: vaak is het juist het tijdelijke
+       * bestand dat een scanner vasthoudt, en daarom lukte hernoemen niet.
+       * Tot de tegenlezing van 29-09 ging die fout door naar de aanroeper, en
+       * zei setLastMap "mislukt" over een options.cfg die de nieuwe kaart
+       * wel had -- en liet presetStartup het weer van de vorige rit staan.
+       */
+      try {
+        unlinkSync(tijdelijk)
+      } catch {
+        // Dan blijft er een .bezig liggen; de volgende keer overschrijft hij hem.
+      }
     }
   } catch (fout) {
     try {

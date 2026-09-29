@@ -3117,9 +3117,20 @@ function schrijfBusknoppen(
 }
 
 async function zetBusknoppenAan(): Promise<
-  | { toegevoegd: number; gedeeld: number; geenPlek: number; omsiDraait?: boolean; onthouden?: number }
+  | { toegevoegd: number; gedeeld: number; geenPlek: number; omsiDraait?: boolean; onthouden?: number; fout?: 'bekijken' }
   | undefined
 > {
+  /*
+   * Alleen bekijken (main/versiewacht.ts): keyboard.cfg is van OMSI, en
+   * `fs` weigert het toch. Tot de tegenlezing van 29-09 ging dit verzoek
+   * gewoon in de wachtrij terwijl OMSI draaide, en zodra het dicht was
+   * probeerde `wachtOpOmsiDicht` het elke vijf tellen opnieuw -- met
+   * PowerShell en een schrijffout in het logboek, tot de app dicht ging.
+   */
+  if (inBekijkstand()) {
+    log('busknoppen niet bijgeschreven: alleen bekijken')
+    return { toegevoegd: 0, gedeeld: 0, geenPlek: 0, fout: 'bekijken' }
+  }
   /* Nu uitrekenen: terwijl OMSI draait weet de app welke bus en welke apparaten het zijn. */
   const acties = actiesVoorBusknoppen()
   const modelcfg = modelcfgNu()
@@ -3159,6 +3170,8 @@ async function zetBusknoppenAan(): Promise<
  * app, en vlak voordat de app OMSI zelf opstart.
  */
 async function schrijfStraks(waarom: string): Promise<void> {
+  /* Niet in alleen-bekijken; de wachtrij blijft staan voor de exe die wel mag schrijven. */
+  if (inBekijkstand()) return
   const wachtrij = readSettings(userData()).busknoppenStraks ?? {}
   const verkeerd = aantalVerbodenToetsen(omsi())
   if (Object.keys(wachtrij).length === 0 && verkeerd === 0) return
@@ -3168,7 +3181,16 @@ async function schrijfStraks(waarom: string): Promise<void> {
    * toets: daar stond OMSI van stil. Zie verlegVerbodenToetsen.
    */
   if (verkeerd > 0) {
-    verlegVerbodenToetsen(omsi())
+    /*
+     * In een eigen `try`: dit wordt ook aangeroepen vanuit de wacht op een
+     * dicht OMSI, zonder iemand die een fout opvangt, en een keyboard.cfg die
+     * vastzit werd daar een onafgehandelde belofte (tegenlezing 29-09).
+     */
+    try {
+      verlegVerbodenToetsen(omsi())
+    } catch (fout) {
+      logFout('knoppen van F10 en Shift+` halen', fout)
+    }
     knoppenStand = undefined
   }
   if (Object.keys(wachtrij).length === 0) return
@@ -3198,6 +3220,16 @@ async function schrijfStraks(waarom: string): Promise<void> {
  * core/busklaar.ts.
  */
 async function busKlaarmaken(sleutel: string, ids: string[]): Promise<Busklaaruitslag> {
+  /*
+   * Alleen bekijken: niets bewaren en niets in de wachtrij (zie
+   * zetBusknoppenAan). Eerst kwam het verzoek in de wachtrij terwijl OMSI
+   * draaide, en anders meldde het scherm "alle knoppen stonden er al" over
+   * knoppen die `fs` net geweigerd had.
+   */
+  if (inBekijkstand()) {
+    log(`bus niet klaargemaakt: alleen bekijken (${sleutel})`)
+    return { knoppen: 0, bijgeschreven: 0, gedeeld: 0, geenPlek: 0, fout: 'bekijken' }
+  }
   const alles = { ...(readSettings(userData()).busmodules ?? {}) }
   if (ids.length > 0) alles[sleutel] = ids
   else delete alles[sleutel]
@@ -3245,7 +3277,8 @@ async function busKlaarmaken(sleutel: string, ids: string[]): Promise<Busklaarui
  */
 let straksWacht: ReturnType<typeof setInterval> | undefined
 function wachtOpOmsiDicht(): void {
-  if (straksWacht) return
+  // In alleen-bekijken valt er niets bij te schrijven; zie zetBusknoppenAan.
+  if (straksWacht || inBekijkstand()) return
   let dicht = 0
   straksWacht = setInterval(() => {
     void (async () => {
@@ -5491,6 +5524,17 @@ function registerHandlers(): void {
    * sluit een overlay die de app voor dicht aanzag. Levert de werkelijke stand.
    */
   handle('overlay:set', (_event, duty: Duty | undefined, open: boolean, ibis?: IbisPlan) => {
+    /*
+     * Alleen bekijken (main/versiewacht.ts): geen overlay. START weigert daar
+     * al, maar een dienst die in het profiel al liep (de nieuwere exe ging
+     * midden in een dienst dicht) kon via "hervatten" gewoon verder, met een
+     * overlay en een telling die in de kopie terechtkwamen en bij het
+     * afsluiten weg waren (tegenlezing 29-09). Het scherm zegt waarom.
+     */
+    if (open && inBekijkstand()) {
+      log('overlay niet geopend: alleen bekijken')
+      return overlayIsOpen()
+    }
     if (open && (duty || vrijeRit)) openOverlay(duty ?? undefined, ibis)
     else if (!open) closeOverlay()
     return overlayIsOpen()

@@ -2015,8 +2015,11 @@ ronde faalt en nu slaagt (nagedraaid op een kopie van `b7f3d7b`).
   blijft staan; sinds 29-09 bij het starten en met de bouw, zie hieronder). Start een oudere versie, dan eerst een venster "Bijgewerkt
   door 0.4.9, deze exe is 0.4.1" met Alleen bekijken (standaard, ook bij
   wegklikken), Toch doorgaan en Afsluiten, en een uitleg. Alleen bekijken zet
-  de app op een kopie van de gebruikersmap in `%TEMP%` (zonder caches, logboek
-  en add-on-reserve) en laat `fs` zelf alles buiten die kopie weigeren met
+  de app op een kopie van de gebruikersmap in `%TEMP%` (zonder de caches van
+  Chromium, het logboek, `kopieen` en de add-on-reserve; de `kaartcache` en
+  de `busfotos` gaan wel mee -- bij Luc samen zo'n 165 MB, synchroon gekopieerd
+  vóór het venster; zonder kaartcache zou de werker bij het rondkijken elke
+  kaart opnieuw moeten lezen) en laat `fs` zelf alles buiten die kopie weigeren met
   EROFS -- geen profielen, geen OMSI, geen Steam. Titel en versieregel zeggen
   "alleen bekijken". Chromium volgt de kopie ook; alleen zijn `Local State`
   komt nog in de echte map. Dit werkt pas tussen versies die het allebei
@@ -2147,8 +2150,14 @@ op `3880b6d` en slaagt nu.
 - **Versiewacht en deel 0**: het busbedrijf en de planning staan in het profiel
   (`career.bedrijf`, via `persist` → `saveCareer` → `schrijfVeilig`), dus in de
   gebruikersmap; de notitie wie er schrijft komt bij het starten
-  (`bewaakVersie`) en geldt voor de hele map, ook voor die velden. Een 0.4.8
-  die een profiel van 0.4.9 met plan leest, krijgt de vraag.
+  (`bewaakVersie`) en geldt voor de hele map, ook voor die velden. Let op:
+  0.4.8 (`0d16c1d`) kent de versiewacht nog niet -- die kwam met ronde 1, en
+  die kwam pas in 0.4.9 bij Vrij rijden en deel 0. Een 0.4.8-exe die na 0.4.9
+  start, vraagt dus niets en schrijft een profiel met plan terug zonder de
+  velden die hij niet kent. Alleen exe's met de wacht (vanaf 0.4.9, en de
+  0.4.7-bouwen van de tak `claude/openomsi-ronde1`) krijgen de vraag; oude
+  0.4.8-exe's dus weggooien. (Tot de tegenlezing van 29-09 stond hier dat een
+  0.4.8 de vraag kreeg.)
 - Proeven: `probe-veiligschrijven.ts` deel 7 (UTF-16 en Windows-1252 in
   options.cfg, onderbroken options.cfg/situatie/weer/laststn.osn/kopie; op
   `3880b6d` 7 fouten), `probe-alleenbekijken.cjs` (START weigert bij vrij
@@ -2164,6 +2173,55 @@ op `3880b6d` en slaagt nu.
   cfg's en toetsen); na elke Electron-proef waren Lucs `%APPDATA%\omsi-enhancer`,
   `%APPDATA%\omsi-career`, `%LOCALAPPDATA%\OMSI Career` en de OMSI-map (hoofdmap,
   Inputs, Situations, plugins, Weather, de kaartmappen en de .hof's) onveranderd.
+
+**Tegenlezing van 0.4.9** (29-09-2026, na `09905c1`). Wat de tegenlezer
+vond, zelf nagekeken; elk punt faalt op `09905c1` en slaagt nu.
+- **Busknoppen in alleen-bekijken**: bij het starten werd de wachtrij al niet
+  geprobeerd, maar "busknoppen aan" (overlay, tablet) en "bus klaarmaken"
+  zetten het verzoek terwijl OMSI draaide nog in de wachtrij, en na het
+  afsluiten van OMSI vroeg `wachtOpOmsiDicht` elke vijf tellen PowerShell en
+  schreef `schrijfStraks` een fout in het logboek, tot de app dicht ging.
+  Nu weigeren `zetBusknoppenAan` en `busKlaarmaken` meteen met
+  `fout: 'bekijken'` (tekst `vw.knoppen` in het busscherm), zonder iets te
+  bewaren; `schrijfStraks` en `wachtOpOmsiDicht` doen in die stand niets, en
+  `verlegVerbodenToetsen` staat in `schrijfStraks` in een eigen `try`.
+- **De plugin in alleen-bekijken**: `ensurePlugin` riep `mkdirSync` op de
+  plugins-map aan vóór het vergelijken, en het schrijfslot weigert dat ook als
+  de map er al is -- elke start in die stand stond er "de plugin kon niet in
+  de OMSI-map gezet worden" op het startscherm, terwijl hij klopte. Nu pas als
+  er iets neer moet. Klopt de plugin niet, dan komt die melding nog wel: dat
+  is waar.
+- **`schrijfVeilig` meldde soms "mislukt" over iets dat gelukt was**: na een
+  geslaagde terugval (ter plekke schrijven, teruggelezen) mocht het weghalen
+  van het `.bezig`-bestand niet mislukken, en dat doet het juist als een
+  scanner dat bestand vasthoudt. Nu blijft het dan liggen (de volgende keer
+  overschreven).
+- **Een leeg weerbestand van de kaart**: `findWeather` nam een leeg
+  `laststn.osn.owt` als het weer van de kaart, `schrijfVeilig` weigerde het
+  lege bestand over het weer van de vorige rit heen te zetten, en dat weer
+  (door de app gekozen) bleef naast de situatie staan en ging met
+  `presetStartup` mee naar `laststn.osn.owt`. Nu slaat `findWeather` een
+  leeg weerbestand over; zonder ander weer van de kaart is het OMSI's
+  standaard. (`leegMag` bij de kopieën was de andere weg; alleen hier kon een
+  leeg bestand over een vol heen.)
+- **Versiewacht**: een ontwikkelstart op de echte map werd de hoogste
+  (`isNieuwer` zegt bij `dev` nee), en daarna kreeg een oude draagbare met
+  hetzelfde nummer de vraag niet meer; nu neemt een `dev` met hetzelfde nummer
+  de plek van een gebouwde niet over (met een hoger nummer wel). En twee vuile
+  bouwen op dezelfde commit (hash met `+`) telden als gelijk; nu beslist dan
+  de bouwtijd (de setup en de draagbare van één bouw hebben dezelfde tijd).
+- **Een dienst die nog liep, in alleen-bekijken**: START weigerde, maar
+  "hervatten" bracht je naar het rijscherm, en de overlay en de telling
+  liepen door in de kopie. Nu opent `overlay:set` in die stand niets
+  (logboek: "overlay niet geopend: alleen bekijken"), en zeggen "hervatten"
+  (in het hoofdmenu) en de overlayknop op het rijscherm `vw.start`. Afronden
+  kan nog en komt in de kopie; dat is rondkijken.
+- Verworpen: `kaartcache` en `busfotos` uit de kopie laten (zie boven: de
+  kopie blijft groter, maar rondkijken zonder kaartcache is trager).
+- Proeven: `probe-veiligschrijven.ts` deel 8 (op `09905c1` 3 fouten),
+  `probe-versiewacht.ts` (3 fouten), `probe-alleenbekijken.cjs` (de plugin,
+  de overlay, busknoppen met een eigen nepproces als OMSI, bus klaarmaken,
+  PowerShell geteld na "OMSI dicht"; 6 fouten).
 
 **Navigatie: doorzichtig, vaste zoom, en haltenamen die niet meer wegvallen**
 (28-09-2026). Drie vragen van gebruikers, via Luc.

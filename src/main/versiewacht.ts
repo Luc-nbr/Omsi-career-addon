@@ -50,6 +50,8 @@ export function alleenBekijken(): { versie: string; bouw?: string } | undefined 
  *   core/schrijfslot.ts, ook in de kaartwerker; `zetBekijkstand`).
  *   Rondkijken kan, opslaan niet; START (een dienst, vrij rijden) weigert
  *   met een melding voordat er iets klaargezet wordt, en OMSI starten ook.
+ *   Sinds de tegenlezing van 29-09 ook de overlay (een dienst die nog liep,
+ *   hervat), de busknoppen en een bus klaarmaken.
  *   Chromium volgt de kopie ook; alleen zijn eigen `Local State` komt nog in
  *   de echte map (geen gegevens van de app).
  * - Toch doorgaan: zoals altijd.

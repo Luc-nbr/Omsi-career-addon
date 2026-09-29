@@ -353,6 +353,8 @@ export interface Busklaaruitslag {
   geenPlek: number
   /** OMSI draaide: onthouden, en bijgeschreven zodra het dicht is. */
   onthouden?: boolean
+  /** `bekijken`: de app draait alleen om te bekijken (main/versiewacht.ts); er is niets bewaard of bijgeschreven. */
+  fout?: 'bekijken'
 }
 
 export interface BeginRequest {
@@ -649,7 +651,7 @@ export interface CareerApi extends BedrijfPlanApi {
    */
   telefoonToets(actie: string): Promise<boolean>
   /** De knoppen van de apparaten in de bus bijschrijven; zie core/bustoetsen.ts. */
-  telefoonKnoppen(): Promise<{ toegevoegd: number; geenPlek: number } | undefined>
+  telefoonKnoppen(): Promise<{ toegevoegd: number; geenPlek: number; fout?: 'bekijken' } | undefined>
   /** Een apparaat uit deze bus in de telefoon zetten of eruit halen. */
   telefoonModule(id: string, aan: boolean): Promise<void>
   /**

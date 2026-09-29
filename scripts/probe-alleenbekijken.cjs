@@ -27,10 +27,18 @@
  *   zijn eigen `fs`: dezelfde gebouwde werker schrijft zijn cache met de
  *   grens niet buiten de kopie, en zonder wel -- het slot van het hoofdproces
  *   geldt in een worker_thread niet.
+ * - (tegenlezing 29-09) de plugin die al klopt geeft geen fout (het slot
+ *   weigerde een mkdir op de bestaande plugins-map); "busknoppen aan" terwijl
+ *   OMSI draait weigert met "bekijken", zet niets in de wachtrij, en na het
+ *   afsluiten van OMSI vraagt de app niet elke vijf tellen PowerShell;
+ *   een bus klaarmaken weigert ook; de overlay gaat niet open (een dienst die
+ *   nog liep kon via "hervatten" verder). "OMSI" is dan een eigen nepproces:
+ *   een kopie van PING.EXE met de proefnaam.
  *
  * Op de oude code (vóór 28-09) faalt dit: geen vraag, en alles werd in de
  * echte map geschreven. Het deel over de Game Bar faalt op d9eeeda, het deel
- * over START en de werker op 3880b6d.
+ * over START en de werker op 3880b6d, dat over de plugin, de busknoppen en de
+ * overlay op 09905c1.
  */
 const { app, BrowserWindow } = require('electron')
 const { createHash } = require('node:crypto')
@@ -50,7 +58,14 @@ fs.writeFileSync(
   join(omsi, 'Inputs', 'keyboard.cfg'),
   '\r\n[game]\r\n\r\n[entry]\r\nPause\r\n25\r\n0\r\n\r\n[vehicles]\r\n\r\n[entry]\r\nThrottle\r\n200\r\n1\r\n\r\n'
 )
-fs.writeFileSync(join(data, 'settings.json'), JSON.stringify({ language: 'nl', omsiPath: omsi, omsiConfirmed: true }))
+// Een wachtrij met busknoppen uit de echte map, zoals een nieuwere exe hem achterliet.
+const modelcfg = join(omsi, 'Vehicles', 'Proefbus', 'Model', 'model.cfg')
+const wachtrijVoor = { [modelcfg]: ['bus_proef_knop'] }
+fs.writeFileSync(join(data, 'settings.json'), JSON.stringify({ language: 'nl', omsiPath: omsi, omsiConfirmed: true, busknoppenStraks: wachtrijVoor }))
+// De plugin staat al in OMSI, gelijk aan wat de app meebrengt (alleen gelezen uit plugin/).
+fs.mkdirSync(join(omsi, 'plugins'), { recursive: true })
+fs.copyFileSync(join(__dirname, '..', 'plugin', 'out', 'OMSICareerPlugin.dll'), join(omsi, 'plugins', 'OMSICareerPlugin.dll'))
+fs.copyFileSync(join(__dirname, '..', 'plugin', 'OMSICareer.opl'), join(omsi, 'plugins', 'OMSICareer.opl'))
 const nieuwer = { versie: '9.9.9', bouw: 'bouw fffffff · 2030-01-01 00:00 · setup', tijd: '2030-01-01T00:00:00.000Z' }
 fs.writeFileSync(join(data, 'laatst-geschreven.json'), JSON.stringify({ hoogste: nieuwer, laatst: nieuwer }))
 // Een bus met een wagenpark, zodat de werker iets in zijn cache te zetten heeft.
@@ -62,6 +77,10 @@ const werkerBinnen = join(werk, 'werker-binnen')
 fs.mkdirSync(werkerBuiten, { recursive: true })
 fs.mkdirSync(werkerBinnen, { recursive: true })
 fs.mkdirSync(join(werk, 'live'), { recursive: true })
+// "OMSI" voor het deel over de busknoppen: een kopie van PING.EXE met de proefnaam. Nu al, want
+// straks weigert `fs` in dit proces alles buiten de kopie.
+const nepExe = join(werk, 'GeenOmsiProefBekijken.exe')
+fs.copyFileSync(join(process.env.SystemRoot || 'C:/Windows', 'System32', 'PING.EXE'), nepExe)
 process.env.OMSI_ENHANCER_PROEFKEUZE = 'bekijken'
 process.env.OMSI_ENHANCER_PROEFPROCES = 'GeenOmsiProefBekijken'
 // Nooit de echte %LOCALAPPDATA%\OMSI Career.
@@ -76,6 +95,17 @@ draden.Worker = class extends EchteWorker {
     gemaakteWerkers.push(opties && opties.workerData)
     super(bestand, opties)
   }
+}
+
+// Hoe vaak de app met PowerShell kijkt of "OMSI" draait (de gebouwde app zoekt execFile bij elke aanroep op).
+const cp = require('node:child_process')
+const echtExecFile = cp.execFile
+let omsiGepeild = 0
+cp.execFile = function (bestand, args, ...rest) {
+  if (/powershell/i.test(String(bestand)) && Array.isArray(args) && args.some((a) => String(a).includes("Get-Process -Name 'GeenOmsiProefBekijken'"))) {
+    omsiGepeild++
+  }
+  return echtExecFile.call(this, bestand, args, ...rest)
 }
 
 // Wat Chromium zelf in de gebruikersmap zet; dat is geen gegevens van de app.
@@ -107,7 +137,7 @@ app.setPath('userData', data)
 setTimeout(() => {
   console.error('time-out')
   app.exit(1)
-}, 90000).unref()
+}, 150000).unref()
 require('../out/main/index.js')
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -148,8 +178,11 @@ app.whenReady().then(async () => {
   }
   klopt(`schrijven vanuit het hoofdproces naar de OMSI-map: ${direct}`, direct === 'geweigerd (EROFS)')
 
+  // (tegenlezing 29-09) De plugin klopt al: geen fout. Het slot weigerde de mkdir op de bestaande map.
+  const plugin = await js(`window.career.pluginStatus().then((s) => JSON.stringify(s), (f) => 'fout: ' + f.message)`)
+  klopt(`de plugin die al klopt: geen fout (${plugin.slice(0, 160)})`, /"upToDate":true/.test(plugin) && !/"error"/.test(plugin))
+
   // De Game Bar gaat met `reg add` het register in, buiten `fs` om.
-  const cp = require('node:child_process')
   const echtExec = cp.execFileSync
   const gevraagd = []
   cp.execFileSync = (bestand, args = [], ...rest) => {
@@ -195,7 +228,44 @@ app.whenReady().then(async () => {
     }
   })()
   klopt('het logboek zegt waarom', /vrij rijden geweigerd: alleen bekijken/.test(logboek) && /dienst niet begonnen: alleen bekijken/.test(logboek))
+
+  // (tegenlezing 29-09) Geen overlay: een dienst die nog liep kon via "hervatten" verder.
+  const vensters = BrowserWindow.getAllWindows().length
+  const overlay = await js(`window.career.setOverlay(${JSON.stringify(dienst)}, true).then((u) => JSON.stringify(u), (f) => 'fout: ' + f.message)`)
+  klopt(`de overlay gaat niet open (${overlay}, vensters ${vensters} -> ${BrowserWindow.getAllWindows().length})`, overlay === 'false' && BrowserWindow.getAllWindows().length === vensters)
   await js(`window.career.cancelDuty()`)
+
+  // (tegenlezing 29-09) Busknoppen terwijl "OMSI" draait: een eigen nepproces met de proefnaam.
+  const nep = cp.spawn(nepExe, ['-n', '120', '127.0.0.1'], { stdio: 'ignore', windowsHide: true })
+  let knoppen
+  let klaarBus
+  try {
+    await wait(1500)
+    knoppen = await js(`window.career.telefoonKnoppen().then((u) => JSON.stringify(u), (f) => 'fout: ' + f.message)`)
+    klaarBus = await js(`window.career.busKlaar('vehicles/proefbus', ['almex']).then((u) => JSON.stringify(u), (f) => 'fout: ' + f.message)`)
+  } finally {
+    nep.kill()
+  }
+  const wachtrijNa = JSON.parse(fs.readFileSync(join(kopie, 'settings.json'), 'utf8')).busknoppenStraks
+  klopt(
+    `busknoppen aan terwijl OMSI draait: ${knoppen}, de wachtrij blijft ${JSON.stringify(wachtrijNa) === JSON.stringify(wachtrijVoor) ? 'wat hij was' : JSON.stringify(wachtrijNa)}`,
+    /"fout":"bekijken"/.test(knoppen) && !/"onthouden"/.test(knoppen) && JSON.stringify(wachtrijNa) === JSON.stringify(wachtrijVoor)
+  )
+  const busmodules = JSON.parse(fs.readFileSync(join(kopie, 'settings.json'), 'utf8')).busmodules
+  klopt(`een bus klaarmaken: ${klaarBus}, niets bewaard`, /"fout":"bekijken"/.test(klaarBus) && !busmodules)
+  const gepeildVoor = omsiGepeild
+  await wait(11500)
+  const logboekNa = fs.readFileSync(join(kopie, 'logs', 'omsi-enhancer.log'), 'utf8')
+  klopt(
+    `na het afsluiten van OMSI: ${omsiGepeild - gepeildVoor} keer PowerShell voor de wachtrij, geen schrijffout`,
+    omsiGepeild === gepeildVoor && !/busknoppen bijschrijven|onafgehandelde/.test(logboekNa)
+  )
+  klopt(
+    'het logboek zegt waarom (busknoppen, bus, overlay)',
+    /busknoppen niet bijgeschreven: alleen bekijken/.test(logboekNa) &&
+      /bus niet klaargemaakt: alleen bekijken/.test(logboekNa) &&
+      /overlay niet geopend: alleen bekijken/.test(logboekNa)
+  )
 
   const bedrijf = await js(
     `window.career.bedrijfOprichten('Proef BV').then((p) => p && p.state && p.state.bedrijf ? 'opgericht' : 'niet opgericht', (f) => 'fout: ' + f.message)`

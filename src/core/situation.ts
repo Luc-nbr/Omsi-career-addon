@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync } from 'node:fs'
 import { basename, join, relative } from 'node:path'
 import { readOmsiLines, str } from './omsiFile'
 import { schrijfVeilig } from './veilig'
@@ -155,6 +155,15 @@ function isEigen(file: string): boolean {
   }
 }
 
+/** Een bestand zonder inhoud (of dat niet te lezen valt). */
+function isLeeg(pad: string): boolean {
+  try {
+    return statSync(pad).size === 0
+  } catch {
+    return true
+  }
+}
+
 /**
  * Koos de app dit weer zelf? `writeWeather` noemt het "OMSI Enhancer - ..."
  * (vroeger "OMSI Career - ..."), en OMSI schrijft die naam na een rit ermee
@@ -199,8 +208,15 @@ export function findWeather(omsiPath: string, mapFolder: string): string | undef
   }
   for (const osn of kandidaten) {
     const owt = `${osn}.owt`
-    // Eerst wat niets kost: zonder weerbestand hoeft de situatie niet open.
-    if (!existsSync(owt) || isEigenWeer(owt)) continue
+    /*
+     * Eerst wat niets kost: zonder weerbestand hoeft de situatie niet open.
+     * Een leeg weerbestand telt als geen: er staat geen weer in. Tot de
+     * tegenlezing van 29-09 werd het gekozen, en weigerde `schrijfVeilig` het
+     * lege bestand over het weer van de vorige rit heen te zetten -- waarna
+     * dat weer (door de app gekozen) naast de situatie bleef staan en
+     * presetStartup het ook naar laststn.osn.owt kopieerde.
+     */
+    if (!existsSync(owt) || isLeeg(owt) || isEigenWeer(owt)) continue
     if (situationMap(osn) !== mapFolder) continue
     if (osn.startsWith(situations) && isEigen(osn)) continue
     return owt
