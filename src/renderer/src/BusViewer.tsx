@@ -116,7 +116,7 @@ export function BusViewer({ relatiefPad, kleurstelling, naam, licht = false, onS
     })
     void window.bus3d?.busOmgeving3d().then((o) => verbinding.omgeving(o), () => undefined)
     const kader = kaderRef.current!
-    const ro = new ResizeObserver(() => {
+    const zetMaat = (): void => {
       const r = kader.getBoundingClientRect()
       const m = tekenMaat(r.width, r.height, licht)
       if (doek.width !== m.b || doek.height !== m.h) {
@@ -124,7 +124,10 @@ export function BusViewer({ relatiefPad, kleurstelling, naam, licht = false, onS
         doek.height = m.h
       }
       h.maat(m.b, m.h, m.dpr)
-    })
+    }
+    // Meteen de maat, niet pas bij de eerste melding van de ResizeObserver (een beeld later).
+    zetMaat()
+    const ro = new ResizeObserver(zetMaat)
     ro.observe(kader)
     return () => {
       ro.disconnect()
@@ -145,9 +148,12 @@ export function BusViewer({ relatiefPad, kleurstelling, naam, licht = false, onS
       if (!geforceerd && cur.pad === pad && cur.pakket) {
         if (cur.kleur === kleur) return
         cur.kleur = kleur
+        const t0 = klok()
         const lak = await brug.busLak3d(cur.pakket, kleur)
+        if (huidig.current.kleur !== kleur) return
         if ('reden' in lak) return laad(pad, kleur, true)
-        h.lak(lak as Bus3dLak)
+        meld({ ...standRef.current, fase: 'texturen', mijlpalen: { antwoord: Math.round(klok() - t0) } })
+        h.lak(lak as Bus3dLak, t0)
         return
       }
       const vraag = ++cur.vraag
@@ -195,8 +201,10 @@ export function BusViewer({ relatiefPad, kleurstelling, naam, licht = false, onS
     const brug = window.bus3d
     if (!brug) return
     const weg1 = brug.opBus3dVoortgang((v) => {
-      if (standRef.current.fase !== 'bouwen' || v.stap !== 'lezen') return
-      meld({ ...standRef.current, klaar: v.klaar, totaal: v.totaal })
+      if (standRef.current.fase !== 'bouwen') return
+      // De textuurlijst staat er al terwijl de o3d's nog gelezen worden: alvast ophalen (§4.1).
+      if (v.stap === 'lijst' && v.lijst) Verbinding.get().voorhaal(v.lijst.map((t) => ({ id: t.id, bytes: t.bytes })))
+      if (v.stap === 'lezen') meld({ ...standRef.current, klaar: v.klaar, totaal: v.totaal })
     })
     const weg2 = brug.opBus3dVervangen((pakket) => {
       if (huidig.current.pakket === pakket) void laad(huidig.current.pad, huidig.current.kleur, true)

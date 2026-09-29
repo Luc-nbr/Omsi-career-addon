@@ -37,6 +37,8 @@ if (proef && adres.get('licht')) {
 
 interface Proefhaak {
   laad(pad: string, kleur?: string): Promise<ViewerStand>
+  /** Dezelfde bus in een andere kleurstelling (zonder opnieuw te laden): tot hij weer scherp staat. */
+  kleur(kleur?: string): Promise<ViewerStand>
   afdruk(a: AfdrukVraag): Promise<{ beeld?: string; masker?: string; id?: string; idTabel?: unknown; fout?: string }>
   meet(wat: 'draaien' | 'schaduw' | 'geheugen', beelden?: number): Promise<unknown>
   stand(): ViewerStand | undefined
@@ -91,6 +93,12 @@ function Venster(): JSX.Element {
           laatste.current = undefined
           wachters.current.push(klaar)
           zetBus((b) => ({ pad, kleur, n: b.n + 1 }))
+        }),
+      kleur: (kleur) =>
+        new Promise((klaar) => {
+          laatste.current = undefined
+          wachters.current.push(klaar)
+          zetBus((b) => ({ ...b, kleur }))
         }),
       afdruk: async (a) => {
         const h = handvat.current

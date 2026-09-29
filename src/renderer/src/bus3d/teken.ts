@@ -5,9 +5,10 @@ import {
   type Bus3dMateriaal,
   type Bus3dMateriaalstand,
   type Bus3dOmgeving,
+  type Bus3dPakKop,
   type Bus3dTextuur
 } from '../../../shared/bus3d'
-import { leesPakket, type GelezenPakket } from '../../../shared/bus3dpak'
+import { leesPakket } from '../../../shared/bus3dpak'
 import { ontwarStuk, type OntwarStand } from '../../../shared/o3dhussel'
 import type { CameraBeeld } from './camera'
 import {
@@ -73,7 +74,9 @@ export const LICHT = {
   /** Hoeveel hemellicht er in de schaduw overblijft (openOMSI: 0,6). */
   schaduwHemel: 0.8,
   /** De kleinste weerspiegeling op glas (zie `matVoor`). */
-  glasMin: 0.6
+  glasMin: 0.6,
+  /** Alleen voor de proef: een ander textuurbudget in MB (0 = het gewone, 160 of 96). */
+  textuurBudgetMB: 0
 }
 
 /** Voor het ijken (de proef): lichtwaarden overschrijven. */
@@ -120,7 +123,8 @@ interface Beurt {
 
 interface BusScene {
   manifest: Bus3dManifest
-  pak: GelezenPakket
+  /** Alleen de kop (vermeldingen, stukken): de hoekpunten staan na het uploaden alleen nog op de GPU. */
+  kop: Bus3dPakKop
   vao: WebGLVertexArrayObject
   vb: WebGLBuffer
   ibAlle: WebGLBuffer
@@ -339,10 +343,13 @@ export class Tekenaar {
    * Het pakket ophalen, ontwarren (in stukken, `tussendoor` na elke 16 ms) en
    * naar de GPU. Gooit bij een pakket dat niet te lezen is.
    */
-  async laadBus(manifest: Bus3dManifest, tussendoor: () => Promise<void>, geldig: () => boolean = () => true): Promise<boolean> {
-    const r = await fetch(`omsi3d://p/${manifest.pakket}`)
-    if (!r.ok) throw new Error(`pakket: omsi3d ${r.status}`)
-    const buf = new Uint8Array(await r.arrayBuffer())
+  async laadBus(
+    manifest: Bus3dManifest,
+    tussendoor: () => Promise<void>,
+    geldig: () => boolean = () => true,
+    opKop?: (kop: Bus3dPakKop) => void
+  ): Promise<boolean> {
+    const buf = await this.haalPakket(manifest.pakket, opKop)
     const pak = leesPakket(buf)
     if (pak.kop.pakket !== manifest.pakket) throw new Error('pakket hoort niet bij het manifest')
     const gl = this.gl
@@ -452,7 +459,7 @@ export class Tekenaar {
     this.vergeetBus()
     this.scene = {
       manifest,
-      pak,
+      kop: pak.kop,
       vao,
       vb,
       ibAlle,
@@ -475,6 +482,42 @@ export class Tekenaar {
     }
     this.zetGebieden()
     return true
+  }
+
+  /**
+   * Het pakket ophalen als stroom: zodra de kop binnen is (de vermeldingen, een
+   * paar honderd kB vooraan) hoort `opKop` hem, zodat het textuurplan al kan
+   * beginnen terwijl de hoekpunten nog binnenkomen.
+   */
+  private async haalPakket(pakket: string, opKop?: (kop: Bus3dPakKop) => void): Promise<Uint8Array> {
+    const r = await fetch(`omsi3d://p/${pakket}`)
+    if (!r.ok) throw new Error(`pakket: omsi3d ${r.status}`)
+    const lengte = Number(r.headers.get('content-length'))
+    if (!r.body || !Number.isFinite(lengte) || lengte < 8) return new Uint8Array(await r.arrayBuffer())
+    const buf = new Uint8Array(lengte)
+    const lezer = r.body.getReader()
+    let plek = 0
+    let kopGehad = !opKop
+    for (;;) {
+      const { done, value } = await lezer.read()
+      if (done) break
+      if (plek + value.byteLength > buf.byteLength) throw new Error('pakket langer dan beloofd')
+      buf.set(value, plek)
+      plek += value.byteLength
+      if (!kopGehad && plek >= 8) {
+        const n = new DataView(buf.buffer, 0, 8).getUint32(4, true)
+        if (plek >= 8 + n) {
+          kopGehad = true
+          try {
+            opKop?.(JSON.parse(new TextDecoder().decode(buf.subarray(8, 8 + n))) as Bus3dPakKop)
+          } catch {
+            // Een kop die niet te lezen is: leesPakket zegt het straks precies.
+          }
+        }
+      }
+    }
+    if (plek !== buf.byteLength) throw new Error('pakket afgekapt')
+    return buf
   }
 
   vergeetBus(): void {
@@ -522,6 +565,29 @@ export class Tekenaar {
   }
   private schaduwBereik = { breedte: 16, diepte: 80 }
 
+  /**
+   * De texturen alvast laden terwijl het pakket nog opgehaald en ontward wordt:
+   * het plan zonder de zichtbaarheid (alles met een buitenoppervlak). Zodra de
+   * tekenlijsten er zijn volgt het echte plan (`zetLak`); wat daarin hetzelfde
+   * is, loopt gewoon door.
+   */
+  voorlopigPlan(kop: Bus3dPakKop, manifest: Bus3dManifest, lak: Bus3dLak | undefined, budget: number): void {
+    const vervangen = new Map<number, Bus3dTextuur>()
+    for (const v of lak?.texturen ?? []) vervangen.set(v.plek, v.textuur)
+    const texturen = manifest.texturen.map((t, i) => vervangen.get(i) ?? t)
+    // Dezelfde keuze als de tekenlijsten: alleen wat met deze lak te zien is.
+    const benodigd = new Set<number>()
+    const zicht = lak?.zichtbaar ?? ''
+    kop.vermeldingen.forEach((v, i) => {
+      if (!v.buiten || (zicht.length === kop.vermeldingen.length && zicht[i] === '0')) return
+      for (const g of kop.stukken[v.stuk]?.groepen ?? []) {
+        const mat = this.matVoor(v.materialen[g.materiaal], lak?.items[itemSleutel(i, g.materiaal)] ?? 0, lak?.alphascale ?? {})
+        if (mat) for (const t of [mat.tex, mat.trans, mat.masker]) if (t !== undefined) benodigd.add(t)
+      }
+    })
+    this.texturen.zetPlan(texturen, benodigd, budget)
+  }
+
   // ------------------------------------------------------------ de lak: zichtbaarheid en tekenlijsten
   zetLak(lak: Bus3dLak | undefined, budget: number): void {
     const s = this.scene
@@ -532,7 +598,11 @@ export class Tekenaar {
     for (const v of lak?.texturen ?? []) vervangen.set(v.plek, v.textuur)
     s.texturen = s.manifest.texturen.map((t, i) => vervangen.get(i) ?? t)
     this.bouwLijsten()
-    this.texturen.zetPlan(s.texturen, s.benodigd, budget)
+    const plan = this.texturen.zetPlan(s.texturen, s.benodigd, budget)
+    // De ruimte voor de LRU: wat er onder 300 MB overblijft (§10), hooguit 64 MB (§7).
+    const vast = this.gpuBytes(this.msaa?.b ?? 1920, this.msaa?.h ?? 1080)
+    const ruimte = 300 * 1024 * 1024 - vast.geometrie - vast.doelen - plan.bytes - this.texturen.losBytes()
+    this.texturen.lruMax = Math.max(0, Math.min(64 * 1024 * 1024, ruimte))
     s.schaduwVuil = true
     s.contactVuil = true
   }
@@ -587,7 +657,7 @@ export class Tekenaar {
     const s = this.scene
     if (!s) return
     const gl = this.gl
-    const kop = s.pak.kop
+    const kop = s.kop
     const zicht = s.lak?.zichtbaar ?? ''
     const items = s.lak?.items ?? {}
     const alfaSchaal = s.lak?.alphascale ?? {}
@@ -795,13 +865,82 @@ export class Tekenaar {
   /** Na een beeld met `id`: per kleurnummer (r + 256 g, vanaf 1) de tekenbeurt, voor de diagnose. */
   idTabel: Array<Record<string, unknown>> = []
 
+  /**
+   * 4x MSAA in een eigen framebuffer (kleur RGBA8 en diepte 24 bits, elk vier
+   * monsters), aan het eind opgelost naar het doek. Het doek zelf is daardoor
+   * gewoon RGBA8 zonder diepte: met `antialias:true` legde Chromium er zelf een
+   * MSAA-kleur, een diepte met stencil en een extra kopie naast, en kostte een
+   * lege viewer op 1918x1081 250 MB videogeheugen (nvidia-smi).
+   */
+  private msaa?: {
+    fb: WebGLFramebuffer
+    kleur: WebGLRenderbuffer
+    diepte: WebGLRenderbuffer
+    /** Opgelost, zonder monsters: een MSAA-blit mag alleen naar precies hetzelfde formaat, en het doek is RGB. */
+    uitFb: WebGLFramebuffer
+    uit: WebGLTexture
+    b: number
+    h: number
+  }
+  private msaaVoor(b: number, h: number): WebGLFramebuffer {
+    const gl = this.gl
+    if (this.msaa && this.msaa.b === b && this.msaa.h === h) return this.msaa.fb
+    if (this.msaa) {
+      gl.deleteFramebuffer(this.msaa.fb)
+      gl.deleteRenderbuffer(this.msaa.kleur)
+      gl.deleteRenderbuffer(this.msaa.diepte)
+      gl.deleteFramebuffer(this.msaa.uitFb)
+      gl.deleteTexture(this.msaa.uit)
+    }
+    const monsters = Math.min(4, gl.getParameter(gl.MAX_SAMPLES) as number)
+    const kleur = gl.createRenderbuffer()!
+    gl.bindRenderbuffer(gl.RENDERBUFFER, kleur)
+    gl.renderbufferStorageMultisample(gl.RENDERBUFFER, monsters, gl.RGBA8, b, h)
+    const diepte = gl.createRenderbuffer()!
+    gl.bindRenderbuffer(gl.RENDERBUFFER, diepte)
+    gl.renderbufferStorageMultisample(gl.RENDERBUFFER, monsters, gl.DEPTH_COMPONENT24, b, h)
+    const fb = gl.createFramebuffer()!
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb)
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, kleur)
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, diepte)
+    const uit = gl.createTexture()!
+    gl.bindTexture(gl.TEXTURE_2D, uit)
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, b, h)
+    const uitFb = gl.createFramebuffer()!
+    gl.bindFramebuffer(gl.FRAMEBUFFER, uitFb)
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, uit, 0)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+    this.msaa = { fb, kleur, diepte, uitFb, uit, b, h }
+    return fb
+  }
+
   teken(c: CameraBeeld, b: number, h: number, opties: { vlak?: boolean; zonderBus?: boolean; id?: boolean } = {}): void {
+    const gl = this.gl
+    const fb = this.msaaVoor(b, h)
+    this.tekenScene(c, b, h, opties, fb)
+    // Eerst oplossen naar RGBA8 (zelfde formaat), dan naar het doek (dat mag wel van formaat verschillen).
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fb)
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this.msaa!.uitFb)
+    gl.blitFramebuffer(0, 0, b, h, 0, 0, b, h, gl.COLOR_BUFFER_BIT, gl.NEAREST)
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.msaa!.uitFb)
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null)
+    gl.blitFramebuffer(0, 0, b, h, 0, 0, b, h, gl.COLOR_BUFFER_BIT, gl.NEAREST)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+  }
+
+  private tekenScene(
+    c: CameraBeeld,
+    b: number,
+    h: number,
+    opties: { vlak?: boolean; zonderBus?: boolean; id?: boolean },
+    doelFb: WebGLFramebuffer
+  ): void {
     const gl = this.gl
     const s = this.scene
     this.vulBlok(c)
     if (s?.schaduwVuil) this.tekenSchaduwKaart()
     if (s?.contactVuil) this.tekenContact()
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, doelFb)
     gl.viewport(0, 0, b, h)
     gl.colorMask(true, true, true, true)
     gl.depthMask(true)
@@ -956,8 +1095,8 @@ export class Tekenaar {
     const s = this.scene
     const geometrie = s ? s.bytes.hoekpunten + s.bytes.indices + s.bytes.samen : 0
     const texturen = this.texturen.gpuBytes()
-    // Schaduwkaart 16 MB, contact 2x R8 + diepte, en het doek: 4x MSAA kleur en diepte plus de uitkomst.
-    const doelen = SCHADUW_MAAT * SCHADUW_MAAT * 4 + CONTACT_MAAT * CONTACT_MAAT * 4 + b * h * (4 * 4 + 4 * 4 + 4)
+    // Schaduwkaart 16 MB, contact 2x R8 + diepte, de eigen MSAA (kleur en diepte, 4 monsters) en het doek.
+    const doelen = SCHADUW_MAAT * SCHADUW_MAAT * 4 + CONTACT_MAAT * CONTACT_MAAT * 4 + b * h * (4 * 4 + 4 * 4 + 4 + 4)
     return { totaal: geometrie + texturen + doelen, texturen, geometrie, doelen }
   }
 

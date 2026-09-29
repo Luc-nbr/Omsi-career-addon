@@ -1,7 +1,7 @@
 import { heldenSleutel, type Bus3dLak, type Bus3dManifest, type Bus3dMeting } from '../../../shared/bus3d'
 import { klok, type AfdrukVraag, type NaarWerker, type StandBericht, type VanWerker } from './berichten'
 import { Camera } from './camera'
-import { Tekenaar, zetLicht } from './teken'
+import { LICHT, Tekenaar, zetLicht } from './teken'
 import type { Mogelijkheden, Ontleder } from './texturen'
 
 /**
@@ -38,9 +38,16 @@ const doel = self as unknown as {
 const stuur = (b: VanWerker, overdracht?: Transferable[]): void => doel.postMessage(b, overdracht)
 
 // ------------------------------------------------------------ de ontleders (TGA en co)
-function maakOntleders(aantal: number): Ontleder {
-  const werkers: Worker[] = []
-  const wachtend = new Map<number, { klaar: (u: { b: number; h: number; pixels: Uint8Array }) => void; fout: (e: Error) => void }>()
+/**
+ * De ontleders: een paar werkers voor TGA en co (één 2048² TGA kost 25-40 ms).
+ * Op Lucs pc (16 draden) vijf; een klus gaat naar de werker met de minste in
+ * de wacht. De O560 heeft er 16, de NLC 18C 19: met twee werkers was dat het
+ * langste pad naar "alles scherp".
+ */
+function maakOntleders(): Ontleder {
+  const aantal = Math.max(2, Math.min(5, Math.floor((navigator.hardwareConcurrency || 4) / 3)))
+  const werkers: Array<{ w: Worker; bezig: number }> = []
+  const wachtend = new Map<number, { klaar: (u: { b: number; h: number; pixels: Uint8Array }) => void; fout: (e: Error) => void; wie: number }>()
   let volgende = 0
   for (let i = 0; i < aantal; i++) {
     const w = new Worker(new URL('./ontleder.ts', import.meta.url), { type: 'module' })
@@ -48,17 +55,21 @@ function maakOntleders(aantal: number): Ontleder {
       const v = wachtend.get(e.data.id)
       if (!v) return
       wachtend.delete(e.data.id)
+      werkers[v.wie].bezig--
       if (e.data.fout) v.fout(new Error(e.data.fout))
       else v.klaar({ b: e.data.b, h: e.data.h, pixels: new Uint8Array(e.data.pixels) })
     }
-    werkers.push(w)
+    werkers.push({ w, bezig: 0 })
   }
   return {
     ontleed: (bytes) =>
       new Promise((klaar, fout) => {
         const id = ++volgende
-        wachtend.set(id, { klaar, fout })
-        werkers[id % werkers.length].postMessage({ id, bytes }, [bytes])
+        let wie = 0
+        for (let i = 1; i < werkers.length; i++) if (werkers[i].bezig < werkers[wie].bezig) wie = i
+        werkers[wie].bezig++
+        wachtend.set(id, { klaar, fout, wie })
+        werkers[wie].w.postMessage({ id, bytes }, [bytes])
       })
   }
 }
@@ -68,11 +79,13 @@ let doek: OffscreenCanvas
 let gl: WebGL2RenderingContext | null = null
 let tekenaar: Tekenaar | undefined
 let mag: Mogelijkheden = { s3tc: false, s3tcSrgb: false, aniso: 1 }
-const ontleder = maakOntleders(2)
+const ontleder = maakOntleders()
 const viewers = new Map<number, Viewer>()
 let actief: Viewer | undefined
 let contextWeg = false
 let herstellingen = 0
+/** Zolang de geometrie van een bus binnenkomt: dan eerst die, de texturen wachten. */
+let geometrieBezig = false
 
 function maakContext(): boolean {
   doek = new OffscreenCanvas(16, 16)
@@ -91,10 +104,11 @@ function maakContext(): boolean {
       stuur({ soort: 'fout', viewer: actief?.id ?? 0, laad: laad.nr, reden: 'fout', detail: String(fout) })
     }
   })
+  // Geen MSAA en geen diepte op het doek zelf: de tekenaar heeft een eigen MSAA-framebuffer (zie teken.ts).
   gl = doek.getContext('webgl2', {
-    antialias: true,
+    antialias: false,
     alpha: false,
-    depth: true,
+    depth: false,
     stencil: false,
     premultipliedAlpha: true,
     preserveDrawingBuffer: false,
@@ -133,19 +147,39 @@ const laad: {
   heldGedaan: Set<string>
   /** Waar de tijd heen ging (ms na t0), voor de proef en het logboek. */
   mijlpalen: Record<string, number>
+  schaduwNaScherp?: boolean
 } = { nr: 0, t0: 0, laatsteStand: 0, gpuTotaal: 0, heldGedaan: new Set(), mijlpalen: {} }
 
 /** Een kort spoor van wat de werker na het laatste 'bus'-bericht deed (voor de proef). */
 const spoor: string[] = []
 const zetSpoor = (w: string): void => {
-  if (spoor.length < 80) spoor.push(`${Math.round(klok() - laad.t0)} ${w}`)
+  if (spoor.length < 80 && !w.startsWith('tik via')) spoor.push(`${Math.round(klok() - laad.t0)} ${w}`)
 }
 
 const mijlpaal = (naam: string): void => {
   laad.mijlpalen[naam] ??= Math.round(klok() - laad.t0)
 }
 
-const budget = (licht?: boolean): number => (licht ? 96 : 160) * 1024 * 1024
+/**
+ * Het textuurbudget van de bus (§5.7): 160 MB per viewer (96 zolang OMSI draait),
+ * min wat hemel en wolken al kosten -- en nooit zoveel dat het venster samen
+ * met de geometrie en de doelen (schaduwkaart, MSAA, doek) boven 300 MB komt
+ * (§10). Bij de NLC 18C (48 MB geometrie) scheelt dat een paar MB.
+ */
+function budget(b: Extract<NaarWerker, { soort: 'bus' }>): number {
+  const MB = 1024 * 1024
+  const los = tekenaar?.texturen.losBytes() ?? 0
+  const v = viewers.get(b.viewer)
+  const vast = tekenaar?.gpuBytes(v?.b || 1920, v?.h || 1080)
+  const doelen = vast?.doelen ?? 100 * MB
+  // De geometrie op de GPU: gemeten als de bus er staat; anders geschat (32-bits indices en de samengevoegde erbij).
+  const scene = tekenaar?.scene?.manifest.pakket === b.manifest.pakket ? tekenaar.scene : undefined
+  // (de samengevoegde indices komen er pas bij het bouwen van de lijsten bij: dan zo groot als alle indices gerekend)
+  const geometrie = scene && vast ? vast.geometrie + (scene.bytes.samen ? 0 : scene.bytes.indices) : b.manifest.bytes.geometrie * 1.5
+  const eigen = (LICHT.textuurBudgetMB > 0 ? LICHT.textuurBudgetMB : b.licht ? 96 : 160) * MB - los
+  const venster = 300 * MB - geometrie - doelen - los
+  return Math.max(16 * MB, Math.min(eigen, LICHT.textuurBudgetMB > 0 ? eigen : venster))
+}
 
 async function laadBus(b: Extract<NaarWerker, { soort: 'bus' }>): Promise<void> {
   const nr = b.laad
@@ -155,19 +189,28 @@ async function laadBus(b: Extract<NaarWerker, { soort: 'bus' }>): Promise<void> 
   const zelfdePakket = t.scene?.manifest.pakket === b.manifest.pakket
   try {
     if (!zelfdePakket) {
+      geometrieBezig = true
       const gezet = await t.laadBus(
         b.manifest,
         () => new Promise((klaar) => setTimeout(klaar, 0)),
-        () => nr === laad.nr
+        () => nr === laad.nr,
+        // De kop is binnen: de texturen al laden terwijl de hoekpunten nog komen.
+        (kop) => {
+          if (nr !== laad.nr) return
+          mijlpaal('kop')
+          t.voorlopigPlan(kop, b.manifest, b.lak, budget(b))
+        }
       )
+      geometrieBezig = false
       if (!gezet || nr !== laad.nr) return
       mijlpaal('geometrie')
       zetDoos(v, b.manifest)
     }
-    t.zetLak(b.lak, budget(b.licht))
+    t.zetLak(b.lak, budget(b))
     mijlpaal('lak')
     plan()
   } catch (fout) {
+    geometrieBezig = false
     if (nr !== laad.nr) return
     const tekst = fout instanceof Error ? fout.message : String(fout)
     const stuk = /B3D1|afgekapt|pakketversie|JSON|hoort niet/i.test(tekst)
@@ -219,6 +262,16 @@ function tik(): void {
   laatsteTik = nu
   const beweegt = v.camera.stap(Math.min(dt, 0.1))
   maatDoek(v.b, v.h)
+  /*
+   * Zodra alles scherp staat de schaduwkaart één keer opnieuw: roosters en gaas
+   * (alfatest) wierpen zolang hun textuur laadde een dichte schaduw. Vóór het
+   * tekenen, zodat ook het heldenbeeld de goede schaduw heeft.
+   */
+  const bijna = t.texturen.voortgang()
+  if (t.scene && !laad.schaduwNaScherp && bijna.bezig === 0 && bijna.klaar === bijna.totaal) {
+    laad.schaduwNaScherp = true
+    t.scene.schaduwVuil = true
+  }
   t.teken(v.camera.beeld(v.b / v.h), v.b, v.h)
   const scene = t.scene
   const voortgang = t.texturen.voortgang()
@@ -268,10 +321,13 @@ function tik(): void {
     } else if (!scherp && nu - laad.laatsteStand > 250) {
       laad.laatsteStand = nu
       meldStand(v, 'texturen', voortgang)
+      zetSpoor(`open: ${t.texturen.openDoelen().slice(-8).join(', ')}`)
     }
   }
-  // Alleen doortekenen zolang de camera beweegt; een textuur die binnenkomt plant zelf een beeld.
-  if (beweegt) plan()
+  // Na het beeld: tijd om texturen te uploaden (niet zolang de geometrie nog binnenkomt).
+  if (!geometrieBezig) t.texturen.geefTijd(6)
+  // Doortekenen zolang de camera beweegt of er texturen klaarliggen; anders plant een nieuwe textuur zelf een beeld.
+  if (beweegt || t.texturen.wachtendeUploads() > 0) plan()
 }
 
 function kwantiel(lijst: number[], q: number): number {
@@ -401,11 +457,13 @@ doel.onmessage = (e) => {
   } else if (m.soort === 'weg') {
     viewers.delete(m.viewer)
     if (actief?.id === m.viewer) actief = [...viewers.values()][0]
+  } else if (m.soort === 'voorhaal') {
+    tekenaar?.texturen.voorhaal(m.lijst)
   } else if (m.soort === 'licht') {
     zetLicht(m.licht)
     if (tekenaar?.scene) {
       tekenaar.scene.schaduwVuil = true
-      if (laad.bericht) tekenaar.zetLak(laad.bericht.lak, budget(laad.bericht.licht))
+      if (laad.bericht) tekenaar.zetLak(laad.bericht.lak, budget(laad.bericht))
     }
     plan()
   } else if (m.soort === 'omgeving') {
@@ -424,6 +482,7 @@ doel.onmessage = (e) => {
     mijlpaal('bericht')
     laad.eersteBeeld = undefined
     laad.scherp = undefined
+    laad.schaduwNaScherp = false
     if (nieuw) beeldtijden.length = 0
     void laadBus(m)
   } else if (m.soort === 'lak') {
@@ -432,8 +491,12 @@ doel.onmessage = (e) => {
     laad.bericht = { ...b, lak: m.lak }
     laad.scherp = undefined
     laad.eersteBeeld = undefined
-    laad.t0 = klok()
-    tekenaar.zetLak(m.lak as Bus3dLak, budget(b.licht))
+    laad.schaduwNaScherp = false
+    laad.t0 = m.t0
+    laad.mijlpalen = {}
+    spoor.length = 0
+    mijlpaal('bericht')
+    tekenaar.zetLak(m.lak as Bus3dLak, budget(b))
     plan()
   } else if (m.soort === 'invoer') {
     const v = viewerVan(m.viewer)
@@ -482,6 +545,7 @@ doel.onmessage = (e) => {
         mag: { s3tc: mag.s3tc, s3tcSrgb: mag.s3tcSrgb, aniso: mag.aniso },
         doos: t.scene?.doos,
         textuurStats: t.texturen.stats,
+        tijdlijn: t.texturen.tijdlijn,
         spoor: [...spoor],
         herstellingen
       }
@@ -501,7 +565,8 @@ if (maakContext()) {
       webgl: true,
       info: {
         renderer: dbg ? g.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : g.getParameter(g.RENDERER),
-        samples: g.getParameter(g.SAMPLES),
+        // De monsters van de eigen MSAA-framebuffer (het doek zelf heeft er geen).
+        samples: Math.min(4, g.getParameter(g.MAX_SAMPLES) as number),
         s3tc: mag.s3tc,
         s3tcSrgb: mag.s3tcSrgb,
         aniso: mag.aniso

@@ -1439,3 +1439,26 @@ Met verkleinen naar ≤ 1024 duurt de decode ongeveer even lang.
 - **Cache (§4.2):** het zijspoor noemt de grootte van het `.b3d`; klopt die niet, dan wordt er opnieuw gebouwd. Het `.b3d` gaat met `fsync` naar de schijf vóór het hernoemen. De werker houdt de LRU-grens ook na elke schrijfbeurt aan (na een volle ronde stond er anders 4,5 GB).
 - **Bronnen (§4.2):** ook de mappen van alle `[mesh]`-regels (een o3d die later verschijnt), de gelezen `.dsc`'s en de map van de .bus. `leesSchermcfg` en `leesKleurstellingen` houden hun geheugen alleen zolang de schijf niet veranderd is (mappen van de meshes; cfg, CTC-map en elke .cti).
 - **Niet veranderd, met reden:** de GS GU240 is een KI-bus en staat niet in de buskeuze; T-V3 geldt op codeniveau. Het werkergeheugen na een volle ronde (64 MB na gc) blijft binnen de 256 MB en gaat na 120 s weg; alleen het kleurstellingengeheugen kreeg een grens (32 modellen). De witte driehoeken in de voorruit van de SD77 zitten in de foto v3 (die [visible] en doorzichtigheid niet kent, §1) en staan ook op de foto van vóór de BMP-fix; F2 met foto v4 moet ze laten verdwijnen.
+
+**F2, eerste helft: de renderer (29-09-2026).** Zie HANDOVER.md §5.000 voor de bestanden. Nog geen venster in main, geen knop, geen zijpaneel (tweede helft); alles achter de instelling `bus3d`.
+
+Gemeten met `scripts/probe-bus3d-beeld.cjs` (Lucs pc, RTX 4070 SUPER via ANGLE/D3D11, 4 monsters, S3TC-sRGB, aniso 16; venster 1280x720 op DPR 1,5 = 1918x1081 tekenpixels). Tijden in ms vanaf het vragen van de bus; "nieuw" = geen pakket, bronnen in de OS-cache; "warm" = pakket in de cache, verse pagina (nieuwe werker en context). Tijdens deze ronde gebruikte een ander programma 42% van de GPU; de tijden schommelen tussen rondes met ±100 ms.
+
+| | SD77 | O560 E6 | NLC 12C | NLC 18C | MB O530 | Kajosoft | TH O550 | HH Stadtbus | C2 GN | Urbanway 18 | HH20 | NL202 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Eerste 3D-beeld, nieuw | 200 | 420 | 878 | 1112 | 350 | 1125 | 757 | 248 | 474 | 683 | 409 | 173 |
+| Alles scherp, nieuw | 502 | 790 | 1201 | 1828 | 716 | 1380 | 1195 | 847 | 1094 | 1835 | 1104 | 679 |
+| Eerste 3D-beeld, warm | 87 | 199 | 291 | 365 | 155 | 187 | 288 | 138 | 182 | 231 | 178 | 129 |
+| Alles scherp, warm | 384 | 722 | 771 | 1233 | 594 | 532 | 853 | 664 | 899 | 1285 | 763 | 600 |
+| Beeldtijd p95 bij draaien (tot de GPU klaar is) | 3,8 | 2,3 | 5,7 | 6,6 | 1,9 | 2,2 | 4,2 | 2,1 | 3,9 | 4,2 | 3,7 | 3,5 |
+| Kleurstelling wisselen, eerste keer / terug | 255 / 13 | 261 / 20 | 281 / 24 | 490 / 75 | 226 / 14 | 269 / 17 | 297 / 162 | 362 / 15 | - | 240 / 19 | 450 / 147 | 355 / 12 |
+| GPU, eigen boekhouding (MB) | 146 | 216 | 240 | 293 | 173 | 188 | 282 | 230 | 276 | 285 | 252 | 180 |
+| Bijna zwart op de bus (max ≤ 20, schuin) | 3,2% | 7,9% | 38,2% | 39,7% | 27,8% | 15,4% | 13,4% | 35,7% | 35,0% | 30,1% | 37,8% | 10,8% |
+| Schaduw: vloer onder de bus donkerder dan 3 m ernaast | 56% | 56% | 61% | 63% | 59% | 57% | 50% | 60% | 64% | 60% | 59% | 58% |
+
+- Tegen §10: alle eerste beelden en alle "scherp nieuw" binnen de doelen; "scherp warm" binnen de doelen, op de O560 op de grens (631-736 ms over vijf rondes, doel 700). Beeldtijd p95 overal binnen de doelen (SD77 3,2-3,9 tegen 4). 0 lange taken (> 50 ms) op de hoofddraad in alle rondes. Kleurstelling wisselen: eerste keer ≤ 500 overal; terug ≤ 150 op twee na (TH O550 162, HH20 147 in deze ronde).
+- GPU: de eigen boekhouding (geometrie, texturen, schaduwkaart, contactkaart, eigen MSAA-kleur en -diepte, oplossing, doek) blijft onder 300 MB, omdat het textuurbudget nu ook de ruimte tot 300 MB bewaakt (NLC 18C: 146 MB aan texturen). nvidia-smi: een lege viewer kostte met `antialias:true` 250 MB en met de eigen MSAA-framebuffer 150 MB; de SD77 met kleine texturen 130-180 MB boven een pagina zonder viewer.
+- "Zwart" is max(r,g,b) ≤ 20: zo komt de foto v3 van de O560 op 40%, het "39%" van §1. Met ≤ 35 is de O560 26%: het meeste daarvan is echt zwart (de raamband van e-main.tga is zwart geverfd, de banden). De NLC, de HH-bussen en de C2 blijven donker achter het glas: het interieur ligt in de schaduw van het dak en de stoelen zijn donker.
+- Het heldenbeeld komt bij elke bus (WebP 1918x1081, 80-135 kB), ook na een kleurwissel.
+- **Afwijkingen van het ontwerp, met reden:** geen kubuskaart voor de weerspiegeling (dezelfde hemel en vloer worden in de shader uitgerekend); glas weerspiegelt minstens 0,6 (§5.5 gaf de sterkte uit de cfg, 0,25-0,34 bij de O560: een zwarte plaat); de lichtwaarden geijkt op zwart ≤ 10% bij de O560 (hemel in de schaduw 0,8 in plaats van 0,6, strooilicht 0,22, belichting 1,4); de wolkenlaag pas vanaf 12° (laag aan de hemel een veeg); de camera centreert zijdelings; MSAA in een eigen framebuffer in plaats van `antialias:true`; het textuurbudget trekt hemel en wolken af en blijft onder 300 MB voor het hele venster.
+- **Nog niet:** de DPR-stap bij een trage beeldtijd (§5.8), de begrenzing van het lakmasker op 0,3 (§5.5), pauzeren en de lichte stand aansluiten op het venster (de werker kent `pauze` en `licht`), de foto v4 uit dezelfde renderer.

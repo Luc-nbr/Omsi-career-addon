@@ -101,7 +101,7 @@ export class Texturen {
   private doelen = new Map<number | string, { t: Bus3dTextuur; k: number }>()
   private rij: Taak[] = []
   private lopend = 0
-  private readonly TEGELIJK = 6
+  private readonly TEGELIJK = 10
   private samplers: { herhaal: WebGLSampler; klem: WebGLSampler; hemel: WebGLSampler }
   private omzet?: { prog: WebGLProgram; stap: WebGLUniformLocation | null; lin: WebGLUniformLocation | null; bron: WebGLUniformLocation | null }
   private bereikWerkt: boolean | undefined
@@ -111,12 +111,24 @@ export class Texturen {
   laatstePlan?: TextuurPlan
   fouten: string[] = []
   /**
+   * Hoeveel texturen van een vorige kleurstelling of bus er hooguit blijven
+   * staan: 64 MB (§7), maar nooit zoveel dat het 3D-venster boven 300 MB komt
+   * (§10); de tekenaar zet het na elk plan.
+   */
+  lruMax = 64 * 1024 * 1024
+  /**
    * Waar de tijd heen gaat, per route: aantal, wachten (ophalen en uitpakken,
    * buiten deze draad) en het synchrone deel op deze draad (uploaden, mips) --
    * dat laatste houdt het tekenen op.
    */
   stats: Record<string, { n: number; wachtMs: number; syncMs: number; maxSyncMs: number }> = {}
+  /** Per textuur wanneer hij klaar was (ms na het eerste plan), voor de proef. */
+  tijdlijn: string[] = []
+  private planBegin = 0
   private telStat(route: string, wacht: number, sync: number): void {
+    if (this.tijdlijn.length < 200) {
+      this.tijdlijn.push(`${Math.round(performance.now() - this.planBegin)} ${route} w${Math.round(wacht)} s${Math.round(sync)}`)
+    }
     const s = (this.stats[route] ??= { n: 0, wachtMs: 0, syncMs: 0, maxSyncMs: 0 })
     s.n++
     s.wachtMs += wacht
@@ -179,6 +191,7 @@ export class Texturen {
   zetPlan(texturen: Bus3dTextuur[], benodigd: Set<number>, budget: number): TextuurPlan {
     this.generatie++
     const gen = this.generatie
+    if (!this.planBegin || this.tijdlijn.length === 0) this.planBegin = performance.now()
     // Wat niet getekend wordt laden we niet; wat wel getekend wordt maar buiten geen oppervlak heeft
     // ([isshadow], alleen in een aanhanger ...) krijgt een klein oppervlak, zodat het plan hem meeneemt.
     const lijst = texturen.map((t, i) =>
@@ -192,18 +205,36 @@ export class Texturen {
       const r = plan.regels[i]
       if (!r.laden) return
       this.doelen.set(i, { t, k: r.overslaan })
-      const prio = (carrosserie && t.ctc === carrosserie ? 1e6 : 0) + lijst[i].oppervlak
+      /*
+       * Voorrang: de carrosserie eerst (§5.7), daarna de duurste eerst -- wie het
+       * langst bezig is (een TGA van 2048² in de ontleder, 12 MB) bepaalt wanneer
+       * alles scherp staat. Op oppervlak alleen kwam e-main.tga van de O560 als
+       * laatste aan de beurt en hield "scherp" 240 ms op. De staart van een DXT
+       * gaat hoe dan ook voor (zie `vraag`).
+       */
+      const factor = t.soort === 'eigen' ? 3 : t.soort === 'beeld' ? 2 : t.soort === 'dxt-zonder-mips' ? 1 : 0.5
+      const kosten = (t.bytes / 1e5) * factor
+      const prio = (carrosserie && t.ctc === carrosserie ? 1e6 : 0) + kosten + lijst[i].oppervlak * 0.01
       this.vraag(t, r.overslaan, prio, gen)
     })
     this.ruimOp()
     return plan
   }
 
-  /** Een losse textuur buiten het budget: de hemel en de wolken (hooguit 2048). */
+  /** Wat de losse texturen (hemel, wolken) op de GPU kosten: dat gaat van het budget van de bus af (§5.7: 160 MB per viewer). */
+  private losPerNaam = new Map<string, number>()
+  losBytes(): number {
+    let s = 0
+    for (const b of this.losPerNaam.values()) s += b
+    return s
+  }
+
+  /** Een losse textuur: de hemel en de wolken (hooguit 2048). */
   zetLos(naam: string, t: Bus3dTextuur): void {
     let k = 0
     while (Math.max(t.b >> k, t.h >> k) > 2048) k++
     if (t.soort === 'dxt') k = Math.min(k, Math.max(0, t.mips - 1))
+    this.losPerNaam.set(naam, Math.round((Math.max(1, t.b >> k) * Math.max(1, t.h >> k) * 4 * 4) / 3))
     this.doelen.set(naam, { t, k })
     this.vraag(t, k, 2e6, this.generatie, true)
   }
@@ -219,6 +250,18 @@ export class Texturen {
       if (i?.gpu?.staat === 'vol' || i?.fout) klaar++
     }
     return { klaar, totaal, bezig: this.lopend + this.rij.length }
+  }
+
+  /** Voor de proef: welke plekken nog niet helemaal staan, en waarom. */
+  openDoelen(): string[] {
+    const uit: string[] = []
+    for (const [plek, doel] of this.doelen) {
+      if (typeof plek !== 'number') continue
+      const i = this.ingangen.get(`${doel.t.id}@${doel.k}`)
+      if (i?.gpu?.staat === 'vol' || i?.fout) continue
+      uit.push(`${doel.t.naam}@${doel.k}:${i ? (i.bezig ? 'bezig' : i.gpu ? i.gpu.staat : 'leeg') : 'geen'}`)
+    }
+    return uit.concat([`rij ${this.rij.length}`, `lopend ${this.lopend}`, `upload ${this.uploadWacht.length}${this.uploadBezig ? '+' : ''}`])
   }
 
   gpuBytes(): number {
@@ -244,7 +287,7 @@ export class Texturen {
     los.sort((a, b) => a.gebruikt - b.gebruikt)
     let bytes = los.reduce((s, i) => s + (i.gpu?.bytes ?? 0), 0)
     for (const i of los) {
-      if (bytes <= 64 * 1024 * 1024 && !i.fout) break
+      if (bytes <= this.lruMax && !i.fout) break
       if (i.gpu) this.gl.deleteTexture(i.gpu.tex)
       bytes -= i.gpu?.bytes ?? 0
       this.ingangen.delete(i.sleutel)
@@ -335,8 +378,93 @@ export class Texturen {
 
   // ------------------------------------------------------------ ophalen
   /** Een bestand of een plak ervan. Werkt Range niet, dan eenmaal het hele bestand. */
+  // ------------------------------------------------------------ uploaden in beurten
+  /*
+   * Ophalen en uitpakken gebeurt buiten deze draad (stroom, createImageBitmap,
+   * de ontleders), maar het uploaden en de mips niet, en wat de GPU daarvoor
+   * moet doen komt vóór het volgende beeld. Daarom mag er alleen geüpload
+   * worden in de tijd die de werker na een beeld geeft (`geefTijd`): zo komt
+   * het eerste beeld van een bus niet achter veertig texturen aan, en hapert
+   * slepen tijdens het laden niet (§5.7, "in stukken van ≤ 16 ms").
+   */
+  private uploadWacht: Array<() => void> = []
+  private uploadTot = 0
+  private uploadBezig = false
+
+  /** De werker, na een beeld: zoveel ms mag er nu geüpload worden. */
+  geefTijd(ms: number): void {
+    this.uploadTot = performance.now() + ms
+    this.volgendeUpload()
+  }
+
+  /** Hoeveel texturen er klaarliggen om geüpload te worden. */
+  wachtendeUploads(): number {
+    return this.uploadWacht.length
+  }
+
+  private volgendeUpload(): void {
+    if (this.uploadBezig || this.uploadWacht.length === 0) return
+    if (performance.now() >= this.uploadTot) {
+      // De tijd is op: een volgend beeld geeft nieuwe tijd.
+      this.opVerandering()
+      return
+    }
+    this.uploadBezig = true
+    this.uploadWacht.shift()!()
+  }
+
+  private uploadBeurt(): Promise<void> {
+    return new Promise((k) => {
+      this.uploadWacht.push(k)
+      this.volgendeUpload()
+    })
+  }
+
+  private uploadKlaar(): void {
+    this.uploadBezig = false
+    this.volgendeUpload()
+  }
+
+  // ------------------------------------------------------------ vooruit ophalen (§4.1: `lijst`)
+  /**
+   * Zolang de werker 'bus3d' nog o3d's leest, staat de textuurlijst er al: de
+   * bestanden kunnen dan al van de schijf komen, terwijl het plan (dat de
+   * oppervlakken nodig heeft) nog moet wachten. Alleen ophalen, niet uitpakken;
+   * hooguit 192 MB, en wat na 20 s niet gebruikt is gaat weg.
+   */
+  private voorraad = new Map<string, Promise<ArrayBuffer>>()
+  voorhaal(lijst: Array<{ id: string; bytes: number }>): void {
+    let totaal = 0
+    const rij = [...lijst].sort((a, b) => a.bytes - b.bytes)
+    let volgende = 0
+    const werk = async (): Promise<void> => {
+      while (volgende < rij.length) {
+        const t = rij[volgende++]
+        if (this.voorraad.has(t.id) || totaal + t.bytes > 192 * 1024 * 1024) continue
+        totaal += t.bytes
+        const belofte = fetch(`omsi3d://t/${t.id}`).then((r) => {
+          if (!r.ok) throw new Error(`omsi3d ${r.status}`)
+          return r.arrayBuffer()
+        })
+        this.voorraad.set(t.id, belofte)
+        setTimeout(() => this.voorraad.delete(t.id), 20000)
+        await belofte.catch(() => this.voorraad.delete(t.id))
+      }
+    }
+    for (let i = 0; i < 4; i++) void werk()
+  }
+
   private async haal(id: string, van?: number, tot?: number): Promise<ArrayBuffer> {
     const url = `omsi3d://t/${id}`
+    const vooraf = this.voorraad.get(id)
+    if (vooraf) {
+      try {
+        const alles = await vooraf
+        return van !== undefined && tot !== undefined ? alles.slice(van, tot + 1) : alles.slice(0)
+      } catch {
+        this.voorraad.delete(id)
+      }
+    }
     if (van !== undefined && tot !== undefined && this.bereikWerkt !== false) {
       const r = await fetch(url, { headers: { Range: `bytes=${van}-${tot}` } })
       if (r.status === 206) {
@@ -383,7 +511,6 @@ export class Texturen {
   }
 
   private async laadDxt(t: Bus3dTextuur, k: number, ingang: Ingang, staart: number, deel: 'staart' | 'vol'): Promise<void> {
-    const gl = this.gl
     const niveaus = t.niveaus!
     const n = niveaus.length
     const van = deel === 'staart' ? staart : k
@@ -391,6 +518,21 @@ export class Texturen {
     const eind = deel === 'staart' || staart <= k ? n - 1 : tot
     const t0 = performance.now()
     const bytes = await this.haal(t.id, niveaus[van].off, niveaus[eind].off + niveaus[eind].len - 1)
+    await this.uploadBeurt()
+    try {
+      this.dxtUpload(t, k, ingang, staart, deel, bytes, t0)
+    } finally {
+      this.uploadKlaar()
+    }
+  }
+
+  private dxtUpload(t: Bus3dTextuur, k: number, ingang: Ingang, staart: number, deel: 'staart' | 'vol', bytes: ArrayBuffer, t0: number): void {
+    const gl = this.gl
+    const niveaus = t.niveaus!
+    const n = niveaus.length
+    const van = deel === 'staart' ? staart : k
+    const tot = deel === 'staart' ? n - 1 : Math.max(k, staart - 1)
+    const eind = deel === 'staart' || staart <= k ? n - 1 : tot
     const t1 = performance.now()
     const { fmt, lineariseer } = this.dxtFormaat(t)
     let gpu = ingang.gpu
@@ -425,20 +567,27 @@ export class Texturen {
     if ((t.soort === 'dxt-zonder-mips' || t.soort === 'dxt') && this.mag.s3tc && t.b % 4 === 0 && t.h % 4 === 0 && t.niveaus?.length) {
       const n0 = t.niveaus[0]
       const bytes = await this.haal(t.id, n0.off, n0.off + n0.len - 1)
-      const t1 = performance.now()
-      const { fmt, lineariseer } = this.dxtFormaat(t)
-      const bron = gl.createTexture()!
-      gl.bindTexture(gl.TEXTURE_2D, bron)
-      gl.compressedTexImage2D(gl.TEXTURE_2D, 0, fmt, t.b, t.h, 0, new Uint8Array(bytes))
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAX_LEVEL, 0)
-      const kk = Math.min(k, 4)
-      const gpu = this.omzetten(bron, t.b, t.h, kk, lineariseer)
-      gl.deleteTexture(bron)
-      ingang.gpu = { ...gpu, heeftAlfa: true }
-      this.telStat('rtt', t1 - t0, performance.now() - t1)
+      await this.uploadBeurt()
+      try {
+        const t1 = performance.now()
+        const { fmt, lineariseer } = this.dxtFormaat(t)
+        const bron = gl.createTexture()!
+        gl.bindTexture(gl.TEXTURE_2D, bron)
+        gl.compressedTexImage2D(gl.TEXTURE_2D, 0, fmt, t.b, t.h, 0, new Uint8Array(bytes))
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAX_LEVEL, 0)
+        const kk = Math.min(k, 4)
+        const gpu = this.omzetten(bron, t.b, t.h, kk, lineariseer)
+        gl.deleteTexture(bron)
+        ingang.gpu = { ...gpu, heeftAlfa: true }
+        this.telStat('rtt', t1 - t0, performance.now() - t1)
+      } finally {
+        this.uploadKlaar()
+      }
       return
     }
+    const tBegin = performance.now()
     const bestand = await this.haal(t.id)
+    const tGehaald = performance.now()
     let bron: TexImageSource | { pixels: Uint8Array; b: number; h: number }
     let heeftAlfa: boolean
     if (t.soort === 'beeld' && t.mime) {
@@ -454,11 +603,22 @@ export class Texturen {
     }
     const b = 'pixels' in bron ? bron.b : (bron as ImageBitmap).width
     const h = 'pixels' in bron ? bron.h : (bron as ImageBitmap).height
-    const t1 = performance.now()
-    const gpu = this.uploadRgba(bron, b, h, k)
-    if ('close' in bron && typeof bron.close === 'function') bron.close()
-    ingang.gpu = { ...gpu, heeftAlfa }
-    this.telStat(t.soort === 'beeld' ? 'beeld' : 'eigen', t1 - t0, performance.now() - t1)
+    const tUitgepakt = performance.now()
+    await this.uploadBeurt()
+    if (this.tijdlijn.length < 200) {
+      this.tijdlijn.push(
+        `${t.naam}: begin ${Math.round(tBegin - this.planBegin)} halen ${Math.round(tGehaald - tBegin)} uitpakken ${Math.round(tUitgepakt - tGehaald)} beurt ${Math.round(performance.now() - tUitgepakt)}`
+      )
+    }
+    try {
+      const t1 = performance.now()
+      const gpu = this.uploadRgba(bron, b, h, k)
+      ingang.gpu = { ...gpu, heeftAlfa }
+      this.telStat(t.soort === 'beeld' ? 'beeld' : 'eigen', t1 - t0, performance.now() - t1)
+    } finally {
+      if ('close' in bron && typeof bron.close === 'function') bron.close()
+      this.uploadKlaar()
+    }
   }
 
   private niveausVoor(b: number, h: number): number {

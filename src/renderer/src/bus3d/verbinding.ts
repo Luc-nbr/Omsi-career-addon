@@ -23,7 +23,7 @@ export interface ViewerHandvat {
   readonly id: number
   maat(b: number, h: number, dpr: number): void
   laad(manifest: Bus3dManifest, lak: Bus3dLak | undefined, bron: 'cache' | 'nieuw', t0: number, licht?: boolean): number
-  lak(lak: Bus3dLak): void
+  lak(lak: Bus3dLak, t0: number): void
   invoer(i: Invoer): void
   pauze(aan: boolean, vrijgeven?: boolean): void
   afdruk(a: AfdrukVraag): Promise<{ beeld: ArrayBuffer; masker?: ArrayBuffer; id?: ArrayBuffer; idTabel?: unknown } | { fout: string }>
@@ -94,6 +94,11 @@ export class Verbinding {
     })
   }
 
+  /** De textuurlijst van een pakket in aanbouw: de werker haalt de bestanden alvast op. */
+  voorhaal(lijst: Array<{ id: string; bytes: number }>): void {
+    this.stuur({ soort: 'voorhaal', lijst })
+  }
+
   /** Alleen voor het ijken (de proef): lichtwaarden overschrijven. */
   licht(l: Record<string, unknown>): void {
     this.stuur({ soort: 'licht', licht: l })
@@ -121,12 +126,19 @@ export class Verbinding {
         zelf.stuur({ soort: 'bus', viewer: id, laad, manifest, lak, bron, t0, licht })
         return laad
       },
-      lak: (lak) => zelf.stuur({ soort: 'lak', viewer: id, lak }),
+      lak: (lak, t0) => zelf.stuur({ soort: 'lak', viewer: id, lak, t0 }),
       invoer: (i) => zelf.stuur({ soort: 'invoer', viewer: id, invoer: i }),
       pauze: (aan, vrijgeven) => zelf.stuur({ soort: 'pauze', viewer: id, aan, vrijgeven }),
       afdruk: (a) => zelf.vraag((vraag) => ({ soort: 'afdruk', vraag, viewer: id, afdruk: a })) as ReturnType<ViewerHandvat['afdruk']>,
       meet: (wat, beelden) => zelf.vraag((vraag) => ({ soort: 'meet', vraag, viewer: id, wat, beelden })),
       weg: () => {
+        // Het laatste beeld meteen loslaten, niet pas als de vuilnisman langskomt (8 MB videogeheugen per doek).
+        const v = zelf.viewers.get(id)
+        try {
+          v?.ctx?.transferFromImageBitmap(null)
+        } catch {
+          // al weg
+        }
         zelf.viewers.delete(id)
         zelf.stuur({ soort: 'weg', viewer: id })
       }

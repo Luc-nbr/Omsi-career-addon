@@ -40,6 +40,16 @@ const path = require('node:path')
 const { Worker } = require('node:worker_threads')
 const { execFileSync } = require('node:child_process')
 
+/** Het videogeheugen dat in gebruik is, in MB (nvidia-smi; alleen lezen), of niets. */
+function vramNu() {
+  try {
+    const mb = Number(execFileSync('nvidia-smi', ['--query-gpu=memory.used', '--format=csv,noheader,nounits'], { encoding: 'utf8', timeout: 5000 }).trim())
+    return Number.isFinite(mb) ? mb : undefined
+  } catch {
+    return undefined
+  }
+}
+
 /** Hoe druk de GPU is voordat wij beginnen (nvidia-smi; alleen lezen). */
 function gpuBelasting() {
   try {
@@ -79,6 +89,7 @@ const tsx = require('tsx/cjs/api')
 const { maakBus3dDienst, registreerBus3dIpc } = tsx.require('../src/main/bus3d.ts', __filename)
 const { findOmsiInstall } = tsx.require('../src/core/install.ts', __filename)
 const { leesPng } = tsx.require('../src/core/png.ts', __filename)
+const { kleurstellingenVanBus } = tsx.require('../src/core/kleurstelling.ts', __filename)
 
 const OMSI = findOmsiInstall()
 if (!OMSI) {
@@ -234,7 +245,7 @@ async function ronde() {
 
   const gpuAnderen = gpuBelasting()
   await versePagina(win)
-  const leeg = { gpuProces: gpuProces(), webgl: await reken(win, 'window.__bv.info()') }
+  const leeg = { gpuProces: gpuProces(), vram: vramNu(), webgl: await reken(win, 'window.__bv.info()') }
   console.log(`WebGL: ${JSON.stringify(leeg.webgl)}`)
   const uitslag = { omsi: OMSI, uit: UIT, gestart: new Date().toISOString(), gpuAnderen, leeg, bussen: [] }
   console.log(`GPU vóór de ronde (belasting, geheugen): ${gpuAnderen ?? 'onbekend'}`)
@@ -275,7 +286,11 @@ async function ronde() {
       const warm = await reken(win, `window.__bv.laad(${JSON.stringify(b.pad)})`)
       r.warm = warm
       r.langWarm = await reken(win, 'window.__bv.langeTaken()')
-      await slaap(300)
+      // Het videogeheugen met alleen deze bus in beeld (vóór afdrukken en kleurwissel); 2 s wachten,
+      // want de contexten van de vorige pagina's (koud, nieuw) geeft het GPU-proces pas later terug.
+      await slaap(2000)
+      const vramWarm = vramNu()
+      if (vramWarm !== undefined && uitslag.leeg.vram !== undefined) r.vramWarm = vramWarm - uitslag.leeg.vram
 
       // Afdrukken.
       const W = 1440
@@ -303,16 +318,31 @@ async function ronde() {
       uitslag.bussen.push(r)
       r.ruit = await closeUp(win, naam, W, H, r.geheugen?.doos)
 
+      // Kleurstelling wisselen (§10): de eerste keer, en terug naar Standaard (al eerder geladen).
+      const kleuren = kleurstellingenVanBus(path.join(OMSI, b.pad))?.lijst ?? []
+      if (kleuren.length > 0) {
+        const eerste = kleuren[Math.min(1, kleuren.length - 1)].naam
+        const heen = await reken(win, `window.__bv.kleur(${JSON.stringify(eerste)})`)
+        const a = await reken(win, `window.__bv.afdruk(${JSON.stringify({ stand: { draai: 215, kantel: 8, zoom: 1 }, b: W, h: H, formaat: 'png' })})`)
+        if (a?.beeld) fs.writeFileSync(path.join(UIT, 'beeld', `${naam}-kleur.png`), Buffer.from(a.beeld, 'base64'))
+        const terug = await reken(win, `window.__bv.kleur(undefined)`)
+        r.kleurWissel = { naam: eerste, eersteKeer: heen?.scherpMs, eersteBeeld: heen?.eersteBeeldMs, terug: terug?.scherpMs, mijlpalen: heen?.mijlpalen }
+      }
+
       if (!SNEL) {
         r.draaien = await reken(win, `window.__bv.meet('draaien', 120)`)
         r.schaduw = await reken(win, `window.__bv.meet('schaduw')`)
       }
       r.gpuProces = gpuProces()
+      // Het echte videogeheugen: hoeveel er nu meer in gebruik is dan met een lege pagina (ruw: ook andere programma's tellen mee).
+      const vram = vramNu()
+      if (vram !== undefined && uitslag.leeg.vram !== undefined) r.vramErbij = vram - uitslag.leeg.vram
       // Het heldenbeeld dat het venster wegschreef toen de bus scherp stond (§9): bewaren naast de afdrukken.
       const hMap = path.join(UD, 'bus3d', 'v1', 'h')
       const helden = fs.existsSync(hMap) ? fs.readdirSync(hMap).filter((n) => n.startsWith(`${warm?.pakket}-`)) : []
       r.heldenbeelden = helden.length
       if (helden[0]) fs.copyFileSync(path.join(hMap, helden[0]), path.join(UIT, 'beeld', `${naam}-held.webp`))
+      if (r.kleurWissel) console.log(`   kleurstelling "${r.kleurWissel.naam}": eerste keer ${r.kleurWissel.eersteKeer} ms scherp, terug ${r.kleurWissel.terug} ms`)
       console.log(
         `   nieuw: eerste beeld ${nieuw?.eersteBeeldMs} ms, scherp ${nieuw?.scherpMs} ms; warm: ${warm?.eersteBeeldMs} / ${warm?.scherpMs} ms; ` +
           `lange taken ${JSON.stringify(r.langNieuw)} / ${JSON.stringify(r.langWarm)}`
@@ -370,7 +400,8 @@ function tabel(u) {
     console.log(
       `${String(r.nr).padStart(2)} ${r.naam.slice(0, 24).padEnd(24)}  ${paar(r.koud)}  ${paar(r.nieuw)}   ${paar(r.warm)}   ` +
         `${(r.draaien?.p95 ?? 0).toFixed(1).padStart(6)}   ${mb(r.geheugen?.totaal).padStart(5)}  ${String(r.gpuProces).padStart(6)}  ` +
-        `${pct(r.beeld?.schuin?.zwart).padStart(6)}  ${pct(r.beeld?.schuin?.zwart35).padStart(6)}  ${pct(r.schaduw?.donkerder).padStart(6)}  ${lang.filter((x) => x > 50).length}`
+        `${pct(r.beeld?.schuin?.zwart).padStart(6)}  ${pct(r.beeld?.schuin?.zwart35).padStart(6)}  ${pct(r.schaduw?.donkerder).padStart(6)}  ${lang.filter((x) => x > 50).length}` +
+        `  vram+${r.vramWarm ?? '?'}/${r.vramErbij ?? '?'}MB  wissel ${r.kleurWissel ? `${r.kleurWissel.eersteKeer}/${r.kleurWissel.terug}` : '-'}`
     )
   }
 }

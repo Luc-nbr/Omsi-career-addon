@@ -51,7 +51,9 @@ export type NaarWerker =
       /** Lichte stand: OMSI draait (budget 96 MB, geen heldenbeeld). */
       licht?: boolean
     }
-  | { soort: 'lak'; viewer: number; lak: Bus3dLak }
+  | { soort: 'lak'; viewer: number; lak: Bus3dLak; t0: number }
+  /** De textuurlijst van een pakket dat nog gebouwd wordt: de bestanden alvast ophalen (§4.1). */
+  | { soort: 'voorhaal'; lijst: Array<{ id: string; bytes: number }> }
   | { soort: 'invoer'; viewer: number; invoer: Invoer }
   | { soort: 'gezien'; viewer: number }
   | { soort: 'pauze'; viewer: number; aan: boolean; vrijgeven?: boolean }

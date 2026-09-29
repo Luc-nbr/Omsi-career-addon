@@ -754,7 +754,107 @@ Luc bekijkt de GS GU240 (sleutel 12411) één keer in OMSI -- let op: dat is een
 KI-bus (M18 KI-Version); hij staat niet in de buskeuze, dus op deze pc is het
 icoon 'versleuteld' via de buskeuze niet te zien; de opentijd van het 3D-venster
 (F2); de exe-proef in de gebouwde exe; `bewaar: false` voor een fotoronde (F2,
-met foto v4); de preload voor `bus:stuk3d` (F2).
+met foto v4).
+
+**F2, eerste helft: de renderer (29-09-2026).** Nog steeds niets voor de
+speler: er is een pagina `bus3d.html` met de viewer over het hele venster, maar
+nog geen venster in main, geen knop op de tegels en geen zijpaneel. Alles hangt
+achter de instelling `bus3d` (`Settings.bus3d`, standaard uit; main schrijft
+alleen een heldenbeeld als hij aan staat).
+
+- **De renderer-werker** (`renderer/src/bus3d/werker.ts`): één per venster,
+  een eigen `OffscreenCanvas` met één WebGL2-context (`alpha:false`, zonder
+  eigen MSAA en diepte: de tekenaar tekent in een eigen 4x-MSAA-framebuffer en
+  lost dat op; met `antialias:true` kostte een lege viewer 250 MB videogeheugen,
+  zo 150 MB). Elk beeld gaat met `transferToImageBitmap` naar het
+  `bitmaprenderer`-doek van de viewer (`bus3d/verbinding.ts`, een singleton per
+  venster); hooguit twee beelden onderweg. Er wordt alleen getekend als er iets
+  verandert. De ontleders (`bus3d/ontleder.ts`, 2-5 werkers, op Lucs pc 5)
+  pakken TGA, BMP32 en DXT zonder GPU-route uit met `shared/beeldlezers.ts`.
+- **Tekenen** (`bus3d/teken.ts`, shaders in `bus3d/shaders.ts`): het pakket komt
+  als stroom binnen; zodra de kop er is begint het textuurplan, dan worden de
+  gehusselde blokken in het geheugen ontward (stukken van 16 ms), de verschuiving
+  van de aanhanger erbij, en alles in één hoekpuntbuffer. Daarna houdt de werker
+  alleen de kop en de indices (voor een andere zichtbaarheid). Drie gangen:
+  dekkend en alfatest per materiaal samengevoegd (één tekenbeurt per materiaal,
+  NLC 18C 545 beurten in totaal), alfatest met alpha-to-coverage en een
+  verscherpte alfa, mengen per vermelding in cfg-volgorde (per deel van achter
+  naar voren, `[isshadow]` voorop op 60%). `frontFace(CW)`: de o3d is
+  linkshandig, de hoekpuntshader spiegelt x.
+- **Licht** zoals OMSI (zon, licht van boven, strooilicht), Blinn-Phong met de
+  o3d-kleuren, weerspiegeling alleen waar `[matl_envmap]` staat: op lak gedempt
+  (lakglans 0,35 x Schlick), op glas fresnel met minstens 0,6 (anders was getint
+  glas een zwarte plaat). De weerspiegelde omgeving wordt in de shader uit
+  dezelfde hemel en vloer uitgerekend, niet eerst in een kubuskaart. Khronos
+  Neutral en sRGB in de shader. De lichtwaarden staan in `LICHT` (teken.ts) en
+  zijn geijkt met de proef (O560 van 18% naar 7,9% bijna-zwart); `?proef=1&licht={...}`
+  overschrijft ze om te ijken.
+- **Schaduw:** een kaart van 2048² (DEPTH32F, PCF 5 dan 16 monsters, normaal-
+  verschuiving), alleen opnieuw bij een andere bus, lak of als alles scherp staat
+  (roosters wierpen tot dan een dichte schaduw); contactschaduw van onderen
+  (256², tot 0,6 m, twee keer vervaagd).
+- **Buiten** (`core/bus3domgeving.ts`, IPC `bus:omgeving3d`): de dag-hemel uit
+  `[sky_textures]` van envir.cfg en "Cumulus 1" uit Weather/clouds.cfg, als
+  texturen op id. De wolkenlaag pas vanaf zo'n 12°: laag aan de hemel werd hij
+  een veeg; daar staan de wolken van het panorama zelf. Matte grijze vloer die in
+  de horizon overgaat (mipniveau 5 van de hemel, anders strepen).
+- **Texturen** (`bus3d/texturen.ts`): de routes van §5.7 met het budget
+  (`textuurPlan`); DXT eerst de staart (≤ 128 px, een paar kB) en dan de rest met
+  een Range-kop; `dxt-zonder-mips` via één tekenstap naar SRGB8_ALPHA8; PNG, JPEG
+  en BMP met `createImageBitmap` zonder premultiplicatie; verkleinen doet de GPU.
+  Uploaden alleen in de tijd die de werker na een beeld geeft (6 ms): zo komt het
+  eerste beeld niet achter veertig texturen aan. Voorrang: de staarten, dan de
+  carrosserie, dan de duurste (een TGA in de ontleder bepaalt wanneer alles
+  scherp staat). Terwijl de werker 'bus3d' een nieuw pakket bouwt haalt de
+  pagina de bestanden van de textuurlijst al op (`voorhaal`, hooguit 192 MB,
+  20 s). Het budget is 160 MB min hemel en wolken, en nooit meer dan er onder
+  300 MB voor het hele venster overblijft; de LRU van vorige kleurstellingen
+  krijgt wat daarna overblijft (hooguit 64 MB). Een transmap zonder alfakanaal
+  (BMP24, JPEG, TGA24) geeft zijn helderheid als doorzichtigheid. Main stroomt
+  `omsi3d://` in stukken van 1 MB.
+- **Camera** (`bus3d/camera.ts`): §6, plus zijdelings centreren (door het
+  perspectief hing een gelede bus anders aan één kant uit beeld).
+- **Ruststand** (`core/busrust.ts`, in de werker 'bus3d'): de regels van §5.2
+  (`rustRegels` in shared/bus3d.ts, puur) met kleurVars, `startwaardenVan`, de
+  alias `vis_CTI_`/`vis_SV_`, de motorstandaarden en curves bij daglicht
+  (Kajosoft `Szyby`). `[alphascale]`: de lijst op naam gaat vóór de startwaarden
+  (die nemen ook een {if}-tak mee: Kajosoft zette `mroz` = 1 bij vorst). De lak
+  komt nu ook bij "Standaard" en staat op schijf in `s/<pakket>-<stempel>.json`
+  (stempel: .bus, scripts, constfiles, .cti's en de texturen van de
+  kleurstelling), hooguit 8 per pakket.
+- **Heldenbeeld** (§9): zodra de bus scherp en stil staat een WebP van het
+  beeld (`convertToBlob`), via `bus:heldenbeeld` naar `h/<pakket>-<kleur>-<sleutel>.webp`;
+  `bus:fotoAlsKlaar` geeft `omsi3d://h/<id>`. Niet als OMSI draait, niet zonder
+  schakelaar; gaat weg met zijn pakket.
+- **Preload** `preload/bus3d.ts` (`window.bus3d`, type `Bus3dBrug`): model, lak,
+  omgeving, heldenbeeld, fotoAlsKlaar, meld, stuk, voortgang, vervangen. Het
+  venster (vraag, kiezen, sluiten, taal) komt erbij in de tweede helft.
+- **Teksten** `shared/tekst/busviewer.ts` (`bv.*`, vier talen).
+
+**Proef:** `scripts/probe-bus3d-beeld.cjs` (eerst `npx electron-vite build`;
+dan `node_modules\electron\dist\electron.exe scripts\probe-bus3d-beeld.cjs --uit <map>`):
+een eigen Electron-hoofdproces met eigen userData, de gebouwde werker, pagina en
+preload. Per bus koud / nieuw / warm, afdrukken (voor, zijkant, achter, schuin,
+zijruit, heldenbeeld, een tweede kleurstelling), beeldtijd bij draaien, GPU
+(eigen boekhouding en nvidia-smi), lange taken, zwart en schaduw. **Let op:**
+draait er een spel, dan kloppen de tijden niet (29-09 stond de GPU op 99% door
+een spel en gaf de eerste tik 1,3 s); de proef zet de belasting vooraf in de
+uitslag.
+
+**Gemeten 29-09 (1280x720 op DPR 1,5):** zie de tabel in bus3d.md bijlage D.
+De tijden van §10 gehaald of op de grens (O560 warm scherp 631-736 ms tegen
+700), beeldtijd p95 bij draaien 1,9-6,6 ms, 0 lange taken, zwart op de O560
+7,9% (max(r,g,b) ≤ 20), schaduw 50-64% donkerder, kleurstelling wisselen
+226-490 ms de eerste keer en 12-162 ms terug. Eigen boekhouding GPU 146-293 MB.
+nvidia-smi: een lege viewer 150 MB, de SD77 met kleine texturen 130-180 MB
+boven een pagina zonder viewer; in de volle ronde is dat getal te onrustig
+(andere programma's op de GPU, contexten van de vorige pagina's).
+
+**Nog niet goed (de regels, F3):** de O560 toont alle twaalf standen van het
+zonnescherm (`cp_rollo_fenster*_visible`, elk alleen 1 gebruikt), de HH20 zijn
+laadkabel (`electric_cable_vis`), de NLC twee stoeltypes tegelijk. De ramen van
+de NLC en de HH Stadtbus blijven donker: het interieur ligt in de schaduw van
+het dak en de stoelen zijn donker (38-40% bijna-zwart).
 
 ### 5.00 De planning van het busbedrijf — deel 0 staat (28-09-2026)
 

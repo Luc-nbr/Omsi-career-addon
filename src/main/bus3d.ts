@@ -579,6 +579,13 @@ function veiligPad(pad: string, omsiMap: string): boolean {
  * stuk van de schijf. Een stroom uit een bestand kost main vrijwel niets
  * (§4.3); geen kopie door de IPC.
  */
+/*
+ * Stukken van 1 MB in plaats van de standaard 64 kB: elk stuk is een bericht naar
+ * de netwerkdienst van Chromium, en met tien texturen tegelijk kwam een TGA van
+ * 12 MB er pas na 276 ms door (O560, e-main.tga), het langste pad naar "scherp".
+ */
+const BLOK = 1024 * 1024
+
 function stroom(pad: string, type: string, vraag: Request): Response {
   let grootte: number
   try {
@@ -598,13 +605,13 @@ function stroom(pad: string, type: string, vraag: Request): Response {
     van = Math.max(0, van)
     tot = Math.min(grootte - 1, tot)
     if (van > tot) return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${grootte}` } })
-    const lijf = Readable.toWeb(createReadStream(pad, { start: van, end: tot })) as unknown as ReadableStream
+    const lijf = Readable.toWeb(createReadStream(pad, { start: van, end: tot, highWaterMark: BLOK })) as unknown as ReadableStream
     return new Response(lijf, {
       status: 206,
       headers: { ...kop, 'Content-Length': String(tot - van + 1), 'Content-Range': `bytes ${van}-${tot}/${grootte}` }
     })
   }
-  const lijf = Readable.toWeb(createReadStream(pad)) as unknown as ReadableStream
+  const lijf = Readable.toWeb(createReadStream(pad, { highWaterMark: BLOK })) as unknown as ReadableStream
   return new Response(lijf, { status: 200, headers: { ...kop, 'Content-Length': String(grootte) } })
 }
 
