@@ -1,7 +1,8 @@
-import { copyFileSync, existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { OMSI_TOETSEN } from '../shared/telefoon'
 import { log } from './logboek'
+import { schrijfVeilig } from './veilig'
 import {
   MOD_CTRL,
   MOD_SHIFT,
@@ -381,7 +382,11 @@ export function zetBustoetsen(
 
   if (!existsSync(backupPad(omsiPath))) {
     try {
-      copyFileSync(join(omsiPath, 'Inputs', 'keyboard.cfg'), backupPad(omsiPath))
+      /*
+       * Via `schrijfVeilig` (sinds 0.4.9): deze kopie wordt maar één keer
+       * gemaakt, dus een afgebroken `copyFileSync` bleef voorgoed een halve.
+       */
+      schrijfVeilig(backupPad(omsiPath), readFileSync(join(omsiPath, 'Inputs', 'keyboard.cfg')))
     } catch (fout) {
       log(`kopie van keyboard.cfg maken mislukt: ${String(fout)}`)
     }

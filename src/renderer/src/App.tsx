@@ -644,6 +644,18 @@ export function App(): JSX.Element {
    */
   const [hervatVraag, setHervatVraag] = useState(false);
   const [draaitVraag, setDraaitVraag] = useState(false);
+  /*
+   * Draait deze exe alleen om te bekijken (main/versiewacht.ts)? Dan kan een
+   * dienst die nog liep niet verder: main opent er geen overlay voor, en het
+   * hervatten zegt waarom (tegenlezing 29-09).
+   */
+  const [bekijkstand, setBekijkstand] = useState(false);
+  useEffect(() => {
+    void window.career
+      .bouw()
+      .then((bouw) => setBekijkstand(Boolean(bouw.alleenBekijken)))
+      .catch(() => undefined);
+  }, []);
   /** Draait OMSI op dit moment? Gepeild op de busstap, vóór je op START drukt. */
   const [omsiDraaitAl, setOmsiDraaitAl] = useState(false);
 
@@ -1472,6 +1484,15 @@ export function App(): JSX.Element {
           return false;
         }
         /*
+         * Alleen bekijken (een oudere exe dan de laatste schrijver): main
+         * begint dan niets, en zegt dat. Geen "OMSI niet gestart", want er is
+         * niets misgegaan.
+         */
+        if (result.fout === "bekijken") {
+          setNote(t(language, "vw.start"));
+          return false;
+        }
+        /*
          * Ook een `duty:begin` die gewoon terugkomt kan betekenen dat er niets
          * draait. Main vangt het starten van het spel af: zegt de speler nee
          * tegen het UAC-venster, lukt PowerShell niet, of staat er geen
@@ -1711,6 +1732,8 @@ export function App(): JSX.Element {
         return t(language, "free.writeFailed", {
           reden: ("foutTekst" in uit ? uit.foutTekst : undefined) ?? "?",
         });
+      case "bekijken":
+        return t(language, "vw.start");
       default:
         return t(language, "free.noPlace", { map: kaart });
     }
@@ -1976,8 +1999,13 @@ export function App(): JSX.Element {
 
   const toggleOverlay = useCallback(async () => {
     if (!duty && !overlayOpen) return;
+    // Alleen bekijken: main opent geen overlay; zeg waarom.
+    if (!overlayOpen && bekijkstand) {
+      setNote(t(language, "vw.start"));
+      return;
+    }
     setOverlayOpen(await window.career.setOverlay(duty, !overlayOpen, ibis));
-  }, [duty, overlayOpen, ibis]);
+  }, [duty, overlayOpen, ibis, bekijkstand, language]);
 
   /**
    * Afronden. Een examenrit gaat naar de examencommissie in plaats van naar het
@@ -2548,6 +2576,10 @@ export function App(): JSX.Element {
                 kaart={duty.mapName}
                 onHervatten={() => {
                   setHervatVraag(false);
+                  if (bekijkstand) {
+                    setHubMelding(t(language, "vw.start"));
+                    return;
+                  }
                   setScreen("drive");
                 }}
                 onVerwijderen={() => {
@@ -2671,6 +2703,10 @@ export function App(): JSX.Element {
         const ids = [...busKlaarAan];
         const uitslag = await window.career.busKlaar(busKlaarKeuze, ids);
         let tekst: string;
+        if (uitslag.fout === "bekijken") {
+          setBusKlaarMelding({ tekst: t(language, "vw.knoppen"), fout: true });
+          return;
+        }
         if (ids.length === 0) tekst = t(language, "bus.klaarWeg");
         else if (uitslag.onthouden)
           tekst = t(language, "bus.klaarOnthouden", { n: uitslag.knoppen });
@@ -3074,6 +3110,11 @@ export function App(): JSX.Element {
             {t(language, "omsi.herstartUitleg")}
           </p>
         )}
+        {omsiMelding.afgesloten && (
+          <p className="omsimelding-klein" role="status">
+            {t(language, omsiMelding.afgesloten === "al-dicht" ? "omsi.alDicht" : "omsi.nietGesloten")}
+          </p>
+        )}
         <div className="omsimelding-knoppen">
           {omsiMelding.soort === "crash" && (
             <button
@@ -3099,13 +3140,20 @@ export function App(): JSX.Element {
               {t(language, "omsi.herstart")}
             </button>
           )}
-          {omsiMelding.soort === "vast" && omsiMelding.pid !== undefined && (
+          {omsiMelding.soort === "vast" && omsiMelding.pid !== undefined && omsiMelding.afgesloten !== "al-dicht" && (
             <button
               type="button"
               className="btn"
-              onClick={() =>
-                void window.career.sluitOmsi(omsiMelding.pid as number)
-              }
+              onClick={() => {
+                /*
+                 * Het hoofdproces sluit alleen af als onder dat pid nog
+                 * hetzelfde OMSI draait. Zo niet, dan zegt de melding dat.
+                 */
+                const melding = omsiMelding;
+                void window.career.sluitOmsi(melding.pid as number).then((uit) => {
+                  if (uit !== "gesloten") setOmsiMelding((nu) => (nu === melding ? { ...melding, afgesloten: uit } : nu));
+                });
+              }}
             >
               {t(language, "omsi.afsluiten")}
             </button>

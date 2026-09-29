@@ -190,22 +190,39 @@ const omleid = (pad) => {
     copyFileSync: 1, renameSync: 1, cpSync: 1, writeFile: 0, appendFile: 0, copyFile: 1, rename: 1,
     unlink: 0, mkdir: 0, rm: 0
   }
+  /*
+   * Sinds 0.4.9 schrijft de app de situatie via `schrijfVeilig`: eerst
+   * `OMSI Enhancer.osn.<pid>.bezig`, dan teruglezen, dan hernoemen. Dus ook het
+   * eerste argument van hernoemen (de bron) gaat om, en wat in de omleiding
+   * staat, wordt ook dáár gelezen -- als een laag over de spelmap. Alleen wat
+   * de proef zelf omleidde; de echte situaties blijven leesbaar zoals ze zijn.
+   */
+  const echtBestaat = echteFs.existsSync
+  const ookDeBron = new Set(['renameSync', 'rename'])
   for (const [naam, plek] of Object.entries(schrijvers)) {
     const echt = echteFs[naam]
     if (typeof echt !== 'function') continue
     echteFs[naam] = function (...args) {
-      const doel = String(args[plek])
-      if (inSpelmap(doel)) {
+      const plekken = ookDeBron.has(naam) ? [0, plek] : [plek]
+      for (const i of plekken) {
+        const doel = String(args[i])
+        if (!inSpelmap(doel)) continue
         const ander = omleid(doel)
-        if (ander) {
-          omgeleid.push(`${naam} ${doel}`)
-          args[plek] = ander
-          return echt.apply(this, args)
+        if (!ander) {
+          geweigerd.push(`${naam} ${doel}`)
+          throw new Error(`proef: niet schrijven in de spelmap (${naam} ${doel})`)
         }
-        geweigerd.push(`${naam} ${doel}`)
-        throw new Error(`proef: niet schrijven in de spelmap (${naam} ${doel})`)
+        omgeleid.push(`${naam} ${doel}`)
+        args[i] = ander
       }
       return echt.apply(this, args)
+    }
+  }
+  for (const naam of ['readFileSync', 'existsSync', 'statSync']) {
+    const echt = echteFs[naam]
+    echteFs[naam] = function (pad, ...rest) {
+      const ander = inSpelmap(String(pad)) ? omleid(String(pad)) : undefined
+      return echt.call(this, ander && echtBestaat(ander) ? ander : pad, ...rest)
     }
   }
   const echtOpen = echteFs.openSync

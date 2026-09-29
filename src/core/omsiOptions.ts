@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { leesCfg, schrijfCfg } from './veilig'
 
 /**
  * De instellingen van OMSI zelf, in `options.cfg`.
@@ -42,7 +42,7 @@ function indexLines(lines: string[]): Map<string, number> {
 }
 
 export function readOptions(omsiPath: string): OptionsFile {
-  const lines = readFileSync(optionsPath(omsiPath), 'latin1').split('\r\n')
+  const lines = leesCfg(optionsPath(omsiPath)).split('\r\n')
   return { lines, index: indexLines(lines) }
 }
 
@@ -128,6 +128,21 @@ export function removeOption(file: OptionsFile, tag: string): void {
   file.index = indexLines(file.lines)
 }
 
-export function writeOptions(omsiPath: string, file: OptionsFile): void {
-  writeFileSync(optionsPath(omsiPath), file.lines.join('\r\n'), 'latin1')
+/**
+ * Via `schrijfCfg`: eerst een tijdelijk bestand dat teruggelezen wordt, in de
+ * codering die options.cfg al had. Een bestand zonder een enkel blok over een
+ * bestand met blokken heen wordt geweigerd (tenzij `leegMag`): dan zou OMSI
+ * bij de volgende start met al zijn standaardwaarden beginnen.
+ */
+export function writeOptions(omsiPath: string, file: OptionsFile, opties: { leegMag?: boolean } = {}): void {
+  if (file.index.size === 0 && !opties.leegMag) {
+    let had = 0
+    try {
+      had = readOptions(omsiPath).index.size
+    } catch {
+      // Geen options.cfg: dan valt er niets leeg te maken.
+    }
+    if (had > 0) throw new Error('options.cfg niet geschreven: alle instellingen zouden verdwijnen.')
+  }
+  schrijfCfg(optionsPath(omsiPath), file.lines.join('\r\n'), opties)
 }

@@ -63,6 +63,10 @@ export interface OmsiMelding {
   /** ISO-tijd van het moment dat de app het zag. */
   tijd: string
   pid?: number
+  /** Wanneer dat proces startte; met het pid samen is dat welk OMSI het was (core/omsiProces.ts). */
+  start?: string
+  /** Alleen in het scherm: de knop "OMSI afsluiten" vond niets meer, of het lukte niet. */
+  afgesloten?: 'al-dicht' | 'mislukt'
   overlays: Array<{ soort: string; pad: string }>
 }
 
@@ -212,7 +216,8 @@ export interface FreeResult {
   klaargezet: Klaargezet
   /** De naam van de plek waar de bus staat. */
   plek?: string
-  fout?: 'geenBus' | 'onvolledig' | 'geenPlek' | 'geenDienstregeling' | 'schrijven'
+  /** `bekijken`: de app draait alleen om te bekijken (main/versiewacht.ts) en zet niets klaar. */
+  fout?: 'geenBus' | 'onvolledig' | 'geenPlek' | 'geenDienstregeling' | 'schrijven' | 'bekijken'
   foutTekst?: string
 }
 
@@ -348,6 +353,8 @@ export interface Busklaaruitslag {
   geenPlek: number
   /** OMSI draaide: onthouden, en bijgeschreven zodra het dicht is. */
   onthouden?: boolean
+  /** `bekijken`: de app draait alleen om te bekijken (main/versiewacht.ts); er is niets bewaard of bijgeschreven. */
+  fout?: 'bekijken'
 }
 
 export interface BeginRequest {
@@ -397,6 +404,12 @@ export interface BeginResult {
   prepared?: PreparedSituation
   /** Waarom het klaarzetten niet lukte; de overlay staat er dan alsnog. */
   prepareError?: string
+  /**
+   * `bekijken`: de app draait alleen om te bekijken (main/versiewacht.ts). Dan
+   * begint er niets: geen situatie, geen startscherm, geen OMSI, en de dienst
+   * krijgt geen begintijd.
+   */
+  fout?: 'bekijken'
 }
 
 export interface Assignment {
@@ -579,6 +592,7 @@ export type OverlayReden =
   | 'lezen'
   | 'schrijven'
   | 'register'
+  | 'bekijken'
 
 export interface OverlayUitkomst {
   gelukt: boolean
@@ -637,7 +651,7 @@ export interface CareerApi extends BedrijfPlanApi {
    */
   telefoonToets(actie: string): Promise<boolean>
   /** De knoppen van de apparaten in de bus bijschrijven; zie core/bustoetsen.ts. */
-  telefoonKnoppen(): Promise<{ toegevoegd: number; geenPlek: number } | undefined>
+  telefoonKnoppen(): Promise<{ toegevoegd: number; geenPlek: number; fout?: 'bekijken' } | undefined>
   /** Een apparaat uit deze bus in de telefoon zetten of eruit halen. */
   telefoonModule(id: string, aan: boolean): Promise<void>
   /**
@@ -801,8 +815,11 @@ export interface CareerApi extends BedrijfPlanApi {
   vergeetOmsiMelding(): Promise<void>
   /** Meeluisteren met meldingen over OMSI; geeft een opzegfunctie terug. */
   opOmsiMelding(luisteraar: (melding: OmsiMelding) => void): () => void
-  /** Een vastgelopen OMSI afsluiten, alleen op verzoek van de speler. */
-  sluitOmsi(pid: number): Promise<boolean>
+  /**
+   * Een vastgelopen OMSI afsluiten, alleen op verzoek van de speler, en alleen
+   * als onder dat pid nog hetzelfde OMSI draait.
+   */
+  sluitOmsi(pid: number): Promise<'gesloten' | 'al-dicht' | 'mislukt'>
   /** Schrijft alleen de instellingen die veranderd zijn terug naar options.cfg. */
   saveGameSettings(changes: Record<string, string>): Promise<Record<string, string>>
   /** De toetsindeling van OMSI, met de namen uit zijn eigen bestanden. */
@@ -911,12 +928,23 @@ export interface CareerApi extends BedrijfPlanApi {
   /** Het pad van een bestand dat in het venster is losgelaten. */
   addonPad(bestand: File): string
   addonPlan(pad: string): Promise<{ plan: AddonPlan } | AddonFout>
-  addonInstalleer(pad: string, naam?: string): Promise<{ id: string; geschreven: number; overschreven: number } | AddonFout>
+  /** `metCode`: de speler vertrouwt de maker, en de plugins gaan mee. */
+  addonInstalleer(
+    pad: string,
+    naam?: string,
+    metCode?: boolean
+  ): Promise<{ id: string; geschreven: number; overschreven: number; code: number } | AddonFout>
   addonLijst(): Promise<AddonOverzicht[]>
   addonVerwijder(id: string): Promise<{ verwijderd: number; teruggezet: number; gebleven: number; gewijzigd: string[] } | AddonFout>
   addonInhoud(): Promise<{ bussen: string[]; kaarten: string[] }>
   addonControleer(soort: 'bus' | 'kaart', naam: string): Promise<Controle | AddonFout>
   opAddonVoortgang(luisteraar: (stand: { fase: string; n: number }) => void): () => void
+  /**
+   * De bouwstempel (`bouw 1a2b3c4 · 2026-09-28 20:15 · setup`), en of deze exe
+   * alleen kijkt omdat een nieuwere versie de gebruikersmap bijwerkte (zie
+   * core/versiewacht.ts).
+   */
+  bouw(): Promise<{ stempel: string; alleenBekijken?: { versie: string; bouw?: string } }>
   bedrijfWerkplaats(
     nummer: number,
     wat: 'onderhoud' | 'reparatie'
@@ -994,8 +1022,15 @@ export const TIME_WINDOWS: Record<DutyRequest['window'], { label: string; from?:
 
 /** Een klus van de add-on-manager die niet lukte; `melding` is de tekst van de fout, als die er is. */
 export interface AddonFout {
-  fout: 'bezig' | 'omsi' | 'plan' | 'weg' | 'fout' | 'geen-zip' | 'zip64' | 'versleuteld' | 'methode' | 'kapot'
+  fout: 'bezig' | 'omsi' | 'plan' | 'weg' | 'fout' | 'ruimte' | 'geen-zip' | 'zip64' | 'versleuteld' | 'methode' | 'kapot'
   melding?: string
+}
+
+/** Past het op de schijf? Per schijf wat er nodig is en wat er vrij is; zie `ruimteVoor` in core/addon.ts. */
+export interface AddonRuimte {
+  /** `bytes` is wat er bij komt, `nodig` dat met de marge die daarna vrij moet blijven. */
+  schijven: Array<{ wat: 'omsi' | 'reserve' | 'samen'; schijf: string; bytes: number; nodig: number; vrij?: number; past: boolean }>
+  past: boolean
 }
 
 /** Een installatieplan zoals het venster het ziet: tellingen en de eerste regels. */
@@ -1008,10 +1043,28 @@ export interface AddonPlan {
   andersAantal: number
   overig: string[]
   overigAantal: number
+  /** Namen die buiten de OMSI-map uitkwamen of op Windows niet mogen (de eerste 100). */
+  geweigerd: string[]
+  geweigerdAantal: number
+  /** Op dezelfde plek als een eerder bestand uit de bron; niet neergezet (de eerste 100). */
+  dubbel: string[]
+  dubbelAantal: number
+  /** Het pad in de OMSI-map wordt te lang voor OMSI; niet neergezet (de eerste 100). */
+  teLang: string[]
+  teLangAantal: number
+  /** Overgeslagen rommel: `__MACOSX`, `Thumbs.db`, ... */
+  rommel: number
+  /** Plugins: alleen met het vinkje. Met hun staat (nieuw, gelijk, anders). */
+  code: Array<{ doel: string; staat: 'nieuw' | 'gelijk' | 'anders' }>
+  /** Programma's en scripts die nooit neergezet worden. */
+  nooit: string[]
   plekken: Array<{ plek: string; bestanden: number; bytes: number }>
   bussen: string[]
   kaarten: string[]
   bytes: number
+  /** Past het, zonder en met de plugins. */
+  ruimte: AddonRuimte
+  ruimteMetCode: AddonRuimte
 }
 
 export interface AddonOverzicht {

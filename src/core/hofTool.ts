@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto'
-import { copyFileSync, existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { basename, dirname, extname, join } from 'node:path'
 import { readHof, normalise, type Hof } from './hof'
 import { readOmsiLines } from './omsiFile'
+import { schrijfVeilig } from './veilig'
 
 /**
  * Wagenparken van de ene bus naar de andere zetten.
@@ -502,7 +503,12 @@ export function placeHof(omsiPath: string, folder: string, source: string): HofP
   if (existsSync(target)) return undefined
   if (!existsSync(source)) return undefined
   if (!existsSync(dirname(target))) return undefined
-  copyFileSync(source, target)
+  /*
+   * Via `schrijfVeilig` (sinds 0.4.9): een afgebroken kopie was een half
+   * wagenpark in de keuzelijst van OMSI. De tijdelijke naam eindigt op
+   * `.bezig`, dus OMSI ziet hem nooit als `.hof`.
+   */
+  schrijfVeilig(target, readFileSync(source))
   return { path: target, source, placedAt: new Date().toISOString() }
 }
 
