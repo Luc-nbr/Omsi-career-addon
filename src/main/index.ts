@@ -271,6 +271,7 @@ import {
   type YardOption
 } from '../shared/api'
 import { defaultLayout, OVERLAY_RATES, type OverlayLayout } from '../shared/overlay'
+import { ritSleutel, uniekeRitten } from '../shared/traject'
 
 /*
  * Alles wat uit de OMSI-map komt, met zijn caches, staat in `core/kaartlaag.ts`.
@@ -4045,12 +4046,51 @@ async function routesVoor(
   folder: string,
   legs: Array<{ tripFile: string; stopIds: string[] }>
 ): Promise<TripRoute[]> {
-  try {
-    return await werkerVraag<TripRoute[]>({ soort: 'routes', folder, legs })
-  } catch (fout) {
-    logFout('routes via de werker', fout)
-    return laag().routes(folder, legs)
+  /*
+   * Elk traject één keer: een omloop van 26 ritten heeft er vaak maar een
+   * handvol verschillende (shared/traject.ts). Wat de werker al uitrekende,
+   * staat hier; wat hij nog uitrekent, wordt niet opnieuw gevraagd. Zo wacht
+   * de overlay of de telefoon niet in de rij achter een dienstenlijst van twee
+   * seconden voor een route die het hoofdvenster net binnenkreeg, en gaat
+   * elke route één keer over de brug.
+   */
+  const { uniek, plek } = uniekeRitten(legs)
+  const sleutels = uniek.map((leg) => `${folder}|${ritSleutel(leg)}`)
+  const nodig = uniek.filter((_leg, i) => !routeGeheugen.has(sleutels[i]) && !routeOnderweg.has(sleutels[i]))
+  if (nodig.length > 0) {
+    const vraag = (async (): Promise<TripRoute[]> => {
+      try {
+        return await werkerVraag<TripRoute[]>({ soort: 'routes', folder, legs: nodig })
+      } catch (fout) {
+        logFout('routes via de werker', fout)
+        return laag().routes(folder, nodig)
+      }
+    })()
+    nodig.forEach((leg, i) => {
+      const sleutel = `${folder}|${ritSleutel(leg)}`
+      routeOnderweg.set(
+        sleutel,
+        vraag
+          .then((routes) => {
+            bewaarRoute(sleutel, routes[i])
+            return routes[i]
+          })
+          .finally(() => routeOnderweg.delete(sleutel))
+      )
+    })
   }
+  const routes = await Promise.all(sleutels.map((sleutel) => routeGeheugen.get(sleutel) ?? routeOnderweg.get(sleutel)))
+  return plek.map((i) => routes[i] ?? { points: [], guessed: [] })
+}
+
+/** Routes per kaart en rit, zoals de werker ze gaf; de oudste gaat eruit. Zie `routesVoor`. */
+const routeGeheugen = new Map<string, TripRoute>()
+const routeOnderweg = new Map<string, Promise<TripRoute>>()
+const ROUTEGEHEUGEN_MAX = 2000
+function bewaarRoute(sleutel: string, route: TripRoute): void {
+  routeGeheugen.delete(sleutel)
+  routeGeheugen.set(sleutel, route)
+  while (routeGeheugen.size > ROUTEGEHEUGEN_MAX) routeGeheugen.delete(routeGeheugen.keys().next().value as string)
 }
 
 /**
@@ -4076,13 +4116,17 @@ function apparaatBronnen(): ApparaatBronnen {
     },
     schermvorm: (id) => schermvormOp(id),
     textuur: (id) => schermtextuurOp(id),
+    /*
+     * Elk traject één keer, met zijn sleutel: JSON kent geen gedeelde
+     * voorwerpen, en per rit ging Wagen 3 op Krefrath met 859 kB over de wifi
+     * in plaats van een derde daarvan. De pagina zoekt per rit op sleutel.
+     */
     routes: async () => {
       const dienst = currentDuty()
       if (!dienst) return undefined
-      return routesVoor(
-        dienst.mapFolder,
-        dienst.legs.map(({ tripFile, stopIds }) => ({ tripFile, stopIds }))
-      )
+      const { uniek } = uniekeRitten(dienst.legs.map(({ tripFile, stopIds }) => ({ tripFile, stopIds })))
+      const routes = await routesVoor(dienst.mapFolder, uniek)
+      return { routes: uniek.map((leg, i) => ({ sleutel: ritSleutel(leg), route: routes[i] })) }
     },
     /*
      * Wat er op de telefoon van het toestel gebeurt. Dezelfde wegen als de

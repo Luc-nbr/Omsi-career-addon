@@ -12,8 +12,18 @@ import {
 import type { MapGeometry, StopPoint } from '../../core/geo'
 import type { TripRoute } from '../../core/routing'
 import type { Duty } from '../../core/types'
+import { ritSleutel } from '../../shared/traject'
 import { useT } from './language'
 import { RoadLayer } from './roadLayer'
+import {
+  haalRoutes,
+  routesUitGeheugen,
+  schermPad,
+  trajectenVan,
+  vereenvoudigd,
+  type Beeld,
+  type Stuk
+} from './trajecten'
 import './routemap.css'
 
 /** Een halte zoals hij op de route voorkomt, met zijn plek in de volgorde. */
@@ -334,32 +344,68 @@ export function RouteMap({
     return [...seen.values()]
   }, [legs])
 
+  /*
+   * Elk bordje één keer. `routeStops` heeft al elke halte één keer, maar op
+   * sommige kaarten staan twee haltes met een eigen id op precies dezelfde
+   * plek (17 op één kaart bij Luc): dan kwamen er twee borden op elkaar. Per
+   * halve meter één bord, dat voor alle haltes daar spreekt -- de eerste
+   * vermelding, en dus ook het begin van de dienst, is het gezicht.
+   */
+  const borden = useMemo(() => {
+    const opPlek = new Map<string, { stop: RouteStop; ids: string[] }>()
+    const van = new Map<string, { stop: RouteStop; ids: string[] }>()
+    for (const stop of routeStops) {
+      const plek = `${Math.round(stop.x * 2)},${Math.round(stop.y * 2)}`
+      const bord = opPlek.get(plek)
+      if (bord) {
+        bord.ids.push(stop.id)
+        if (stop.isEnd && !bord.stop.isEnd) bord.stop = { ...bord.stop, isEnd: true }
+        van.set(stop.id, bord)
+      } else {
+        const nieuw = { stop, ids: [stop.id] }
+        opPlek.set(plek, nieuw)
+        van.set(stop.id, nieuw)
+      }
+    }
+    return { lijst: [...opPlek.values()], van, plekken: new Set(opPlek.keys()) }
+  }, [routeStops])
+
   const start = routeStops.find((stop) => stop.isStart)
 
   /*
    * De weg die elke rit rijdt, uitgerekend in het hoofdproces. Zolang die er niet
    * is, lopen de lijnen recht van halte naar halte. De sleutel is een tekst en
    * geen object: de overlay krijgt elke tel een nieuwe kopie van dezelfde dienst.
+   *
+   * Elke rit één keer gevraagd, en onthouden (trajecten.ts): wat al binnen is
+   * staat er meteen, zonder eerst rechte lijnen. De routes horen bij hun
+   * sleutel: bij een andere dienst tekende de kaart eerst één beeld lang de
+   * nieuwe ritten met de routes van de vorige.
    */
   const routeKey = `${duty?.mapFolder ?? ''}|${(duty?.legs ?? [])
     .map((leg) => `${leg.tripFile}:${leg.stopIds.join(',')}`)
     .join(';')}`
-  const [routes, setRoutes] = useState<TripRoute[]>()
-  useEffect(() => {
-    let current = true
-    setRoutes(undefined)
+  const [opgehaald, setOpgehaald] = useState<{ sleutel: string; routes: Array<TripRoute | undefined> }>()
+  const routes = useMemo(() => {
+    if (opgehaald?.sleutel === routeKey) return opgehaald.routes
     // Zonder dienst valt er geen weg te plannen; de kaart blijft dan het net.
     if (!duty || duty.legs.length === 0) return undefined
-    const request = duty.legs.map(({ tripFile, stopIds }) => ({ tripFile, stopIds }))
-    window.career
-      .routes(duty.mapFolder, request)
+    return routesUitGeheugen(duty.mapFolder, duty.legs)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeKey, opgehaald])
+  useEffect(() => {
+    if (!duty || duty.legs.length === 0 || routesUitGeheugen(duty.mapFolder, duty.legs)) return undefined
+    let current = true
+    const sleutel = routeKey
+    haalRoutes(duty.mapFolder, duty.legs)
       .then((found) => {
-        if (current) setRoutes(found)
+        if (current) setOpgehaald({ sleutel, routes: found })
       })
       .catch(() => undefined)
     return () => {
       current = false
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeKey])
 
   /** Waar de route ligt, met wat lucht eromheen. */
@@ -446,24 +492,39 @@ export function RouteMap({
     if (stop) setView((old) => ({ ...old, cx: stop.x, cy: stop.y, mpp: Math.min(old.mpp, 1.6) }))
   }, [focusStopId, byId])
 
-  /** Per rit de lijn over de weg, met de afstand langs die lijn bij elke halte. */
-  const legTracks = useMemo(
-    () =>
-      (duty?.legs ?? []).map((leg, legIndex) => {
-        const route = routes?.[legIndex]?.points
-        if (!route || route.length < 4) return undefined
-        return trackAlong(
-          route,
-          leg.stopIds.map((id) => byId.get(id))
+  /**
+   * De lijn over de weg van één rit, met de afstand langs die lijn bij elke
+   * halte. Alleen voor de rit die gereden wordt (en die van de bus): voor de
+   * andere vijfentwintig van een omloop rekende de kaart dit eerst ook uit, bij
+   * elke nieuwe kopie van de dienst. Ritten met dezelfde route en haltes delen
+   * de uitkomst.
+   */
+  const spoor = useMemo(() => {
+    const bewaard = new Map<string, Track | undefined>()
+    return (legIndex: number | undefined): Track | undefined => {
+      if (legIndex === undefined) return undefined
+      const leg = duty?.legs[legIndex]
+      const route = routes?.[legIndex]?.points
+      if (!leg || !route || route.length < 4) return undefined
+      const sleutel = ritSleutel(leg)
+      if (!bewaard.has(sleutel)) {
+        bewaard.set(
+          sleutel,
+          trackAlong(
+            route,
+            leg.stopIds.map((id) => byId.get(id))
+          )
         )
-      }),
+      }
+      return bewaard.get(sleutel)
+    }
     // routeKey en niet duty: de overlay krijgt elke tel een nieuwe kopie van dezelfde dienst.
-    [routeKey, routes, byId]
-  )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeKey, routes, byId])
 
   const busPoint = useMemo(() => {
     if (!bus) return undefined
-    const track = legTracks[bus.legIndex]
+    const track = spoor(bus.legIndex)
     const leg = duty?.legs[bus.legIndex]
     if (!track || !leg || leg.stopIds.length === 0) return undefined
     const next = Math.min(Math.max(bus.nextStop, 0), leg.stopIds.length - 1)
@@ -478,7 +539,7 @@ export function RouteMap({
       if (upcoming !== undefined && upcoming >= previous) along = Math.min(along, upcoming)
     }
     return pointAlong(track, along)
-  }, [bus, legTracks, duty])
+  }, [bus, spoor, duty])
 
   /*
    * Meerijden met de bus. Wie zelf sleept of zoomt krijgt MANUAL_MS rust, daarna
@@ -552,7 +613,7 @@ export function RouteMap({
    */
   const progressAlong = useMemo(() => {
     if (activeLeg === undefined) return undefined
-    const track = legTracks[activeLeg]
+    const track = spoor(activeLeg)
     if (!track) return undefined
 
     if (liveBus) {
@@ -571,7 +632,7 @@ export function RouteMap({
     if (previous === undefined) return upcoming ?? 0
     const along = previous + Math.max(0, bus.metresSinceStop ?? 0)
     return upcoming !== undefined && upcoming >= previous ? Math.min(along, upcoming) : along
-  }, [activeLeg, legTracks, liveBus, bus, duty])
+  }, [activeLeg, spoor, liveBus, bus, duty])
   /*
    * Waar de weg voor je draait.
    *
@@ -583,7 +644,7 @@ export function RouteMap({
    */
   const manoeuvre = useMemo<Manoeuvre | undefined>(() => {
     if (activeLeg === undefined || progressAlong === undefined) return undefined
-    const track = legTracks[activeLeg]
+    const track = spoor(activeLeg)
     if (!track || track.points.length < 8) return undefined
     const { points, cumulative } = track
     const einde = cumulative[cumulative.length - 1]
@@ -634,7 +695,7 @@ export function RouteMap({
       }
     }
     return { kind: 'rechtdoor' }
-  }, [activeLeg, legTracks, progressAlong])
+  }, [activeLeg, spoor, progressAlong])
 
   /*
    * Naar boven doorgeven, en alleen als hij verandert: anders krijgt de balk bij
@@ -658,7 +719,7 @@ export function RouteMap({
    * het bord dat over jou gaat.
    */
   const signsAlong = useMemo(() => {
-    const track = activeLeg !== undefined ? legTracks[activeLeg] : undefined
+    const track = spoor(activeLeg)
     const borden = geometry.limits
     if (!track || !borden || borden.length === 0) return []
     const { points, cumulative } = track
@@ -688,7 +749,7 @@ export function RouteMap({
       if (beste <= SIGN_NEAR_M && kant < 0) gevonden.push({ along: waar, kmh: bord.kmh })
     }
     return gevonden.sort((a, b) => a.along - b.along)
-  }, [activeLeg, legTracks, geometry.limits])
+  }, [activeLeg, spoor, geometry.limits])
 
   /** Het laatste bord dat je voorbij bent; daarvoor geldt geen bord. */
   const speedLimit = useMemo(() => {
@@ -1003,7 +1064,7 @@ export function RouteMap({
    */
   const passedStops = useMemo(() => {
     const state = new Map<string, boolean>()
-    const track = activeLeg !== undefined ? legTracks[activeLeg] : undefined
+    const track = spoor(activeLeg)
     for (const leg of legs) {
       for (const stop of leg) {
         let done = false
@@ -1022,7 +1083,7 @@ export function RouteMap({
       }
     }
     return state
-  }, [legs, legTracks, activeLeg, progressAlong, passedBefore])
+  }, [legs, spoor, activeLeg, progressAlong, passedBefore])
 
   const big = variant === 'full'
   /*
@@ -1038,19 +1099,19 @@ export function RouteMap({
   /** Achtergrondhaltes: alleen wat in beeld valt, en niet te veel. */
   const otherStops = useMemo(() => {
     if (view.mpp > 8) return []
-    const onRoute = new Set(routeStops.map((stop) => stop.id))
     const radius = view.rot !== 0 ? (Math.hypot(size.w, size.h) / 2) * view.mpp + 100 : 0
     const marginX = radius || (size.w / 2) * view.mpp + 100
     const marginY = radius || (size.h / 2) * view.mpp + 100
     const found: StopPoint[] = []
     for (const stop of geometry.stops) {
-      if (onRoute.has(stop.id)) continue
+      // Niet onder een bord van de route: niet de halte zelf, en niet een halte op dezelfde plek.
+      if (borden.van.has(stop.id) || borden.plekken.has(`${Math.round(stop.x * 2)},${Math.round(stop.y * 2)}`)) continue
       if (Math.abs(stop.x - view.cx) > marginX || Math.abs(stop.y - view.cy) > marginY) continue
       found.push(stop)
       if (found.length >= 300) break
     }
     return found
-  }, [geometry, routeStops, view, size])
+  }, [geometry, borden, view, size])
 
   /*
    * DE NAMEN BIJ DE HALTES
@@ -1101,121 +1162,114 @@ export function RouteMap({
         }
       }
     }
-    const rijdtNog = (stop: RouteStop): boolean => passedStops.get(stop.id) !== true
-    const volgende = routeStops.find((stop) => stop.id === nextStopId)
+    // Een naam per bord: haltes op dezelfde plek delen het bord en dus de naam.
+    const bordVan = (stop: RouteStop): { stop: RouteStop; ids: string[] } | undefined => borden.van.get(stop.id)
+    const rijdtNog = (bord: { ids: string[] } | undefined): boolean =>
+      Boolean(bord?.ids.some((id) => passedStops.get(id) !== true))
+    const volgende = nextStopId ? borden.van.get(nextStopId) : undefined
     if (showRouteNames) {
-      if (volgende) consider(volgende, true)
+      if (volgende) consider(volgende.stop, true)
       if (activeLeg !== undefined) {
-        for (const stop of legs[activeLeg] ?? []) if (rijdtNog(stop)) consider(stop, true)
+        for (const stop of legs[activeLeg] ?? []) {
+          const bord = bordVan(stop)
+          if (bord && rijdtNog(bord)) consider(bord.stop, true)
+        }
       }
     }
-    if (start) consider(start, true)
+    if (start) consider(bordVan(start)?.stop ?? start, true)
     if (showRouteNames) {
-      for (const stop of routeStops) if (rijdtNog(stop)) consider(stop, true)
-      for (const stop of routeStops) consider(stop, false)
+      for (const bord of borden.lijst) if (rijdtNog(bord)) consider(bord.stop, true)
+      for (const bord of borden.lijst) consider(bord.stop, false)
     }
     if (showOtherNames) for (const stop of otherStops) consider(stop, false)
     return result
-  }, [start, routeStops, otherStops, showRouteNames, showOtherNames, toScreen, size, signR, bezet, passedStops, nextStopId, activeLeg, legs])
+  }, [start, borden, otherStops, showRouteNames, showOtherNames, toScreen, size, signR, bezet, passedStops, nextStopId, activeLeg, legs])
 
-  /** Elke rit als lijn op het scherm: over de weg als de route er is, anders recht. */
-  const legLines = useMemo(
-    () =>
-      legs.map((leg, legIndex) => {
-        const route = routes?.[legIndex]?.points
-        const points: Array<[number, number]> = []
-        if (routeMode === 'none' || (routeMode === 'active' && legIndex !== activeLeg)) return points
-        if (route && route.length >= 4) {
-          for (let i = 0; i < route.length; i += 2) points.push(toScreen(route[i], route[i + 1]))
-        } else {
-          for (const stop of leg) points.push(toScreen(stop.x, stop.y))
-        }
-        return points
-      }),
-    [legs, routes, toScreen, routeMode, activeLeg]
-  )
-
-  /**
-   * De stukken waar de planner geen weg vond. Daar staat een rechte lijn van
-   * halte naar halte, en die snijdt dwars door het landschap; als gewone route
-   * getekend lijkt het alsof de bus daar langs moet. Gestreept en gedempt leest
-   * het als wat het is: onbekend.
+  /*
+   * ELKE LIJN ÉÉN KEER
+   *
+   * De kaart tekende per rit een lijn, en een omloop rijdt de hele dag dezelfde
+   * paar trajecten heen en weer. Luc: "in vrij rijden gaat hij in de app alle
+   * lijnen tekenen dat voor extreem veel lag zorgt, elke lijn wordt maximaal 1
+   * keer getekend". Wagen 3 op Krefrath: 26 ritten, 9 trajecten, en 61 lijnen
+   * met 45.552 punten -- 90 ms per beeld bij het slepen. Nu één lijn per
+   * traject (trajecten.ts), in stukken gehakt op gevonden en gegokte weg; dat
+   * gebeurt één keer per route en niet meer bij elk beeld.
    */
-  const pieces = useMemo(() => {
-    const solid: Array<{ key: string; line: Array<[number, number]> }> = []
-    const guessed: Array<{ key: string; line: Array<[number, number]> }> = []
-    legs.forEach((_leg, legIndex) => {
-      const line = legLines[legIndex]
-      if (line.length < 2) return
-      const flags = routes?.[legIndex]?.guessed
-      if (!flags || flags.length === 0) {
-        solid.push({ key: `${legIndex}-heel`, line })
-        return
-      }
-      // In stukken hakken op de overgang tussen gevonden en geraden.
-      let from = 0
-      for (let i = 1; i <= line.length - 1; i++) {
-        const done = i === line.length - 1
-        if (!done && Boolean(flags[i]) === Boolean(flags[from])) continue
-        const piece = line.slice(from, done ? line.length : i + 1)
-        if (piece.length > 1) {
-          ;(flags[from] ? guessed : solid).push({ key: `${legIndex}-${from}`, line: piece })
-        }
-        from = i
-      }
-    })
-    return { solid, guessed }
-  }, [legs, legLines, routes])
+  const trajecten = useMemo(() => trajectenVan(legs, routes), [legs, routes])
+
+  /** Hoeveelste halte van de dienst de laatste van elke rit is; voor "gehad". */
+  const laatsteVan = useMemo(() => legs.map((leg) => (leg.length > 0 ? leg[leg.length - 1].order : -1)), [legs])
+
+  /*
+   * Welke trajecten er getekend worden, en hoe. Het traject van de rit die nu
+   * rijdt komt naar voren -- ook als dezelfde weg later in de dienst nog eens
+   * gereden wordt -- en de rest blijft flauw staan; `active` tekent alleen dat
+   * traject. Een traject is pas gehad als elke rit erover gehad is.
+   */
+  const getekend = useMemo(() => {
+    if (routeMode === 'none') return []
+    const actief = activeLeg !== undefined ? trajecten.findIndex((t) => t.ritten.includes(activeLeg)) : -1
+    return trajecten
+      .map((traject, index) => ({ traject, index, actief: index === actief }))
+      .filter(({ actief: a }) => routeMode === 'all' || a)
+      .map((t) => ({
+        ...t,
+        ander: activeLeg !== undefined && !t.actief,
+        gehad: !t.actief && passedBefore >= 0 && t.traject.ritten.every((rit) => laatsteVan[rit] < passedBefore)
+      }))
+      // De rit die aan de beurt is komt als laatste, dus bovenop.
+      .sort((a, b) => Number(a.actief) - Number(b.actief))
+  }, [trajecten, routeMode, activeLeg, passedBefore, laatsteVan])
 
   /**
    * Wanneer elk stuk van de route zichzelf tekent.
    *
-   * De route bestaat uit losse stukken -- een per rit, en meer zodra er een
+   * De route bestaat uit losse stukken -- een per traject, en meer zodra er een
    * geraden deel tussen zit -- en die begonnen allemaal tegelijk. Dan groeit de
    * lijn op vier plekken tegelijk uit het niets, en dat is precies wat je niet
    * wilt zien: een dienst loopt van begin naar eind, en de tekening hoort dat
    * te volgen.
    *
    * Dus krijgt elk stuk een aandeel in de tijd naar rato van zijn lengte, en
-   * een startmoment gelijk aan alles wat ervoor ligt. De geraden stukken tellen
-   * mee in die rekensom ook al tekenen ze zichzelf niet: anders loopt de pen
-   * sneller over het stuk erna om de verloren tijd in te halen.
+   * een startmoment gelijk aan alles wat ervoor ligt, in de volgorde waarin de
+   * dienst het traject voor het eerst rijdt. De geraden stukken tellen mee in
+   * die rekensom ook al tekenen ze zichzelf niet: anders loopt de pen sneller
+   * over het stuk erna om de verloren tijd in te halen.
    */
   const tekenplan = useMemo(() => {
-    const volgorde = (sleutel: string): number => {
-      const [rit, deel] = sleutel.split('-')
-      return Number(rit) * 100000 + (deel === 'heel' ? 0 : Number(deel))
-    }
-    const lengte = (lijn: Array<[number, number]>): number => {
-      let som = 0
-      for (let i = 1; i < lijn.length; i++) {
-        som += Math.hypot(lijn[i][0] - lijn[i - 1][0], lijn[i][1] - lijn[i - 1][1])
-      }
-      return som
-    }
-    const alle = [...pieces.solid, ...pieces.guessed].sort(
-      (a, b) => volgorde(a.key) - volgorde(b.key)
-    )
-    const lengtes = alle.map((stuk) => lengte(stuk.line))
-    const totaal = lengtes.reduce((a, b) => a + b, 0)
+    const alle = getekend
+      .flatMap(({ traject, index }) =>
+        [...traject.heel, ...traject.gok].map((stuk) => ({ sleutel: `${index}-${stuk.van}`, eerste: traject.ritten[0], stuk }))
+      )
+      .sort((a, b) => a.eerste - b.eerste || a.stuk.van - b.stuk.van)
+    const totaal = alle.reduce((som, { stuk }) => som + stuk.lengte, 0)
     const plan = new Map<string, { start: number; deel: number }>()
     if (totaal <= 0) return plan
     let tot = 0
-    alle.forEach((stuk, i) => {
-      plan.set(stuk.key, { start: tot / totaal, deel: Math.max(lengtes[i] / totaal, 0.02) })
-      tot += lengtes[i]
-    })
+    for (const { sleutel, stuk } of alle) {
+      plan.set(sleutel, { start: tot / totaal, deel: Math.max(stuk.lengte / totaal, 0.02) })
+      tot += stuk.lengte
+    }
     return plan
-  }, [pieces])
+  }, [getekend])
+
+  /** Het beeld zoals `toScreen` het rekent, voor `schermPad`. */
+  const beeld = useMemo<Beeld>(
+    () => ({ cx: view.cx, cy: view.cy, mpp: view.mpp, rot: view.rot, w: size.w, h: size.h }),
+    [view, size]
+  )
+  /** Een stuk op het scherm: zo grof als onzichtbaar blijft, en alleen wat in beeld valt. */
+  const pad = useCallback((stuk: Stuk): string => schermPad(vereenvoudigd(stuk.punten, beeld.mpp), beeld), [beeld])
 
   /**
    * De route van de huidige rit gesneden op de plek van de bus: wat gereden is
    * en wat nog komt. Zo verdwijnt de lijn achter de bus, net als in een
-   * navigatiesysteem.
+   * navigatiesysteem. In kaartmeters; `schermPad` zet het op het scherm.
    */
   const trail = useMemo(() => {
     if (activeLeg === undefined || progressAlong === undefined) return undefined
-    const track = legTracks[activeLeg]
+    const track = spoor(activeLeg)
     if (!track || track.cumulative.length < 2) return undefined
     const { points, cumulative } = track
     const at = clamp(progressAlong, 0, cumulative[cumulative.length - 1])
@@ -1224,15 +1278,10 @@ export function RouteMap({
     while (k < cumulative.length - 1 && cumulative[k] < at) k++
     const cut = pointAlong(track, at)
 
-    const done: Array<[number, number]> = []
-    for (let i = 0; i < k; i++) done.push(toScreen(points[i * 2], points[i * 2 + 1]))
-    done.push(toScreen(cut.x, cut.y))
-
-    const ahead: Array<[number, number]> = [toScreen(cut.x, cut.y)]
-    for (let i = k; i < cumulative.length; i++) ahead.push(toScreen(points[i * 2], points[i * 2 + 1]))
-
+    const done = [...points.slice(0, k * 2), cut.x, cut.y]
+    const ahead = [cut.x, cut.y, ...points.slice(k * 2, cumulative.length * 2)]
     return { done, ahead, at }
-  }, [activeLeg, progressAlong, legTracks, toScreen])
+  }, [activeLeg, progressAlong, spoor])
 
 /*
  * Hier stonden pijltjes langs de lijn die de rijrichting aangaven. Ze zijn eruit:
@@ -1281,60 +1330,61 @@ export function RouteMap({
           * Hing de sleutel alleen aan de dienst, dan kwam deze groep leeg ter
           * wereld, liep de animatie op niets, en werden de lijnen daarna in
           * stilte toegevoegd. Zo komt hij opnieuw zodra de stukken er zijn.
+          * Of de wegen er al zijn staat er ook bij: met rechte lijnen en met
+          * wegen kan het aantal trajecten toevallig gelijk zijn. Wat al eens
+          * opgehaald is, staat er meteen (trajecten.ts) en tekent maar één keer.
           */}
         <g
-          key={`${duty?.tourNumber ?? 'net'}|${duty?.start ?? ''}|${legs.length}|${pieces.solid.length}`}
+          key={`${duty?.tourNumber ?? 'net'}|${duty?.start ?? ''}|${legs.length}|${routes ? 'weg' : 'recht'}|${getekend.reduce((som, t) => som + t.traject.heel.length, 0)}`}
           className={
             activeLeg === undefined && routeMode === 'all' ? 'route-intekenen' : undefined
           }
         >
-        {legs
-          .map((leg, index) => ({ leg, index }))
-          .filter(({ index }) => legLines[index].length >= 2)
-          .sort((a, b) => rank(a.index, activeLeg) - rank(b.index, activeLeg))
-          .map(({ leg, index }) => {
-            const other = activeLeg !== undefined && index !== activeLeg
-            const done = passedBefore >= 0 && leg[leg.length - 1].order < passedBefore
-            // De rit waar je op zit: het gereden stuk grijs, de rest in kleur.
-            if (!other && trail && index === activeLeg) {
-              return (
-                <g key={index}>
-                  <g className="route-done">
-                    <polyline className="route-casing" points={asPoints(trail.done)} />
-                    <polyline className="route-line" points={asPoints(trail.done)} />
-                  </g>
-                  <polyline className="route-casing" points={asPoints(trail.ahead)} />
-                  <polyline className="route-line" points={asPoints(trail.ahead)} />
-                </g>
-              )
-            }
+        {getekend.map(({ traject, index, actief, ander, gehad }) => {
+          // De rit waar je op zit: het gereden stuk weg, de rest in kleur.
+          if (actief && trail) {
+            const gereden = schermPad(trail.done, beeld)
+            const komt = schermPad(trail.ahead, beeld)
             return (
-              <g key={index} className={other ? 'route-other' : done ? 'route-done' : undefined}>
-                {pieces.solid
-                  .filter((piece) => piece.key.startsWith(`${index}-`))
-                  .map((piece) => (
-                    <g
-                      key={piece.key}
-                      style={
-                        {
-                          '--start': tekenplan.get(piece.key)?.start ?? 0,
-                          '--deel': tekenplan.get(piece.key)?.deel ?? 1
-                        } as CSSProperties
-                      }
-                    >
-                      <polyline className="route-casing" pathLength={1} points={asPoints(piece.line)} />
-                      <polyline className="route-line" pathLength={1} points={asPoints(piece.line)} />
-                    </g>
-                  ))}
+              <g key={index}>
+                <g className="route-done">
+                  <path className="route-casing" d={gereden} />
+                  <path className="route-line" d={gereden} />
+                </g>
+                <path className="route-casing" d={komt} />
+                <path className="route-line" d={komt} />
               </g>
             )
-          })}
+          }
+          return (
+            <g key={index} className={ander ? 'route-other' : gehad ? 'route-done' : undefined}>
+              {traject.heel.map((stuk) => {
+                const sleutel = `${index}-${stuk.van}`
+                const d = pad(stuk)
+                return (
+                  <g
+                    key={sleutel}
+                    style={
+                      {
+                        '--start': tekenplan.get(sleutel)?.start ?? 0,
+                        '--deel': tekenplan.get(sleutel)?.deel ?? 1
+                      } as CSSProperties
+                    }
+                  >
+                    <path className="route-casing" pathLength={1} d={d} />
+                    <path className="route-line" pathLength={1} d={d} />
+                  </g>
+                )
+              })}
+            </g>
+          )
+        })}
         </g>
 
         {/* De stukken zonder gevonden weg: gestreept, zodat ze niet als route lezen. */}
-        {pieces.guessed.map((piece) => (
-          <polyline key={`gok-${piece.key}`} className="route-guess" points={asPoints(piece.line)} />
-        ))}
+        {getekend.flatMap(({ traject, index }) =>
+          traject.gok.map((stuk) => <path key={`gok-${index}-${stuk.van}`} className="route-guess" d={pad(stuk)} />)
+        )}
 
         {/* Naar de eerste halte, zolang de rit nog niet begonnen is: een gok, dus gestreept. */}
         {aanrij &&
@@ -1359,11 +1409,12 @@ export function RouteMap({
           )
         })}
 
-        {routeStops.map((stop) => {
+        {/* Eén bord per plek; zie `borden`. Gehad als elke halte daar gehad is. */}
+        {borden.lijst.map(({ stop, ids }) => {
           const [x, y] = toScreen(stop.x, stop.y)
           if (x < -40 || y < -40 || x > size.w + 40 || y > size.h + 40) return null
-          const dim = passedStops.get(stop.id) === true
-          const next = stop.id === nextStopId
+          const dim = ids.every((id) => passedStops.get(id) === true)
+          const next = nextStopId !== undefined && ids.includes(nextStopId)
           return (
             <StopSign
               key={stop.id}
@@ -1560,11 +1611,6 @@ function nearestAlong(track: Track, x: number, y: number, from: number): number 
   return bestAlong
 }
 
-/** Schermpunten als `points`-tekenreeks voor een polyline. */
-function asPoints(line: Array<[number, number]>): string {
-  return line.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')
-}
-
 /** Het punt op een afstand langs de route, met de rijrichting daar. */
 function pointAlong(track: Track, along: number): { x: number; y: number; dx: number; dy: number } {
   const { points, cumulative } = track
@@ -1631,11 +1677,6 @@ function StopSign({
       )}
     </g>
   )
-}
-
-/** De rit die aan de beurt is komt als laatste, dus bovenop. */
-function rank(index: number, active?: number): number {
-  return active !== undefined && index === active ? 1 : 0
 }
 
 /** Een verschuiving op het (gedraaide) scherm terug naar kaartrichtingen; x rechts, y omhoog. */

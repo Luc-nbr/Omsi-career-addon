@@ -145,6 +145,8 @@ Sinds 0.4.9 gaat al dat schrijven via een teruggelezen tijdelijk bestand
   hier en niet in `core/` omdat de interface ze toont; de schrijver zit in
   `core/weather.ts`.
 - `api.ts` — het contract tussen hoofdproces en interface.
+- `traject.ts` — de sleutel van een route (ritbestand + haltes) en
+  `uniekeRitten`; hoofdproces, werker, scherm en telefoon rekenen ermee.
 
 ### `src/renderer/src/`
 
@@ -185,6 +187,9 @@ tegen: ze bestaan niet meer.
   binnen het nieuwe vel zodra de dienst rijdt.
 - `RunningDuty.tsx` — het compacte scherm tijdens het rijden.
 - `RouteMap.tsx` — de kaart (halteborden, routes, zoomen, slepen), in SVG.
+- `trajecten.ts` — elke lijn één keer: ritten met dezelfde lijn worden één
+  traject, uitgezoomd een grovere lijn (Douglas-Peucker), alleen wat in beeld
+  valt als SVG-pad, en de routes één keer gevraagd en onthouden.
 - `roadLayer.ts` — het wegennet op een canvas onder die SVG; per vak van 300 m
   gesneden en uitgezoomd gebufferd. Als één SVG-pad kostte slepen over
   HamburgLi20 350 ms per beeld, zo 7 ms.
@@ -2164,6 +2169,50 @@ op `3880b6d` en slaagt nu.
   cfg's en toetsen); na elke Electron-proef waren Lucs `%APPDATA%\omsi-enhancer`,
   `%APPDATA%\omsi-career`, `%LOCALAPPDATA%\OMSI Career` en de OMSI-map (hoofdmap,
   Inputs, Situations, plugins, Weather, de kaartmappen en de .hof's) onveranderd.
+
+**Elke lijn één keer op de kaart** (29-09-2026, tak `claude/lijnen-eenmaal`).
+Luc over 0.4.8: "in vrij rijden gaat hij in de app alle lijnen tekenen dat voor
+extreem veel lag zorgt, elke lijn wordt maximaal 1 keer getekend". Krefrath,
+Stadtzentrum, Wagen 3 vanaf 11:50: 26 ritten over 9 trajecten, en RouteMap
+tekende per rit een omranding en een lijn -- 61 lijnen met 45.552 punten, bij
+elk beeld opnieuw omgerekend naar het scherm. Slepen: 76-90 ms per beeld.
+- **Per traject** (`trajectenVan` in renderer/src/trajecten.ts): ritten met
+  dezelfde lijn (dezelfde punten tot op de centimeter en dezelfde gegokte
+  stukken; zonder route dezelfde haltes) zijn één traject, in stukken gehakt
+  op gevonden/gegokt -- één keer per route, niet per beeld. Het traject van de
+  rit die nu rijdt komt naar voren (met het gereden stuk eraf), de rest
+  `route-other`; `active` tekent alleen dat traject. De rittenlijst links blijft
+  per rit.
+- **Alleen wat je ziet** (`schermPad`, `vereenvoudigd`): een `<path>` per
+  stuk, zonder lijnstukken die helemaal aan één kant buiten beeld liggen (dan
+  een nieuwe `M`), zonder punten binnen een half beeldpunt, en uitgezoomd
+  Douglas-Peucker op een drempel van hooguit een half beeldpunt (trappen van
+  0,1 tot 25,6 m, per stuk één keer). Wagen 3 in beeld: 2.450 punten.
+- **Haltes**: `routeStops` had al elke id één keer, maar op sommige kaarten
+  liggen twee ids op dezelfde plek (17 op één kaart); nu één bord per halve
+  meter (`borden` in RouteMap), dat voor alle ids daar spreekt.
+- **Elke route één keer uitgerekend en gevraagd**: de sleutel is
+  `shared/traject.ts` (ritbestand + haltes, dezelfde als de routecache van de
+  kaartlaag). Het scherm vraagt alleen wat het nog niet heeft en onthoudt het
+  (`haalRoutes`, per venster); `routesVoor` in het hoofdproces stuurt alleen
+  verschillende ritten naar de werker, onthoudt wat terugkwam en vraagt niets
+  dubbel wat nog onderweg is. `api/routes` voor de telefoon stuurt elk traject
+  één keer met zijn sleutel (859 -> 262 kB voor Wagen 3); `apparaat.tsx` zet
+  het terug per rit. `trackAlong` alleen nog voor de rit die rijdt.
+- **Vrij rijden: de rit die OMSI rijdt staat voorop** op het rijscherm
+  (`vrijRit` in App.tsx, eens per seconde `liveStatus`); eerst was de hele
+  omloop even fel.
+- Gemeten met `probe-lijneneenmaal.cjs` (Electron, echte muisinvoer, eigen
+  gebruikersmap; `--uit=<bouw>` voor een andere bouw): slepen p95 97 -> 7 ms
+  (144 Hz-scherm, 7 ms is één beeld), zoomen p95 76 -> 7 ms, eerste tekening
+  p95 35 -> 7 ms; de langste dienst uit de dienstmodus op Krefrath (14 ritten,
+  6 trajecten) slepen p95 49 -> 7 ms. `probe-trajecten.ts` loopt de
+  groepering, de vereenvoudiging en het knippen na op de langste omloop van
+  elke kaart: 705 ritten, 131 verschillende, 125 trajecten; 387.601 punten per
+  rit, 84.453 per traject, 8.492 in beeld.
+- Niet gedaan: de trajecten nog eens samenvoegen waar ze elkaar alleen
+  gedeeltelijk overlappen (heen en terug door dezelfde straat, andere
+  haltes); dat zijn echt andere lijnen.
 
 **Navigatie: doorzichtig, vaste zoom, en haltenamen die niet meer wegvallen**
 (28-09-2026). Drie vragen van gebruikers, via Luc.

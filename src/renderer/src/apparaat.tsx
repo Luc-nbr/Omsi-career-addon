@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import type { MapGeometry } from "../../core/geo";
 import type { TripRoute } from "../../core/routing";
 import type { CareerApi } from "../../shared/api";
+import { ritSleutel, type RitVraag } from "../../shared/traject";
 import { DEFAULT_LANGUAGE, t, type Language } from "../../shared/i18n";
 import { zetAnimaties, type Animaties } from "./animaties";
 import { LanguageProvider } from "./language";
@@ -47,9 +48,18 @@ async function haal<T>(pad: string): Promise<T> {
  * De kaart vraagt zijn routes aan de brug van de app, en die is er in een
  * browser niet. Hier staat wat ervoor in de plaats komt: de server kent de
  * dienst al, dus er gaat niets mee in de vraag.
+ *
+ * De server stuurt elk traject één keer, met zijn sleutel (shared/traject.ts);
+ * hier gaat het terug naar de ritten waar de kaart om vroeg. Een rit die niet
+ * in de dienst van de server staat -- de dienst wisselde net -- krijgt niets,
+ * en dat onthoudt de kaart niet: de volgende vraag haalt hem alsnog.
  */
 window.career = {
-  routes: () => haal<TripRoute[] | null>("api/routes").then((routes) => routes ?? []),
+  routes: (_kaart: string, legs: RitVraag[]) =>
+    haal<{ routes?: Array<{ sleutel: string; route: TripRoute }> } | null>("api/routes").then((antwoord) => {
+      const opSleutel = new Map((antwoord?.routes ?? []).map((r) => [r.sleutel, r.route]));
+      return legs.map((leg) => opSleutel.get(ritSleutel(leg)));
+    }),
   logboekMelden: async () => undefined,
 } as unknown as CareerApi;
 

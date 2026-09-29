@@ -1087,6 +1087,41 @@ export function App(): JSX.Element {
     };
   }, [started, duty]);
 
+  /*
+   * Vrij rijden: welke rit van de gevolgde omloop OMSI nu rijdt. De kaart van
+   * het rijscherm tekent elk traject één keer (trajecten.ts), en dan hoort het
+   * traject van deze rit naar voren te komen; de rest blijft flauw staan, net
+   * als in het routevenster. Eens per seconde, zoals de lopende dienst
+   * hierboven; dezelfde rit geeft geen nieuwe tekening.
+   */
+  const [vrijRit, setVrijRit] = useState<number>();
+  const vrijGevolgd =
+    vrijBezig && mode === "free" && screen === "drive" ? vrijUit?.duty : undefined;
+  useEffect(() => {
+    if (!vrijGevolgd) {
+      setVrijRit(undefined);
+      return;
+    }
+    let geldig = true;
+    const haal = (): void => {
+      if (document.visibilityState === "hidden") return;
+      void window.career
+        .liveStatus()
+        .then((stand) => {
+          // -1: nog geen rit; en een rit buiten deze omloop hoort bij een andere kopie.
+          const rit = stand.status?.legIndex ?? -1;
+          if (geldig) setVrijRit(rit >= 0 && rit < vrijGevolgd.legs.length ? rit : undefined);
+        })
+        .catch(() => undefined);
+    };
+    haal();
+    const klok = setInterval(haal, 1000);
+    return () => {
+      geldig = false;
+      clearInterval(klok);
+    };
+  }, [vrijGevolgd]);
+
   /** De lijnen van de gekozen kaart; die zijn er voor de route- en examenkeuze. */
   useEffect(() => {
     if (!mapFolder) {
@@ -2931,6 +2966,11 @@ export function App(): JSX.Element {
           duty={gevolgd}
           /* Zonder omloop het net van de kaart die OMSI speelt; met omloop zijn route. */
           netkaart={gevolgd ? undefined : (vrijUit?.mapFolder ?? mapFolder) || undefined}
+          /*
+           * De hele omloop, elk traject één keer, met dat van de rit die OMSI
+           * nu rijdt naar voren; zie `vrijRit`.
+           */
+          navigatie={gevolgd && vrijRit !== undefined ? { routeMode: "all", activeLeg: vrijRit } : undefined}
           titel={t(language, "free.drivingTitle")}
           /*
            * Wat het hoofdproces over OMSI weet, in dezelfde woorden als de
