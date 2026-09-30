@@ -39,7 +39,7 @@ import {
   type FleetIndex
 } from './fleet'
 import { bouwBusTekeningMetPlaten, type BusTekeningMetPlaten } from './busbeeld'
-import { kleurstellingenVanBus } from './kleurstelling'
+import { eigenKleurstellingen, kleurstellingenVanBus, omsiHoofdletters } from './kleurstelling'
 import type { BusKleurstellingen } from '../shared/api'
 import { ritSleutel } from '../shared/traject'
 import { readMapData, readTileGrid, type Lane, type MapGeometry } from './geo'
@@ -663,9 +663,13 @@ export function maakKaartlaag(omsiPath: string, userData: string): Kaartlaag {
     kleurstellingen(busPad) {
       const info = kleurstellingenVanBus(busPad)
       if (!info) return undefined
+      // Een eigen lak uit de Lakstudio (§6, punt 1): aan de bestandsnaam, en in alle delen van de bus.
+      const eigen = eigenKleurstellingen(busPad)
       return {
         variabele: info.variabele,
-        lijst: info.lijst.map(({ index, naam, setvars }) => ({ index, naam, setvars }))
+        lijst: info.lijst.map(({ index, naam, setvars }) =>
+          eigen.has(omsiHoofdletters(naam)) ? { index, naam, setvars, eigen: true as const } : { index, naam, setvars }
+        )
       }
     },
 

@@ -245,6 +245,8 @@ import { presetStartup } from '../core/startup'
 import { inBekijkstand, zetKopieMap } from '../core/veilig'
 import { trailerOf } from '../core/trailer'
 import { maakBus3dDienst, registreerBus3dIpc, type Bus3dDienst } from './bus3d'
+import { maakGrendel } from './grendel'
+import { maakLakstudio, type Lakstudio } from './lakstudio'
 import { spawnAtStop } from '../core/spawn'
 import { listMaps, readMapName } from '../core/timetable'
 import type { Vehicle } from '../core/vehicles'
@@ -520,6 +522,12 @@ function busfoto4Adres(bestand: string): string {
  */
 let bus3dVenster: Bus3dVenster | undefined
 let busfoto4: Busfoto4 | undefined
+/*
+ * De grendel van de OMSI-map (main/grendel.ts): add-ons en de Lakstudio doen
+ * één klus tegelijk. En de Lakstudio zelf (main/lakstudio.ts), achter `bus3d`.
+ */
+const omsiGrendel = maakGrendel()
+let lakstudio: Lakstudio | undefined
 
 /** De pagina `bus3d.html`, in dev van de server en anders uit de gebouwde map. */
 function bus3dPagina(): { url?: string; bestand?: string } {
@@ -530,15 +538,28 @@ function bus3dPagina(): { url?: string; bestand?: string } {
 
 /** De lijst uit "Appearance" van een bus; het lezen van de .cti-bestanden gaat naar de werker. */
 async function kleurstellingenVan(relatiefPad: string): Promise<BusKleurstellingen | undefined> {
+  let uit: BusKleurstellingen | undefined
   try {
-    return await werkerVraag<BusKleurstellingen | undefined>({
+    uit = await werkerVraag<BusKleurstellingen | undefined>({
       soort: 'kleurstellingen',
       busPad: join(omsi(), relatiefPad)
     })
   } catch (fout) {
     logFout('kleurstellingen via de werker', fout)
-    return laag().kleurstellingen(join(omsi(), relatiefPad))
+    uit = laag().kleurstellingen(join(omsi(), relatiefPad))
   }
+  /*
+   * Een eigen lak die klaargezet is terwijl OMSI draaide (Lakstudio §5.7): de
+   * naam staat er al, met `wacht` en index -1. `kleurVars` vindt hem pas als hij
+   * geplaatst is; overspuiten mag al (deel F).
+   */
+  const wachtend = lakstudio?.wachtendVoor(relatiefPad) ?? []
+  if (uit && wachtend.length > 0) {
+    const bekend = new Set(uit.lijst.map((k) => k.naam.replace(/[a-z]+/g, (x) => x.toUpperCase())))
+    const erbij = wachtend.filter((n) => !bekend.has(n.replace(/[a-z]+/g, (x) => x.toUpperCase())))
+    uit = { ...uit, lijst: [...uit.lijst, ...erbij.map((naam) => ({ index: -1, naam, setvars: {}, wacht: true as const }))] }
+  }
+  return uit
 }
 
 /** Het thema van de app als donker of licht, voor de achtergrond van een nieuw venster. */
@@ -2345,6 +2366,8 @@ async function herstelStartscherm(): Promise<void> {
   // Het 3D-venster gaat in de lichte stand zolang OMSI draait (bus3d-ontwerp §9).
   bus3dVenster?.omsiGewijzigd(draait)
   if (netAf) meldPluginLogboek('OMSI is net afgesloten')
+  // Een lak die klaarstond, nu in OMSI (Lakstudio §5.7a).
+  if (netAf) void lakstudio?.omsiDicht('OMSI is net afgesloten')
   if (!netAf || !klaargezet) return
   try {
     const startup = presetStartup(omsi(), klaargezet.mapFolder, klaargezet.file)
@@ -4855,7 +4878,30 @@ function registerHandlers(): void {
     fotoAlsKlaar: (relatiefPad, kleurstelling) => bus3d().fotoAlsKlaar(relatiefPad, kleurstelling, 'breed'),
     kleurstellingen: (relatiefPad) => kleurstellingenVan(relatiefPad),
     kleurstalen: (relatiefPad, tussen) => bus3d().kleurstalen(relatiefPad, tussen),
-    log
+    log,
+    lakBezig: () => lakstudio?.bezig() ?? false,
+    bedrijfsnaam: () => career?.bedrijf?.naam
+  })
+  lakstudio = maakLakstudio(ipcMain, {
+    omsi,
+    userData,
+    log,
+    logFout,
+    aan: () => readSettings(userData()).bus3d === true,
+    omsiDraait: () => isOmsiRunning(`${OMSI_PROCES}.exe`),
+    bus3d,
+    venster: () => bus3dVenster,
+    grendel: omsiGrendel,
+    naarHoofd: (kanaal, ...args) => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(kanaal, ...args)
+    },
+    // Het busbedrijf (deel F) zet straks `kleurstelling` op een eigen bus; tot dan rijdt niemand in een eigen lak.
+    eigenBussen: () =>
+      (career?.bedrijf?.bussen ?? []).map((b) => ({
+        nummer: b.nummer,
+        relatiefPad: b.relativePath,
+        kleurstelling: (b as { kleurstelling?: string }).kleurstelling
+      }))
   })
   busfoto4 = maakBusfoto4(ipcMain, {
     userData,
@@ -5676,7 +5722,11 @@ function registerHandlers(): void {
         inzetpunt: (kaart, nr) => inzetpuntVoorStart(kaart, nr),
         writeSituation: (situatie) => writeSituation(omsi(), situatie),
         presetStartup: (kaart, file) => presetStartup(omsi(), kaart, file),
-        schrijfStraks: () => schrijfStraks('voor het starten van OMSI'),
+        schrijfStraks: async () => {
+          // Een klaargezette eigen lak eerst in OMSI, vóór de situatie (Lakstudio §5.7c): dan vindt kleurVars hem.
+          await lakstudio?.voorStart()
+          await schrijfStraks('voor het starten van OMSI')
+        },
         launchOmsi: () => launchOmsi(omsi(), instellingen.windowedOmsi),
         log
       },
@@ -5921,6 +5971,8 @@ function registerHandlers(): void {
       if (request.meerijden) {
         log(`Meerijden gevraagd, maar OMSI draait niet meer: ${duty.mapName} wordt gewoon klaargezet`)
       }
+      // Een klaargezette eigen lak eerst in OMSI, vóór de situatie (Lakstudio §5.7c): dan vindt kleurVars hem.
+      if (!running) await lakstudio?.voorStart()
       try {
         prepared = prepareSituation(
           duty,
@@ -6611,7 +6663,6 @@ function registerHandlers(): void {
    * ertussen: een kaart van duizenden bestanden mag het venster niet
    * stilzetten. Hoe ver hij is, gaat als `addon:voortgang` naar het venster.
    */
-  let addonBezig = false
   let addonPlan: { pad: string; plan: Plan } | undefined
   const inStukjes = async <T>(
     stappen: Generator<number, T>,
@@ -6629,22 +6680,24 @@ function registerHandlers(): void {
       }
     }
   }
-  const eenTegelijk = async <T>(klus: () => Promise<T>): Promise<T | { fout: string }> => {
-    if (addonBezig) return { fout: 'bezig' }
-    addonBezig = true
-    try {
-      return await klus()
-    } catch (fout) {
-      logFout('add-on-manager', fout)
-      // Een volle schijf is geen raadsel maar een melding: `ruimte`, en de installatie is teruggedraaid.
-      const soort = fout instanceof ZipFout ? fout.soort : fout instanceof InstallatieFout && fout.soort === 'ruimte' ? 'ruimte' : 'fout'
-      return { fout: soort, melding: fout instanceof Error ? fout.message : String(fout) } as {
-        fout: string
+  /*
+   * Eén klus tegelijk, met dezelfde grendel als de Lakstudio (main/grendel.ts):
+   * een lak die klaarstond mag niet geplaatst worden terwijl een add-on half
+   * geïnstalleerd is. Wie hem niet krijgt: `{ fout: 'bezig' }`.
+   */
+  const eenTegelijk = async <T>(klus: () => Promise<T>): Promise<T | { fout: string }> =>
+    omsiGrendel.probeer(async (): Promise<T | { fout: string }> => {
+      try {
+        return await klus()
+      } catch (fout) {
+        logFout('add-on-manager', fout)
+        // Een volle schijf is geen raadsel maar een melding: `ruimte`, en de installatie is teruggedraaid.
+        const soort = fout instanceof ZipFout ? fout.soort : fout instanceof InstallatieFout && fout.soort === 'ruimte' ? 'ruimte' : 'fout'
+        return { fout: soort, melding: fout instanceof Error ? fout.message : String(fout) } as {
+          fout: string
+        }
       }
-    } finally {
-      addonBezig = false
-    }
-  }
+    }, 'add-on-manager')
   /** Wat het venster van een plan te zien krijgt: tellingen en de eerste regels, niet twintigduizend. */
   const planVoorVenster = (plan: Plan): AddonPlan => ({
     naam: plan.naam,
@@ -6725,7 +6778,9 @@ function registerHandlers(): void {
   )
   handle('addon:lijst', (): AddonOverzicht[] =>
     leesRegister(userData())
-      .addons.map((a) => ({
+      // Eigen kleurstellingen staan apart (lak:lijst) en gaan alleen via de Lakstudio weg (§5.6).
+      .addons.filter((a) => a.soort !== 'lak')
+      .map((a) => ({
         id: a.id,
         naam: a.naam,
         geinstalleerd: a.geinstalleerd,
@@ -6740,7 +6795,7 @@ function registerHandlers(): void {
     eenTegelijk(async () => {
       if (await isOmsiRunning()) return { fout: 'omsi' }
       const register = leesRegister(userData())
-      const addon = register.addons.find((a) => a.id === String(id))
+      const addon = register.addons.find((a) => a.id === String(id) && a.soort !== 'lak')
       if (!addon) return { fout: 'weg' }
       const uit = await inStukjes(verwijderStappen(addon, register, omsi(), userData()), event.sender, 'verwijder')
       schrijfRegister(userData(), { addons: register.addons.filter((a) => a.id !== addon.id) })
@@ -7155,6 +7210,8 @@ if (!app.requestSingleInstanceLock()) {
     career = resolveActive(userData())
     registerHandlers()
     createWindow()
+    // Een eigen lak die klaarstond toen de app dichtging: nu plaatsen als OMSI niet draait (Lakstudio §5.7b).
+    setTimeout(() => void lakstudio?.omsiDicht('bij het starten van de app'), 4000)
 
     /*
      * Pas als het venster er staat. Eerst het scherm, dan het voorwerk: wie de

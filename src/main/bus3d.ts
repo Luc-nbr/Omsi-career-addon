@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { createReadStream, statSync } from 'node:fs'
+import { closeSync, createReadStream, openSync, readSync, statSync } from 'node:fs'
 import { basename, isAbsolute, resolve, sep } from 'node:path'
 import { Readable } from 'node:stream'
 import type { IpcMain, IpcMainInvokeEvent, WebContents } from 'electron'
@@ -14,6 +14,7 @@ import {
   type Bus3dManifest,
   type Bus3dMeting,
   type Bus3dOmgeving,
+  type Bus3dPakKop,
   type Bus3dReden,
   type Bus3dStalen,
   type Bus3dVoortgang
@@ -121,6 +122,19 @@ export interface Bus3dDienst {
   ruimOp(): void
   /** Voor de probe. */
   readonly cache: Bus3dCache
+  /**
+   * Lakstudio (lakstudio-ontwerp §4.1): losse bestanden in het register zetten
+   * (de standaardtextuur van een doel, de .rpc-sjablonen), zodat de studio ze
+   * op id ophaalt; het venster krijgt nooit een pad. Geeft pad → id.
+   */
+  registreerLos(paden: string[]): Map<string, string>
+  /**
+   * Lakstudio: het pakket van een familielid (manifest en kop), uit de cache of
+   * nieuw gebouwd, zonder lak. Een eigen rij, zodat het de viewer niet vervangt.
+   */
+  lakPakket(relatiefPad: string): Promise<{ manifest: Bus3dManifest; kop: Bus3dPakKop } | { reden: Bus3dReden }>
+  /** Lakstudio: een kleurstelling kwam erbij of ging weg; de stalen van deze bussen opnieuw. */
+  kleurstellingenVeranderd(paden: string[], naam?: string): void
 }
 
 interface Registerpakket {
@@ -623,7 +637,83 @@ export function maakBus3dDienst(af: Bus3dAfhankelijk): Bus3dDienst {
     return stempel.waarde
   }
 
-  return { model3d, lak3d, omgeving3d, heldenbeeld, fotoAlsKlaar, registratieStempel, kleurstalen, meld, antwoord, vergeet, stuk, ruimOp, cache }
+  // ------------------------------------------------------------ de Lakstudio
+  function registreerLos(paden: string[]): Map<string, string> {
+    const uit = new Map<string, string>()
+    for (const pad of paden) {
+      try {
+        const st = statSync(pad)
+        // Dezelfde regel als textuurId in core/bus3d.ts (die niet in main hoeft).
+        const id = createHash('sha1').update(`t|${pad.toLowerCase()}|${st.size}|${Math.round(st.mtimeMs)}`).digest('hex')
+        const kop = Buffer.alloc(4)
+        try {
+          const fd = openSync(pad, 'r')
+          readSync(fd, kop, 0, 4, 0)
+          closeSync(fd)
+        } catch {
+          // dan zonder soort
+        }
+        const mime =
+          kop[0] === 0x42 && kop[1] === 0x4d
+            ? 'image/bmp'
+            : kop[0] === 0x89 && kop[1] === 0x50
+              ? 'image/png'
+              : kop[0] === 0xff && kop[1] === 0xd8
+                ? 'image/jpeg'
+                : 'application/octet-stream'
+        texturen.set(id, { id, pad, grootte: st.size, mtime: Math.round(st.mtimeMs), mime })
+        uit.set(pad, id)
+      } catch {
+        // een bestand dat er niet is, krijgt geen id
+      }
+    }
+    return uit
+  }
+
+  async function lakPakket(relatiefPad: string): Promise<{ manifest: Bus3dManifest; kop: Bus3dPakKop } | { reden: Bus3dReden }> {
+    const pad = String(relatiefPad ?? '')
+    if (!/\.(bus|ovh|sco)$/i.test(pad) || isAbsolute(pad) || pad.split(/[\/]/).includes('..')) return { reden: 'geen-model' }
+    const uit = await inDeRij(`lak-pakket:${pad.toLowerCase()}`, async () => {
+      const reg = registratie()
+      let z = cache.zoek(af.omsi(), pad)
+      if (z && (!magTonen(z.manifest.sleutels, reg) || !zelfdeSet(z.geregistreerd, reg))) z = undefined
+      if (!z) {
+        const gebouwd = await bouw(pad, reg)
+        if ('reden' in gebouwd) return { reden: gebouwd.reden }
+        z = gebouwd.zijspoor
+      } else registreer(z)
+      const kop = cache.kop(z.pakket)
+      return kop ? { manifest: z.manifest, kop } : { reden: 'fout' as Bus3dReden }
+    })
+    return uit
+  }
+
+  function kleurstellingenVeranderd(paden: string[], naam?: string): void {
+    for (const p of paden) {
+      stalen.delete(p.toLowerCase())
+      const z = cache.zoek(af.omsi(), p)
+      if (z && naam !== undefined) cache.vergeetHelden(z.pakket, naam)
+    }
+  }
+
+  return {
+    model3d,
+    lak3d,
+    omgeving3d,
+    heldenbeeld,
+    fotoAlsKlaar,
+    registratieStempel,
+    kleurstalen,
+    meld,
+    antwoord,
+    vergeet,
+    stuk,
+    ruimOp,
+    cache,
+    registreerLos,
+    lakPakket,
+    kleurstellingenVeranderd
+  }
 }
 
 function zelfdeSet(lijst: number[] | undefined, set: ReadonlySet<number>): boolean {

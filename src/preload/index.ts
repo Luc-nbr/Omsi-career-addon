@@ -198,6 +198,18 @@ const api: CareerApi = {
     ipcRenderer.on('addon:voortgang', heen)
     return () => ipcRenderer.removeListener('addon:voortgang', heen)
   },
+  lakLijst: () => ipcRenderer.invoke('lak:lijst'),
+  lakWachtrij: () => ipcRenderer.invoke('lak:wachtrij'),
+  lakNietPlaatsen: (id) => ipcRenderer.invoke('lak:nietPlaatsen', id),
+  lakVerwijder: (id, ookOntwerp, keuze) => ipcRenderer.invoke('lak:verwijderHoofd', id, ookOntwerp, keuze),
+  lakWezen: () => ipcRenderer.invoke('lak:wezen'),
+  lakWeesWeg: (id) => ipcRenderer.invoke('lak:weesWeg', id),
+  lakWeesOvernemen: (id) => ipcRenderer.invoke('lak:weesOvernemen', id),
+  opKleurstellingenVeranderd: (luisteraar) => {
+    const heen = (_gebeurtenis: unknown, bussen: string[]): void => luisteraar(bussen)
+    ipcRenderer.on('bus:kleurstellingenVeranderd', heen)
+    return () => ipcRenderer.removeListener('bus:kleurstellingenVeranderd', heen)
+  },
   bouw: () => ipcRenderer.invoke('app:bouw'),
   omsiState: () => ipcRenderer.invoke('omsi:state'),
   confirmOmsi: (path) => ipcRenderer.invoke('omsi:confirm', path),

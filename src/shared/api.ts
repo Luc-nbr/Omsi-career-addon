@@ -1,5 +1,6 @@
 import type { BedrijfPlanApi } from './bedrijfApi'
 import type { Controle } from '../core/addoncheck'
+import type { LakOverzicht } from './lak'
 import type { Schermvorm } from './scherm'
 import type { Busanalyse, Busmap } from '../core/busklaar'
 import type { Aanbod, MarktBus, OpleidingId } from '../core/bedrijf'
@@ -90,7 +91,11 @@ export interface OmsiOverlays {
 export interface BusKleurstellingen {
   /** De scriptvariabele die het nummer draagt, meestal `Colorscheme`. */
   variabele: string
-  lijst: Array<{ index: number; naam: string; setvars: Record<string, number> }>
+  /**
+   * `eigen`: een eigen lak uit de Lakstudio, in alle delen van deze bus (§6).
+   * `wacht`: klaargezet, nog niet in OMSI (index -1; `kleurVars` vindt hem nog niet).
+   */
+  lijst: Array<{ index: number; naam: string; setvars: Record<string, number>; eigen?: true; wacht?: true }>
 }
 
 /**
@@ -969,6 +974,20 @@ export interface CareerApi extends BedrijfPlanApi {
   addonInhoud(): Promise<{ bussen: string[]; kaarten: string[] }>
   addonControleer(soort: 'bus' | 'kaart', naam: string): Promise<Controle | AddonFout>
   opAddonVoortgang(luisteraar: (stand: { fase: string; n: number }) => void): () => void
+  /**
+   * De Lakstudio in Addons (lakstudio-ontwerp §5.6-§5.8), achter de schakelaar
+   * `bus3d`: eigen kleurstellingen, wachtende lakken en wezen. Zonder schakelaar
+   * geven ze niets.
+   */
+  lakLijst(): Promise<LakOverzicht[]>
+  lakWachtrij(): Promise<Array<{ projectId: string; naam: string; bus: string; versie: number; sinds: string; reden?: string }>>
+  lakNietPlaatsen(projectId: string): Promise<boolean>
+  lakVerwijder(projectId: string, ookOntwerp?: boolean, keuze?: 'alles' | 'laten'): Promise<unknown>
+  lakWezen(): Promise<Array<{ id: string; cti: string; naam: string; nnnn: number; bestanden: string[] }>>
+  lakWeesWeg(id: string): Promise<unknown>
+  lakWeesOvernemen(id: string): Promise<unknown>
+  /** Een kleurstelling kwam erbij of ging weg (Lakstudio): de lijsten opnieuw vragen. */
+  opKleurstellingenVeranderd(luisteraar: (bussen: string[]) => void): () => void
   /**
    * De bouwstempel (`bouw 1a2b3c4 · 2026-09-28 20:15 · setup`), en of deze exe
    * alleen kijkt omdat een nieuwere versie de gebruikersmap bijwerkte (zie

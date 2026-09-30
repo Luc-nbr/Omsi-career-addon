@@ -18,6 +18,8 @@
  * omgezet.
  */
 
+import type { LakFamilieInfo, LakOptie, LakPlaatsUitkomst, LakProject, NaamFout } from './lak'
+
 export type V3 = [number, number, number]
 
 /** Waarom er geen 3D komt; het venster kiest er de terugval bij (§9). */
@@ -47,6 +49,12 @@ export interface Bus3dTextuur {
   /** Buitenoppervlak in de wereld (m²) en UV-oppervlak, voor de doelmaat (§5.7). */
   oppervlak: number
   uv: number
+  /**
+   * Hoeveel van dat oppervlak de schil van de bus is (zijwanden en dak, normaal
+   * naar buiten), m²; voor de lakplekken van de Lakstudio. Ontbreekt in een
+   * pakket van vóór `bus3d-pakket-3`, en bij 0.
+   */
+  schil?: number
   /** De `[CTCTexture]`-plek, als een kleurstelling deze textuur vervangt. */
   ctc?: string
   /** Alleen als envmap gebruikt: wordt niet geladen (§5.5). */
@@ -261,6 +269,28 @@ export interface Bus3dBrug {
   busKleurstalen(relatiefPad: string): Promise<Bus3dStalen>
   opKleurstalen(luister: (relatiefPad: string, stalen: Bus3dStalen) => void): () => void
 
+  // ---- de Lakstudio (lakstudio-ontwerp §8): alleen in doel 'lakstudio', achter de schakelaar; nooit paden
+  /** "+ Eigen lak": het venster wisselt naar de studio met dezelfde bus. */
+  naarStudio(lak?: Bus3dVensterVraag['lak']): Promise<number>
+  lakProjecten(relatiefPad: string): Promise<LakProject[]>
+  lakDoelen(relatiefPad: string, start?: string, extra?: Record<string, string[]>): Promise<LakFamilieInfo | undefined>
+  lakOpties(relatiefPad: string): Promise<LakOptie[]>
+  lakLaad(projectId: string): Promise<LakProject | undefined>
+  lakBewaar(project: LakProject): Promise<LakProject | undefined>
+  lakBeeld(projectId: string, bytes: Uint8Array): Promise<{ id: string; soort: string } | undefined>
+  lakBeeldBytes(projectId: string, beeldId: string): Promise<Uint8Array | undefined>
+  lakNaamVrij(relatiefPad: string, naam: string, projectId?: string): Promise<NaamFout | undefined>
+  lakPlaats(
+    projectId: string,
+    naam: string,
+    texturen: Array<{ doel: string; dds: Uint8Array }>,
+    keuze?: 'weggooien'
+  ): Promise<LakPlaatsUitkomst>
+  lakVerwijder(projectId: string, ookOntwerp?: boolean, keuze?: 'alles' | 'laten'): Promise<unknown>
+  lakGebruik(relatiefPad: string, naam: string): Promise<number[]>
+  opKleurstellingenVeranderd(luisteraar: (bussen: string[]) => void): () => void
+  opLakGeplaatst(luisteraar: (l: { naam: string }) => void): () => void
+
   // ---- het fotovenster (foto v4, §4.5, §9): alleen als main deze pagina als fotovenster laadde
   opFotoVraag(luister: (v: Bus3dFotoVraag) => void): () => void
   /** Het fotovenster luistert: pas daarna stuurt main fotovragen (dit deel laadt na de pagina). */
@@ -271,7 +301,8 @@ export interface Bus3dBrug {
 /** De lijst met kleurstellingen, zoals de buskeuze hem ook krijgt (`BusKleurstellingen` in api.ts). */
 export interface Bus3dKleurlijst {
   variabele: string
-  lijst: Array<{ index: number; naam: string; setvars: Record<string, number> }>
+  /** `eigen` en `wacht`: zie `BusKleurstellingen` in api.ts (Lakstudio, §6). */
+  lijst: Array<{ index: number; naam: string; setvars: Record<string, number>; eigen?: true; wacht?: true }>
 }
 
 /** Per kleurstelling drie kleuren (#rrggbb), de meest voorkomende eerst (§7). */
@@ -316,8 +347,8 @@ export interface Bus3dMeting {
   texturenMB: number
 }
 
-/** Het 3D-venster (§8.1). */
-export type Bus3dDoel = 'buskeuze' | 'dealer' | 'wagenpark'
+/** Het 3D-venster (§8.1); 'lakstudio' is de Lakstudio (lakstudio-ontwerp §4.1, achter de schakelaar). */
+export type Bus3dDoel = 'buskeuze' | 'dealer' | 'wagenpark' | 'lakstudio'
 export interface Bus3dVensterVraag {
   /** Volgnummer van main; een keuze met een ouder nummer telt niet. */
   aanvraag: number
@@ -340,6 +371,11 @@ export interface Bus3dVensterVraag {
   instellingen?: Bus3dVensterInstellingen
   /** Pauze en lichte stand op het moment van openen. */
   stand?: Bus3dVensterStand
+  /**
+   * De Lakstudio (lakstudio-ontwerp §4.1): welk project, welke start, en het
+   * bedrijf (in het wagenpark en bij de dealer vult main de naam in).
+   */
+  lak?: { projectId?: string; start?: string; bedrijf?: { naam: string; kleuren?: string[] } }
 }
 
 /** Wat het hoofdvenster vraagt (`bus3dOpen`): main zet er het volgnummer, de foto en de instellingen bij. */

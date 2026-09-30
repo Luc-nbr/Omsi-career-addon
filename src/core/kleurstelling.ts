@@ -1,8 +1,10 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, join, relative } from 'node:path'
 import iconv from 'iconv-lite'
+import { omsiHoofdletters } from '../shared/lak'
 import { modelVanBus, zoekTextuurVan } from './busmodel'
 import { cfgRegels } from './schermcfg'
+import { trailerOf } from './trailer'
 
 /**
  * De kleurstellingen van een bus: wat OMSI "Appearance" noemt.
@@ -108,6 +110,8 @@ export interface Kleurstelling {
   texturen: Record<string, string>
   /** Wat deze kleurstelling in de scripts zet; de variabele in de spelling van de eerste setvar. */
   setvars: Record<string, number>
+  /** De .cti waarin de naam voor het eerst een plek kreeg (alleen de bestandsnaam): `~Lakstudio_*` is een eigen lak. */
+  bron?: string
 }
 
 export interface Kleurstellingen {
@@ -122,12 +126,10 @@ export interface Kleurstellingen {
 }
 
 /**
- * Zoals Omsi.exe vergelijkt (0x421374): alleen a-z worden hoofdletters. Niet
- * `toUpperCase`: dat maakt van ä een Ä en van ß "SS", en OMSI niet.
+ * Zoals Omsi.exe vergelijkt (0x421374): alleen a-z worden hoofdletters. Staat
+ * sinds L2 in shared/lak.ts, want de studio en de cloud vergelijken er ook mee.
  */
-export function omsiHoofdletters(tekst: string): string {
-  return tekst.replace(/[a-z]+/g, (s) => s.toUpperCase())
-}
+export { omsiHoofdletters }
 
 /**
  * Een kleurstelling op naam, zoals OMSI ze gelijk vindt: na `omsiHoofdletters`
@@ -257,6 +259,32 @@ export function kleurstellingenVanBus(busPad: string): Kleurstellingen | undefin
   return modelcfg ? leesKleurstellingen(modelcfg, dirname(busPad)) : undefined
 }
 
+/**
+ * De eigen lakken (Lakstudio, `~Lakstudio_*.cti`) die in ALLE delen van deze bus
+ * bestaan -- voorwagen en aanhangers via `trailerOf` -- op OMSI-hoofdletters
+ * (lakstudio-ontwerp §6, punt 1). Het plaatsen zet een naam alleen waar alle
+ * lakplekken gevuld worden, dus in elk deel = compleet.
+ */
+export function eigenKleurstellingen(busPad: string): Set<string> {
+  const busmap = dirname(busPad)
+  const omsi = omsimapBij(busmap)
+  const delen = [busPad]
+  let rel = relative(omsi, busPad)
+  for (let k = 0; k < 3; k++) {
+    const a = trailerOf(omsi, rel)
+    if (!a) break
+    rel = a.relativePath
+    delen.push(join(omsi, rel))
+  }
+  let uit: Set<string> | undefined
+  for (const d of delen) {
+    const lijst = kleurstellingenVanBus(d)?.lijst ?? []
+    const hier = new Set(lijst.filter((k) => k.bron && /^~Lakstudio_\d{4}_/i.test(k.bron)).map((k) => omsiHoofdletters(k.naam)))
+    uit = uit ? new Set([...uit].filter((n) => hier.has(n))) : hier
+  }
+  return uit ?? new Set()
+}
+
 /** Eén `[CTC]` van een cfg met de [CTCTexture]'s eronder, zoals ze er staan. */
 interface CtcBlok {
   variabele: string
@@ -377,7 +405,7 @@ function lees(modelcfg: string, busmap: string): Bewaard {
         const h = omsiHoofdletters(naam)
         huidige = opNaamGevonden.get(h)
         if (!huidige) {
-          huidige = { index: lijst.length, naam, texturen: {}, setvars: {} }
+          huidige = { index: lijst.length, naam, texturen: {}, setvars: {}, bron: bestand }
           lijst.push(huidige)
           opNaamGevonden.set(h, huidige)
         }

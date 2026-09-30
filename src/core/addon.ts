@@ -400,6 +400,29 @@ export interface Addon {
   /** De bussen en kaarten erin, voor de foutcontrole. */
   bussen: string[]
   kaarten: string[]
+  /**
+   * Een eigen kleurstelling uit de Lakstudio (lakstudio-ontwerp §5.6): die
+   * staat niet in de gewone lijst en gaat alleen weg via de studio of
+   * "Eigen kleurstellingen" (dan worden ook de foto's vergeten).
+   */
+  soort?: 'lak'
+  lak?: AddonLak
+}
+
+export interface AddonLak {
+  projectId: string
+  /** De naam van de kleurstelling. */
+  naam: string
+  /** De bus waarop hij gemaakt is (relatief .bus-pad). */
+  bus: string
+  /** Alle .bus/.ovh/.sco die de naam dragen. */
+  familie: string[]
+  /** De CTC-mappen, ten opzichte van de OMSI-map (schuine strepen naar rechts). */
+  ctcMappen: string[]
+  nnnn: number
+  versie: number
+  /** Bestanden van een ander pakket die de .cti noemt (de start, §5.4 punt 5c). */
+  afhankelijk: string[]
 }
 
 export interface Register {
@@ -897,6 +920,25 @@ function ruimLegeMappenOp(omsi: string, mappen: Set<string>): void {
   }
 }
 
+/* ---- controleren ---- */
+
+/**
+ * Het controlegedeelte van `verwijderStappen`, zonder iets aan te raken
+ * (lakstudio-ontwerp §5.6, kritiek punt 16): welke bestanden zijn sinds de
+ * installatie veranderd, en welke zijn weg. Eerst dit, dan pas iets weghalen
+ * of opnieuw zetten.
+ */
+export function controleerStappen(addon: Addon, omsi: string): { gewijzigd: string[]; weg: string[] } {
+  const uit = { gewijzigd: [] as string[], weg: [] as string[] }
+  for (const b of addon.bestanden) {
+    if (!inOmsiMap(b.pad)) continue
+    const pad = schrijfpad(omsi, b.pad)
+    if (!existsSync(pad)) uit.weg.push(b.pad)
+    else if (sha1(readFileSync(pad)) !== b.sha1) uit.gewijzigd.push(b.pad)
+  }
+  return uit
+}
+
 /* ---- verwijderen ---- */
 
 export interface Verwijdering {
@@ -958,4 +1000,13 @@ export function* verwijderStappen(
 
   ruimLegeMappenOp(omsi, mappen)
   return uit
+}
+
+/**
+ * Lege mappen opruimen na een verwijdering buiten `verwijderStappen` om (een
+ * wees van de Lakstudio, of "alles weghalen" na een handmatige wijziging); nooit
+ * de OMSI-mappen zelf.
+ */
+export function ruimMappenOp(omsi: string, mappen: Iterable<string>): void {
+  ruimLegeMappenOp(omsi, new Set(mappen))
 }

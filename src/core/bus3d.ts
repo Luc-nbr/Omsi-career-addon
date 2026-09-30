@@ -836,6 +836,29 @@ export async function bouwBus3d(invoer: Bus3dBouwInvoer): Promise<Bus3dBouwUitko
    */
   const tOpp = performance.now()
   const oppPerStuk = new Map<number, { a: Float64Array; u: Float64Array }>()
+  /*
+   * De SCHIL (Lakstudio, lakstudio-ontwerp §3.2): het deel van het oppervlak dat
+   * de buitenkant van de bus is -- de zijwanden en het dak, met hun normaal naar
+   * buiten. Alleen op oppervlak kiest de studio anders het interieur: bij de O560
+   * hebben de stoelen (73 m²) meer oppervlak dan de wagenkast (70 m²), want het
+   * interieur staat ook in de buitenweergave. De rand van de bus: het 98e
+   * percentiel van |x| en het 99e van y over de buitenhoekpunten (een
+   * steekproef), en dan binnen 25 cm, met de gemiddelde hoekpuntnormaal naar
+   * buiten (> 0,3).
+   */
+  const randen: [number[], number[]] = [[], []]
+  for (const g of gelezen) {
+    if (!g.gebruiktBuiten) continue
+    for (let o = 0; o < g.floats.length; o += 8 * 16) {
+      randen[0].push(Math.abs(g.floats[o]))
+      randen[1].push(g.floats[o + 1])
+    }
+  }
+  for (const r of randen) r.sort((x, y) => x - y)
+  const kwant = (r: number[], q: number): number => (r.length ? r[Math.min(r.length - 1, Math.floor((r.length - 1) * q))] : Infinity)
+  const xRand = kwant(randen[0], 0.98) - 0.25
+  const yRand = kwant(randen[1], 0.99) - 0.25
+  const schilPerTextuur = new Float64Array(texturen.length)
   for (const g of gelezen) {
     if (!g.gebruiktBuiten) continue
     const f = g.floats
@@ -844,6 +867,7 @@ export async function bouwBus3d(invoer: Bus3dBouwInvoer): Promise<Bus3dBouwUitko
     const aantal = Math.max(1, g.textuurPerMateriaal.length)
     const perA = new Float64Array(aantal)
     const perU = new Float64Array(aantal)
+    const perS = new Float64Array(aantal)
     for (let t = 0; t < mat.length; t++) {
       const k = mat[t]
       if (k >= aantal) continue
@@ -868,6 +892,11 @@ export async function bouwBus3d(invoer: Bus3dBouwInvoer): Promise<Bus3dBouwUitko
       if (Number.isFinite(opp) && Number.isFinite(uv)) {
         perA[k] += opp
         perU[k] += uv
+        const mx = (f[a] + f[b] + f[c]) / 3
+        const my = (f[a + 1] + f[b + 1] + f[c + 1]) / 3
+        const nx = (f[a + 3] + f[b + 3] + f[c + 3]) / 3
+        const ny = (f[a + 4] + f[b + 4] + f[c + 4]) / 3
+        if ((Math.abs(mx) >= xRand && nx * Math.sign(mx) > 0.3) || (my >= yRand && ny > 0.3)) perS[k] += opp
       }
     }
     oppPerStuk.set(g.stuk, { a: perA, u: perU })
@@ -876,8 +905,12 @@ export async function bouwBus3d(invoer: Bus3dBouwInvoer): Promise<Bus3dBouwUitko
       if (ti < 0) continue
       texturen[ti].oppervlak += perA[k]
       texturen[ti].uv += perU[k]
+      schilPerTextuur[ti] += perS[k]
     }
   }
+  texturen.forEach((t, i) => {
+    if (schilPerTextuur[i] > 0) t.schil = Math.round(schilPerTextuur[i] * 1e4) / 1e4
+  })
   const alGeteld = new Set<string>()
   for (const v of vermeldingen) {
     if (!v.buiten || v.schaduw) continue
@@ -1007,7 +1040,8 @@ export async function bouwBus3d(invoer: Bus3dBouwInvoer): Promise<Bus3dBouwUitko
   for (const map of zoeker.bekekenMappen()) stempel(map)
   const bronLijst = [...bronnen.values()].sort((a, b) => (a.pad.toLowerCase() < b.pad.toLowerCase() ? -1 : 1))
   const h = createHash('sha1')
-  h.update(`bus3d-pakket-2|${relatiefPad.toLowerCase()}|${[...geregistreerd].sort((a, b) => a - b).join(',')}`)
+  // 3: de schil per textuur erbij (Lakstudio L1/L2); oude pakketten hebben hem niet.
+  h.update(`bus3d-pakket-3|${relatiefPad.toLowerCase()}|${[...geregistreerd].sort((a, b) => a - b).join(',')}`)
   for (const b of bronLijst) h.update(`|${b.pad.toLowerCase()}|${b.grootte}|${b.mtime}`)
   const pakket = h.digest('hex')
 
