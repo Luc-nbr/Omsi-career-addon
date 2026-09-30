@@ -683,6 +683,32 @@ hoort niet onder je handen opnieuw op te komen (`probe-beweging.cjs`,
 
 ## 5. Openstaand werk
 
+### 5.00000 Lakstudio L0: kleurstellingen gelezen zoals Omsi.exe (30-09-2026)
+
+Ontwerp: `design/ontwerpen/lakstudio.md` (de livery-editor in het 3D-venster;
+§12 zegt welke keuzes gemaakt zijn). Tak `claude/lakstudio`. L0 is het eerste,
+losse stuk: `core/kleurstelling.ts` telt nu precies zoals de lader van
+Omsi.exe, in zes regels (kop exact, plek vóór naam, setvar alleen na een
+aangenomen item, plek/naam/variabele na UpperCase van a-z, naam niet trimmen,
+de busmap als basis); de kop van dat bestand zegt per regel het adres en het
+bewijs. Verder: bij twee [CTC]'s telt de eerste, .cti's gaan door Readln (LF,
+losse CR weg), setvar-waarden door StrToFloat.
+
+- `leesKleurstellingen(cfg, busmap)` wil nu de map van de .bus; wie alleen een
+  cfg heeft (het apparaatscherm) geeft `busmapBijCfg(cfg)`.
+- Zoeken op naam gaat overal via `zoekKleurstelling` (UpperCase, niet getrimd),
+  met een terugval op de getrimde naam voor profielen van vóór L0 ("silber" voor
+  " silber"); `kleurVars` zet in het logboek als de terugval nodig was.
+- Wat het herstelt: de SD80 reed één kleurstelling te hoog (een ingesprongen
+  voorbeeld-item telde mee), de KI-C2's vonden hun CTC-map niet, HHA12 telde
+  20 in plaats van 19, de MAN LC's toonden de helderheid van hun VDV-scherm als
+  kleurstelling, en de setvars van Kajosoft "Silver" kwamen van "Zorbig Halle".
+- `lakStempel` gaat naar `lak-3`: dezelfde .cti's kunnen nu andere vars geven.
+- Proef: `scripts/probe-kleurstelling.ts` (nagebootst per regel, de gevallen uit
+  het ontwerp, en de onafhankelijke lezer `scripts/probe-kleurstelling.py` over
+  alle 1198 .bus/.ovh/.sco: 0 verschillen; plus de .osn's die OMSI schreef).
+  Of OMSI in het spel hetzelfde nummer kiest, kijkt P10 na (Luc).
+
 ### 5.0000 Voorvallen: voorwerk (B3, B6, B7) en de meetstand voor ronde 0 (29-09-2026)
 
 Ontwerp: `design/ontwerpen/voorvallen-en-controleurs.md`. Tak

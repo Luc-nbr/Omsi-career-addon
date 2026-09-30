@@ -224,7 +224,7 @@ import {
 import { busfoto4Map, maakBusfoto4, type Busfoto4 } from './busfoto4'
 import { maakBus3dVenster, type Bus3dVenster } from './bus3dvenster'
 import type { BusTekeningMetPlaten } from '../core/busbeeld'
-import { kleurstellingenVanBus } from '../core/kleurstelling'
+import { kleurstellingenVanBus, zoekKleurstelling } from '../core/kleurstelling'
 import {
   herkenOverlays,
   leesLogfileStaart,
@@ -4293,6 +4293,10 @@ export function tripIndexInTour(duty: Duty): number | undefined {
  * zodat een aanhanger zijn eigen nummer voor dezelfde kleurstelling krijgt; kent
  * hij de naam niet, dan blijft hij in zijn eigen kleuren. Leest alleen de
  * .cti-bestanden van deze ene bus -- een kwestie van milliseconden.
+ *
+ * Zoeken gaat zoals OMSI (Lakstudio L0): na UpperCase van a-z, zonder trimmen.
+ * Een profiel van vóór L0 bewaarde de naam getrimd ("silber" voor " silber");
+ * die vindt `zoekKleurstelling` via de terugval, en dat komt in het logboek.
  */
 function kleurVars(
   relatiefPad: string,
@@ -4301,12 +4305,15 @@ function kleurVars(
   if (!kleurstelling) return undefined
   try {
     const info = kleurstellingenVanBus(join(omsi(), relatiefPad))
-    const gekozen = info?.lijst.find((item) => item.naam === kleurstelling)
+    const gekozen = zoekKleurstelling(info, kleurstelling)
     if (!info || !gekozen) {
       log(`kleurstelling "${kleurstelling}" niet gevonden bij ${relatiefPad}`)
       return undefined
     }
-    log(`kleurstelling "${kleurstelling}" = ${info.variabele} ${gekozen.index} bij ${relatiefPad}`)
+    log(
+      `kleurstelling "${kleurstelling}" = ${info.variabele} ${gekozen.index} bij ${relatiefPad}` +
+        (gekozen.terugval ? ` (via de getrimde naam: "${gekozen.naam}")` : '')
+    )
     return [[info.variabele, gekozen.index], ...Object.entries(gekozen.setvars)]
   } catch (fout) {
     logFout('kleurstelling lezen', fout)

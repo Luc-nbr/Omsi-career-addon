@@ -40,7 +40,7 @@ export async function kleurstalen(
   const bus = leesBusBestand(busPad)
   if (!bus?.model) return {}
   const modelcfg = join(dirname(busPad), ...bus.model.split(/[\\/]+/))
-  const info = leesKleurstellingen(modelcfg)
+  const info = leesKleurstellingen(modelcfg, dirname(busPad))
   if (!info || info.lijst.length === 0) return {}
 
   const plekken = rangschikPlekken(info.lijst, oppervlak)

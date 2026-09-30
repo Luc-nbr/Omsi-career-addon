@@ -1,7 +1,7 @@
 import { readFileSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { readOmsiLines } from './omsiFile'
-import { leesKleurstellingen } from './kleurstelling'
+import { leesKleurstellingen, zoekKleurstelling } from './kleurstelling'
 import { startwaardenVan } from './schermvorm'
 import { leesRustProgramma, rekenRust } from './oscrust'
 import { MOTORSTANDAARD, rustRegels, type Bus3dPakKop, type RustDeel, type RustVermelding } from '../shared/bus3d'
@@ -198,8 +198,8 @@ export function busRust(
   let vars: Array<[string, number]> = []
   const rustDelen: RustDeel[] = delen.map((deel, d) => {
     let kleurVars: Array<[string, number]> = []
-    const info = deel.modelcfg ? leesKleurstellingen(deel.modelcfg) : undefined
-    const gekozen = kleurstelling ? info?.lijst.find((item) => item.naam === kleurstelling) : undefined
+    const info = deel.modelcfg ? leesKleurstellingen(deel.modelcfg, dirname(deel.busPad)) : undefined
+    const gekozen = kleurstelling ? zoekKleurstelling(info, kleurstelling) : undefined
     if (info && gekozen) kleurVars = [[info.variabele, gekozen.index], ...Object.entries(gekozen.setvars)]
     if (d === 0) vars = kleurVars
     /*

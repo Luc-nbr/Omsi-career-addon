@@ -5,7 +5,7 @@ import { basename, dirname, join, relative } from 'node:path'
 import { readOmsiLines } from './omsiFile'
 import { leesSchermcfg, materiaalcontexten, type CfgMateriaal, type CfgMateriaalstand, type CfgMesh } from './schermcfg'
 import { ontleedO3d, type O3dModel } from './o3d'
-import { leesKleurstellingen, textuurSleutel, type Kleurstellingen } from './kleurstelling'
+import { leesKleurstellingen, textuurSleutel, zoekKleurstelling, type Kleurstellingen } from './kleurstelling'
 import { trailerOf } from './trailer'
 import { busLijsten, busRust, type RustInvoerDeel } from './busrust'
 import { KOP_BYTES, textuurKop, type TextuurKop } from '../shared/beeldlezers'
@@ -518,7 +518,7 @@ export async function bouwBus3d(invoer: Bus3dBouwInvoer): Promise<Bus3dBouwUitko
     const cfg = cfgs[d]
     mappenPerDeel.push(textuurMappen(omsiMap, deel.busPad, deel.modelcfg))
     const ctc = new Map<string, string>()
-    const kleuren = leesKleurstellingen(deel.modelcfg)
+    const kleuren = leesKleurstellingen(deel.modelcfg, dirname(deel.busPad))
     if (kleuren) for (const [plek, standaard] of Object.entries(kleuren.plekken)) ctc.set(textuurSleutel(standaard), plek)
     ctcPerDeel.push(ctc)
     if (!cfg) continue
@@ -1147,7 +1147,7 @@ function materialenVan(g: GelezenStuk, mesh: CfgMesh, zoek: (naam: string) => nu
  * ziet gelijk aan wat je rijdt (§5.2).
  */
 export function kleurVarsVan(info: Kleurstellingen, naam: string): Array<[string, number]> | undefined {
-  const gekozen = info.lijst.find((item) => item.naam === naam)
+  const gekozen = zoekKleurstelling(info, naam)
   if (!gekozen) return undefined
   return [[info.variabele, gekozen.index], ...Object.entries(gekozen.setvars)]
 }
@@ -1202,9 +1202,9 @@ export function bus3dLak(
     const bus = leesBusBestand(busPad)
     if (!bus?.model) continue
     const modelcfg = join(dirname(busPad), ...bus.model.split(/[\\/]+/))
-    const info = leesKleurstellingen(modelcfg)
+    const info = leesKleurstellingen(modelcfg, dirname(busPad))
     if (!info) continue
-    const gekozen = info.lijst.find((item) => item.naam === kleurstelling)
+    const gekozen = zoekKleurstelling(info, kleurstelling)
     if (!gekozen) continue
     if (d === 0) lak.vars = kleurVarsVan(info, kleurstelling) ?? []
     for (const [plek, pad] of Object.entries(gekozen.texturen)) {
@@ -1252,9 +1252,12 @@ export function bus3dLak(
  *
  * `lak-2`: de rekenmachine van de ruststand (core/oscrust.ts, tegenlezing F2)
  * geeft andere standen dan de regels van F2; de oude mogen niet meer uit de cache komen.
+ * `lak-3`: kleurstelling.ts leest zoals Omsi.exe (Lakstudio L0). Bij dezelfde
+ * .cti's kan het nummer, een setvar of een textuur nu anders zijn (HHA12,
+ * " silber", de MAN LC), en de stempels van de bestanden zien dat niet.
  */
 export function lakStempel(omsiMap: string, manifest: Bus3dManifest, kleurstelling: string | undefined): string {
-  const h = createHash('sha1').update(`lak-2|${kleurstelling ?? ''}`)
+  const h = createHash('sha1').update(`lak-3|${kleurstelling ?? ''}`)
   const stempel = (pad: string): void => {
     try {
       const st = statSync(pad)
@@ -1270,8 +1273,8 @@ export function lakStempel(omsiMap: string, manifest: Bus3dManifest, kleurstelli
     for (const p of [...scripts, ...constfiles]) stempel(p)
     const bus = leesBusBestand(busPad)
     if (!bus?.model) continue
-    const info = leesKleurstellingen(join(dirname(busPad), ...bus.model.split(/[\\/]+/)))
-    const gekozen = kleurstelling ? info?.lijst.find((item) => item.naam === kleurstelling) : undefined
+    const info = leesKleurstellingen(join(dirname(busPad), ...bus.model.split(/[\\/]+/)), dirname(busPad))
+    const gekozen = kleurstelling ? zoekKleurstelling(info, kleurstelling) : undefined
     for (const p of Object.values(gekozen?.texturen ?? {})) stempel(p)
     // De .cti's zelf: een setvar die erbij komt verandert de lak, niet de texturen.
     if (info?.map) {
