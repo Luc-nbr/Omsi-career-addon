@@ -9,3 +9,13 @@ declare module '*.webp' {
   const adres: string
   export default adres
 }
+
+/* De stille filmpjes van wakker.ts. */
+declare module '*.webm' {
+  const adres: string
+  export default adres
+}
+declare module '*.mp4' {
+  const adres: string
+  export default adres
+}

@@ -4260,6 +4260,24 @@ const BASIS = {
     fr: 'Ce code ne fonctionne plus. Scannez le nouveau code sur le téléphone de l’overlay.',
     nl: 'Deze code werkt niet meer. Scan de nieuwe code op de telefoon in de overlay.'
   },
+  'dev.fullscreen': {
+    en: 'Full screen',
+    de: 'Vollbild',
+    fr: 'Plein écran',
+    nl: 'Volledig scherm'
+  },
+  'dev.fullscreenAsk': {
+    en: 'Use the whole screen, without the address bar? The screen also stays on while the navigation is open.',
+    de: 'Den ganzen Bildschirm nutzen, ohne Adressleiste? Der Bildschirm bleibt außerdem an, solange die Navigation offen ist.',
+    fr: 'Utiliser tout l’écran, sans la barre d’adresse ? L’écran reste aussi allumé tant que la navigation est ouverte.',
+    nl: 'Het hele scherm gebruiken, zonder adresbalk? Het scherm blijft ook aan zolang de navigatie open is.'
+  },
+  'dev.notNow': {
+    en: 'Not now',
+    de: 'Nicht jetzt',
+    fr: 'Pas maintenant',
+    nl: 'Niet nu'
+  },
   'dev.noDuty': {
     en: 'No duty yet. Start a duty in OMSI Enhancer and the map appears here by itself.',
     de: 'Noch kein Dienst. Starte einen Dienst in OMSI Enhancer, dann erscheint die Karte hier von selbst.',

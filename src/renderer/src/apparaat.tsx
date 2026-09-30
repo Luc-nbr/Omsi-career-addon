@@ -16,6 +16,7 @@ import {
   type TelefoonFrame,
 } from "./telefoon";
 import { dutyKeyOf } from "../../shared/telefoon";
+import { houdSchermAan, isVolScherm, volScherm, volSchermKan } from "./wakker";
 import type { Schermvorm } from "../../shared/scherm";
 import type { AanmeldUitslag, WisselAanbod } from "../../shared/telefoon";
 import "@fontsource/hanken-grotesk/400.css";
@@ -87,6 +88,23 @@ document.head.appendChild(manifest);
 
 type Lijn = "bezig" | "ja" | "kwijt" | "verlopen";
 
+/* Of je volledig scherm koos, per toestel; zonder opslag (privévenster) niet. */
+function leesVolWens(): boolean {
+  try {
+    return localStorage.getItem("navVolScherm") === "1";
+  } catch {
+    return false;
+  }
+}
+function bewaarVolWens(aan: boolean): void {
+  try {
+    if (aan) localStorage.setItem("navVolScherm", "1");
+    else localStorage.removeItem("navVolScherm");
+  } catch {
+    // Geen opslag: dan geldt de keuze tot de pagina herlaadt.
+  }
+}
+
 /* De maat van het navigatiepaneel in de overlay; zie `shared/overlay.ts`. */
 const PANEEL_BREED = 330;
 const PANEEL_HOOG = 620;
@@ -117,6 +135,45 @@ function Apparaat(): JSX.Element {
       // Geen opslag (privévenster): dan geldt het tot de pagina herlaadt.
     }
   }, []);
+  /*
+   * Het scherm blijft aan zolang deze pagina open is (zie wakker.ts), en
+   * volledig scherm op een knop. Koos je dat, dan zet de eerste tik na het
+   * herladen het weer aan: zonder tik mag de browser het niet.
+   */
+  useEffect(() => houdSchermAan(), []);
+  const [vol, setVol] = useState(isVolScherm);
+  // Al gekozen: ja (bewaard, de eerste tik zet het weer aan) of "Niet nu".
+  const [volGekozen, setVolGekozen] = useState(leesVolWens);
+  const kanVol = useMemo(volSchermKan, []);
+  useEffect(() => {
+    const wissel = (): void => {
+      const nu = isVolScherm();
+      setVol(nu);
+      // Zelf uit volledig scherm gegaan (terug-gebaar): dan niet meer vanzelf,
+      // en de volgende keer dat de pagina opent weer de vraag.
+      if (!nu) bewaarVolWens(false);
+    };
+    document.addEventListener("fullscreenchange", wissel);
+    document.addEventListener("webkitfullscreenchange", wissel);
+    let terug: (() => void) | undefined;
+    if (kanVol && leesVolWens()) {
+      const tik = (): void => {
+        terug?.();
+        void volScherm();
+      };
+      document.addEventListener("pointerup", tik);
+      document.addEventListener("click", tik);
+      terug = () => {
+        document.removeEventListener("pointerup", tik);
+        document.removeEventListener("click", tik);
+      };
+    }
+    return () => {
+      document.removeEventListener("fullscreenchange", wissel);
+      document.removeEventListener("webkitfullscreenchange", wissel);
+      terug?.();
+    };
+  }, [kanVol]);
   const acties = useMemo<TelefoonActies>(
     () => ({
       aanmelden: (nummer, pin) =>
@@ -288,6 +345,36 @@ function Apparaat(): JSX.Element {
   return (
     <LanguageProvider language={taal}>
       <main className="apparaat" ref={vak}>
+        {/*
+          Een vraag en geen vaste knop: onderaan loopt de knoppenbalk van de
+          telefoon, rechtsboven staan de knoppen van de kaart, en een knop die
+          blijft staan zit altijd ergens in de weg. De vraag komt alleen zolang
+          er niets gekozen is; "Niet nu" geldt tot de pagina opnieuw opent.
+        */}
+        {kanVol && !vol && !volGekozen && (
+          <div className="apparaat-vol" role="dialog" aria-label={t(taal, "dev.fullscreen")}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />
+            </svg>
+            <p>{t(taal, "dev.fullscreenAsk")}</p>
+            <div>
+              <button
+                type="button"
+                className="hoofd"
+                onClick={() => {
+                  bewaarVolWens(true);
+                  setVolGekozen(true);
+                  void volScherm();
+                }}
+              >
+                {t(taal, "dev.fullscreen")}
+              </button>
+              <button type="button" onClick={() => setVolGekozen(true)}>
+                {t(taal, "dev.notNow")}
+              </button>
+            </div>
+          </div>
+        )}
         {lijn !== "ja" && (
           <div className="apparaat-melding" role="status">
             {t(

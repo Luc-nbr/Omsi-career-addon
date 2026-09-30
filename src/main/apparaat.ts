@@ -293,7 +293,10 @@ const SOORTEN: Record<string, string> = {
   '.jpg': 'image/jpeg',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
-  '.ttf': 'font/ttf'
+  '.ttf': 'font/ttf',
+  // Het stille filmpje dat het scherm aan houdt; zie renderer/src/wakker.ts.
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm'
 }
 
 const VEILIG = {
@@ -455,19 +458,47 @@ async function behandel(vraag: IncomingMessage, antwoord: ServerResponse): Promi
   if (!volledig.startsWith(wortel + sep)) return nietGevonden(antwoord)
   // Alleen de pagina voor het apparaat, geen van de andere vensters van de app.
   if (extname(volledig) === '.html' && bestand !== 'apparaat.html') return nietGevonden(antwoord)
-  return stuurBestand(antwoord, volledig, bestand.startsWith('assets/'))
+  return stuurBestand(antwoord, volledig, bestand.startsWith('assets/'), vraag.headers.range)
 }
 
-async function stuurBestand(antwoord: ServerResponse, pad: string, blijvend: boolean): Promise<void> {
+async function stuurBestand(antwoord: ServerResponse, pad: string, blijvend: boolean, bereik?: string): Promise<void> {
   let inhoud: Buffer
   try {
     inhoud = await readFile(pad)
   } catch {
     return nietGevonden(antwoord)
   }
+  const soort = SOORTEN[extname(pad).toLowerCase()] ?? 'application/octet-stream'
+  /*
+   * Een stuk van het bestand. Safari speelt een video alleen af als de server
+   * stukken kan leveren: op een gewone 200 geeft hij het op, en dan gaat het
+   * scherm van een iPhone toch uit. De filmpjes zijn een paar kB, dus het hele
+   * bestand staat toch al in het geheugen.
+   */
+  const stuk = bereik ? /^bytes=(\d*)-(\d*)$/.exec(bereik.trim()) : null
+  if (stuk && (stuk[1] !== '' || stuk[2] !== '')) {
+    const lengte = inhoud.length
+    const van = stuk[1] === '' ? Math.max(0, lengte - Number(stuk[2])) : Number(stuk[1])
+    const tot = stuk[1] === '' || stuk[2] === '' ? lengte - 1 : Math.min(lengte - 1, Number(stuk[2]))
+    if (!(van <= tot && van < lengte)) {
+      antwoord.writeHead(416, { ...VEILIG, 'Content-Range': `bytes */${lengte}` })
+      antwoord.end()
+      return
+    }
+    antwoord.writeHead(206, {
+      ...VEILIG,
+      'Content-Type': soort,
+      'Content-Range': `bytes ${van}-${tot}/${lengte}`,
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': blijvend ? 'public, max-age=31536000, immutable' : 'no-store'
+    })
+    antwoord.end(inhoud.subarray(van, tot + 1))
+    return
+  }
   antwoord.writeHead(200, {
     ...VEILIG,
-    'Content-Type': SOORTEN[extname(pad).toLowerCase()] ?? 'application/octet-stream',
+    'Accept-Ranges': 'bytes',
+    'Content-Type': soort,
     /*
      * De bestanden in assets/ dragen hun inhoud in de naam; die kunnen blijven
      * liggen. De pagina zelf niet: `no-cache` bleek te zwak. Een iPad die de
