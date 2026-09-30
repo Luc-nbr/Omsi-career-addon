@@ -3287,6 +3287,122 @@
   color: #ff5f57;
 }
 
+/*
+ * De meetstand op de telefoon (telefoonMeting.tsx): grote vakken, want er wordt
+ * in de bus afgevinkt, en één zin uitleg per stap.
+ */
+.app-meting {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.meet-kop {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  margin-bottom: 0;
+}
+
+.meet-kop b {
+  white-space: normal;
+}
+
+.meet-uitleg {
+  margin: 0;
+  color: var(--vel-zacht);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.meet-uitleg.warn {
+  color: #ffb9a1;
+}
+
+.meet-lijst {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.meet-stap {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 10px;
+  align-items: start;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--vel-overlay-rand);
+  border-radius: var(--radius-klein);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.meet-stap:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.meet-stap b {
+  display: block;
+  font-size: 13px;
+}
+
+.meet-stap small {
+  display: block;
+  color: var(--vel-zacht);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.meet-vak {
+  display: block;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border: 2px solid var(--vel-zacht);
+  border-radius: 5px;
+  box-sizing: border-box;
+}
+
+.meet-stap[aria-checked="true"] .meet-vak {
+  border-color: var(--route);
+  background: var(--route);
+}
+
+.meet-stap[aria-checked="true"] .meet-vak::after {
+  content: "";
+  display: block;
+  width: 5px;
+  height: 10px;
+  margin: 1px 0 0 5px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.meet-opslaan {
+  padding: 10px;
+  border: none;
+  border-radius: var(--radius-klein);
+  background: var(--route);
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.meet-opslaan:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .ow-kaartkop {
   color: var(--vel-zacht);
   font-size: 10.5px;

@@ -11,7 +11,9 @@
  * - te vroeg weg bij een vaste tijd is "vroeg", bij een geschatte tijd geen oordeel;
  * - de laatste halte van een rit krijgt geen vertrek;
  * - een teller die terugloopt (OMSI herstart) telt niet als hard remmen;
- * - een sprong terug in dezelfde rit is geen gereden halte.
+ * - een sprong terug in dezelfde rit is geen gereden halte;
+ * - de deuren (B3): een regel bij de eerste stand en bij elke verandering, en
+ *   geen zonder deurgetallen.
  * Leest en schrijft niets.
  */
 import { bouwRittenstaat, volgSpoor, type MeetStand, type Meting, type SpoorRegel } from '../src/core/rittenstaat'
@@ -165,6 +167,26 @@ for (const sprong of ['aankomst', 'vertrek', 'paal'] as Sprong[]) {
     regels.push(...uit.regels)
   }
   klopt('zonder menu wordt geen halte geteld', bouwRittenstaat(duty, regels).gemeten === 0)
+}
+
+// ---- de deuren in het spoor (B3) ----
+{
+  const basis: Meting = { klok: 600, rit: 0, halte: 1, uitMenu: true, snelheid: 0, reizigers: 3, remmen: 0, optrekken: 0 }
+  const eerst = volgSpoor(undefined, { ...basis, deuren: { open: 0b10, vraag: 0 } })
+  klopt('de eerste meting met deuren: een regel met de stand', eerst.regels.length === 1 && eerst.regels[0].t === 'deuren' && eerst.regels[0].open === 0b10)
+  const zelfde = volgSpoor(eerst.stand, { ...basis, klok: 600.02, deuren: { open: 0b10, vraag: 0 } })
+  klopt('niets veranderd: geen regel', !zelfde.regels.some((r) => r.t === 'deuren'))
+  const dicht = volgSpoor(zelfde.stand, { ...basis, klok: 600.03, deuren: { open: 0, vraag: 0 } })
+  const vraag = volgSpoor(dicht.stand, { ...basis, klok: 600.04, deuren: { open: 0, vraag: 1 << 9 } })
+  const regel = vraag.regels.find((r) => r.t === 'deuren')
+  klopt(
+    'deur dicht, en dan een wens bij deur 1 (uit): elk een regel met rit en halte',
+    dicht.regels.some((r) => r.t === 'deuren' && r.open === 0) && regel?.t === 'deuren' && regel.vraag === 1 << 9 && regel.rit === 0 && regel.halte === 1
+  )
+  const zonder = volgSpoor(vraag.stand, { ...basis, klok: 600.05 })
+  klopt('zonder deurgetallen (oude plugin): geen regel', !zonder.regels.some((r) => r.t === 'deuren'))
+  const staat = bouwRittenstaat(duty, [{ t: 'begin', k: 599, dienst: 'x' }, ...eerst.regels, ...dicht.regels, ...vraag.regels])
+  klopt('deurregels veranderen de rittenstaat niet', staat.gemeten === 0 && staat.teVroeg === 0)
 }
 
 console.log(fouten ? `\n${fouten} fout(en)` : '\nalles klopt')

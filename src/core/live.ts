@@ -456,7 +456,16 @@ export interface LiveStatus {
   passengers: number
   entryRequest: boolean
   exitRequest: boolean
+  /**
+   * Staat er een deur open? Met de deurgetallen (B3) elke deur; zonder die
+   * alleen deur 0, zoals de .opl hem vraagt.
+   */
   doorsOpen: boolean
+  /**
+   * Alle deuren, de binnentemperatuur, vuil, grondsnelheid en de vering van de
+   * vooras; zie `voertuiggetallenVan`. Leeg bij een plugin ouder dan 13.
+   */
+  voertuig?: Voertuiggetallen
   /**
    * Het kaartje dat in de bus gekozen is, als plek in het kaartpakket van de
    * kaart. Niets als de bus het niet doorgeeft of er niets gekozen is.
@@ -930,6 +939,26 @@ function bruikbareNaam(naam: string): boolean {
 }
 
 /**
+ * Wat dit proces per bestand het laatst wilde schrijven, en of dat lukte.
+ *
+ * WAAROM ONTHOUDEN, EN NIET ELKE KEER HET BESTAND VERGELIJKEN
+ * Eerst werd de lijst vergeleken met wat er op schijf stond. Sinds de meetlus
+ * getallen.txt elke seconde bijhoudt (B3), schreven twee exemplaren van de app
+ * met dezelfde pluginmap maar een andere lijst -- Lucs app naast een
+ * testexemplaar met `--user-data-dir`, of een proef zonder eigen livemap --
+ * het bestand om de beurt terug, elke seconde; de plugin bouwde telkens zijn
+ * lijst opnieuw op, en in een meting verdwenen en verschenen de namen
+ * (tegenlezing 30-09, punt 5). Nu schrijft een exemplaar alleen als ZIJN
+ * lijst verandert, of als het bestand er niet meer is; wie het laatst iets
+ * nieuws wilde, wint, en niemand vecht terug. Het lezen van het bestand bij
+ * elke aanroep (tien keer per seconde met de overlay open) valt zo ook weg.
+ */
+const namenlijstStand = new Map<string, { inhoud: string; gelukt: boolean; poging: number; fout?: string }>()
+
+/** Na een mislukte poging (Defender die het bestand vasthoudt) zo lang wachten voor de volgende. */
+const NAMENLIJST_OPNIEUW_MS = 10_000
+
+/**
  * Een namenlijst voor de plugin: een naam per regel, CRLF, UTF-8, naast
  * live.json. Alleen schrijven als er iets verandert -- het bestand wordt anders
  * tien keer per seconde overschreven terwijl er niets anders in staat.
@@ -938,14 +967,27 @@ function schrijfNamenlijst(bestand: string, namen: string[], max: number, wat: s
   const lijst = namen.filter(bruikbareNaam).slice(0, max)
   const inhoud = lijst.join('\r\n') + (lijst.length > 0 ? '\r\n' : '')
   const pad = join(liveMap(), bestand)
+  const nu = Date.now()
+  const vorige = namenlijstStand.get(pad)
+  if (vorige && vorige.inhoud === inhoud) {
+    if (vorige.gelukt && existsSync(pad)) return
+    if (!vorige.gelukt && nu - vorige.poging < NAMENLIJST_OPNIEUW_MS) return
+  }
+  const stand: { inhoud: string; gelukt: boolean; poging: number; fout?: string } = { inhoud, gelukt: false, poging: nu }
+  namenlijstStand.set(pad, stand)
   try {
-    if (existsSync(pad) && readFileSync(pad, 'utf8') === inhoud) return
-    const tijdelijk = pad + '.tmp'
-    writeFileSync(tijdelijk, inhoud)
-    renameSync(tijdelijk, pad)
-    log(`${wat} aan de plugin: ${lijst.length} variabelen`)
+    /* Een nieuwe lijst die al zo op schijf staat (na een herstart van de app): niets te doen. */
+    if (!(existsSync(pad) && readFileSync(pad, 'utf8') === inhoud)) {
+      const tijdelijk = pad + '.tmp'
+      writeFileSync(tijdelijk, inhoud)
+      renameSync(tijdelijk, pad)
+      log(`${wat} aan de plugin: ${lijst.length} variabelen`)
+    }
+    stand.gelukt = true
   } catch (fout) {
-    log(`${bestand} schrijven mislukt: ${String(fout)}`)
+    /* Dezelfde fout niet elke tien tellen opnieuw in het logboek. */
+    stand.fout = String(fout)
+    if (vorige?.inhoud !== inhoud || vorige.fout !== stand.fout) log(`${bestand} schrijven mislukt: ${stand.fout}`)
   }
 }
 
@@ -978,6 +1020,156 @@ export const GETALLEN_MAX = 512
  */
 export function schrijfGetallen(namen: string[]): void {
   schrijfNamenlijst('getallen.txt', namen, GETALLEN_MAX, 'getallen')
+}
+
+/*
+ * DE GETALLEN VAN ELK VOERTUIG (B3 uit design/ontwerpen/voorvallen-en-controleurs.md)
+ *
+ * De .opl vraagt OMSI alleen naar deur 0 (`PAX_Entry0_Open` en de drie andere),
+ * en in Lucs o530 U e2 stond deur 0 dicht terwijl 1 tot en met 3 openstonden.
+ * De voorvallen hebben alle deuren nodig: de rolstoel aan de middendeur, de
+ * laatkomer die op een dichte deur drukt, "deur dicht voor je rijdt".
+ *
+ * Het zijn namen van OMSI zelf, geen scriptnamen: ze staan in
+ * `Program/varlist_roadvehicle.txt` (regels 13, 35-36, 85-116, 124 en 130),
+ * en de plugin vindt ze vooraan in de getallenlijst van elke bus (de eerste
+ * 138 namen, zie `OFS_CMO_GETALNAMEN` in plugin/omsicareer.c). Dus via
+ * getallen.txt, zonder nieuwe plugin: 37 van de 512 plaatsen.
+ *
+ * - `Cabinair_Temp`: de lucht binnen, in graden (hittegolf V28, comfort U12);
+ * - `Dirt_Norm`: hoe vuil de bus is, 0 tot 1 (V27);
+ * - `Velocity_Ground`: de snelheid over de grond, naast `Velocity` van de
+ *   wielen -- het verschil is slippen (V29);
+ * - `Axle_Suspension_0_L/R`: de vering van de vooras; zakt die bij knielen,
+ *   dan is knielen op elke bus te zien, ook zonder scriptnaam (ronde 0 meet het).
+ */
+const ACHT = [0, 1, 2, 3, 4, 5, 6, 7] as const
+
+/** De 32 deurgetallen, in de volgorde van `Deuren`: open in, open uit, wens in, wens uit. */
+export const DEUR_GETALLEN: readonly string[] = [
+  ...ACHT.map((n) => `PAX_Entry${n}_Open`),
+  ...ACHT.map((n) => `PAX_Exit${n}_Open`),
+  ...ACHT.map((n) => `PAX_Entry${n}_Req`),
+  ...ACHT.map((n) => `PAX_Exit${n}_Req`)
+]
+
+export const VOERTUIG_GETALLEN: readonly string[] = [
+  ...DEUR_GETALLEN,
+  'Cabinair_Temp',
+  'Dirt_Norm',
+  'Velocity_Ground',
+  'Axle_Suspension_0_L',
+  'Axle_Suspension_0_R'
+]
+
+/**
+ * Alle deuren van de bus als twee bitmaskers: bit N voor `PAX_EntryN_*`, bit
+ * 8+N voor `PAX_ExitN_*`. Een masker en geen lijst, omdat het zo in één getal
+ * in het ritspoor past en een verandering een vergelijking is.
+ *
+ * Welke deur voor zit en welke in het midden, zegt OMSI hier niet; dat staat
+ * in de `passengercabin.cfg` van de bus (en ronde 0 meet het na).
+ */
+export interface Deuren {
+  /** Staat de deur open voor reizigers (`PAX_EntryN_Open`, `PAX_ExitN_Open`). */
+  open: number
+  /** Drukt er iemand op de knop van die deur (`PAX_EntryN_Req`, `PAX_ExitN_Req`). */
+  vraag: number
+}
+
+/** Wat de systeemgetallen hierboven zeggen, voor zover de plugin ze doorgaf. */
+export interface Voertuiggetallen {
+  deuren?: Deuren
+  /** Binnen, in graden. */
+  cabineTemp?: number
+  /** 0 is schoon, 1 is zo vuil als OMSI hem maakt. */
+  vuil?: number
+  /** Km/u over de grond; `velocity` is die van de wielen. */
+  grondsnelheid?: number
+  /** De vering van de vooras, links en rechts (in Lucs dump -0,10 in rust). */
+  vering?: { links: number; rechts: number }
+}
+
+/** Een getal uit live.json, alleen als de plugin er werkelijk een gaf. */
+function getalUit(data: Pick<LiveData, 'getallen'>, naam: string): number | undefined {
+  const waarde = data.getallen?.[naam]
+  return typeof waarde === 'number' && Number.isFinite(waarde) ? waarde : undefined
+}
+
+/**
+ * De systeemgetallen van `VOERTUIG_GETALLEN` uit live.json.
+ *
+ * Een deur waarvan de plugin niets gaf, telt als dicht en zonder wens; zijn er
+ * helemaal geen deurgetallen (een plugin ouder dan 13, of de app vroeg ze nog
+ * niet), dan is `deuren` leeg en weet niemand het -- dan valt de app terug op
+ * deur 0 uit de .opl.
+ */
+export function voertuiggetallenVan(data: Pick<LiveData, 'getallen'>): Voertuiggetallen {
+  const uit: Voertuiggetallen = {}
+  let gezien = false
+  let open = 0
+  let vraag = 0
+  ACHT.forEach((n) => {
+    const velden: Array<[string, 'open' | 'vraag', number]> = [
+      [`PAX_Entry${n}_Open`, 'open', n],
+      [`PAX_Exit${n}_Open`, 'open', 8 + n],
+      [`PAX_Entry${n}_Req`, 'vraag', n],
+      [`PAX_Exit${n}_Req`, 'vraag', 8 + n]
+    ]
+    for (const [naam, soort, bit] of velden) {
+      const waarde = getalUit(data, naam)
+      if (waarde === undefined) continue
+      gezien = true
+      if (waarde > 0.5) {
+        if (soort === 'open') open |= 1 << bit
+        else vraag |= 1 << bit
+      }
+    }
+  })
+  if (gezien) uit.deuren = { open, vraag }
+  const cabine = getalUit(data, 'Cabinair_Temp')
+  if (cabine !== undefined) uit.cabineTemp = cabine
+  const vuil = getalUit(data, 'Dirt_Norm')
+  if (vuil !== undefined) uit.vuil = vuil
+  const grond = getalUit(data, 'Velocity_Ground')
+  if (grond !== undefined) uit.grondsnelheid = grond
+  const links = getalUit(data, 'Axle_Suspension_0_L')
+  const rechts = getalUit(data, 'Axle_Suspension_0_R')
+  if (links !== undefined && rechts !== undefined) uit.vering = { links, rechts }
+  return uit
+}
+
+/** Welke deuren in een masker staan: `in` voor PAX_Entry, `uit` voor PAX_Exit. */
+export function deurNummers(masker: number): { in: number[]; uit: number[] } {
+  return {
+    in: ACHT.filter((n) => (masker >>> n) & 1),
+    uit: ACHT.filter((n) => (masker >>> (8 + n)) & 1)
+  }
+}
+
+/**
+ * De lijst voor getallen.txt, in volgorde van belang.
+ *
+ * Eerst de systeemgetallen van elk voertuig (37), dan wat de nagebouwde
+ * schermen nodig hebben (de speler kijkt ernaar), en pas dan de ruime set van
+ * de meetstand. Wat na `max` komt, laat de plugin vallen; dat staat in
+ * `afgevallen`, zodat de meetstand het kan opschrijven in plaats van stil te
+ * missen. Dubbele namen tellen één keer, hoofdletterongevoelig: zo vergelijkt
+ * de plugin ze ook (`zoek_getalvraag`).
+ */
+export function getallenlijst(
+  delen: { scherm?: readonly string[]; meet?: readonly string[] },
+  max = GETALLEN_MAX
+): { namen: string[]; afgevallen: string[] } {
+  const gezien = new Set<string>()
+  const alle: string[] = []
+  for (const naam of [...VOERTUIG_GETALLEN, ...(delen.scherm ?? []), ...(delen.meet ?? [])]) {
+    const sleutel = naam.toLowerCase()
+    if (!bruikbareNaam(naam) || gezien.has(sleutel)) continue
+    gezien.add(sleutel)
+    alle.push(naam)
+  }
+  return { namen: alle.slice(0, max), afgevallen: alle.slice(max) }
 }
 
 /** De laatst gelezen meshes.json, op tijd en grootte van het bestand. */
@@ -1063,6 +1255,15 @@ function verkoopVan(data: LiveData): Verkoop | undefined {
   }
 }
 
+/**
+ * Staat er een deur open? Deur 0 uit de .opl, of een van de acht als de
+ * deurgetallen er zijn: in Lucs o530 U e2 stond deur 0 dicht terwijl de
+ * andere drie openstonden, en dan zei de app "deuren dicht".
+ */
+function deurOpen(data: LiveData): boolean {
+  return data.entryOpen > 0.5 || data.exitOpen > 0.5 || (voertuiggetallenVan(data).deuren?.open ?? 0) !== 0
+}
+
 function buildAdvice(data: LiveData, baseline?: { harshBrakes: number; harshAccels: number; tickets?: number; collisions?: number }): Advice[] {
   const advice: Advice[] = []
 
@@ -1070,7 +1271,7 @@ function buildAdvice(data: LiveData, baseline?: { harshBrakes: number; harshAcce
     advice.push({ id: 'licht', severity: 'warn' })
   }
 
-  if (data.velocity > 5 && (data.entryOpen > 0.5 || data.exitOpen > 0.5)) {
+  if (data.velocity > 5 && deurOpen(data)) {
     advice.push({ id: 'deuren', severity: 'warn' })
   }
 
@@ -1243,7 +1444,8 @@ export function describeLive(
     passengers: Math.round(data.passengers),
     entryRequest: data.entryRequest > 0.5,
     exitRequest: data.exitRequest > 0.5,
-    doorsOpen: data.entryOpen > 0.5 || data.exitOpen > 0.5,
+    doorsOpen: deurOpen(data),
+    voertuig: data.getallen ? voertuiggetallenVan(data) : undefined,
     ticketKeuze:
       has(data, BIT.ticket) && data.ticket >= 0 ? Math.round(data.ticket) : undefined,
     verkoop: verkoopVan(data),

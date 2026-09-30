@@ -11,7 +11,7 @@ import {
   statSync,
   writeFileSync
 } from 'node:fs'
-import { dirname, join, resolve, sep } from 'node:path'
+import { basename, dirname, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Worker } from 'node:worker_threads'
 import { log, logboekPad, logFout, startLogboek, TRAAG_MS } from '../core/logboek'
@@ -76,6 +76,8 @@ import {
 import {
   aanrijdingenGezien,
   describeLive,
+  GETALLEN_MAX,
+  getallenlijst,
   legVolgensOmsi,
   leesSchermen,
   VRAGEN_MAX,
@@ -85,8 +87,11 @@ import {
   schrijfGetallen,
   schrijfVragen,
   stelLiveMappenIn,
+  voertuiggetallenVan,
   type LiveData
 } from '../core/live'
+import { MEET_EXTRA, Meetsessie, meetGetallenVoor, varlistVanBus } from '../core/meetstand'
+import { isMeetStap, type MetingBeeld } from '../shared/meetstand'
 import { findOmsiInstall, hasMaps, isOmsiInstall, resolveOmsiFolder } from '../core/install'
 import { isOmsiRunning, launchOmsi, type LaunchResult } from '../core/launch'
 import { ensurePlugin, pluginSourceDir, type PluginStatus } from '../core/pluginInstall'
@@ -1184,13 +1189,18 @@ function baseline(): NonNullable<CareerState['activeDuty']>['baseline'] {
  */
 let verkochtBij = ''
 
-function nulmeting(): Parameters<typeof describeLive>[2] {
+/** Een andere dienst dan bij de vorige verkoop: de teller begint opnieuw. */
+function kassaVoorDienst(): void {
   const sleutel = dutyKeyOf(currentDuty())
   if (sleutel !== verkochtBij) {
     verkochtBij = sleutel
     verkochtGeteld = 0
     vorigeKoper = -1
   }
+}
+
+function nulmeting(): Parameters<typeof describeLive>[2] {
+  kassaVoorDienst()
   const basis = baseline()
   return basis ? { ...basis, verkocht: verkochtGeteld } : basis
 }
@@ -2110,11 +2120,13 @@ function meet(): void {
     remmen: live.harshBrakes,
     optrekken: live.harshAccels,
     klappen: aanrijdingenGezien(live) ? live.collisions : undefined,
-    wisselgeld: wisselgeldFouten
+    wisselgeld: wisselgeldFouten,
+    // Alle deuren (B3), als de plugin de deurgetallen gaf; zie `werkGetallenBij`.
+    deuren: voertuiggetallenVan(live).deuren
   })
   const nieuw: SpoorRegel[] = spoor.stand
     ? regels
-    : [{ t: 'begin', k: klokVoorDienst(status.clockMinutes, duty), dienst: dutyKeyOf(duty) }]
+    : [{ t: 'begin', k: klokVoorDienst(status.clockMinutes, duty), dienst: dutyKeyOf(duty) }, ...regels]
   spoor.stand = stand
   // Langs een flitspaal gekomen? Dat hoort in hetzelfde spoor, bij de halte waar je heen reed.
   const flits = meetFlits(live, duty)
@@ -2424,7 +2436,10 @@ function vehicleOnMap(live: ReturnType<typeof readLive>, duty: Duty | undefined)
       vehicleTrackers.set(kaart, tracker)
     }
     const network = laneNetwork(kaart)
-    return tracker.update(live.mem, (x, y) => network.distanceToLane(x, y))
+    const plek = tracker.update(live.mem, (x, y) => network.distanceToLane(x, y))
+    // Voor de meetstand; zie `laatstePlek`.
+    if (plek) laatstePlek = { x: plek.x, y: plek.y, koers: plek.heading, om: Date.now() }
+    return plek
   } catch {
     return undefined
   }
@@ -2891,7 +2906,15 @@ let vorigSpoor = ''
  *
  * Hier wordt het echt geteld: elke keer dat er iemand aan de deur afrekent en
  * het spel die verkoop afrondt, telt er een kaartje bij. De teller loopt per
- * dienst; `nulmeting` zet hem terug als er een nieuwe dienst begint.
+ * dienst; `kassaVoorDienst` zet hem terug als er een nieuwe dienst begint.
+ *
+ * ZONDER DAT IEMAND MEEKIJKT (B6)
+ * Dit telde eerst in `pushFrame`, en dat beeld wordt alleen gemaakt als de
+ * overlay openstaat of een telefoon of tablet meekijkt. Wie met de overlay
+ * dicht reed, verkocht voor de app niets: nul kaartjes in het logboek, geen
+ * wisselgeldfouten voor de controleurs. Nu telt `snelleLus`, vier keer per
+ * seconde, wat er ook openstaat (scripts/probe-verkoopzonderoverlay.cjs). Een
+ * verkoop duurt tellen, dus een kwart seconde mist er geen.
  */
 let verkochtGeteld = 0
 let vorigeKoper = -1
@@ -3043,8 +3066,9 @@ function busApparaten(live: LiveData | undefined): Busapparaat[] | undefined {
    */
   if (modelcfg) {
     for (const naam of schermStringsVoor(modelcfg, gekozenModulesNu)) erbij(naam)
-    schrijfGetallen(schermGetallenVoor(modelcfg, gekozenModulesNu))
+    schermGetallenNu = { bus: busGetalSleutel(bus), namen: schermGetallenVoor(modelcfg, gekozenModulesNu) }
   }
+  werkGetallenBij(live)
   for (const module of gekozenModulesNu) {
     for (const naam of module.variabelen) erbij(naam)
   }
@@ -3087,6 +3111,217 @@ function busApparaten(live: LiveData | undefined): Busapparaat[] | undefined {
     schrijfVragen(namen)
   }
   return apparaten
+}
+
+/*
+ * DE GETALLEN DIE DE PLUGIN MOET DOORGEVEN (getallen.txt)
+ *
+ * Drie bronnen, in deze volgorde (`getallenlijst` in core/live.ts): de
+ * systeemgetallen van elk voertuig -- alle deuren, binnentemperatuur, vuil,
+ * grondsnelheid, vering; B3 --, de getallen van de nagebouwde schermen die de
+ * speler in de telefoon zette, en in de meetstand de ruime set uit de varlists
+ * van de bus. De plugin neemt er 512; wat erbuiten valt staat in
+ * `getallenAfgevallen` en in het logboek. De 37 vooraan verdringen geen
+ * scherm: nagemeten op 29-09 is de grootste schermlijst van alle geïnstalleerde
+ * bussen 227 (alle apparaten van een o530 samen), dus 264 met de deuren erbij.
+ *
+ * Eerst schreef alleen `busApparaten` dit bestand, en die loopt alleen als de
+ * overlay, een toestel of het rijscherm kijkt. De deuren horen ook in het
+ * ritspoor van een dienst zonder overlay; daarom loopt dit ook elke seconde in
+ * de meetlus. `schrijfGetallen` schrijft alleen als de lijst verandert.
+ */
+/** De getallen van de schermen, per bus (dezelfde sleutel als `schermenPerBus`). */
+let schermGetallenNu: { bus: string; namen: string[] } | undefined
+let getallenAfgevallen: string[] = []
+let afgevallenGemeld = ''
+
+function busGetalSleutel(bus: NonNullable<LiveData['bus']>): string {
+  return `${bus.pad}|${bus.model}|${bus.bestand}`
+}
+
+function werkGetallenBij(live: LiveData | undefined): void {
+  /*
+   * Alleen bekijken (main/versiewacht.ts): de pluginmap ligt buiten de kopie,
+   * dus `fs` weigert elke poging, en elke seconde kwam er een regel "schrijven
+   * mislukt" in het logboek (tegenlezing 30-09, punt 2). Een app die alleen
+   * kijkt, stuurt de plugin niet.
+   */
+  if (inBekijkstand()) return
+  const sleutel = live?.bus ? busGetalSleutel(live.bus) : ''
+  const scherm = schermGetallenNu && schermGetallenNu.bus === sleutel ? schermGetallenNu.namen : []
+  /* Per bus één keer uitgerekend (`meetNamenVoor`); `schrijfGetallen` leest het bestand niet meer bij elke aanroep. */
+  const meet = meetstandAan ? meetNamenVoor(live).namen : []
+  const { namen, afgevallen } = getallenlijst({ scherm, meet })
+  getallenAfgevallen = afgevallen
+  const melding = afgevallen.join('|')
+  if (melding !== afgevallenGemeld) {
+    afgevallenGemeld = melding
+    if (afgevallen.length > 0) {
+      log(`getallen: ${afgevallen.length} vielen buiten de ${GETALLEN_MAX}, o.a. ${afgevallen.slice(0, 8).join(', ')}`)
+    }
+  }
+  schrijfGetallen(namen)
+}
+
+/*
+ * DE MEETSTAND (ronde 0 van de voorvallen; core/meetstand.ts)
+ *
+ * Een instelling voor de ontwikkelaar, standaard uit. Aan: de plugin krijgt de
+ * scriptnamen van de bus te vragen, en `snelleLus` schrijft tijdens een dienst
+ * of vrije rit elke 250 ms een regel naar `metingen/` in de gebruikersmap. De
+ * afvinklijst staat op de telefoon; "Meting opslaan" maakt er één zip van.
+ */
+let meetstandAan = false
+/** Of er op dit moment geschreven wordt; voor het beeld op de telefoon. */
+let meetLooptNu = false
+/** Of er bij de vorige regel gereden werd: een nieuwe dienst of rit laat een opgeslagen meting weer beginnen. */
+let meetReedVorige = false
+let meetsessie: Meetsessie | undefined
+/** Eén keer melden: vier keer per seconde dezelfde fout hoort niet in het logboek. */
+let meetFoutGemeld = false
+/**
+ * Per bus de namen uit zijn varlists, en wat de meting daaruit vraagt.
+ *
+ * `meet` wordt één keer per bus uitgerekend: `profielNamen` legt tien patronen
+ * op zo'n tweeduizend namen, 3 ms per keer, en dat liep eerst vier keer per
+ * seconde in de snelle lus, elke seconde in de meetlus en bij elk beeld van de
+ * overlay -- samen zo'n 45 ms per seconde op het hoofdproces (tegenlezing
+ * 30-09, punt 6). Een lege lezing (Defender die het bestand vasthield, een
+ * half pad tijdens het laden) blijft niet de hele sessie hangen maar wordt,
+ * net als bij de schermen, na tien tellen nog eens geprobeerd.
+ */
+const varlistPerBus = new Map<string, { namen: string[]; bestanden: string[]; meet: string[] }>()
+const MEET_ZONDER_BUS = { namen: [...MEET_EXTRA], varlists: [] as string[] }
+
+function meetsessieNu(): Meetsessie {
+  meetsessie ??= new Meetsessie(join(userData(), 'metingen'), () => join(liveMap(), 'getallen.json'), Date.now, log)
+  return meetsessie
+}
+
+/** Wat de meting bovenop de systeemgetallen vraagt: de vering en de scriptnamen van deze bus. */
+function meetNamenVoor(live: LiveData | undefined): { namen: string[]; varlists: string[] } {
+  const bus = live?.bus
+  if (!bus || (!bus.pad && !bus.bestand)) return MEET_ZONDER_BUS
+  const sleutel = busGetalSleutel(bus)
+  let lijst = varlistPerBus.get(sleutel)
+  if (!lijst || nogEensProberen(`varlist:${sleutel}`, lijst.namen.length)) {
+    let gelezen: { namen: string[]; bestanden: string[] }
+    try {
+      gelezen = varlistVanBus(omsi(), bus)
+    } catch (fout) {
+      logFout('meetstand: varlists lezen', fout)
+      gelezen = { namen: [], bestanden: [] }
+    }
+    lijst = { ...gelezen, meet: meetGetallenVoor(gelezen.namen) }
+    varlistPerBus.set(sleutel, lijst)
+    log(`meetstand: ${bus.naam || bus.pad}: ${lijst.namen.length} namen uit ${lijst.bestanden.length} varlists`)
+  }
+  return { namen: lijst.meet, varlists: lijst.bestanden }
+}
+
+/** Het beeld voor de telefoon en het instellingenscherm; niets als de meetstand uit staat. */
+function metingBeeld(): MetingBeeld | undefined {
+  if (!meetstandAan) return undefined
+  const beeld = meetsessieNu().beeld(meetLooptNu)
+  return inBekijkstand() ? { ...beeld, loopt: false, bekijken: true } : beeld
+}
+
+/**
+ * De laatste plek van de bus op de kaart (`vehicleOnMap`), met wanneer. De
+ * meetstand zet hem in elke regel zolang hij vers is: de meetlus rekent hem
+ * elke seconde tijdens een dienst, de overlay tien keer per seconde. Zelf
+ * rekenen kan hier niet: `VehicleTracker.update` onthoudt de vorige stand, en
+ * een extra aanroep vier keer per seconde zou de koers van de navigatie
+ * veranderen.
+ */
+let laatstePlek: { x: number; y: number; koers: number; om: number } | undefined
+
+/** Eén regel van de meting, als er gemeten wordt. */
+function meetstandRegel(live: LiveData | undefined): void {
+  const rijdt = Boolean(career?.activeDuty?.startedAt) || Boolean(vrijeRit)
+  /*
+   * Alleen bekijken: de gebruikersmap is een kopie die weggaat zodra de app
+   * sluit, dus een meting daarin ging verloren terwijl "Meting opslaan" zei dat
+   * hij klaar was (tegenlezing 30-09, punt 2). Dan niet meten.
+   */
+  meetLooptNu = meetstandAan && !inBekijkstand() && rijdt && Boolean(live?.alive)
+  /* Een nieuwe dienst of vrije rit na "Meting opslaan": een nieuwe meting. */
+  if (rijdt && !meetReedVorige) meetsessie?.hervat()
+  meetReedVorige = rijdt
+  if (!meetLooptNu || !live) return
+  const duty = currentDuty()
+  const status = describeLive(live, duty, nulmeting())
+  const { namen, varlists } = meetNamenVoor(live)
+  const plek = laatstePlek && Date.now() - laatstePlek.om < 2000 ? laatstePlek : undefined
+  try {
+    meetsessieNu().schrijf(
+      { live, status, verkocht: verkochtGeteld, plek },
+      {
+        modus: career?.activeDuty?.startedAt ? 'dienst' : 'vrij',
+        kaart: duty?.mapFolder ?? vrijeRit?.mapFolder,
+        appVersie: __APP_VERSION__,
+        gevraagd: namen,
+        afgevallen: getallenAfgevallen,
+        varlists,
+        /* Alleen de palen die de meetlus al kent; `palenVoor` zelf begint anders een tweede lezing van de kaart. */
+        palen: duty && flitsKaart?.sleutel.startsWith(`${duty.mapFolder}|`) ? flitsKaart.palen : undefined
+      }
+    )
+  } catch (fout) {
+    if (!meetFoutGemeld) logFout('meetstand', fout)
+    meetFoutGemeld = true
+  }
+}
+
+/** Waarom afvinken of opslaan niet kan, of niets als het wel kan. */
+function metingGeweigerd(): 'uit' | 'bekijken' | undefined {
+  if (!meetstandAan) return 'uit'
+  return inBekijkstand() ? 'bekijken' : undefined
+}
+
+/**
+ * "Meting opslaan": de zip, met de ritsporen erbij van de diensten die tijdens
+ * de meting reden (ronde 0 wil ook zien hoe de rittenstaat de haltes telde).
+ * Onder een eigen naam: de naam op schijf draagt de id van het profiel.
+ */
+async function slaMetingOp(): Promise<string | undefined> {
+  const extra: Array<{ naam: string; pad: string }> = []
+  const sinds = meetsessieNu().begonnenOp
+  const lopend = spoorSleutel()
+  try {
+    const map = join(userData(), 'ritten')
+    const sporen = existsSync(map)
+      ? readdirSync(map)
+          .filter((naam) => naam.endsWith('.jsonl'))
+          .map((naam) => ({ pad: join(map, naam), tijd: statSync(join(map, naam)).mtimeMs }))
+          .filter(({ pad, tijd }) => (sinds !== undefined && tijd >= sinds) || (lopend !== undefined && pad === spoorPad(lopend)))
+          .sort((a, b) => a.tijd - b.tijd)
+      : []
+    sporen.forEach(({ pad }, i) => extra.push({ naam: `spoor-dienst-${i + 1}.jsonl`, pad }))
+  } catch (fout) {
+    logFout('meting opslaan: sporen', fout)
+  }
+  try {
+    return await meetsessieNu().opslaan(extra)
+  } catch (fout) {
+    logFout('meting opslaan', fout)
+    return undefined
+  }
+}
+
+/*
+ * DE SNELLE LUS
+ *
+ * Vier keer per seconde, wat er ook openstaat: de kaartverkoop tellen (B6) en,
+ * in de meetstand, een regel meten. Eén lezing van live.json voor allebei.
+ */
+function snelleLus(): void {
+  const live = freshLive()
+  kassaVoorDienst()
+  spoorVanDeVerkoop(live)
+  telVerkoop(live)
+  if (meetstandAan) meetstandRegel(live)
+  else meetLooptNu = false
 }
 
 /*
@@ -3622,8 +3857,7 @@ function pushFrame(): void {
    * plaats van het bestand nog eens van schijf te halen.
    */
   const live = freshLive()
-  spoorVanDeVerkoop(live)
-  telVerkoop(live)
+  // De kaartverkoop telt niet meer hier maar in `snelleLus`: ook zonder overlay (B6).
   captureBaseline(live)
   void volgOmloopInOmsi(live)
   const duty = currentDuty()
@@ -3670,6 +3904,8 @@ function pushFrame(): void {
     bedrijf: bedrijfVoorTelefoon(),
     // Flitsen en gebeurtenissen; zie core/onderweg.ts.
     onderweg: onderwegVoorTelefoon(),
+    // De afvinklijst van de meetstand, alleen als die aanstaat; zie `metingBeeld`.
+    meting: metingBeeld(),
     editing: overlayEditing
   }
 
@@ -3703,6 +3939,7 @@ function frameVoorApparaat(frame: {
   telefoon: TelefoonStand
   bedrijf?: BedrijfRit
   onderweg?: OnderwegBeeld
+  meting?: MetingBeeld
 }): unknown {
   return {
     connected: frame.connected,
@@ -3726,7 +3963,9 @@ function frameVoorApparaat(frame: {
     telefoon: frame.telefoon,
     // Het bedrijf mag mee: een lijn en een telling uit een spel, niets van de chauffeur zelf.
     bedrijf: frame.bedrijf,
-    onderweg: frame.onderweg
+    onderweg: frame.onderweg,
+    // De meetstand: een bus, tellers en een bestandsnaam zonder map; niets van de chauffeur.
+    meting: frame.meting
   }
 }
 
@@ -4326,6 +4565,19 @@ function apparaatBronnen(): ApparaatBronnen {
           zetBusmodule(freshLive(), String(opdracht.module ?? ''), opdracht.aan !== false)
           break
         }
+        case 'meting': {
+          /*
+           * De afvinklijst van de meetstand: alleen de vaste stappen, alleen als
+           * hij aanstaat, en niet in alleen bekijken (zie `metingGeweigerd`).
+           */
+          const geweigerd = metingGeweigerd()
+          if (geweigerd) return { ok: false, fout: geweigerd }
+          if (opdracht.opslaan) {
+            return slaMetingOp().then((zip) => ({ ok: Boolean(zip), bestand: zip ? basename(zip) : undefined }))
+          }
+          if (!isMeetStap(opdracht.stap)) return { ok: false }
+          return { ok: meetsessieNu().vink(opdracht.stap, opdracht.aan !== false) }
+        }
         case 'toets': {
           /*
            * Dezelfde weg als de overlay: `omsiToets` laat alleen door wat bij een
@@ -4824,6 +5076,33 @@ function registerHandlers(): void {
   handle('bussen:klaar', (_event, sleutel: string, ids: string[]) =>
     busKlaarmaken(String(sleutel), Array.isArray(ids) ? ids.map(String) : [])
   )
+  /*
+   * De meetstand (core/meetstand.ts): het beeld voor het instellingenscherm,
+   * een stap afvinken, opslaan, en de map openen. Afvinken en opslaan ook
+   * vanaf de telefoon (`TelefoonOpdracht` 'meting'); de map openen alleen hier,
+   * want Verkenner boven OMSI steelt de focus van het spel.
+   */
+  handle('meting:stand', () => metingBeeld() ?? null)
+  handle('meting:vink', (_event, stap: unknown, aan: boolean) =>
+    !metingGeweigerd() && isMeetStap(stap) ? meetsessieNu().vink(stap, aan !== false) : false
+  )
+  handle('meting:opslaan', async () => {
+    const geweigerd = metingGeweigerd()
+    if (geweigerd) {
+      if (geweigerd === 'bekijken') log('meting niet opgeslagen: alleen bekijken')
+      return null
+    }
+    const zip = await slaMetingOp()
+    return zip ? basename(zip) : null
+  })
+  handle('meting:map', async () => {
+    const map = join(userData(), 'metingen')
+    mkdirSync(map, { recursive: true })
+    const zip = meetsessie?.beeld(false).opgeslagen
+    if (zip && existsSync(join(map, zip))) shell.showItemInFolder(join(map, zip))
+    else await shell.openPath(map)
+  })
+
   handle('telefoon:module', (_event, id: string, aan: boolean) => {
     zetBusmodule(freshLive(), String(id), Boolean(aan))
   })
@@ -5801,6 +6080,11 @@ function registerHandlers(): void {
     if (voor.language !== saved.language || voor.theme !== saved.theme || voor.animaties !== saved.animaties) {
       bus3dVenster?.instellingenGewijzigd()
     }
+    // De meetstand volgt meteen: aan vraagt de plugin meer getallen, uit stopt het schrijven.
+    meetstandAan = saved.meetstand === true
+    if (voor.meetstand !== saved.meetstand) log(`meetstand ${meetstandAan ? 'aan' : 'uit'}`)
+    // Weer aan na "Meting opslaan": dan mag er meteen een nieuwe meting beginnen.
+    if (meetstandAan && voor.meetstand !== true) meetsessie?.hervat()
     // Een overlay die al openstaat hoort de nieuwe verversing meteen te volgen.
     if (overlayTimer) {
       clearInterval(overlayTimer)
@@ -6826,15 +7110,29 @@ if (!app.requestSingleInstanceLock()) {
     meldPluginLogboek('de vorige keer dat OMSI draaide')
     // De wacht over OMSI tijdens een dienst; zie `bewaakOmsi`.
     setInterval(() => void bewaakOmsi(), 10000).unref?.()
-    // De meetlus voor de rittenstaat; zie `meet`.
+    // De meetlus voor de rittenstaat; zie `meet`. En de getallen voor de plugin, ook zonder overlay.
     setInterval(() => {
       try {
         meet()
+        const live = freshLive()
+        if (live) werkGetallenBij(live)
       } catch (fout) {
         if (!spoorFoutGemeld) logFout('meetlus', fout)
         spoorFoutGemeld = true
       }
     }, 1000).unref?.()
+    // De kaartverkoop (B6) en de meetstand, vier keer per seconde; zie `snelleLus`.
+    meetstandAan = readSettings(userData()).meetstand === true
+    let snelFoutGemeld = false
+    setInterval(() => {
+      try {
+        snelleLus()
+      } catch (fout) {
+        // Eén keer: vier keer per seconde dezelfde fout hoort niet in het logboek.
+        if (!snelFoutGemeld) logFout('snelle lus', fout)
+        snelFoutGemeld = true
+      }
+    }, 250).unref?.()
     /*
      * Vrij rijden volgt ook met de overlay dicht: dan loopt `pushFrame` niet,
      * en het rijscherm hoort toch te weten wat OMSI rijdt. Kijkt de overlay of

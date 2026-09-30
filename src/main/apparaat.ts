@@ -86,7 +86,8 @@ const OPDRACHTSOORTEN: Record<TelefoonOpdracht['wat'], true> = {
   ibis: true,
   toets: true,
   busknoppen: true,
-  module: true
+  module: true,
+  meting: true
 }
 
 export interface TelefoonOpdracht {
@@ -101,6 +102,8 @@ export interface TelefoonOpdracht {
     | 'toets'
     | 'busknoppen'
     | 'module'
+    /* De afvinklijst van de meetstand (core/meetstand.ts): een vaste stap afvinken, of opslaan. */
+    | 'meting'
   nummer?: string
   pin?: string
   vanaf?: number
@@ -112,6 +115,9 @@ export interface TelefoonOpdracht {
   aan?: boolean
   /** Welke dienst uit het aanbod; zie `WisselAanbod` in shared/telefoon.ts. */
   nr?: number
+  /** Bij 'meting': welke stap (`MEET_STAPPEN`; het hoofdproces kijkt het na), of opslaan. */
+  stap?: string
+  opslaan?: boolean
 }
 
 /** Een eigen poort, zodat een bladwijzer op de telefoon blijft werken. */

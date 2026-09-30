@@ -1,3 +1,4 @@
+import { VOORVAL_CONTRACT, somVanVoorvallen, type VoorvalBeeld, type VoorvalUitslag } from '../shared/voorval'
 import type { SpeedSign } from './geo'
 import type { Rittenstaat } from './rittenstaat'
 import type { Duty } from './types'
@@ -301,20 +302,45 @@ export interface Onderweg {
   /** Alle boetes samen, in euro's. */
   boetes: number
   gebeurtenis?: Uitslag
-  /** Wat er netto bij het loon komt (negatief: eraf). */
+  /**
+   * Hoe de voorvallen van de dienst afliepen (B7, shared/voorval.ts). Dit is
+   * het contract met de cloud: het bedrijf boekt hieruit kas, reputatie en XP,
+   * met `somVanVoorvallen` -- en alleen hieruit. Ontbreekt in logboeken van
+   * voor de voorvallen, en zolang de motor er niet is (ronde 2).
+   */
+  voorvallen?: VoorvalUitslag[]
+  /** Met welke versie van het contract (`VOORVAL_CONTRACT`) de voorvallen hierboven geschreven zijn; staat er alleen bij als die er zijn. */
+  voorvalContract?: number
+  /**
+   * Wat er netto bij het loon van de loopbaan komt (negatief: eraf), de
+   * voorvallen inbegrepen. ALLEEN VOOR HET LOON: het bedrijf boekt hier niets
+   * uit, anders telde het geld van een voorval twee keer in de kas (zie "GELD"
+   * in shared/voorval.ts).
+   */
   bedrag: number
 }
 
-export function onderwegVan(g: Gebeurtenis | undefined, staat: Rittenstaat | undefined, sessie: Sessie): Onderweg | undefined {
+/**
+ * Wat er onderweg bij het loon komt: de gebeurtenis, min de boetes, plus de
+ * voorvallen (geoefende tellen niet; zie `somVanVoorvallen`).
+ */
+export function onderwegVan(
+  g: Gebeurtenis | undefined,
+  staat: Rittenstaat | undefined,
+  sessie: Sessie,
+  voorvallen: readonly VoorvalUitslag[] = []
+): Onderweg | undefined {
   const flitsen = staat?.flitsen ?? []
   const boetes = flitsen.reduce((som, f) => som + f.boete, 0)
   const gebeurtenis = g ? beoordeel(g, staat, sessie) : undefined
-  if (!gebeurtenis && flitsen.length === 0) return undefined
+  if (!gebeurtenis && flitsen.length === 0 && voorvallen.length === 0) return undefined
+  const uitVoorvallen = somVanVoorvallen(voorvallen).bedrag
   return {
     flitsen,
     boetes,
     gebeurtenis,
-    bedrag: Math.round(((gebeurtenis?.bedrag ?? 0) - boetes) * 100) / 100
+    ...(voorvallen.length > 0 ? { voorvallen: [...voorvallen], voorvalContract: VOORVAL_CONTRACT } : {}),
+    bedrag: Math.round(((gebeurtenis?.bedrag ?? 0) - boetes + uitVoorvallen) * 100) / 100
   }
 }
 
@@ -330,4 +356,6 @@ export interface OnderwegBeeld {
   flitsen: number
   /** De laatste flits, een halve minuut lang; `om` in ms. */
   flits?: { kmh: number; limiet: number; boete: number; om: number }
+  /** Het voorval dat nu loopt (B7; de motor komt in ronde 2). */
+  voorval?: VoorvalBeeld
 }

@@ -198,6 +198,12 @@ function Apparaat(): JSX.Element {
         haal<Schermvorm>(`api/scherm/${id}`).catch(() => null),
       /* Relatief, zodat de sleutel in het adres meegaat. */
       textuurAdres: (id) => `textuur/${id}`,
+      meetVink: (stap, aan) =>
+        void stuur({ wat: "meting", stap, aan }).catch(() => undefined),
+      meetOpslaan: () =>
+        stuur({ wat: "meting", opslaan: true })
+          .then((uit) => (uit as { bestand?: string }).bestand)
+          .catch(() => undefined),
     }),
     [],
   );

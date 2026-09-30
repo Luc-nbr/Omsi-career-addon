@@ -1,3 +1,5 @@
+import type { VoorvalSpoorRegel } from '../shared/voorval'
+import type { Deuren } from './live'
 import type { Flits } from './onderweg'
 import type { Duty } from './types'
 
@@ -61,6 +63,11 @@ export interface Meting {
   klappen?: number
   /** Verkopen met te weinig wisselgeld, opgeteld; zie `telVerkoop` in main. */
   wisselgeld?: number
+  /**
+   * Alle deuren als bitmaskers (B3, zie `Deuren` in core/live.ts). Ontbreekt
+   * als de plugin de deurgetallen niet gaf; dan komt er geen deurregel.
+   */
+  deuren?: Deuren
 }
 
 /** Eén regel in het spoor. `k` is de klok van het spel in minuten. */
@@ -72,6 +79,16 @@ export type SpoorRegel =
   | { t: 'rem' | 'optrek' | 'klap' | 'wisselgeld'; k: number; rit: number; halte?: number; n: number }
   /** Geflitst; zie core/onderweg.ts. De boete staat erbij, want die geldt zoals hij toen was. */
   | { t: 'flits'; k: number; rit: number; halte?: number; paal: number; kmh: number; limiet: number; boete: number }
+  /**
+   * De deuren veranderden: welke openstaan en waar iemand op de knop drukt, als
+   * bitmaskers (bit N = deur N in, bit 8+N = deur N uit; zie `Deuren`). De
+   * eerste keer dat ze bekend zijn ook, zodat het spoor met een stand begint.
+   * Voor de voorvallen: de rolstoel aan de middendeur (V1, V2), de laatkomer
+   * die op een dichte deur drukt (V6), "deur dicht voor je rijdt" (U6).
+   */
+  | { t: 'deuren'; k: number; rit: number; halte?: number; open: number; vraag: number }
+  /** Een voorval; zie shared/voorval.ts. De motor schrijft ze vanaf ronde 2. */
+  | VoorvalSpoorRegel
 
 /** Wat de meetlus tussen twee metingen onthoudt. */
 export interface MeetStand {
@@ -83,6 +100,8 @@ export interface MeetStand {
   optrekken: number
   klappen?: number
   wisselgeld?: number
+  /** De laatst geziene deuren; zie `Meting.deuren`. */
+  deuren?: Deuren
 }
 
 /** Onder deze snelheid staat de bus stil, boven de tweede rijdt hij weer. */
@@ -110,9 +129,29 @@ export function volgSpoor(
     remmen: nu.remmen,
     optrekken: nu.optrekken,
     klappen: nu.klappen,
-    wisselgeld: nu.wisselgeld
+    wisselgeld: nu.wisselgeld,
+    deuren: nu.deuren
   }
-  if (!vorige) return { stand, regels: [] }
+  /*
+   * De deuren: bij elke verandering, en de eerste keer dat ze bekend zijn --
+   * ook bij de allereerste meting, zodat een spoor dat met open deuren begint
+   * dat ook zegt.
+   */
+  const deurRegel: SpoorRegel[] =
+    nu.deuren &&
+    (!vorige?.deuren || vorige.deuren.open !== nu.deuren.open || vorige.deuren.vraag !== nu.deuren.vraag)
+      ? [
+          {
+            t: 'deuren',
+            k: nu.klok,
+            rit: nu.rit,
+            halte: nu.uitMenu ? nu.halte : undefined,
+            open: nu.deuren.open,
+            vraag: nu.deuren.vraag
+          }
+        ]
+      : []
+  if (!vorige) return { stand, regels: deurRegel }
 
   const regels: SpoorRegel[] = []
   const k = nu.klok
@@ -152,6 +191,7 @@ export function volgSpoor(
   erbij('optrek', vorige.optrekken, nu.optrekken)
   erbij('klap', vorige.klappen, nu.klappen)
   erbij('wisselgeld', vorige.wisselgeld, nu.wisselgeld)
+  regels.push(...deurRegel)
   return { stand, regels }
 }
 
