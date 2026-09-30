@@ -40,15 +40,18 @@ export async function kleurstalen(
   const bus = leesBusBestand(busPad)
   if (!bus?.model) return {}
   const modelcfg = join(dirname(busPad), ...bus.model.split(/[\\/]+/))
-  const info = leesKleurstellingen(modelcfg)
+  const info = leesKleurstellingen(modelcfg, dirname(busPad))
   if (!info || info.lijst.length === 0) return {}
 
   const plekken = rangschikPlekken(info.lijst, oppervlak)
   const uit: Bus3dStalen = {}
   if (plekken.length === 0) return uit
   let laatsteMelding = Date.now()
-  for (let i = 0; i < info.lijst.length; i++) {
-    const k = info.lijst[i]
+  // Eigen lakken (Lakstudio) eerst: ze staan bovenaan de lijst, en anders kwam hun staal als laatste (C2: na 55 andere).
+  const eigen = (k: (typeof info.lijst)[number]): boolean => Object.values(k.texturen).some((p) => /[\\/]Lakstudio[\\/]/i.test(p))
+  const volgorde = [...info.lijst].sort((a, b) => Number(eigen(b)) - Number(eigen(a)))
+  for (let i = 0; i < volgorde.length; i++) {
+    const k = volgorde[i]
     // De beste plek die DEZE kleurstelling vervangt: "Postbus" van de O560 vervangt alleen de lak.
     const plek = plekken.find((p) => k.texturen[p])
     const pad = plek ? k.texturen[plek] : undefined

@@ -343,6 +343,40 @@ export class Bus3dCache {
     return `${pakket}-${kleur}-${sleutel}.webp`
   }
 
+  /**
+   * De heldenbeelden van één kleurstelling van een pakket vergeten (Lakstudio:
+   * opnieuw opslaan of verwijderen onder dezelfde naam, §5.6 punt 7).
+   */
+  vergeetHelden(pakket: string, kleurstelling: string | undefined): number {
+    const voor = this.heldNaam(pakket, kleurstelling, '').replace(/\.webp$/, '')
+    let n = 0
+    for (const p of this.heldenVan(pakket)) {
+      if (!p.split(/[\/]/).pop()!.startsWith(voor)) continue
+      rmSync(p, { force: true })
+      n++
+    }
+    return n
+  }
+
+  /** Alleen de kop van een pakket (vermeldingen en stukken), zonder de hoekpunten te lezen. */
+  kop(pakket: string): Bus3dPakKop | undefined {
+    let fd: number | undefined
+    try {
+      fd = openSync(this.pakketPad(pakket), 'r')
+      const begin = Buffer.alloc(8)
+      readSync(fd, begin, 0, 8, 0)
+      const n = begin.readUInt32LE(4)
+      if (n <= 0 || n > 256 * 1024 * 1024) return undefined
+      const json = Buffer.alloc(n)
+      readSync(fd, json, 0, n, 8)
+      return JSON.parse(json.toString('utf8').replace(/\u0000+$/, '').trimEnd()) as Bus3dPakKop
+    } catch {
+      return undefined
+    } finally {
+      if (fd !== undefined) closeSync(fd)
+    }
+  }
+
   heldPad(pakket: string, kleurstelling: string | undefined, sleutel: string): string {
     return join(this.map, 'h', this.heldNaam(pakket, kleurstelling, sleutel))
   }
@@ -499,7 +533,7 @@ export class Bus3dCache {
 /** De opdrachten van de werker `'bus3d'` (main/kaartwerker.ts). */
 export type Bus3dOpdracht =
   | { soort: 'bus3d:model'; relatiefPad: string; geregistreerd: number[] }
-  | { soort: 'bus3d:lak'; pakket: string; kleurstelling?: string }
+  | { soort: 'bus3d:lak'; pakket: string; kleurstelling?: string; extra?: Array<[string, number]>; alleenGeschreven?: boolean }
   | { soort: 'bus3d:controle'; pakket: string }
   | { soort: 'bus3d:omgeving' }
   | { soort: 'bus3d:stalen'; relatiefPad: string }
@@ -554,10 +588,11 @@ export async function bus3dWerk(
   if (opdracht.soort === 'bus3d:lak') {
     if (!z) return { reden: 'verouderd' }
     const t0 = performance.now()
-    const stempel = lakStempel(omsiMap, z.manifest, opdracht.kleurstelling)
+    const extra = opdracht.extra ?? []
+    const stempel = lakStempel(omsiMap, z.manifest, opdracht.kleurstelling, extra, opdracht.alleenGeschreven)
     const bekend = cache.leesStand(opdracht.pakket, stempel)
     if (bekend) return { ...bekend, lak: { ...bekend.lak, ms: Math.round(performance.now() - t0) } }
-    const uit = bus3dLak(omsiMap, z.manifest, opdracht.kleurstelling, cache.leesKop(opdracht.pakket))
+    const uit = bus3dLak(omsiMap, z.manifest, opdracht.kleurstelling, cache.leesKop(opdracht.pakket), extra, opdracht.alleenGeschreven)
     cache.schrijfStand(opdracht.pakket, stempel, uit)
     return uit
   }

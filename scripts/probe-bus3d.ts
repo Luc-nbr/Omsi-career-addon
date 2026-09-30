@@ -857,7 +857,7 @@ async function randgevallen(): Promise<void> {
     await slaap(30)
     writeFileSync(join(busmap, 'Texture', 'a.cti'), ['[item]', 'Eerste', 'Plek', 'Rep\\eerste.tga', '', '[setvar]', 'spiegel', '1', ''].join(R))
     const opnieuw = await lak('Eerste')
-    const main = leesKleurstellingen(join(busmap, 'Model', 'model.cfg'))
+    const main = leesKleurstellingen(join(busmap, 'Model', 'model.cfg'), busmap)
     toets(
       'kleurstellingen: een nieuwe .cti en een gewijzigde .cti ziet dezelfde werker meteen',
       JSON.stringify(eerste.vars) === '[["Colorscheme",0]]' && eerste.texturen.length === 1 &&

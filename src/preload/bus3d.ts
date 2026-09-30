@@ -34,7 +34,7 @@ function luister<T extends unknown[]>(kanaal: string, doe: (...args: T) => void)
 
 const brug: Bus3dBrug = {
   busModel3d: (relatiefPad, kleurstelling) => ipcRenderer.invoke('bus:model3d', relatiefPad, kleurstelling),
-  busLak3d: (pakket, kleurstelling) => ipcRenderer.invoke('bus:lak3d', pakket, kleurstelling),
+  busLak3d: (pakket, kleurstelling, extra, opties) => ipcRenderer.invoke('bus:lak3d', pakket, kleurstelling, extra, opties),
   busOmgeving3d: () => ipcRenderer.invoke('bus:omgeving3d'),
   busHeldenbeeld: (pakket, kleurstelling, sleutel, webp) =>
     ipcRenderer.invoke('bus:heldenbeeld', pakket, kleurstelling, sleutel, new Uint8Array(webp)),
@@ -55,6 +55,31 @@ const brug: Bus3dBrug = {
   busKleurstellingen: (relatiefPad) => ipcRenderer.invoke('bus3d:kleurstellingen', relatiefPad),
   busKleurstalen: (relatiefPad) => ipcRenderer.invoke('bus3d:kleurstalen', relatiefPad),
   opKleurstalen: (l) => luister<[string, Bus3dStalen]>('bus3d:stalen', l),
+
+  naarStudio: (lak) => ipcRenderer.invoke('bus3d:naarStudio', lak),
+  terugUitStudio: (naam) => ipcRenderer.invoke('bus3d:terugUitStudio', naam),
+  lakProjecten: (rel) => ipcRenderer.invoke('lak:projecten', rel),
+  lakDoelen: (rel, start, extra) => ipcRenderer.invoke('lak:doelen', rel, start, extra),
+  lakOpties: (rel, start) => ipcRenderer.invoke('lak:opties', rel, start),
+  lakLaad: (id) => ipcRenderer.invoke('lak:laad', id),
+  lakBewaar: (project) => ipcRenderer.invoke('lak:bewaar', project),
+  lakBeeld: (id, bytes) => ipcRenderer.invoke('lak:beeld', id, new Uint8Array(bytes)),
+  lakBeeldBytes: (id, beeld) => ipcRenderer.invoke('lak:beeldBytes', id, beeld),
+  lakNaamVrij: (rel, naam, id) => ipcRenderer.invoke('lak:naamVrij', rel, naam, id),
+  lakPlaats: (id, naam, texturen, keuze) =>
+    ipcRenderer.invoke(
+      'lak:plaats',
+      id,
+      naam,
+      texturen.map((t) => ({ doel: t.doel, dds: new Uint8Array(t.dds) })),
+      keuze
+    ),
+  lakVerwijder: (id, ookOntwerp, keuze) => ipcRenderer.invoke('lak:verwijder', id, ookOntwerp, keuze),
+  lakGebruik: (rel, naam) => ipcRenderer.invoke('lak:gebruik', rel, naam),
+  lakOntbrekend: (id) => ipcRenderer.invoke('lak:ontbrekend', id),
+  lakBezig: (aan) => ipcRenderer.invoke('lak:bezig', aan),
+  opKleurstellingenVeranderd: (l) => luister<[string[]]>('bus:kleurstellingenVeranderd', l),
+  opLakGeplaatst: (l) => luister<[{ naam: string }]>('lak:geplaatst', l),
 
   opFotoVraag: (l) => luister<[Bus3dFotoVraag]>('bus3d:fotoVraag', l),
   fotoGereed: () => ipcRenderer.send('bus3d:fotoGereed'),

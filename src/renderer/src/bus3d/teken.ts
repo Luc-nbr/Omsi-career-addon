@@ -95,7 +95,7 @@ const SCHADUW_MAAT = 2048
 const CONTACT_MAAT = 256
 
 /** Een materiaal zoals de shader het wil. */
-interface Mat {
+export interface Mat {
   sleutel: string
   modus: 0 | 1 | 2 | 3
   tex?: number
@@ -115,13 +115,13 @@ interface Mat {
   alfaSchaal: number
 }
 
-interface Beurt {
+export interface Beurt {
   mat: Mat
   begin: number
   aantal: number
 }
 
-interface BusScene {
+export interface BusScene {
   manifest: Bus3dManifest
   /** Alleen de kop (vermeldingen, stukken): de hoekpunten staan na het uploaden alleen nog op de GPU. */
   kop: Bus3dPakKop

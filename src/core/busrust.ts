@@ -1,7 +1,7 @@
 import { readFileSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { readOmsiLines } from './omsiFile'
-import { leesKleurstellingen } from './kleurstelling'
+import { leesKleurstellingen, zoekKleurstelling } from './kleurstelling'
 import { startwaardenVan } from './schermvorm'
 import { leesRustProgramma, rekenRust } from './oscrust'
 import { MOTORSTANDAARD, rustRegels, type Bus3dPakKop, type RustDeel, type RustVermelding } from '../shared/bus3d'
@@ -171,7 +171,20 @@ export interface RustInvoerDeel {
 export function busRust(
   kop: Bus3dPakKop,
   delen: RustInvoerDeel[],
-  kleurstelling: string | undefined
+  kleurstelling: string | undefined,
+  /**
+   * De busopties van de Lakstudio (lakstudio-ontwerp §4.9): extra setvars, na
+   * die van de kleurstelling (zoals OMSI ze na de .cti zou zetten), in elk deel.
+   */
+  extra: Array<[string, number]> = [],
+  /**
+   * Het voorbeeld van een eigen lak (Lakstudio, beoordeling L3 punt 3): wat de
+   * kleurstelling en de busopties niet zetten, is 0 of wat het script bij het
+   * starten zet, zoals in OMSI. Zonder deze vlag vult de app die aan met de
+   * gewone uitvoering van het model (`typischVan`), en toonde de studio een bus
+   * die OMSI met die lak nooit laat zien.
+   */
+  alleenGeschreven = false
 ): ReturnType<typeof rustRegels> & { vars: Array<[string, number]>; bron: 'script' | 'regels' } {
   const vermeldingen: RustVermelding[] = kop.vermeldingen.map((v) => ({
     deel: kop.stukken[v.stuk]?.deel ?? 0,
@@ -198,9 +211,10 @@ export function busRust(
   let vars: Array<[string, number]> = []
   const rustDelen: RustDeel[] = delen.map((deel, d) => {
     let kleurVars: Array<[string, number]> = []
-    const info = deel.modelcfg ? leesKleurstellingen(deel.modelcfg) : undefined
-    const gekozen = kleurstelling ? info?.lijst.find((item) => item.naam === kleurstelling) : undefined
+    const info = deel.modelcfg ? leesKleurstellingen(deel.modelcfg, dirname(deel.busPad)) : undefined
+    const gekozen = kleurstelling ? zoekKleurstelling(info, kleurstelling) : undefined
     if (info && gekozen) kleurVars = [[info.variabele, gekozen.index], ...Object.entries(gekozen.setvars)]
+    if (extra.length) kleurVars = [...kleurVars, ...extra]
     if (d === 0) vars = kleurVars
     /*
      * De startwaarden pas als de regels erom vragen: met de rekenmachine is dat
@@ -215,7 +229,7 @@ export function busRust(
         return {}
       }
     }
-    const typisch = info ? typischVan(info.lijst, gekozen) : {}
+    const typisch = info && !alleenGeschreven ? typischVan(info.lijst, gekozen) : {}
     const kleinVars = klein(Object.fromEntries(kleurVars))
     return {
       kleurVars: kleinVars,

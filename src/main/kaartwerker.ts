@@ -90,7 +90,7 @@ type Opdracht =
    * en nakijken of de bronnen van een pakket nog kloppen.
    */
   | { id: number; soort: 'bus3d:model'; relatiefPad: string; geregistreerd: number[] }
-  | { id: number; soort: 'bus3d:lak'; pakket: string; kleurstelling?: string }
+  | { id: number; soort: 'bus3d:lak'; pakket: string; kleurstelling?: string; extra?: Array<[string, number]>; alleenGeschreven?: boolean }
   | { id: number; soort: 'bus3d:controle'; pakket: string }
   | { id: number; soort: 'bus3d:omgeving' }
   | { id: number; soort: 'bus3d:stalen'; relatiefPad: string }

@@ -5,7 +5,7 @@ import { basename, dirname, join, relative } from 'node:path'
 import { readOmsiLines } from './omsiFile'
 import { leesSchermcfg, materiaalcontexten, type CfgMateriaal, type CfgMateriaalstand, type CfgMesh } from './schermcfg'
 import { ontleedO3d, type O3dModel } from './o3d'
-import { leesKleurstellingen, textuurSleutel, type Kleurstellingen } from './kleurstelling'
+import { leesKleurstellingen, textuurSleutel, zoekKleurstelling, type Kleurstellingen } from './kleurstelling'
 import { trailerOf } from './trailer'
 import { busLijsten, busRust, type RustInvoerDeel } from './busrust'
 import { KOP_BYTES, textuurKop, type TextuurKop } from '../shared/beeldlezers'
@@ -518,7 +518,7 @@ export async function bouwBus3d(invoer: Bus3dBouwInvoer): Promise<Bus3dBouwUitko
     const cfg = cfgs[d]
     mappenPerDeel.push(textuurMappen(omsiMap, deel.busPad, deel.modelcfg))
     const ctc = new Map<string, string>()
-    const kleuren = leesKleurstellingen(deel.modelcfg)
+    const kleuren = leesKleurstellingen(deel.modelcfg, dirname(deel.busPad))
     if (kleuren) for (const [plek, standaard] of Object.entries(kleuren.plekken)) ctc.set(textuurSleutel(standaard), plek)
     ctcPerDeel.push(ctc)
     if (!cfg) continue
@@ -836,6 +836,29 @@ export async function bouwBus3d(invoer: Bus3dBouwInvoer): Promise<Bus3dBouwUitko
    */
   const tOpp = performance.now()
   const oppPerStuk = new Map<number, { a: Float64Array; u: Float64Array }>()
+  /*
+   * De SCHIL (Lakstudio, lakstudio-ontwerp §3.2): het deel van het oppervlak dat
+   * de buitenkant van de bus is -- de zijwanden en het dak, met hun normaal naar
+   * buiten. Alleen op oppervlak kiest de studio anders het interieur: bij de O560
+   * hebben de stoelen (73 m²) meer oppervlak dan de wagenkast (70 m²), want het
+   * interieur staat ook in de buitenweergave. De rand van de bus: het 98e
+   * percentiel van |x| en het 99e van y over de buitenhoekpunten (een
+   * steekproef), en dan binnen 25 cm, met de gemiddelde hoekpuntnormaal naar
+   * buiten (> 0,3).
+   */
+  const randen: [number[], number[]] = [[], []]
+  for (const g of gelezen) {
+    if (!g.gebruiktBuiten) continue
+    for (let o = 0; o < g.floats.length; o += 8 * 16) {
+      randen[0].push(Math.abs(g.floats[o]))
+      randen[1].push(g.floats[o + 1])
+    }
+  }
+  for (const r of randen) r.sort((x, y) => x - y)
+  const kwant = (r: number[], q: number): number => (r.length ? r[Math.min(r.length - 1, Math.floor((r.length - 1) * q))] : Infinity)
+  const xRand = kwant(randen[0], 0.98) - 0.25
+  const yRand = kwant(randen[1], 0.99) - 0.25
+  const schilPerTextuur = new Float64Array(texturen.length)
   for (const g of gelezen) {
     if (!g.gebruiktBuiten) continue
     const f = g.floats
@@ -844,6 +867,7 @@ export async function bouwBus3d(invoer: Bus3dBouwInvoer): Promise<Bus3dBouwUitko
     const aantal = Math.max(1, g.textuurPerMateriaal.length)
     const perA = new Float64Array(aantal)
     const perU = new Float64Array(aantal)
+    const perS = new Float64Array(aantal)
     for (let t = 0; t < mat.length; t++) {
       const k = mat[t]
       if (k >= aantal) continue
@@ -868,6 +892,11 @@ export async function bouwBus3d(invoer: Bus3dBouwInvoer): Promise<Bus3dBouwUitko
       if (Number.isFinite(opp) && Number.isFinite(uv)) {
         perA[k] += opp
         perU[k] += uv
+        const mx = (f[a] + f[b] + f[c]) / 3
+        const my = (f[a + 1] + f[b + 1] + f[c + 1]) / 3
+        const nx = (f[a + 3] + f[b + 3] + f[c + 3]) / 3
+        const ny = (f[a + 4] + f[b + 4] + f[c + 4]) / 3
+        if ((Math.abs(mx) >= xRand && nx * Math.sign(mx) > 0.3) || (my >= yRand && ny > 0.3)) perS[k] += opp
       }
     }
     oppPerStuk.set(g.stuk, { a: perA, u: perU })
@@ -876,8 +905,12 @@ export async function bouwBus3d(invoer: Bus3dBouwInvoer): Promise<Bus3dBouwUitko
       if (ti < 0) continue
       texturen[ti].oppervlak += perA[k]
       texturen[ti].uv += perU[k]
+      schilPerTextuur[ti] += perS[k]
     }
   }
+  texturen.forEach((t, i) => {
+    if (schilPerTextuur[i] > 0) t.schil = Math.round(schilPerTextuur[i] * 1e4) / 1e4
+  })
   const alGeteld = new Set<string>()
   for (const v of vermeldingen) {
     if (!v.buiten || v.schaduw) continue
@@ -1007,7 +1040,8 @@ export async function bouwBus3d(invoer: Bus3dBouwInvoer): Promise<Bus3dBouwUitko
   for (const map of zoeker.bekekenMappen()) stempel(map)
   const bronLijst = [...bronnen.values()].sort((a, b) => (a.pad.toLowerCase() < b.pad.toLowerCase() ? -1 : 1))
   const h = createHash('sha1')
-  h.update(`bus3d-pakket-2|${relatiefPad.toLowerCase()}|${[...geregistreerd].sort((a, b) => a - b).join(',')}`)
+  // 3: de schil per textuur erbij (Lakstudio L1/L2); oude pakketten hebben hem niet.
+  h.update(`bus3d-pakket-3|${relatiefPad.toLowerCase()}|${[...geregistreerd].sort((a, b) => a - b).join(',')}`)
   for (const b of bronLijst) h.update(`|${b.pad.toLowerCase()}|${b.grootte}|${b.mtime}`)
   const pakket = h.digest('hex')
 
@@ -1147,7 +1181,7 @@ function materialenVan(g: GelezenStuk, mesh: CfgMesh, zoek: (naam: string) => nu
  * ziet gelijk aan wat je rijdt (§5.2).
  */
 export function kleurVarsVan(info: Kleurstellingen, naam: string): Array<[string, number]> | undefined {
-  const gekozen = info.lijst.find((item) => item.naam === naam)
+  const gekozen = zoekKleurstelling(info, naam)
   if (!gekozen) return undefined
   return [[info.variabele, gekozen.index], ...Object.entries(gekozen.setvars)]
 }
@@ -1163,7 +1197,11 @@ export function bus3dLak(
   omsiMap: string,
   manifest: Bus3dManifest,
   kleurstelling: string | undefined,
-  kop?: Bus3dPakKop
+  kop?: Bus3dPakKop,
+  /** Busopties van de Lakstudio (§4.9): extra setvars na die van de kleurstelling. */
+  extra: Array<[string, number]> = [],
+  /** Wat niemand zet is 0 (of de startwaarde van het script), zoals in OMSI met een eigen lak; zie `busRust`. */
+  alleenGeschreven = false
 ): { lak: Bus3dLak; textuurBronnen: Bus3dTextuurBron[] } {
   const t0 = performance.now()
   const lak: Bus3dLak = {
@@ -1185,7 +1223,7 @@ export function bus3dLak(
       const bus = leesBusBestand(busPad)
       delen.push({ busPad, modelcfg: bus?.model ? join(dirname(busPad), ...bus.model.split(/[\\/]+/)) : '' })
     }
-    const rust = busRust(kop, delen, kleurstelling)
+    const rust = busRust(kop, delen, kleurstelling, extra, alleenGeschreven)
     lak.zichtbaar = rust.zichtbaar
     lak.items = rust.items
     lak.alphascale = rust.alphascale
@@ -1202,11 +1240,11 @@ export function bus3dLak(
     const bus = leesBusBestand(busPad)
     if (!bus?.model) continue
     const modelcfg = join(dirname(busPad), ...bus.model.split(/[\\/]+/))
-    const info = leesKleurstellingen(modelcfg)
+    const info = leesKleurstellingen(modelcfg, dirname(busPad))
     if (!info) continue
-    const gekozen = info.lijst.find((item) => item.naam === kleurstelling)
+    const gekozen = zoekKleurstelling(info, kleurstelling)
     if (!gekozen) continue
-    if (d === 0) lak.vars = kleurVarsVan(info, kleurstelling) ?? []
+    if (d === 0) lak.vars = [...(kleurVarsVan(info, kleurstelling) ?? []), ...extra]
     for (const [plek, pad] of Object.entries(gekozen.texturen)) {
       const standaard = info.plekken[plek]
       if (!standaard || !existsSync(pad)) continue
@@ -1252,9 +1290,18 @@ export function bus3dLak(
  *
  * `lak-2`: de rekenmachine van de ruststand (core/oscrust.ts, tegenlezing F2)
  * geeft andere standen dan de regels van F2; de oude mogen niet meer uit de cache komen.
+ * `lak-3`: kleurstelling.ts leest zoals Omsi.exe (Lakstudio L0). Bij dezelfde
+ * .cti's kan het nummer, een setvar of een textuur nu anders zijn (HHA12,
+ * " silber", de MAN LC), en de stempels van de bestanden zien dat niet.
  */
-export function lakStempel(omsiMap: string, manifest: Bus3dManifest, kleurstelling: string | undefined): string {
-  const h = createHash('sha1').update(`lak-2|${kleurstelling ?? ''}`)
+export function lakStempel(
+  omsiMap: string,
+  manifest: Bus3dManifest,
+  kleurstelling: string | undefined,
+  extra: Array<[string, number]> = [],
+  alleenGeschreven = false
+): string {
+  const h = createHash('sha1').update(`lak-3|${kleurstelling ?? ''}${extra.length ? `|${JSON.stringify(extra)}` : ''}${alleenGeschreven ? '|alleen' : ''}`)
   const stempel = (pad: string): void => {
     try {
       const st = statSync(pad)
@@ -1270,8 +1317,8 @@ export function lakStempel(omsiMap: string, manifest: Bus3dManifest, kleurstelli
     for (const p of [...scripts, ...constfiles]) stempel(p)
     const bus = leesBusBestand(busPad)
     if (!bus?.model) continue
-    const info = leesKleurstellingen(join(dirname(busPad), ...bus.model.split(/[\\/]+/)))
-    const gekozen = kleurstelling ? info?.lijst.find((item) => item.naam === kleurstelling) : undefined
+    const info = leesKleurstellingen(join(dirname(busPad), ...bus.model.split(/[\\/]+/)), dirname(busPad))
+    const gekozen = kleurstelling ? zoekKleurstelling(info, kleurstelling) : undefined
     for (const p of Object.values(gekozen?.texturen ?? {})) stempel(p)
     // De .cti's zelf: een setvar die erbij komt verandert de lak, niet de texturen.
     if (info?.map) {

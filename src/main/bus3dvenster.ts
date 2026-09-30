@@ -65,6 +65,14 @@ export interface Bus3dVensterAfhankelijk {
   /** De stalen; `tussen` krijgt wat al klaar is terwijl de rest nog loopt. */
   kleurstalen: (relatiefPad: string, tussen: (stalen: Bus3dStalen) => void) => Promise<Bus3dStalen>
   log: (regel: string) => void
+  /**
+   * Maakt de Lakstudio nu een lak ("Lak maken … In OMSI zetten …")? Dan wacht
+   * een wissel naar een andere bus tot het klaar is (lakstudio-ontwerp §4.1,
+   * kritiek punt 15).
+   */
+  lakBezig?: () => boolean
+  /** De bedrijfsnaam van het actieve profiel, voor de studio vanuit het wagenpark of de dealer. */
+  bedrijfsnaam?: () => string | undefined
 }
 
 export interface Bus3dVenster {
@@ -76,6 +84,18 @@ export interface Bus3dVenster {
   instellingenGewijzigd(): void
   /** OMSI begon of stopte (de wacht in index.ts), zodat de lichte stand niet achterloopt. */
   omsiGewijzigd(draait: boolean): void
+  /**
+   * Komt dit bericht van de Lakstudio: het 3D-venster, nu in doel 'lakstudio'?
+   * Het verborgen fotovenster laadt dezelfde brug, maar is een ander webContents
+   * (lakstudio-ontwerp §8, kritiek punt 18).
+   */
+  vanStudio(e: IpcMainEvent | IpcMainInvokeEvent): boolean
+  /** Komt dit bericht van het hoofdvenster (Addons)? */
+  vanHoofd(e: IpcMainEvent | IpcMainInvokeEvent): boolean
+  /** Een gebeurtenis naar het 3D-venster, als het er is. */
+  stuur(kanaal: string, ...args: unknown[]): void
+  /** De vraag waarmee het venster naar de studio wisselde (om na opslaan terug te gaan, §4.1). */
+  vorigeVraag(): Bus3dVensterVraag | undefined
 }
 
 const BREEDTE = 1200
@@ -167,8 +187,14 @@ export function maakBus3dVenster(ipcMain: IpcMain, af: Bus3dVensterAfhankelijk):
     if (BrowserWindow.getFocusedWindow()) laatsteFocus = nu
     const verborgen = alGetoond && (!win.isVisible() || win.isMinimized())
     const zonderFocus = omsi && nu - laatsteFocus > ZONDER_FOCUS_MS
+    /*
+     * Maakt de studio een lak, dan nog geen pauze: pauze geeft de WebGL-context
+     * op, en een export die dan doorliep las een dode context uit en schreef
+     * zwarte, doorzichtige texturen (tegenlezing L3 punt 1). De klok hierboven
+     * kijkt elke 2 s opnieuw: na de export komt de pauze alsnog.
+     */
     const nieuw: Bus3dVensterStand = {
-      pauze: verborgen || zonderFocus,
+      pauze: (verborgen || zonderFocus) && !af.lakBezig?.(),
       licht: omsi,
       reden: verborgen ? 'verborgen' : zonderFocus ? 'omsi-zonder-focus' : undefined
     }
@@ -259,6 +285,7 @@ export function maakBus3dVenster(ipcMain: IpcMain, af: Bus3dVensterAfhankelijk):
       if (win !== w) return
       win = undefined
       huidig = undefined
+      voorStudio = undefined
       stopKlok()
       meldHoofd({ open: false })
       af.log('bus3d venster: dicht')
@@ -268,6 +295,7 @@ export function maakBus3dVenster(ipcMain: IpcMain, af: Bus3dVensterAfhankelijk):
       if (win !== w) return
       win = undefined
       huidig = undefined
+      voorStudio = undefined
       stopKlok()
       // Eén melding per keer dat het misgaat; de volgende 3D-klik opent een nieuw venster.
       meldHoofd({ open: false, gecrasht: !gecrashtGemeld })
@@ -285,9 +313,47 @@ export function maakBus3dVenster(ipcMain: IpcMain, af: Bus3dVensterAfhankelijk):
     return w
   }
 
+  /** De vraag vóór de studio: na opslaan gaat het venster daarheen terug (§4.1). */
+  let voorStudio: Bus3dVensterVraag | undefined
+  /** Een wissel die wacht tot de studio klaar is met een lak maken (§4.1). */
+  let uitgesteld: ReturnType<typeof setInterval> | undefined
+
+  /** De Lakstudio-velden van een vraag, getoetst: geen paden, alleen een id, een start en een naam. */
+  function lakVan(v: Bus3dOpenVraag): Bus3dVensterVraag['lak'] {
+    const l = v.lak
+    if (!l || typeof l !== 'object') return undefined
+    const projectId = typeof l.projectId === 'string' && /^[0-9a-f]{16}$/.test(l.projectId) ? l.projectId : undefined
+    const start = typeof l.start === 'string' && ['snel', 'effenKleuren', 'precies', 'effen'].includes(l.start) ? l.start : undefined
+    const naam = typeof l.bedrijf?.naam === 'string' ? l.bedrijf.naam.slice(0, 80) : af.bedrijfsnaam?.()
+    const kleuren = Array.isArray(l.bedrijf?.kleuren)
+      ? l.bedrijf!.kleuren!.filter((k) => typeof k === 'string' && /^#[0-9a-f]{6}$/i.test(k)).slice(0, 3)
+      : undefined
+    return { projectId, start, bedrijf: naam ? { naam, kleuren } : undefined }
+  }
+
   function open(vraag: Bus3dOpenVraag): number {
-    const aanvraag = ++volgnummer
-    const doel: Bus3dDoel = vraag.doel === 'dealer' || vraag.doel === 'wagenpark' ? vraag.doel : 'buskeuze'
+    // Maakt de studio net een lak, dan wacht de wissel (§4.1, kritiek punt 15).
+    if (af.lakBezig?.() && win && !win.isDestroyed()) {
+      const aanvraag = ++volgnummer
+      if (uitgesteld) clearInterval(uitgesteld)
+      uitgesteld = setInterval(() => {
+        if (af.lakBezig?.()) return
+        clearInterval(uitgesteld)
+        uitgesteld = undefined
+        openNu(vraag, aanvraag)
+      }, 250)
+      uitgesteld.unref?.()
+      af.log('bus3d venster: de studio maakt een lak; de wissel wacht')
+      return aanvraag
+    }
+    return openNu(vraag, ++volgnummer)
+  }
+
+  function openNu(vraag: Bus3dOpenVraag, aanvraag: number): number {
+    const doel: Bus3dDoel =
+      vraag.doel === 'dealer' || vraag.doel === 'wagenpark' || vraag.doel === 'lakstudio' ? vraag.doel : 'buskeuze'
+    if (doel === 'lakstudio' && huidig && huidig.doel !== 'lakstudio') voorStudio = huidig
+    if (doel !== 'lakstudio') voorStudio = undefined
     const kleurstelling = typeof vraag.kleurstelling === 'string' && vraag.kleurstelling ? vraag.kleurstelling : undefined
     const relatiefPad = String(vraag.relatiefPad ?? '')
     const nieuwVenster = !win || win.isDestroyed()
@@ -314,7 +380,8 @@ export function maakBus3dVenster(ipcMain: IpcMain, af: Bus3dVensterAfhankelijk):
           : undefined,
       foto: af.fotoAlsKlaar(relatiefPad, kleurstelling),
       instellingen: af.instellingen(),
-      stand
+      stand,
+      lak: doel === 'lakstudio' ? lakVan(vraag) : undefined
     }
     if (!nieuwVenster && win) {
       win.webContents.send('bus3d:vraag', huidig)
@@ -328,6 +395,8 @@ export function maakBus3dVenster(ipcMain: IpcMain, af: Bus3dVensterAfhankelijk):
       void peil()
       af.log(`bus3d venster: open ${doel} ${relatiefPad}`)
     }
+    // In de studio staat het venster gemaximaliseerd (§4.1); alles wordt bewaard, dus een wissel kost niets.
+    if (doel === 'lakstudio' && win && !win.isMaximized()) win.maximize()
     meldHoofd({ open: true, relatiefPad, kleurstelling, doel, aanvraag })
     return aanvraag
   }
@@ -353,6 +422,49 @@ export function maakBus3dVenster(ipcMain: IpcMain, af: Bus3dVensterAfhankelijk):
     const v = vraag as Bus3dOpenVraag
     if (!/\.bus$/i.test(String(v.relatiefPad ?? ''))) return 0
     return open(v)
+  })
+  /*
+   * "+ Eigen lak" in het venster zelf (§4.1): wissel naar de studio met dezelfde
+   * bus. Alleen van het 3D-venster, alleen met de schakelaar, en alleen voor de
+   * bus die er nu in staat.
+   */
+  ipcMain.handle('bus3d:naarStudio', (e, lak: unknown) => {
+    if (!vanVenster(e) || !af.aan() || !huidig) return 0
+    return open({
+      doel: 'lakstudio',
+      relatiefPad: huidig.relatiefPad,
+      kleurstelling: huidig.kleurstelling,
+      gekozen: huidig.gekozen,
+      titel: huidig.titel,
+      naam: huidig.naam,
+      vorm: huidig.vorm,
+      vloot: huidig.vloot,
+      lak: lak && typeof lak === 'object' ? (lak as Bus3dOpenVraag['lak']) : undefined
+    })
+  })
+  /*
+   * Na opslaan of klaarzetten in de studio (§4.1, §6): terug naar de
+   * kleurstellingen waar de speler vandaan kwam (de buskeuze, de dealer of het
+   * wagenpark), met de nieuwe lak in beeld. Kiezen blijft een eigen klik
+   * ([Kiezen] of [Overspuiten]): bekijken is niet kiezen.
+   */
+  ipcMain.handle('bus3d:terugUitStudio', (e, naam: unknown) => {
+    if (!vanVenster(e) || !af.aan() || !huidig || huidig.doel !== 'lakstudio') return 0
+    // Alleen terug naar waar de studio vandaan kwam als dat dezelfde bus was; anders de lijst van deze bus.
+    const terug = voorStudio && voorStudio.relatiefPad.toLowerCase() === huidig.relatiefPad.toLowerCase() ? voorStudio : huidig
+    const kleurstelling = typeof naam === 'string' && naam ? naam.slice(0, 80) : terug.kleurstelling
+    // De lijst van deze bus is veranderd: opnieuw lezen bij de volgende keuze.
+    kleurNamen.delete(terug.relatiefPad.toLowerCase())
+    return open({
+      doel: terug.doel === 'lakstudio' ? 'buskeuze' : terug.doel,
+      relatiefPad: terug.relatiefPad,
+      kleurstelling,
+      gekozen: terug.gekozen,
+      titel: terug.titel,
+      naam: terug.naam,
+      vorm: terug.vorm,
+      vloot: terug.vloot
+    })
   })
   ipcMain.on('bus3d:sluit', (e, aanvraag: unknown) => {
     if (!vanHoofd(e) || !huidig) return
@@ -412,7 +524,9 @@ export function maakBus3dVenster(ipcMain: IpcMain, af: Bus3dVensterAfhankelijk):
     }
     const weiger = (): void => af.log(`bus3d venster: kleurstelling "${kleurstelling}" staat niet in de lijst van de bus; telt niet`)
     const bekend = kleurNamen.get(pad.toLowerCase())
-    if (bekend || !kleurstelling) {
+    // Een naam die er net bij kwam (een eigen lak uit de studio): eerst de lijst opnieuw, dan pas weigeren.
+    if (bekend && kleurstelling && !bekend.has(kleurstelling)) kleurNamen.delete(pad.toLowerCase())
+    if ((bekend && (!kleurstelling || bekend.has(kleurstelling))) || !kleurstelling) {
       if (geldig(bekend)) geef()
       else weiger()
       return
@@ -427,6 +541,12 @@ export function maakBus3dVenster(ipcMain: IpcMain, af: Bus3dVensterAfhankelijk):
   })
 
   return {
+    vanStudio: (e) => vanVenster(e) && huidig?.doel === 'lakstudio',
+    vanHoofd,
+    stuur: (kanaal, ...args) => {
+      if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send(kanaal, ...args)
+    },
+    vorigeVraag: () => voorStudio,
     venster: () => (win && !win.isDestroyed() ? win : undefined),
     sluitAlles: (reden) => sluit(reden),
     instellingenGewijzigd: () => {

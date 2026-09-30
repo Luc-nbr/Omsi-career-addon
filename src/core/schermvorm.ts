@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { basename, dirname, extname, isAbsolute, join, resolve, sep } from 'node:path'
 import type { Busmodule } from './busmodule'
-import { leesKleurstellingen, textuurSleutel, vervangingen } from './kleurstelling'
+import { busmapBijCfg, leesKleurstellingen, textuurSleutel, vervangingen } from './kleurstelling'
 import { ontleedO3d, type O3dMateriaal, type O3dModel } from './o3d'
 import {
   binnenZichtbaar,
@@ -1810,7 +1810,7 @@ export function schermGetallenVan(modelcfg: string, module: Busmodule): string[]
       zet(anim.draai?.variabele)
     }
   }
-  zet(leesKleurstellingen(modelcfg)?.variabele)
+  zet(leesKleurstellingen(modelcfg, busmapBijCfg(modelcfg))?.variabele)
   return namen
 }
 
@@ -1821,7 +1821,7 @@ export function schermGetallenVan(modelcfg: string, module: Busmodule): string[]
 export function schermVormVan(invoer: SchermInvoer): SchermUitvoer | undefined {
   /* ---- Texturen: kleurstelling, dan zoeken, dan het register ---- */
   const { waarde, heeft } = waardenVan(invoer.getallen)
-  const kleuren = leesKleurstellingen(invoer.modelcfg)
+  const kleuren = leesKleurstellingen(invoer.modelcfg, busmapBijCfg(invoer.modelcfg))
   let ctc: Map<string, string> | undefined
   if (kleuren && heeft(kleuren.variabele)) {
     const keuze = kleuren.lijst[Math.round(waarde(kleuren.variabele))]

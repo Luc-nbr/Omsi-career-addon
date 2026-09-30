@@ -8,9 +8,10 @@ import { isLanguage, type Language } from '../../../shared/i18n'
 import type { Bus3dVensterInstellingen, Bus3dVensterStand, Bus3dVensterVraag } from '../../../shared/bus3d'
 import { BusViewer, type ViewerStand } from '../BusViewer'
 import { LanguageProvider } from '../language'
+import type { Laag, LakFamilieInfo } from '../../../shared/lak'
 import type { AfdrukVraag } from './berichten'
 import { Bus3dVenster } from './Bus3dVenster'
-import { Verbinding, type ViewerHandvat } from './verbinding'
+import { klok as klokNu, Verbinding, type ViewerHandvat } from './verbinding'
 
 /**
  * HET REACT-DEEL VAN HET 3D-VENSTER (bus3d.html, bus3d-ontwerp §8.1)
@@ -54,6 +55,34 @@ interface Proefhaak {
   wisLangeTaken(): void
   /** Wat de renderer-werker bij het starten meldde: WebGL2, kaart, MSAA-monsters, S3TC. */
   info(): Promise<unknown>
+  /** Het lakdoek (Lakstudio L1), voor scripts/probe-lakstudio-beeld.cjs. Bytes gaan als base64. */
+  studio: {
+    start(familie: LakFamilieInfo, lagen: Laag[], spiegel?: { aan: boolean; vlakX?: number }, licht?: boolean): Promise<unknown>
+    lagen(lagen: Laag[], spiegel?: { aan: boolean; vlakX?: number }): void
+    masker(aan: boolean): void
+    kies(x: number, y: number): Promise<unknown>
+    exporteer(o?: { tegel?: number; alleen?: string[]; metRgba?: boolean }): Promise<unknown>
+    meet(beelden?: number): Promise<unknown>
+    beeld(id: string, png: string, mime?: string): Promise<void>
+    stop(): void
+    proef(o: Parameters<ViewerHandvat['studio']['proef']>[0]): Promise<unknown>
+    maskers(): Promise<unknown>
+    /** Busopties (§4.9, P16): de lak opnieuw met extra setvars, dan de maskers opnieuw; geeft de tijden. */
+    opties(extra: Array<[string, number]>): Promise<unknown>
+    /** P4: de context bewust kwijt (pauze met vrijgeven) en terug; wacht op de herstart van het lakdoek. */
+    verlies(): Promise<unknown>
+    /** P7: de lagen zetten en de uitslag van de geen-kopie-regel afwachten (per decal-laag). */
+    analyseNa(lagen: Laag[], spiegel?: { aan: boolean; vlakX?: number }): Promise<unknown>
+    /** P7: [Schuif naar een vrij stuk]. */
+    schuif(id: string): Promise<unknown>
+    /**
+     * Tegenlezing L3 punt 1: een export terwijl de context wegvalt (pauze met
+     * vrijgeven, zoals minimaliseren): de export moet een fout geven, geen lege DDS.
+     */
+    exportMetVerlies(naMs?: number): Promise<unknown>
+    /** Snelle lak: een vrije plek voor de naam of het logo (`Lakdoek.vrijePlek`). */
+    vrij(id: string, zoek: Parameters<ViewerHandvat['studio']['vrij']>[1]): Promise<unknown>
+  }
 }
 
 declare global {
@@ -129,6 +158,110 @@ function Proefviewer(): JSX.Element {
       langeTaken: () => langeTaken.filter((t) => t.begin >= langeTakenVanaf).map((t) => t.duur),
       wisLangeTaken: () => {
         langeTakenVanaf = performance.now()
+      },
+      studio: {
+        start: async (familie, lagen, spiegel, licht) => handvat.current?.studio.start(familie, lagen, spiegel, licht) ?? { fout: 'geen viewer' },
+        lagen: (lagen, spiegel) => handvat.current?.studio.lagen(lagen, spiegel),
+        masker: (aan) => handvat.current?.studio.masker(aan),
+        kies: async (x, y) => handvat.current?.studio.kies(x, y) ?? { fout: 'geen viewer' },
+        exporteer: async (o) => {
+          const u = (await handvat.current?.studio.exporteer(o)) as Array<{ doel: string; dds: Uint8Array; rgba?: Uint8Array; formaat: string; ms: unknown }> | { fout: string } | undefined
+          if (!u || 'fout' in u) return u ?? { fout: 'geen viewer' }
+          return u.map((x) => ({
+            doel: x.doel,
+            formaat: x.formaat,
+            ms: x.ms,
+            dds: base64(x.dds.buffer.slice(x.dds.byteOffset, x.dds.byteOffset + x.dds.byteLength) as ArrayBuffer),
+            rgba: x.rgba ? base64(x.rgba.buffer.slice(x.rgba.byteOffset, x.rgba.byteOffset + x.rgba.byteLength) as ArrayBuffer) : undefined
+          }))
+        },
+        meet: async (beelden) => handvat.current?.studio.meet(beelden) ?? { fout: 'geen viewer' },
+        beeld: async (id, png, mime = 'image/png') => {
+          const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0))
+          const bm = await createImageBitmap(new Blob([bytes], { type: mime }), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' })
+          handvat.current?.studio.beeld(id, bm)
+        },
+        stop: () => handvat.current?.studio.stop(),
+        proef: async (o) => {
+          const u = (await handvat.current?.studio.proef(o)) as { px?: Uint8Array; b: number; h: number; ms?: unknown; fout?: string } | undefined
+          if (!u || u.fout || !u.px) return u
+          return { b: u.b, h: u.h, ms: u.ms, px: base64(u.px.buffer.slice(u.px.byteOffset, u.px.byteOffset + u.px.byteLength) as ArrayBuffer) }
+        },
+        maskers: async () => handvat.current?.studio.maskers(),
+        verlies: () =>
+          new Promise((klaar) => {
+            const h = handvat.current
+            if (!h) return klaar({ fout: 'geen viewer' })
+            const v = Verbinding.get()
+            const oud = v.opLakHerstart
+            const t0 = performance.now()
+            const klok = setTimeout(() => {
+              v.opLakHerstart = oud
+              klaar({ fout: 'geen herstart binnen 60 s' })
+            }, 60000)
+            v.opLakHerstart = (k) => {
+              clearTimeout(klok)
+              v.opLakHerstart = oud
+              klaar({ klaar: k, ms: Math.round(performance.now() - t0) })
+            }
+            h.pauze(true, true)
+            setTimeout(() => h.pauze(false), 400)
+          }),
+        analyseNa: (lagen, spiegel) =>
+          new Promise((klaar) => {
+            const h = handvat.current
+            if (!h) return klaar({ fout: 'geen viewer' })
+            const v = Verbinding.get()
+            const oud = v.opLakAnalyse
+            const ids = lagen.filter((l) => 'plaats' in l && l.zichtbaar).map((l) => l.id)
+            const klok = setTimeout(() => {
+              v.opLakAnalyse = oud
+              klaar({ fout: 'geen analyse binnen 8 s' })
+            }, 8000)
+            v.opLakAnalyse = (u) => {
+              if (!ids.every((id) => id in u)) return
+              clearTimeout(klok)
+              v.opLakAnalyse = oud
+              klaar(u)
+            }
+            h.studio.lagen(lagen, spiegel)
+          }),
+        schuif: async (id) => handvat.current?.studio.schuif(id),
+        vrij: async (id, zoek) => handvat.current?.studio.vrij(id, zoek),
+        exportMetVerlies: async (naMs = 40) => {
+          const h = handvat.current
+          if (!h) return { fout: 'geen viewer' }
+          const v = Verbinding.get()
+          const oud = v.opLakHerstart
+          const herstart = new Promise((klaar) => {
+            const klok = setTimeout(() => klaar({ fout: 'geen herstart binnen 60 s' }), 60000)
+            v.opLakHerstart = (k) => {
+              clearTimeout(klok)
+              klaar(k)
+            }
+          })
+          const exp = h.studio.exporteer({ metRgba: false })
+          await new Promise((k) => setTimeout(k, naMs))
+          h.pauze(true, true)
+          const uit = (await exp) as unknown
+          h.pauze(false)
+          const k = await herstart
+          v.opLakHerstart = oud
+          const dds = Array.isArray(uit) ? (uit as Array<{ dds: Uint8Array }>).map((x) => ({ bytes: x.dds.length, nul: x.dds.subarray(128).every((b) => b === 0) })) : undefined
+          return { uitkomst: Array.isArray(uit) ? 'dds' : uit, dds, herstart: Boolean(k && typeof k === 'object' && !('fout' in (k as object))) }
+        },
+        opties: async (extra) => {
+          const h = handvat.current
+          const pakket = laatste.current?.pakket
+          if (!h || !pakket) return { fout: 'geen bus' }
+          const t0 = performance.now()
+          const lak = await window.bus3d!.busLak3d(pakket, bus.kleur, extra)
+          if ('reden' in lak) return { fout: lak.reden }
+          const t1 = performance.now()
+          h.lak(lak, klokNu())
+          const m = (await h.studio.maskers()) as { ms: number }
+          return { lakMs: Math.round(t1 - t0), maskerMs: m.ms, totaalMs: Math.round(performance.now() - t0), zichtbaar: [...lak.zichtbaar].filter((c) => c === '1').length }
+        }
       }
     }
   }, [])

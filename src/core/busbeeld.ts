@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { leesBusModel, zoekTextuurVan } from './busmodel'
-import { kleurstellingenVanBus, textuurSleutel, vervangingen } from './kleurstelling'
+import { kleurstellingenVanBus, textuurSleutel, vervangingen, zoekKleurstelling } from './kleurstelling'
 import { ontleedTextuur, pakBmpUit, type Textuur } from './textuur'
 import { leesO3dLezing } from './o3d'
 
@@ -105,7 +105,7 @@ export function bouwBusTekening(busPad: string, kleurstelling?: string): BusTeke
   let vervang: Map<string, string> | undefined
   if (kleurstelling) {
     const info = kleurstellingenVanBus(busPad)
-    const gekozen = info?.lijst.find((item) => item.naam === kleurstelling)
+    const gekozen = zoekKleurstelling(info, kleurstelling)
     if (info && gekozen) vervang = vervangingen(info, gekozen)
   }
 

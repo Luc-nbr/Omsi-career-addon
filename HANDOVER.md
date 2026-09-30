@@ -683,6 +683,364 @@ hoort niet onder je handen opnieuw op te komen (`probe-beweging.cjs`,
 
 ## 5. Openstaand werk
 
+### 5.00000000 Lakstudio L3: herstel na proefdraaier, beoordelaar en tegenlezer (30-09-2026)
+
+Tak `claude/lakstudio`, op 520b3d6. Nog steeds alles achter de schakelaar `bus3d`
+(`probe-modi.cjs`: zonder schakelaar geen lakknoppen, en Addons toont zonder
+schakelaar ook geen paneel "Eigen kleurstellingen" meer).
+
+**Beeld (gerepareerd):**
+- **Het zijbeeld** (`lakdoek.ts` `zijbeeld`, ZIJ_VS/ZIJ_FS): de bus orthografisch
+  per zijde (1,5 cm per pixel), met wat de speler daar ziet: lak, of een deur,
+  ruit, wiel, afdekker of een vlak dat > 60° wegdraait. Met sommentabellen zoekt
+  `vrijePlek` voor de naam en het logo van Snelle lak een rechthoek met ≥ 98,5%
+  vrije lak, met marges, eerst op volle maat, dan 85% en 70%, en dezelfde plek
+  gespiegeld voor de kopie. De naam viel eerst over deuren en wielkasten
+  ("dtwerke Lucstad") en het logo achter het BVG-wapen. Valt een laag voor < 90%
+  op vrije lak, dan zegt het paneel `ls.opDeur`.
+- **De geen-kopie-regel** kijkt in het zijbeeld naar gedeelde texels op de
+  buitenhuid, niet naar de UV-voetafdruk: de SD77 deelt SD77_02 met binnenwanden
+  en stangen, en kreeg links geen naam en geen logo.
+- **Voorbeeld = OMSI:** de studio toont de bus met alleen de setvars die de .cti
+  schrijft (`alleenGeschreven` in `busRust`/`bus3dLak`), en de .cti schrijft een
+  expliciete waarde voor elke uiterlijk-variabele (`effectieveOpties` in
+  `shared/lak.ts`, §4.9). `overLak` is nu meetkundig (een alfamesh binnen 5 cm van
+  het laknet) in plaats van "materiaal met alfa": de O560 schrijft `vis_wheels 1`.
+  Een variabele die alleen in `visual*.osc` staat, is uiterlijk
+  (`vis_grill_invisible` van de SD77).
+- **Het zonemasker** (ZONE_FS + MORF_FS): Z per texel, gesloten en dan geopend
+  met een straal van 1-8 texels (± 3 bij 4096). Weg zijn de witte stippellijnen
+  langs de naden op donkere lak en de spikkels achter op de C2 en rond de roosters
+  van de O560.
+- **Eén bus, één lak** (`zones.ts` `zonesGelijk`): een zone (≥ 2%) met de kleur van
+  een lakzone van een ander doel van dezelfde bus is ook lak. De rode schort van de
+  HH20 was op de achterwagen lak (11,6%) en op de voorwagen niet (9,2%); onder de
+  weggehaalde HOCHBAHN-letters bleven 944 texels rood, nu 21 (blauw, een ingebakken
+  detail van < 2%).
+- Driehoeken buiten het laknet (`overig`, A = 0,4 in het masker) houden de basis:
+  een ruitvlak van de C2 werd zwart.
+- **"Effen in de kleuren van deze lak"** kleurt de kleurvlakken van de start
+  (`maakStartVlakken`: zones op 1/8, samengevoegde componenten, lidmaatschap in
+  twee RGBA8-texturen; lagen met `bron: 'start'`, vlag 32). De O560 bleef eerst
+  helemaal wit en de C2 helemaal geel. De stalen van Snelle lak komen ook uit de
+  start (de O560 krijgt zijn rood).
+- Het logo en een afbeelding houden standaard dezelfde richting (geen ƆUL links);
+  "Wit wordt doorzichtig" haalt alleen het wit weg dat met de rand verbonden is,
+  met 2 px kleur-naar-alfa (de witte L van LUC blijft).
+- De onderband van Snelle lak begint 0,5 m onder de doos: er bleef een groene strook.
+- De basis staat op de bewerkmaat; de export laadt de volle basis even erbij.
+
+**Schrijven en veiligheid (tegenlezer 1-15):** een export op een verloren context
+wordt een fout, niet een zwarte DDS (`leesPbo` gooit bij WAIT_FAILED en na de
+tijd, `exporteer` toetst `isContextLost`, de werker weigert `lakExport` zolang de
+context weg is, de pauze wacht zolang de studio bezig is, en main weigert een lege
+DDS). De start gaat overal mee (wachtrij, [Bewerken], `startTextuur`). Opnieuw
+opslaan maakt eerst staging en plan, kopieert de oude bestanden naar
+`<project>/terug`, en zet ze ook bij een exception terug. `lak:bezig` en een
+generatieteller in het lakdoek. OMSI wordt na het uitrekenen van de familie en per
+lak opnieuw gepeild. Een weesbestand weghalen vraagt twee keer, met de bestanden.
+Addons waarschuwt voor lakken die op een pakket leunen, en de studio meldt
+ontbrekende bestanden (`ls.ontbreekt`). U+00A0 en U+00AD geweigerd.
+`gpuBytes` telt basis, sjablonen, zonemasker en startvlakken; de codeerwerkers
+stoppen in `stop()`. `geplaatst` komt van schijf en de versie moet een geheel
+getal zijn. Bewaren boven 4 MB geeft een melding. De .cti gaat bij terugdraaien als
+eerste weg. Bakken op de `bakker` van main. Na direct plaatsen uit de wachtrij.
+[Alles laten staan] meldt niets meer. Verwijderen vanuit Addons vraagt `ls.gebruik`.
+`probe-lakstudio-beeld.cjs` eindigt met `app.exit(1)` bij een fout.
+
+**Bediening:** "Komt ook op" noemt de `[friendlyname]` en heeft een keuzelijst;
+busopties heten naar hun betekenis (`ls.optie.*`, 17 variabelen) met de variabele
+als tooltip, zonder meettijd; "Naam in OMSI"; het tabblad heet "Gereedschap";
+staal 3 kleurt de tekst; het kader van de kopie tekent alleen als die kant naar de
+camera kijkt; geen horizontale schuifbalk rechts; het beeld van de andere kant is
+480×270; een regel over de bediening (rechts slepen = draaien); de meldingen van
+een laag staan bovenaan het paneel.
+
+**Verworpen, met reden:**
+- KI-leden zonder doostoets (proefdraaier 9): de KI-bussen gebruiken dezelfde
+  textuur met dezelfde UV; 21 cm naast de doos is de maat van het model, niet van
+  de lak. Een KI-lid uitsluiten zou de lak op de KI-bussen weghalen. Voor P10.
+- `MB_KI_C2_E6_Gn_main` laadt `_trail.tga` (beoordelaar 19): een KI-voorwagen is
+  een heel pakket met de achterwagen; zo staat het in de .bus van de maker.
+- BVG-wapens en gouden kaders van de SD77 (beoordelaar 8): MA van de maker
+  beschermt ze; "Ook over rubbers en lampen" lakt nu ook met een sjabloon over
+  alles wat buiten ligt en geen glas is.
+- D-DIN (beoordelaar 18): de licentie is nog niet nagekeken (zie hieronder).
+- `plugin/out` in de werkmap (proefdraaier 14): nodig voor de installer, niet voor L3.
+- Een tweede proefronde tegelijk (beoordelaar 20): omgeving, niets aan de code.
+
+**P3 samenstellen:** pad 1 op de C2 Solo gaf in losse rondes 4,06-4,44 ms (eis
+≤ 4) en in de laatste volle ronde 3,63 ms. Gemeten terwijl andere programma's de
+GPU voor ± 38-41% gebruikten (nvidia-smi); 520b3d6 geeft onder dezelfde last
+4,22 ms (eerder, met een lege GPU, 2,68). De nieuwe texturen
+(zonemasker, startvlakken) kosten 0,2 ms; een textuurlezing in een tak binnen de
+lus over de lagen kostte 3 ms (de HLSL-vertaler las hem per laag) en staat nu
+buiten de lus.
+
+**Gemeten (RTX 4070 SUPER met die last, `probe-lakstudio-studio.cjs`, 96 ok):**
+studio klaar O560 4,9 s (lakdoek 0,77 s), SD77 3,0 s (0,62), C2 4,7 s (0,75),
+C2 GN 11,0 s; opslaan 1,7 / 1,2 / 2,3 s, C2 GN 7,2 s. Naam en logo van Snelle lak
+op vrije lak aan beide kanten: 0,99-1,0 (eis ≥ 0,98, met kopie). De afdrukken van
+de proef staan voor Luc in het klad (`afdruk-na/`).
+
+**Nog niet:** opslaan van de C2 GN duurt 7,2 s (§2.1 wil ≤ 6 s): het laden van de
+Hybrid-achterwagen om zijn doel te bakken is het meeste daarvan (GPU-proef:
+lakdoek 3,0 s, met het laden 15,5 s). Onzichtbaar bakken zonder een hele bus te
+laden (§4.14) is nog werk. De P3-meting opnieuw op een lege GPU.
+
+Ontwerp §1, §2, §10 (L3); tak `claude/lakstudio`. Nog steeds alles achter de
+schakelaar `bus3d` (beslissing 5): zonder schakelaar geen [Lak maken], geen
+"+ Eigen lak", geen studio en een lege lijst in Addons. Het ontwikkelpaneel van
+L1 blijft bereikbaar met `?lakdev=1` op bus3d.html.
+
+**Wat er staat** (`src/renderer/src/bus3d/lak/`):
+- `Lakstudio.tsx`: het venster in doel `lakstudio` (§2.2). Kop met de vijf
+  gereedschappen, [Spiegel●], ↶ ↷ en [Meer▾] (busopties, Snelle lak opnieuw,
+  start wisselen, spiegelvlak, ontwerp openen/exporteren uit tot fase 2,
+  verwijderen uit OMSI); daaronder de naam, [Opslaan in OMSI] of met OMSI open
+  [Klaarzetten voor OMSI], en "Komt ook op: …" met [Bekijk] per bestuurbaar lid.
+  Links de lagen (naam en oogje; slepen = volgorde), midden de bus met een
+  SVG-laag erover (kader en hoekhandvat van de gekozen decal, de randen van de
+  gekozen strook met de gidsen raamlijn/middenlijn), rechtsonder het beeld van
+  de andere kant, rechts Snelle lak ⇄ het paneel van het gereedschap met de
+  gekozen laag, onderin de zes aanzichten, [Voor/na], Dag en de statusregel.
+  Toetsen en muis precies §2.3 (spatie doet niets). Elke handeling is een stap in
+  `lagen.ts` (500); slepen, kleurkiezers en schuiven zijn voorlopig en worden
+  bij het loslaten één stap. Bewaren 2 s na de laatste wijziging; een nieuw
+  project komt pas op schijf bij de eerste wijziging.
+- `LakPanelen.tsx`: Snelle lak, lagenlijst, laagpaneel (dekking, details
+  behouden, draaien, ook over rubbers, spiegel gekoppeld/los, zelfde richting,
+  vergrendelen, omhoog/omlaag, dupliceren, verwijderen, ls.spiegelschrift met
+  [Schuif naar een vrij stuk], ls.kopieDeur), Vullen, Strook, Tekst, Afbeelding
+  en vormen, Penseel, Busopties, Start, Spiegelvlak.
+- `lettertypen.ts`: OFL-lettertypen Hanken Grotesk en Manrope (zitten al in de
+  app via @fontsource; licentie in `node_modules/@fontsource/*/LICENSE`) en de
+  Windows-lettertypen (een vaste lijst, gemeten; `queryLocalFonts()` bij
+  "Meer lettertypen van Windows…"). **Het venster tekent de tekst** met het echte
+  lettertype op een doek van 1024×512 en stuurt hem als beeld naar de werker
+  (`lakBeeld` onder de decalsleutel); de werker tekent alleen zelf als dat beeld er
+  nog niet is. ls.lettertype als een lettertype hier ontbreekt, ls.klein onder 10
+  texels letterhoogte.
+- `beeldimport.ts`: PNG/JPG/WebP/SVG (SVG via `<img>` op een doek), ≤ 20 MB,
+  ≤ 4096 px, "Wit wordt doorzichtig" vanzelf bij een witte rand zonder alfa.
+- `vormen.ts`: de eigen bibliotheek (pijl, streep, cirkel, ster, golf, rolstoel,
+  kinderwagen, fiets, kader voor een stadswapen), dezelfde paden voor de werker
+  (Path2D) en het paneel (SVG).
+- `recept.ts`: `pasSnelleLak` (vaste id's `r-grond`, `r-strook`, `r-tekst`,
+  `r-logo`: een nieuwe keuze werkt de laag bij), decalmeetkunde gedeeld met de
+  shader (`zijdeAssen`, `decalHoeken`, `decalMaat`), `vulStraal`, `volgBand`.
+- `lakdoek.ts` erbij: `toon` (de lak aan/uit: Voor/na, en een nieuw project staat
+  tot de eerste laag in de lak van de start), start `precies` (de basis is de
+  textuur van de start), `kleurenVanStart` (de stalen van Snelle lak en "Effen
+  in de kleuren van deze lak"), het penseel in de werker (`penseelBegin/Punt/
+  Einde`: de werker wijst zelf aan, de streek komt terug als vector met de
+  camera; `speelPenseel` speelt een laag opnieuw af na ongedaan maken), de
+  geen-kopie-regel (`voetafdruk` met ANALYSE_FS op een kwart van de bewerkmaat;
+  > 2% gedeeld = geen kopie, bericht `lakAnalyse` naar het venster),
+  `schuifVrij` en `vrijePlek`, de zone onder de cursor en losse onderdelen met
+  een [visible]-variabele in `kies`, stroken op voor- of achtervlak (vlag 8/16).
+- `camera.ts`: zoomen naar de cursor, centreren op een punt (dubbelklik), inpassen
+  (F), verschuiven ook plat; de verschuiving loopt na zoals draaien.
+- `BusViewer.tsx`: prop `studio` (de bediening van §2.3, geen eigen knoppen).
+- `Bus3dVenster.tsx`: doel `lakstudio` = de studio; in de lijst de tegel
+  "+ Eigen lak", eigen lakken bovenaan met het label Eigen of Wacht op OMSI, en de
+  lijst opnieuw bij `bus:kleurstellingenVeranderd`.
+- Main: `bus3d:terugUitStudio` (na opslaan terug naar de kleurstellingen, met de
+  nieuwe lak in beeld; alleen naar de vorige vraag als dat dezelfde bus was),
+  `voorStudio` weg als het venster dichtgaat, een keuze met een naam die er net bij
+  kwam leest de lijst opnieuw.
+- Hoofdvenster: [Lak maken] (verfroller, `Icoon` `lak`) op de kleurtegels van de
+  buskeuze; de lijsten opnieuw bij een nieuwe eigen lak; Addons → Geïnstalleerd
+  heeft "Eigen kleurstellingen" (Bewerken, Verwijderen met "ook het ontwerp",
+  ls.handmatig met Alles weghalen/laten staan, Niet plaatsen, wezen met
+  Overnemen/Verwijderen).
+- `core/lakfamilie.ts` `texcoordtransTelling` (P5): 0 lakmeshes met
+  `[texcoordtrans]` op de 12 bussen (de O560 heeft ze alleen op de spiegels).
+- Vier talen in `shared/tekst/lakstudio.ts`.
+
+**Afwijkingen van het ontwerp:**
+- D-DIN en Gidole zitten er niet in (downloaden en de licentie nakijken is nog
+  werk); Snelle lak zet de naam in Hanken Grotesk. Bahnschrift (DIN-achtig) staat
+  in de Windows-lijst.
+- De raamlijn is de laagste klasse met minstens 35% van het glas, niet de
+  grootste: bij de SD77 (dubbeldekker) lagen band, naam en logo anders op de ramen
+  van het benedendek.
+- De naam en het logo van Snelle lak staan tussen de band en de raamlijn, en
+  zoeken in de lengte zelf het stuk met de meeste lak en de minste ruit, deur of
+  gedeelde texel (`vrijePlek`; bij de SD77 stond de naam anders op de achterdeur).
+  Sleept de speler de band, dan gaan ze mee, zolang hij ze zelf niet verplaatste.
+- Vullen neemt tinten van dezelfde kleur samen (ΔE ≤ 30): een lak met vuil (SD77)
+  viel anders in vlekken uiteen.
+- Het penseel kent twee lagen (twee plekken in de shader); een derde geeft
+  ls.penseel.vol. Een penseellaag heeft één kleur.
+- De snijlijn van het spiegelvlak staat alleen in het paneel Spiegelvlak: de doos
+  is ruimer dan de bus, en altijd getoond zweefde hij boven het dak.
+- Een doel van een ander familielid (de Hybrid-achterwagen van de C2 GN): het
+  venster laadt dat lid zichtbaar ("Lak maken voor …"), bakt, en gaat terug;
+  niet onzichtbaar zoals §4.14 zegt.
+- Na opslaan gaat het venster niet vanzelf terug: [Terug naar de
+  kleurstellingen] (bekijken is niet kiezen, en deel F bestaat nog niet).
+
+**Proef:** `scripts/probe-lakstudio-studio.cjs` (eerst `npx electron-vite build`;
+dan `node_modules\electron\dist\electron.exe scripts\probe-lakstudio-studio.cjs
+--uit <afdrukmap> --proef <proefmap> [--bus o560,sd77,c2,c2gn]`). Main is
+main/bus3d.ts, bus3dvenster.ts en lakstudio.ts via tsx, op een NAGEBOOTSTE
+OMSI-map met kopieën van de drie busmappen (zonder geluid, de repaints van de
+gelede C2 alleen als kop; 3,8 GB, 11 s) in `<proefmap>/l3/omsi` via de junction
+`%TEMP%\lk3`. Per bus de eerste 60 seconden (§2.1) met echte invoer
+(`sendInputEvent`), afdrukken van elke stap, de .cti en de DDS'en in de
+nagebootste map, de bus in de nieuwe lak via [Terug]; dan de starts (P14), een
+busoptie (P16), Tekst, een vorm, een penseelstreek met Ctrl+Z/Ctrl+Y, "+ Eigen
+lak", klaarzetten met OMSI "open" en plaatsen na "OMSI dicht" (P15), en de C2 GN
+met de Hybrid. Een ronde ruimt eerst de lakken van de vorige ronde op (alleen in de
+nagebootste map) en kijkt na dat in de echte map geen ~Lakstudio_ bijkwam.
+`probe-lakstudio-beeld.cjs` heeft voor de HH20 de geen-kopie-regel (P7).
+`probe-bus3d-venster.cjs` proef 14 haalt nu zelf de focus weg (`blur` elke
+seconde): de pauze kwam nooit omdat een venster van de proef-app de voorgrond
+hield.
+
+**Gemeten (RTX 4070 SUPER, 30-09, `probe-lakstudio-studio.cjs`, 90 ok):**
+
+| Bus | Studio klaar (lakdoek) | Zones | Opslaan | 60 s nagespeeld | Nummer | Busoptie (P16) |
+|---|---|---|---|---|---|---|
+| O560 E6 | 3,4 s (0,4 s) | 4 | 1,2 s | 14,9 s | 4 | 140 ms |
+| SD77 | 2,0 s (0,5 s) | 7 | 0,9 s | 13,2 s | 25 | 135 ms |
+| C2 E6 Solo | 3,3 s (0,3 s) | 6 | 1,8 s | 15,4 s | 55 | 183 ms |
+| C2 E6 GN (met de Hybrid) | 8,4 s | – | 5,5 s | – | – | – |
+
+"60 s nagespeeld" is de proef met echte invoer en vaste wachttijden, geen
+speler: P11 (mediaan ≤ 90 s met mensen) doet Luc. P14: "Effen in de kleuren van
+deze lak" 1-4 zonelagen, het opschrift van de start (SD77 "Spiel mal wieder") is
+weg; "Effen" zonder lagen; de afdrukken zijn voor Luc. P15 in de studio:
+klaargezet met OMSI "open" (0 schrijfacties in de OMSI-kopie), na "OMSI dicht"
+geplaatst met ls.geplaatst. P7 HH20 (`probe-lakstudio-beeld.cjs`): een tekst op
+45,7% gedeelde texels krijgt geen kopie, [Schuif] vond 8,85 m verder een plek met
+0,0% gedeeld (met kopie). P5: 0 lakmeshes met `[texcoordtrans]`. In de volle ronde
+van `probe-lakstudio-beeld.cjs` gaf de Urbanway één keer 4,05 ms voor pad 1
+(mediaan; kleinste 1,89): de GPU klokte terug; los opnieuw 1,92 ms.
+
+**Nog niet:** P10 en P11 door Luc (60 seconden met mensen, OMSI zelf); de
+huiskleuren van het bedrijf in Snelle lak (L5); een laag in groepen; het
+beschermpenseel; `.omsilak` (fase 2); het venster na opslaan vanzelf terug naar
+het wagenpark met [Overspuiten] (deel F).
+
+### 5.000000 Lakstudio L1 en L2: het lakdoek en opslaan in OMSI (30-09-2026)
+
+Ontwerp §4, §5, §10; tak `claude/lakstudio`. Alles achter de schakelaar
+`bus3d` (standaard uit): zonder schakelaar is er geen 3D-venster, geen studio
+en is de wachtrij leeg, dus blijft de app gelijk. Er is nog geen studio voor
+spelers (L3); het 3D-venster heeft in doel `lakstudio` een ontwikkelpaneel.
+
+**L2, opslaan** (commit b8ce728, zie daar): `shared/lak.ts` (contract, naamregels,
+.cti in cp1252), `shared/bcn.ts` (eigen BC1/BC3), `shared/dds.ts` (DX9-kop, volle
+keten, `_#low`), `core/lakfamilie.ts` (familie, lakplekken op de schil,
+meeliftende KI-bussen, conflicten, sjablonen, busopties), `core/lakstudio.ts`
+(plan, plaatsen via de add-on-manager met de .cti als laatste, opnieuw opslaan,
+verwijderen, klaarzetten en wachtrij, teller, wezen), `main/grendel.ts`,
+`main/lakstudio.ts` (IPC met bewaking; wachtrij na OMSI en vóór launchOmsi).
+
+**L1, het lakdoek** (`src/renderer/src/bus3d/lak/`): alles in de renderer-werker.
+- `lakdoek.ts`: laknet per doel (alleen wat nu zichtbaar is, met het item dat
+  nu geldt; uv teruggeschoven, kopieën over tegelgrenzen, haarlijnen alleen op
+  de buitenranden van uv-eilanden), masker (G/B/A in één gang, dan 26 richtingen
+  voor R met een stencil die al gevonden texels overslaat), MIN/MAX-plek voor
+  "gedeeld", zones, JFA-zaad, beide samenstelpaden, uitvloeien (kleur van de
+  buur, alfa van de basis), override van `Texturen.voorPlek`, pick (RGBA32UI),
+  penseel, export in tegels (zelfde omzetting als het hele doel, verschoven, dus
+  byte-gelijk), mips op de processor, BC in codeerwerkers, PBO-uitlezen.
+- `lakshaders.ts`, `zones.ts` (k-means in Lab op ≤ 4096 monsters), `recept.ts`,
+  `lagen.ts` (ongedaan maken), `codeer.ts`, `Ontwikkelpaneel.tsx`.
+- `werker.ts`: berichten `lak*`; na een contextverlies start de werker het
+  lakdoek zelf opnieuw in de lichte stand met de laatste lagen (`lakHerstart`).
+- Busopties: `busRust`/`bus3dLak`/`lakStempel` kennen extra setvars.
+
+**Proeven:** `scripts/probe-lakstudio.ts` (node, nagebootste OMSI-map: P1, P2,
+P8, P9, P13, P15, P16, wezen) en `scripts/probe-lakstudio-beeld.cjs` (Electron
+met de gebouwde werker: P3-P7, P16, en de GPU-export geplaatst in de
+nagebootste map, gezien door `kleurstelling.ts`, en weer verwijderd). Beide
+schrijven alleen in de proefmap; de echte OMSI-map wordt gelezen.
+
+**Wat de GPU-proef leerde (vastgelegd in de code):**
+- ANGLE (D3D11) tekende na `drawArrays` + `drawElements(LINES)` in één vao per
+  texel een tweede fragment op (0,0,0): 88% "gedeeld" op de SD77. De randen
+  hebben nu een eigen vao.
+- De tekenaar laat CULL_FACE (frontFace CW) en DEPTH_TEST aan; elke gang van het
+  lakdoek zet eerst de staat schoon (`staatSchoon`), anders viel de
+  schermvullende driehoek weg zodra er tussen twee tegels een beeld getekend was.
+- Een dieptekaart die nog op eenheid 0 hing, maakte een terugkoppeling: de
+  dieptegangen vielen stil weg.
+- Takken met `pow` per laag (afbeelding, penseel, sjabloon) rekende de
+  HLSL-vertaler allemaal uit: 10 ms bij 4096² met 32 lagen. Nu SRGB8-decals, het
+  penseel alleen als dekking, en de sjabloonkeuze buiten de lus: 3 ms.
+- `gl.finish()` wacht in Chromium niet op de GPU; tijden worden gemeten met
+  het uitlezen van één pixel.
+
+**Afwijkingen van het ontwerp:**
+- Glas is alleen glas als geen driehoek zonder glas de texel raakt (een
+  randlijn van een ruit maakte anders elke raamrand glas; MA lakt daar).
+- "Gedeeld" meet alle assen in dezelfde stap (de grootste maat, ≈ 4,5 cm): per
+  as apart werd elke binnenhuid achter de buitenhuid gedeeld.
+- Zones: donker en kleurloos (L* < 30, chroma < 12) is nooit lak, behalve de
+  grootste zone (SD77: de onderkant); een zone ≥ 2% met de tint van een lakzone
+  is wél lak (schaduw en vuil); met twee kleurloze lakzones is elk grijs
+  daartussen lak (HH20: zwart en lichtgrijs met verloop).
+- Wielen (o3d-naam Rad, wheel, Reifen, Felge, Tyre) zijn beschermd zoals glas: op
+  de HH20 zijn banden en carrosserie even zwart.
+- Reclamesjablonen (map `Werbung`) tellen niet: de HH20 heeft alleen die
+  (C2_21_Standard: MA = reclamevlak), dus de HH20 rekent met het automatische
+  masker.
+- NL202 wordt BC3, niet BC1: EN92_1.tga heeft overal alfa 0/15/74 (het
+  reflectiemasker); de regel "BC1 alleen bij alfa overal 255" beslist.
+- De tijd van "masker plus zaad" staat warm in de proef (de eerste keer vertaalt
+  ANGLE de shaders, 26-159 ms); samenstellen wordt gemeten over reeksen van 10
+  (los gemeten klokte de GPU terug).
+
+**Gemeten (RTX 4070 SUPER, 30-09):** samenstellen bij 4096² met 32 lagen
+2,0-2,7 ms (pad 1), HH20 gedeeld pad 1,6 ms; slepen p95 1,7-3,2 ms per beeld;
+masker plus zaad warm 16-53 ms per doel (koud 10-139 ms); export C2 GN 3× 4096² 1,9 s in het
+lakdoek (11 s met het laden van de Hybrid-achterwagen), SD77 0,5 s; plaatsen
+0,1-0,9 s; lakdoek boven de viewer C2 GN 415 MB, NLC 119 MB, licht 23-49 MB;
+herstart na contextverlies 1,0 s. Het automatische masker tegen MA: SD77 98,2%
+en 100%, NL202 98,3%.
+
+**Proef 14 van probe-bus3d-venster.cjs** (pauze na 60 s zonder focus) faalde
+twee keer op 30-09: er had steeds een venster van de proef-app de focus (de
+logregel `omsi-zonder-focus` kwam niet). De pauzeregel in main/bus3dvenster.ts
+is sinds 8e8c27a niet veranderd; het hangt af van wat er op het bureaublad
+gebeurt. (L3: de proef haalt nu zelf de focus weg, zie hierboven.)
+
+**Nog niet (L3 en later):** de silhouet-hints (`extra`) die de werker zou
+meten. (In L3 gedaan: de studio, de geen-kopie-regel met `ls.spiegelschrift`,
+voor- en achtervlak van stroken als vlakken, de export van een ander familielid
+vanuit het venster, het penseel met opnieuw afspelen, het tellen van
+`[texcoordtrans]`.)
+
+### 5.00000 Lakstudio L0: kleurstellingen gelezen zoals Omsi.exe (30-09-2026)
+
+Ontwerp: `design/ontwerpen/lakstudio.md` (de livery-editor in het 3D-venster;
+§12 zegt welke keuzes gemaakt zijn). Tak `claude/lakstudio`. L0 is het eerste,
+losse stuk: `core/kleurstelling.ts` telt nu precies zoals de lader van
+Omsi.exe, in zes regels (kop exact, plek vóór naam, setvar alleen na een
+aangenomen item, plek/naam/variabele na UpperCase van a-z, naam niet trimmen,
+de busmap als basis); de kop van dat bestand zegt per regel het adres en het
+bewijs. Verder: bij twee [CTC]'s telt de eerste, .cti's gaan door Readln (LF,
+losse CR weg), setvar-waarden door StrToFloat.
+
+- `leesKleurstellingen(cfg, busmap)` wil nu de map van de .bus; wie alleen een
+  cfg heeft (het apparaatscherm) geeft `busmapBijCfg(cfg)`.
+- Zoeken op naam gaat overal via `zoekKleurstelling` (UpperCase, niet getrimd),
+  met een terugval op de getrimde naam voor profielen van vóór L0 ("silber" voor
+  " silber"); `kleurVars` zet in het logboek als de terugval nodig was.
+- Wat het herstelt: de SD80 reed één kleurstelling te hoog (een ingesprongen
+  voorbeeld-item telde mee), de KI-C2's vonden hun CTC-map niet, HHA12 telde
+  20 in plaats van 19, de MAN LC's toonden de helderheid van hun VDV-scherm als
+  kleurstelling, en de setvars van Kajosoft "Silver" kwamen van "Zorbig Halle".
+- `lakStempel` gaat naar `lak-3`: dezelfde .cti's kunnen nu andere vars geven.
+- Proef: `scripts/probe-kleurstelling.ts` (nagebootst per regel, de gevallen uit
+  het ontwerp, en de onafhankelijke lezer `scripts/probe-kleurstelling.py` over
+  alle 1198 .bus/.ovh/.sco: 0 verschillen; plus de .osn's die OMSI schreef).
+  Of OMSI in het spel hetzelfde nummer kiest, kijkt P10 na (Luc).
+
 ### 5.0000 Voorvallen: voorwerk (B3, B6, B7) en de meetstand voor ronde 0 (29-09-2026)
 
 Ontwerp: `design/ontwerpen/voorvallen-en-controleurs.md`. Tak

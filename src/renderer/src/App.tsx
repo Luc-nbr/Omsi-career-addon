@@ -440,6 +440,29 @@ export function App(): JSX.Element {
     [],
   );
 
+  /*
+   * Een eigen lak uit de Lakstudio kwam erbij of ging weg (§5.6 punt 8): de
+   * lijsten van die bussen opnieuw, zodat de tegel meteen staat.
+   */
+  const kleurLijstenRef = useRef(kleurLijsten);
+  kleurLijstenRef.current = kleurLijsten;
+  useEffect(
+    () =>
+      window.career.opKleurstellingenVeranderd((bussen) => {
+        for (const b of bussen) {
+          const pad = Object.keys(kleurLijstenRef.current).find(
+            (k) => k.toLowerCase() === b.toLowerCase(),
+          );
+          if (!pad) continue;
+          void window.career
+            .busKleurstellingen(pad)
+            .then((l) => setKleurLijsten((oud) => ({ ...oud, [pad]: l ?? null })))
+            .catch(() => undefined);
+        }
+      }),
+    [],
+  );
+
   /** De kleurstellingen van een bus, één keer per bus opgevraagd. */
   const vraagKleurstellingen = useCallback(
     async (relatiefPad: string): Promise<BusKleurstellingen | null> => {
@@ -1228,6 +1251,31 @@ export function App(): JSX.Element {
         .catch(() => undefined);
     },
     [vehicleOverride, vehicle, busKleur],
+  );
+
+  /*
+   * [Lak maken] (lakstudio-ontwerp §2.1): het 3D-venster opent in de
+   * Lakstudio, met de bus in de kleurstelling van de tegel. Alleen met de
+   * schakelaar `bus3d` (beslissing 5).
+   */
+  const lakMaken = useCallback(
+    (bus: Vehicle, kleurstelling: string | undefined) => {
+      const delen = ontleedBus(bus);
+      void window.career
+        .bus3dOpen({
+          doel: "lakstudio",
+          relatiefPad: bus.relativePath,
+          kleurstelling,
+          titel: `${delen.merk} ${delen.type} ${delen.uitvoering}`.trim(),
+          naam: [delen.merk, delen.type, delen.uitvoering],
+          vorm: busvorm(delen.type + " " + delen.uitvoering),
+        })
+        .then((n) => {
+          if (n) bus3dAanvraag.current = n;
+        })
+        .catch(() => undefined);
+    },
+    [],
   );
 
   /*
@@ -4338,6 +4386,12 @@ export function App(): JSX.Element {
                           bus3dInBeeld?.pad === kleurBus && !bus3dInBeeld.kleur,
                         onDoen: () => open3d(kleurItem.bus, undefined, true),
                       },
+                      {
+                        label: t(language, "ls.lakMaken"),
+                        teken: "lak" as const,
+                        altijd: true,
+                        onDoen: () => lakMaken(kleurItem.bus, undefined),
+                      },
                     ]
                   : undefined,
                 onDubbel: bus3dAan
@@ -4365,6 +4419,12 @@ export function App(): JSX.Element {
                           bus3dInBeeld?.pad === kleurBus &&
                           bus3dInBeeld.kleur === naam,
                         onDoen: () => open3d(kleurItem.bus, naam, true),
+                      },
+                      {
+                        label: t(language, "ls.lakMaken"),
+                        teken: "lak" as const,
+                        altijd: true,
+                        onDoen: () => lakMaken(kleurItem.bus, naam),
                       },
                     ]
                   : undefined,
