@@ -29,6 +29,8 @@
  * - "Meting opslaan": één zip met het meetbestand, de afdrukken, meting.json en
  *   het spoor, zonder de naam van de chauffeur, zijn profiel-id, nummer of
  *   pincode, of een pad van deze pc;
+ * - (30-09) na het opslaan is de ruwe map weg en begint er, terwijl de dienst
+ *   nog loopt, geen nieuwe meting; weer aan zetten begint er wel een;
  * - meetstand uit: er komen geen regels meer bij;
  * - niets geschreven in OMSI, in Lucs gebruikersmap of in de map van de echte
  *   plugin (proefvangrails.cjs).
@@ -258,12 +260,27 @@ app.whenReady().then(async () => {
   const naam = await js('window.career.metingOpslaan()')
   await wacht(300)
 
+  /*
+   * (proefverslag 30-09, punt 5) Na het opslaan rust de meting: de dienst loopt
+   * nog, maar er begint geen nieuwe map, en de ruwe map is weg (de zip heeft alles).
+   */
+  const meetmappen = () =>
+    existsSync(join(map, 'metingen')) ? readdirSync(join(map, 'metingen')).filter((n) => statSync(join(map, 'metingen', n)).isDirectory()) : []
+  const beeldNaOpslaan = await js('window.career.metingStand()')
+  await wacht(1500)
+  const mappenNaOpslaan = meetmappen()
+
   /* Meetstand uit: er komt niets meer bij. */
   await js('window.career.saveSettings({ meetstand: false })')
   await wacht(600)
   const telUit = meetregels().length
   await wacht(1500)
   const naUit = meetregels().length
+  /* En weer aan terwijl de dienst loopt: dan begint er meteen een nieuwe meting (`hervat`). */
+  await js('window.career.saveSettings({ meetstand: true })')
+  await wacht(1500)
+  const mappenWeerAan = meetmappen()
+  await js('window.career.saveSettings({ meetstand: false })')
   clearInterval(hartslag)
   clearInterval(afdrukklok)
 
@@ -356,7 +373,12 @@ app.whenReady().then(async () => {
       new Set(voorOpslaan.map((r) => r.bestand)).size === 2 && zipInhoud.some((n) => /^meting-2-MB_C2_meetbus\.jsonl$/.test(n))
     ],
     [`zip: geen naam, nummer, pincode of pad van deze pc${lekt.length ? ': ' + lekt.join(', ') : ''}`, lekt.length === 0],
+    [
+      `na het opslaan: de ruwe map is weg, en zolang de dienst loopt begint er geen nieuwe (${mappenNaOpslaan.join(', ') || 'geen map'}; ${beeldNaOpslaan?.rust})`,
+      mappenNaOpslaan.length === 0 && beeldNaOpslaan?.rust === 'opgeslagen' && beeldNaOpslaan?.loopt === false
+    ],
     [`meetstand uit: geen regels meer (${telUit} -> ${naUit})`, naUit === telUit],
+    [`meetstand weer aan tijdens de dienst: een nieuwe meting (${mappenWeerAan.join(', ') || 'geen'})`, mappenWeerAan.length === 1],
     [`niets geschreven waar het niet mocht${geweigerd.length ? ': ' + geweigerd.join('; ') : ''}`, geweigerd.length === 0]
   ]
   for (const [wat, goed] of uitkomsten) console.log(`${goed ? 'ok  ' : 'FOUT'} ${wat}`)

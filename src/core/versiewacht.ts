@@ -146,7 +146,9 @@ export function nieuwereSchrijver(userData: string, wie: Wie): Schrijver | undef
  * `Local Storage` gaat wel mee: daar onthoudt het scherm kleine keuzes. En
  * de `kaartcache` en de `busfotos` ook (bij Luc samen zo'n 165 MB, vóór het
  * venster): zonder kaartcache leest de werker bij het rondkijken elke kaart
- * opnieuw, en dat duurt langer dan het kopiëren.
+ * opnieuw, en dat duurt langer dan het kopiëren. De `metingen` van de
+ * meetstand ook niet: bekijken meet niet (tegenlezing 30-09, punt 2), en een
+ * meting van ronde 0 kan honderd megabyte of meer zijn.
  */
 const NIET_MEE = new Set(
   [
@@ -166,7 +168,8 @@ const NIET_MEE = new Set(
     'lockfile',
     'logs',
     'addon-reserve',
-    'kopieen'
+    'kopieen',
+    'metingen'
   ].map((naam) => naam.toLowerCase())
 )
 

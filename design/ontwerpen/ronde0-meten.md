@@ -17,6 +17,16 @@ OMSI meet". De meetstand zelf staat in `src/core/meetstand.ts`.
   scripts van elke bus, en of de vering van de vooras zakt bij knielen.
 - Of een reiziger die te laat komt echt op de deurknop drukt als de deuren al
   dicht zijn.
+- De twee punten die nog openstonden (`HANDOVER.md`, stap 6 van onderweg):
+  aan welke kant en op welke afstand de app een flitspaal ziet, en of
+  `ticketSlecht` bij een verkoop betrouwbaar aangaat. Daarvoor hoef je niets
+  apart te doen: elke regel heeft de plek van de bus op de kaart, het bestand
+  heeft de flitspalen van de dienst, en bij een verkoop staat alles van de
+  klant erin. Rij wel een stuk langs snelheidsborden, en verkoop aan de deur
+  een paar kaartjes (één keer met te weinig wisselgeld, als het lukt).
+
+De proef met `[vars]` in de situatie (B18: tank, vuil, een lamp) zit niet in
+de meetstand: die zet iets in de situatie van OMSI en komt apart.
 
 ## De drie bussen
 
@@ -93,6 +103,11 @@ de meetstand in de instellingen). De app maakt één zip:
 "Map met metingen openen" in de instellingen opent Verkenner met die zip
 geselecteerd. Stuur dat ene bestand op. Zet daarna de meetstand weer **Uit**.
 
+Na het opslaan staat de meting stil: de losse bestanden zijn weg (de zip heeft
+alles), en de telefoon zegt "Meting opgeslagen". Een nieuwe meting begint pas
+bij de volgende dienst of vrije rit, of als je de meetstand uit en weer aan
+zet. Van de metingen blijven de nieuwste vijf staan; oudere gaan weg.
+
 ## Wat er in de zip zit, en wat niet
 
 - `meting-<n>-<bus>.jsonl`: per bus een bestand, vier regels per seconde
@@ -100,13 +115,19 @@ geselecteerd. Stuur dat ene bestand op. Zet daarna de meetstand weer **Uit**.
   OMSI (`klok`), de halte (`halte`: onze index en naam, en die van OMSI zelf),
   `nextDist`, de snelheid en de snelheid over de grond, alle 32 deurgetallen
   (`deuren`, in de volgorde van `deurNamen` in de eerste regel), deur 0 zoals
-  de .opl hem ziet, knipperlichten, licht, motor, de kaartverkoop, en de
-  gevonden scriptgetallen (`getallen`: wat veranderde, en elke tien tellen
-  alles met `vol`). Regels `vink` zeggen wanneer je wat afvinkte, `onbekend`
-  welke namen deze bus niet kent.
+  de .opl hem ziet, knipperlichten, licht, motor, de tank, de plek op de kaart
+  (`plek`: x, y in meters en de koers, zoals de flitspalen hem zien; tijdens
+  een dienst), de kaartverkoop (bij een klant ook `slecht`, `gegeven`, `prijs`
+  en de soort), en de gevonden scriptgetallen (`getallen`: wat veranderde, en
+  elke tien tellen alles met `vol`). Regels `vink` zeggen wanneer je wat
+  afvinkte (en `geschrapt` als je hem meteen weer uitzette), `onbekend` welke
+  namen deze bus niet kent, `palen` waar de flitspalen van de dienst staan.
 - `dump-<n>-begin.json` en `dump-<n>-<stap>.json`: de afdruk van alle getallen
-  van de bus bij het begin en bij elke vink.
-- `meting.json`: welke bussen, hoeveel regels, wat er afgevinkt is.
+  van de bus bij het begin en bij elke vink. Vink je een stap nog eens af, dan
+  komt er een tweede (`dump-<n>-<stap>-2.json`). Wat je in de IBIS als nummer
+  of pincode intikt, staat er als `null` in (`gemaskeerd`).
+- `meting.json`: welke bussen, hoeveel meetregels (`meetregels`; per bus ook
+  alle regels van het bestand), wat er afgevinkt is.
 - `spoor-dienst-<n>.jsonl`: het ritspoor van de diensten die tijdens de meting
   reden (hoe de app de haltes telde, met de deuren erbij).
 
@@ -124,4 +145,13 @@ van je pc. Wel de bus, de kaart en de haltes; dat is spelmateriaal.
   apparaten in de telefoon; de namen voor knielen, oprijplaat, stopverzoek en
   alarmlicht blijven er ook dan in (`scripts/probe-meetnamen.ts`), alleen
   licht- en deurnamen vallen af.
-- Het bestand wordt groot (ongeveer 8 MB per uur); de zip is veel kleiner.
+- Het bestand wordt groot: 15 tot 30 MB per uur per bus (nagemeten 30-09:
+  10 MB als er niets beweegt, meer naarmate de scriptgetallen van de bus
+  veranderen); de zip is veel kleiner. Een meting stopt bij 250 MB: dan zegt
+  de telefoon **"De meting is vol"**, en komt er niets meer bij tot je hem
+  opslaat.
+- **"Meting opgeslagen. Een nieuwe begint bij ..."**: je hebt net opgeslagen.
+  Start een nieuwe dienst of vrije rit, of zet de meetstand uit en weer aan.
+- **"Deze app staat op alleen bekijken"**: er draait een oudere versie van de
+  app dan die je gegevens het laatst bijwerkte. Wat die opslaat is weg zodra
+  hij sluit, dus hij meet niet. Start de nieuwste versie.

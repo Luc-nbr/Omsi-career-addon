@@ -46,6 +46,24 @@ export const TEKST_MEETSTAND = {
     fr: 'En attente d’un service ou d’une conduite libre avec OMSI lancé.',
     nl: 'Wacht op een dienst of vrije rit terwijl OMSI draait.'
   },
+  'meet.rust': {
+    en: 'Measurement saved. A new one starts with the next duty or free drive.',
+    de: 'Messung gespeichert. Eine neue beginnt mit dem nächsten Dienst oder der nächsten freien Fahrt.',
+    fr: 'Mesure enregistrée. Une nouvelle commence au prochain service ou à la prochaine conduite libre.',
+    nl: 'Meting opgeslagen. Een nieuwe begint bij de volgende dienst of vrije rit.'
+  },
+  'meet.vol': {
+    en: 'The measurement is full (250 MB). Save it; nothing more is recorded until then.',
+    de: 'Die Messung ist voll (250 MB). Speichere sie; bis dahin wird nichts mehr aufgezeichnet.',
+    fr: 'La mesure est pleine (250 Mo). Enregistrez-la ; rien n’est plus enregistré d’ici là.',
+    nl: 'De meting is vol (250 MB). Sla hem op; tot dan komt er niets meer bij.'
+  },
+  'meet.bekijken': {
+    en: 'This app is in view-only mode: a measurement would be lost when it closes, so it does not measure.',
+    de: 'Diese App ist im Nur-Ansehen-Modus: Eine Messung ginge beim Schließen verloren, deshalb misst sie nicht.',
+    fr: 'Cette application est en mode consultation : une mesure serait perdue à la fermeture, elle ne mesure donc pas.',
+    nl: 'Deze app staat op alleen bekijken: een meting zou verloren gaan zodra hij sluit, dus hij meet niet.'
+  },
   'meet.afgevallen': {
     en: '{n} names did not fit in the 512',
     de: '{n} Namen passten nicht in die 512',

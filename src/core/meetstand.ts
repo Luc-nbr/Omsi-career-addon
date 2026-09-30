@@ -26,12 +26,23 @@
  * - Een afvinklijst per bus (shared/meetstand.ts). Bij elke vink een regel in
  *   het bestand, en een volledige afdruk van alle getallen van de bus
  *   (getallen.json van de plugin, zodra die NA de vink geschreven is).
- * - "Meting opslaan": één zip, zonder persoonlijke gegevens.
+ * - Voor de twee open punten uit §5: de plek op de kaart in elke regel en de
+ *   flitspalen van de dienst (kant en bereik van een paal), en de hele
+ *   kaartverkoop met `ticketSlecht` en het gegeven geld.
+ * - "Meting opslaan": één zip, zonder persoonlijke gegevens, op de
+ *   achtergrond. Daarna gaat de ruwe map weg en rust de sessie tot de volgende
+ *   dienst of rit; hoogstens 250 MB per meting, en de nieuwste vijf metingen
+ *   blijven staan (tegenlezing en proefverslag van 30-09).
  *
  * WAT ER NIET IN KOMT
  * Geen naam van de chauffeur, geen personeelsnummer of pincode, geen profiel,
- * geen paden van deze pc (een absoluut buspad wordt ingekort tot vanaf
- * `vehicles`). Wel de bus, de kaart en de haltes -- dat is spelmateriaal.
+ * geen paden van deze pc (een absoluut buspad of modelpad wordt ingekort tot
+ * vanaf `vehicles`), en in de afdrukken niet wat de speler in de IBIS als
+ * nummer of pincode intikte (`AFDRUK_GEHEIM`). Wel de bus, de kaart en de
+ * haltes -- dat is spelmateriaal.
+ *
+ * In "alleen bekijken" meet de app niet: de gebruikersmap is dan een kopie
+ * die weggaat zodra hij sluit (main, `metingGeweigerd`).
  *
  * Geen Electron: het hoofdproces geeft de gegevens en de paden mee, en de
  * proeven kunnen dit los draaien.
@@ -42,14 +53,17 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  rmSync,
   statSync,
   writeFileSync
 } from 'node:fs'
+import { readFile, rename, writeFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join } from 'node:path'
 import { MEET_STAPPEN, type MeetStap, type MetingBeeld } from '../shared/meetstand'
 import { DEUR_GETALLEN, type LiveData, type LiveStatus } from './live'
+import { FLITS, type Flitspaal } from './onderweg'
 import { blockTag, readOmsiLines, str } from './omsiFile'
-import { maakZip } from './zip'
+import { maakZipAchtergrond, openZip } from './zip'
 
 /** De versie van het meetbestand; omhoog als de regels van vorm veranderen. */
 export const MEET_VERSIE = 1
@@ -59,6 +73,33 @@ export const MEET_INTERVAL_MS = 250
 
 /** Elke zoveel milliseconden alle scriptgetallen, niet alleen wat veranderde. */
 const VOL_ELKE_MS = 10_000
+
+/**
+ * Zo groot mag één meting worden; daarna stopt het schrijven tot hij is
+ * opgeslagen. Nagemeten in de tegenlezing van 30-09 met de varlists van de C2:
+ * 10 MB per uur als er niets verandert, 26 MB bij 40 scriptgetallen die
+ * bewegen, 73 MB bij 150. Ronde 0 (drie bussen, elk een half uur tot drie
+ * kwartier) blijft daar ruim onder; wie de meetstand vergeet uit te zetten,
+ * vult zo niet ongemerkt de schijf.
+ */
+export const MEET_MAX_BYTES = 250 * 1024 * 1024
+
+/**
+ * Zoveel metingen (een map of een zip, de nieuwste) blijven er in `metingen/`
+ * staan; oudere gaan weg. Een map waar al een zip van is, gaat meteen weg: de
+ * zip heeft alles.
+ */
+export const METINGEN_BEWAARD = 5
+
+/**
+ * Namen in de afdruk waarvan het getal NIET meegaat: wat de speler in de IBIS
+ * van de bus intikt als chauffeursnummer of pincode (`IBIS_PIN`, in de o530
+ * `6_numer_kierowcy`, Pools voor "nummer van de chauffeur"). Dat is niet het
+ * nummer uit het profiel van de app, maar het kan hetzelfde zijn; voor ronde 0
+ * doet het er niet toe. De naam blijft staan, het getal wordt `null`.
+ */
+export const AFDRUK_GEHEIM =
+  /(^|_)pin($|_)|kierowc|fahrernummer|fahrer_?nr|personalnummer|personal_?nr|dienstnummer|driver_?(id|nr|num)/i
 
 /**
  * Waar de app in de varlists van de bus naar zoekt, in volgorde van belang:
@@ -204,6 +245,13 @@ export interface MeetInvoer {
   status?: LiveStatus
   /** Verkochte kaartjes volgens de app (`telVerkoop`). */
   verkocht: number
+  /**
+   * Waar de bus op de kaart staat, zoals de flitspalen hem zien (`vehicleOnMap`
+   * in main; kaartmeters, koers in graden). Alleen als die stand vers is. Voor
+   * §5 van het ontwerp: aan welke kant en op welke afstand de bus langs een
+   * paal komt.
+   */
+  plek?: { x: number; y: number; koers: number }
 }
 
 /** Wat er in de kop van een meetbestand staat, en wanneer het verandert een regel `vraag`. */
@@ -217,6 +265,8 @@ export interface MeetKop {
   afgevallen: readonly string[]
   /** Uit welke varlists de namen komen, zoals de .bus ze noemt. */
   varlists: readonly string[]
+  /** De flitspalen van de dienst (`palenVoor` in main), zodra ze er zijn; verandert de lijst, dan een regel `palen`. */
+  palen?: readonly Flitspaal[]
 }
 
 interface Segment {
@@ -225,12 +275,15 @@ interface Segment {
   busNaam: string
   bestand: string
   vinkjes: Set<MeetStap>
+  /** Hoeveel afdrukken er per stap al gemaakt zijn: de tweede heet `dump-1-knielen-2.json`. */
+  afdrukNr: Map<MeetStap, number>
   vorige: Map<string, number | null>
   volOp: number
   gevraagdSleutel: string
   gevraagd: number
   afgevallen: number
   onbekend: string
+  palen: string
 }
 
 /** Een afdruk van getallen.json die nog gemaakt moet worden. */
@@ -241,6 +294,20 @@ interface Afdruk {
   /** Daarna toch, wat er dan ligt. */
   tot: number
   busNaam: string
+  /** Bij welke vink hij hoort: een vink die weer uitgaat, schrapt hem. */
+  segment?: number
+  stap?: MeetStap
+}
+
+/** Per bus in meting.json. `regels` zijn alle regels van het bestand, `meetregels` alleen die met `t: 'm'`. */
+interface SegmentRij {
+  nr: number
+  bus: string
+  model: string
+  pad: string
+  regels: number
+  meetregels: number
+  vinkjes: MeetStap[]
 }
 
 function stempel(tijd: Date): string {
@@ -251,20 +318,59 @@ function stempel(tijd: Date): string {
   )
 }
 
+/** Een map of zip van de meetstand, en niets anders: alleen die ruimt `ruimOp` op. */
+const MEETNAAM = /^meting-\d{8}-\d{6}(\.zip)?$/
+
+/**
+ * Een afdruk van getallen.json zonder wat de speler als nummer of pincode
+ * intikte (`AFDRUK_GEHEIM`). Is het geen JSON zoals de plugin hem schrijft,
+ * dan gaat hij niet mee: liever geen afdruk dan een die niet na te kijken was.
+ */
+export function veiligeAfdruk(inhoud: Buffer): Buffer | undefined {
+  let data: unknown
+  try {
+    data = JSON.parse(inhoud.toString('utf8'))
+  } catch {
+    return undefined
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return undefined
+  const getallen = (data as { getallen?: unknown }).getallen
+  if (!getallen || typeof getallen !== 'object' || Array.isArray(getallen)) return undefined
+  const schoon: Record<string, unknown> = { ...(getallen as Record<string, unknown>) }
+  const gemaskeerd = Object.keys(schoon).filter((naam) => AFDRUK_GEHEIM.test(naam))
+  for (const naam of gemaskeerd) schoon[naam] = null
+  return Buffer.from(
+    JSON.stringify({ ...(data as Record<string, unknown>), getallen: schoon, ...(gemaskeerd.length > 0 ? { gemaskeerd } : {}) })
+  )
+}
+
 /**
  * Eén meting: van de eerste regel tot "Meting opslaan". Een wissel van bus
  * begint een nieuw bestand in dezelfde meting, zodat de drie bussen van ronde
  * 0 in één zip komen -- ook als er tussendoor een dienst afgerond wordt.
+ *
+ * NA HET OPSLAAN RUST HIJ
+ * Eerst begon de volgende regel meteen een nieuwe meting. Wie de handleiding
+ * volgde (opslaan, dan de meetstand uit) terwijl de dienst nog liep, hield een
+ * losse map over zonder zip, en een latere "Meting opslaan" zonder lopende
+ * meting pakte juist dat restje in (proefverslag 30-09, punt 5). Nu wacht de
+ * sessie na het opslaan op `hervat`: het hoofdproces roept dat aan als er een
+ * nieuwe dienst of vrije rit begint, of als de meetstand weer aan gaat. Is de
+ * meting vol (`MEET_MAX_BYTES`), dan rust hij ook, tot hij opgeslagen is.
  */
 export class Meetsessie {
   private map?: string
   private begin = 0
   private segment?: Segment
-  private segmenten: Array<{ nr: number; bus: string; pad: string; regels: number; vinkjes: MeetStap[] }> = []
+  private segmenten: SegmentRij[] = []
   private regels = 0
+  private bytes = 0
   private afdrukken: Afdruk[] = []
   private laatstOpgeslagen?: string
   private schrijfFout = false
+  private rust?: 'opgeslagen' | 'vol'
+  private bezig?: Promise<string | undefined>
+  private opgeruimd = false
 
   constructor(
     /** `<gebruikersmap>/metingen`. */
@@ -272,7 +378,9 @@ export class Meetsessie {
     /** Waar de plugin getallen.json neerzet (`liveMap()`). */
     private readonly getallenJson: () => string,
     private readonly nu: () => number = Date.now,
-    private readonly melden: (regel: string) => void = () => undefined
+    private readonly melden: (regel: string) => void = () => undefined,
+    /** Voor de proef: een kleinere grens en minder metingen bewaard. */
+    private readonly grenzen: { maxBytes?: number; bewaard?: number } = {}
   ) {}
 
   /** De map van de meting die loopt of het laatst liep, voor de proef en het logboek. */
@@ -285,16 +393,24 @@ export class Meetsessie {
     return this.map ? this.begin : undefined
   }
 
+  /** Na het opslaan weer klaar voor een nieuwe meting; zie "NA HET OPSLAAN RUST HIJ". Een volle meting blijft vol. */
+  hervat(): void {
+    if (this.rust === 'opgeslagen') this.rust = undefined
+  }
+
   /** Eén regel, elke 250 ms zolang er gemeten wordt. */
   schrijf(invoer: MeetInvoer, kop: MeetKop): void {
+    if (this.rust) return
     const { live } = invoer
     const nu = this.nu()
     if (!this.map) {
+      if (!this.opgeruimd) this.ruimOp()
       this.map = join(this.basis, `meting-${stempel(new Date(nu))}`)
       this.begin = nu
       this.segment = undefined
       this.segmenten = []
       this.regels = 0
+      this.bytes = 0
       this.afdrukken = []
       mkdirSync(this.map, { recursive: true })
       this.melden(`meetstand: meting begonnen in ${basename(this.map)}`)
@@ -312,9 +428,14 @@ export class Meetsessie {
     const segment = this.segment!
 
     const uit: object[] = []
-    /* De gevraagde lijst veranderde (de varlists waren er pas later, of een apparaat erbij). */
+    /*
+     * De gevraagde lijst veranderde (de varlists waren er pas later, of een
+     * apparaat erbij). Niet zolang er geen bus is: dan vraagt de app alleen de
+     * vier extra veringen, en kwam er een regel `vraag` met alleen die vier in
+     * het bestand van de vorige bus (proefverslag 30-09, punt 9).
+     */
     const gevraagdSleutel = `${kop.gevraagd.join('|')}#${kop.afgevallen.length}`
-    if (gevraagdSleutel !== segment.gevraagdSleutel) {
+    if (heeftBus && gevraagdSleutel !== segment.gevraagdSleutel) {
       segment.gevraagdSleutel = gevraagdSleutel
       segment.gevraagd = kop.gevraagd.length
       segment.afgevallen = kop.afgevallen.length
@@ -322,14 +443,33 @@ export class Meetsessie {
     }
     /* Wat de bus niet kent, zegt de plugin; ook dat is een uitkomst. */
     const onbekend = (live.getallenOnbekend ?? []).join('|')
-    if (onbekend !== segment.onbekend) {
+    if (heeftBus && onbekend !== segment.onbekend) {
       segment.onbekend = onbekend
       uit.push({ t: 'onbekend', tijd: nu - this.begin, namen: live.getallenOnbekend ?? [] })
+    }
+    /* De flitspalen van de dienst, zodra ze er zijn: waar ze staan, voor welke limiet, en tot welke afstand de app meet. */
+    const palen = kop.palen?.length ? `${kop.palen.length}:${kop.palen[0].id}:${kop.palen[kop.palen.length - 1].id}` : ''
+    if (palen && palen !== segment.palen) {
+      segment.palen = palen
+      uit.push({
+        t: 'palen',
+        tijd: nu - this.begin,
+        bereikM: FLITS.bereikM,
+        palen: (kop.palen ?? []).map((p) => ({ id: p.id, x: afgerond(p.x), y: afgerond(p.y), kmh: p.kmh }))
+      })
     }
     uit.push(this.meetRegel(invoer, kop, segment, nu))
     this.voegToe(segment, uit)
     this.regels += 1
+    const rij = this.segmenten.find((r) => r.nr === segment.nr)
+    if (rij) rij.meetregels += 1
     this.maakAfdrukken(nu)
+    if (this.bytes >= (this.grenzen.maxBytes ?? MEET_MAX_BYTES)) {
+      this.rust = 'vol'
+      this.melden(
+        `meetstand: meting vol (${Math.round(this.bytes / 1024 / 1024)} MB); er komt niets meer bij tot hij opgeslagen is`
+      )
+    }
   }
 
   private nieuwSegment(sleutel: string, busNaam: string, invoer: MeetInvoer, kop: MeetKop, nu: number): void {
@@ -343,14 +483,19 @@ export class Meetsessie {
       busNaam,
       bestand,
       vinkjes: new Set(),
+      afdrukNr: new Map(),
       vorige: new Map(),
       volOp: 0,
       gevraagdSleutel: `${kop.gevraagd.join('|')}#${kop.afgevallen.length}`,
       gevraagd: kop.gevraagd.length,
       afgevallen: kop.afgevallen.length,
-      onbekend: ''
+      onbekend: '',
+      palen: ''
     }
-    this.segmenten.push({ nr, bus: busNaam, pad: veiligBuspad(live.bus?.pad), regels: 0, vinkjes: [] })
+    /* Het model net zo ingekort als het pad: een absoluut pad van deze pc hoort niet in de zip (proefverslag 30-09, punt 7). */
+    const model = veiligBuspad(live.bus?.model)
+    const pad = veiligBuspad(live.bus?.pad)
+    this.segmenten.push({ nr, bus: busNaam, model, pad, regels: 0, meetregels: 0, vinkjes: [] })
     this.voegToe(this.segment, [
       {
         t: 'kop',
@@ -360,7 +505,7 @@ export class Meetsessie {
         app: kop.appVersie,
         plugin: live.plugin ?? null,
         exe: live.exeVersion ?? null,
-        bus: { naam: busNaam, model: live.bus?.model ?? '', pad: veiligBuspad(live.bus?.pad) },
+        bus: { naam: busNaam, model, pad },
         modus: kop.modus,
         kaart: kop.kaart ?? null,
         intervalMs: MEET_INTERVAL_MS,
@@ -382,7 +527,7 @@ export class Meetsessie {
   }
 
   private meetRegel(invoer: MeetInvoer, kop: MeetKop, segment: Segment, nu: number): object {
-    const { live, status } = invoer
+    const { live, status, plek } = invoer
     const mem = live.mem && live.mem.ok === 1 ? live.mem : undefined
     const getal = (naam: string): number | null => {
       const w = live.getallen?.[naam]
@@ -420,14 +565,30 @@ export class Meetsessie {
       vertraging: mem?.delay ?? null,
       aanHalte: live.atStation,
       reizigers: Math.round(live.passengers),
+      /* Waar op de kaart, zoals de flitspalen hem zien: [x, y] in meters en de koers in graden. */
+      plek: plek ? [Math.round(plek.x * 10) / 10, Math.round(plek.y * 10) / 10, Math.round(plek.koers)] : null,
       deuren: DEUR_GETALLEN.map((naam) => getal(naam)),
       deur0: [live.entryOpen, live.exitOpen, live.entryRequest, live.exitRequest],
       knipper: [live.blinkerLeft, live.blinkerRight],
       licht: live.lightsLow,
       remlicht: live.brakeLight,
       motor: live.engineOn,
+      tank: typeof live.tankPercent === 'number' && Number.isFinite(live.tankPercent) ? afgerond(live.tankPercent) : null,
+      /*
+       * De kaartverkoop met alles wat de plugin van de klant doorgeeft: of
+       * `ticketSlecht` betrouwbaar aangaat (§5), staat naast `prijs` en `gegeven`.
+       */
       kassa: verkoop
-        ? { koper: mem?.koper ?? -1, prijs: mem?.ticketPrijs ?? 0, klaar: mem?.ticketKlaar ?? 0, verkocht: invoer.verkocht }
+        ? {
+            koper: mem?.koper ?? -1,
+            soort: mem?.ticketSoort ?? null,
+            index: mem?.ticketIndex ?? null,
+            prijs: mem?.ticketPrijs ?? 0,
+            gegeven: mem?.ticketGegeven ?? null,
+            slecht: mem?.ticketSlecht ?? null,
+            klaar: mem?.ticketKlaar ?? 0,
+            verkocht: invoer.verkocht
+          }
         : { verkocht: invoer.verkocht },
       getallen,
       ...(vol ? { vol: true } : {})
@@ -436,7 +597,9 @@ export class Meetsessie {
 
   private voegToe(segment: Segment, regels: object[]): void {
     try {
-      appendFileSync(segment.bestand, regels.map((r) => JSON.stringify(r)).join('\n') + '\n')
+      const tekst = regels.map((r) => JSON.stringify(r)).join('\n') + '\n'
+      appendFileSync(segment.bestand, tekst)
+      this.bytes += Buffer.byteLength(tekst)
       const rij = this.segmenten.find((r) => r.nr === segment.nr)
       if (rij) rij.regels += regels.length
     } catch (fout) {
@@ -449,21 +612,46 @@ export class Meetsessie {
    * Een stap afgevinkt (of weer uit). Bij aan komt er een afdruk van alle
    * getallen van de bus: de plugin schrijft getallen.json eens per twee
    * tellen, dus de eerste die NA de vink komt.
+   *
+   * Nog een keer dezelfde stap afvinken geeft een tweede afdruk
+   * (`dump-1-knielen-2.json`) in plaats van de eerste te overschrijven, en een
+   * vink die weer uitgaat voordat zijn afdruk er is, schrapt die afdruk
+   * (proefverslag 30-09, punt 6). Een afdruk die er al is, blijft; de regel
+   * `vink` met `aan: false` zegt dan dat hij niet telt.
    */
   vink(stap: MeetStap, aan: boolean): boolean {
     const segment = this.segment
-    if (!this.map || !segment) return false
+    if (!this.map || !segment || this.rust) return false
     if (aan) segment.vinkjes.add(stap)
     else segment.vinkjes.delete(stap)
     const nu = this.nu()
-    const dump = aan ? `dump-${segment.nr}-${stap}.json` : undefined
-    this.voegToe(segment, [{ t: 'vink', tijd: nu - this.begin, stap, aan, ...(dump ? { dump } : {}) }])
-    if (dump) this.afdrukken.push({ naam: dump, na: nu, tot: nu + 6000, busNaam: segment.busNaam })
+    let dump: string | undefined
+    let geschrapt: string[] = []
+    if (aan) {
+      const nr = (segment.afdrukNr.get(stap) ?? 0) + 1
+      segment.afdrukNr.set(stap, nr)
+      dump = nr === 1 ? `dump-${segment.nr}-${stap}.json` : `dump-${segment.nr}-${stap}-${nr}.json`
+    } else {
+      const hoort = (a: Afdruk): boolean => a.segment === segment.nr && a.stap === stap
+      geschrapt = this.afdrukken.filter(hoort).map((a) => a.naam)
+      this.afdrukken = this.afdrukken.filter((a) => !hoort(a))
+    }
+    this.voegToe(segment, [
+      {
+        t: 'vink',
+        tijd: nu - this.begin,
+        stap,
+        aan,
+        ...(dump ? { dump } : {}),
+        ...(geschrapt.length > 0 ? { geschrapt } : {})
+      }
+    ])
+    if (dump) this.afdrukken.push({ naam: dump, na: nu, tot: nu + 6000, busNaam: segment.busNaam, segment: segment.nr, stap })
     this.segmentKlaar()
     return true
   }
 
-  /** Afdrukken van getallen.json die klaar zijn om te maken. */
+  /** Afdrukken van getallen.json die klaar zijn om te maken; met `nu` oneindig alles wat nog wacht, met wat er ligt. */
   private maakAfdrukken(nu: number): void {
     if (this.afdrukken.length === 0 || !this.map) return
     let tijd = 0
@@ -489,7 +677,8 @@ export class Meetsessie {
             continue
           }
         }
-        writeFileSync(join(this.map, afdruk.naam), inhoud)
+        const veilig = veiligeAfdruk(inhoud)
+        if (veilig) writeFileSync(join(this.map, afdruk.naam), veilig)
       } catch {
         // Geen getallen.json (plugin ouder dan 13, of net vervangen): dan geen afdruk.
       }
@@ -500,30 +689,49 @@ export class Meetsessie {
   beeld(loopt: boolean): MetingBeeld {
     const s = this.segment
     return {
-      loopt: loopt && Boolean(this.map),
+      loopt: loopt && Boolean(this.map) && !this.rust,
       bus: s?.busNaam,
       stappen: MEET_STAPPEN.map((id) => ({ id, klaar: Boolean(s?.vinkjes.has(id)) })),
       regels: this.regels,
       seconden: this.map ? Math.round((this.nu() - this.begin) / 1000) : 0,
       gevraagd: s?.gevraagd ?? 0,
       afgevallen: s?.afgevallen ?? 0,
-      opgeslagen: this.laatstOpgeslagen
+      opgeslagen: this.laatstOpgeslagen,
+      ...(this.rust ? { rust: this.rust } : {})
     }
   }
 
   /**
    * "Meting opslaan": alles van deze meting in één zip naast de map, plus wat
    * het hoofdproces erbij geeft (het ritspoor van de dienst, onder een naam
-   * zonder profiel). Daarna begint de volgende regel een nieuwe meting. Zonder
-   * meting die loopt: de laatste map in `metingen/` die nog geen zip heeft
-   * (na een herstart van de app). Geeft het pad van de zip, of niets.
+   * zonder profiel). Zonder meting die loopt: de laatste map in `metingen/`
+   * die nog geen zip heeft (na een herstart van de app). Geeft het pad van de
+   * zip, of niets.
+   *
+   * Daarna rust de sessie (zie boven), en na een zip die terug te lezen is gaat
+   * de ruwe map weg: eerst bleef hij naast de zip staan, en werd `metingen/`
+   * met elke meting groter (tegenlezing 30-09, punt 1).
+   *
+   * Op de achtergrond (`maakZipAchtergrond`): een meting van 40-70 MB hield
+   * het hoofdproces anders ruim een seconde vast. Twee keer drukken terwijl
+   * hij bezig is, geeft twee keer dezelfde zip.
    */
-  opslaan(extra: Array<{ naam: string; pad: string }> = []): string | undefined {
-    const map = this.map ?? this.laatsteMap()
+  opslaan(extra: Array<{ naam: string; pad: string }> = []): Promise<string | undefined> {
+    this.bezig ??= this.slaOp(extra).finally(() => {
+      this.bezig = undefined
+    })
+    return this.bezig
+  }
+
+  private async slaOp(extra: Array<{ naam: string; pad: string }>): Promise<string | undefined> {
+    const lopend = this.map
+    const map = lopend ?? this.laatsteMap()
     if (!map || !existsSync(map)) return undefined
-    this.segmentKlaar()
     const nu = this.nu()
-    if (this.map === map) {
+    if (lopend) {
+      /* Wat nog op een afdruk wachtte, nu met wat er ligt; daarna is de meting dicht. */
+      this.maakAfdrukken(Number.POSITIVE_INFINITY)
+      this.segmentKlaar()
       writeFileSync(
         join(map, 'meting.json'),
         JSON.stringify(
@@ -531,41 +739,57 @@ export class Meetsessie {
             versie: MEET_VERSIE,
             begin: new Date(this.begin).toISOString(),
             eind: new Date(nu).toISOString(),
-            regels: this.regels,
+            /* Alleen de regels met `t: 'm'`; per bus staan er ook alle regels van het bestand. */
+            meetregels: this.regels,
             bussen: this.segmenten
           },
           null,
           2
         )
       )
+      this.map = undefined
+      this.segment = undefined
+      this.segmenten = []
+      this.regels = 0
+      this.bytes = 0
+      this.afdrukken = []
+      this.rust = 'opgeslagen'
     }
     const bestanden: Array<{ naam: string; inhoud: Buffer }> = []
     for (const naam of readdirSync(map).sort()) {
       const pad = join(map, naam)
       try {
-        if (statSync(pad).isFile()) bestanden.push({ naam, inhoud: readFileSync(pad) })
+        if (statSync(pad).isFile()) bestanden.push({ naam, inhoud: await readFile(pad) })
       } catch {
         // Net weg: dan niet mee.
       }
     }
     for (const { naam, pad } of extra) {
       try {
-        if (existsSync(pad)) bestanden.push({ naam, inhoud: readFileSync(pad) })
+        if (existsSync(pad)) bestanden.push({ naam, inhoud: await readFile(pad) })
       } catch {
         // Niet te lezen: dan niet mee.
       }
     }
     const zip = `${map}.zip`
-    writeFileSync(zip, maakZip(bestanden, new Date(nu)))
+    const tijdelijk = `${zip}.tmp`
+    await writeFile(tijdelijk, await maakZipAchtergrond(bestanden, new Date(nu)))
+    await rename(tijdelijk, zip)
     this.laatstOpgeslagen = basename(zip)
     this.melden(`meetstand: opgeslagen als ${basename(zip)} (${bestanden.length} bestanden)`)
-    if (this.map === map) {
-      this.map = undefined
-      this.segment = undefined
-      this.segmenten = []
-      this.regels = 0
-      this.afdrukken = []
+    /* De ruwe map pas weg als de zip terug te lezen is, met dezelfde bestanden even groot. */
+    let klopt = false
+    try {
+      const gelezen = openZip(zip)
+      const inZip = gelezen.bestanden.map((b) => `${b.naam}:${b.grootte}`).sort()
+      gelezen.sluit()
+      klopt = inZip.join('|') === bestanden.map((b) => `${b.naam}:${b.inhoud.length}`).sort().join('|')
+    } catch {
+      klopt = false
     }
+    if (klopt) rmSync(map, { recursive: true, force: true })
+    else this.melden(`meetstand: de zip klopt niet met ${basename(map)}; de map blijft staan`)
+    this.ruimOp()
     return zip
   }
 
@@ -573,13 +797,54 @@ export class Meetsessie {
   private laatsteMap(): string | undefined {
     try {
       return readdirSync(this.basis)
-        .filter((naam) => naam.startsWith('meting-') && !naam.endsWith('.zip'))
+        .filter((naam) => MEETNAAM.test(naam) && !naam.endsWith('.zip'))
         .map((naam) => join(this.basis, naam))
         .filter((pad) => statSync(pad).isDirectory() && !existsSync(`${pad}.zip`))
         .sort()
         .pop()
     } catch {
       return undefined
+    }
+  }
+
+  /**
+   * `metingen/` klein houden: een map waar al een zip van is weg, een half
+   * geschreven zip weg, en van de rest de nieuwste `METINGEN_BEWAARD`. De
+   * meting die loopt blijft altijd. Alleen namen van de meetstand zelf
+   * (`meting-JJJJMMDD-UUMMSS`, met of zonder `.zip`): wat iemand anders in de
+   * map zet, blijft staan.
+   */
+  ruimOp(): void {
+    this.opgeruimd = true
+    let namen: string[]
+    try {
+      namen = readdirSync(this.basis)
+    } catch {
+      return
+    }
+    const weg = (naam: string): void => {
+      try {
+        rmSync(join(this.basis, naam), { recursive: true, force: true })
+      } catch {
+        // Vastgehouden (Verkenner, Defender): dan de volgende keer.
+      }
+    }
+    const lopend = this.map ? basename(this.map) : undefined
+    if (!this.bezig) {
+      for (const naam of namen) if (/^meting-\d{8}-\d{6}\.zip\.tmp$/.test(naam)) weg(naam)
+    }
+    const stammen = new Set<string>()
+    for (const naam of namen) {
+      if (!MEETNAAM.test(naam)) continue
+      const stam = naam.replace(/\.zip$/, '')
+      if (!naam.endsWith('.zip') && stam !== lopend && namen.includes(`${stam}.zip`)) weg(naam)
+      stammen.add(stam)
+    }
+    const oud = [...stammen].filter((stam) => stam !== lopend).sort()
+    const bewaard = Math.max(0, (this.grenzen.bewaard ?? METINGEN_BEWAARD) - (lopend ? 1 : 0))
+    for (const stam of oud.slice(0, Math.max(0, oud.length - bewaard))) {
+      if (namen.includes(stam)) weg(stam)
+      if (namen.includes(`${stam}.zip`)) weg(`${stam}.zip`)
     }
   }
 }

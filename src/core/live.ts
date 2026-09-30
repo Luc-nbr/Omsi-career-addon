@@ -939,6 +939,26 @@ function bruikbareNaam(naam: string): boolean {
 }
 
 /**
+ * Wat dit proces per bestand het laatst wilde schrijven, en of dat lukte.
+ *
+ * WAAROM ONTHOUDEN, EN NIET ELKE KEER HET BESTAND VERGELIJKEN
+ * Eerst werd de lijst vergeleken met wat er op schijf stond. Sinds de meetlus
+ * getallen.txt elke seconde bijhoudt (B3), schreven twee exemplaren van de app
+ * met dezelfde pluginmap maar een andere lijst -- Lucs app naast een
+ * testexemplaar met `--user-data-dir`, of een proef zonder eigen livemap --
+ * het bestand om de beurt terug, elke seconde; de plugin bouwde telkens zijn
+ * lijst opnieuw op, en in een meting verdwenen en verschenen de namen
+ * (tegenlezing 30-09, punt 5). Nu schrijft een exemplaar alleen als ZIJN
+ * lijst verandert, of als het bestand er niet meer is; wie het laatst iets
+ * nieuws wilde, wint, en niemand vecht terug. Het lezen van het bestand bij
+ * elke aanroep (tien keer per seconde met de overlay open) valt zo ook weg.
+ */
+const namenlijstStand = new Map<string, { inhoud: string; gelukt: boolean; poging: number; fout?: string }>()
+
+/** Na een mislukte poging (Defender die het bestand vasthoudt) zo lang wachten voor de volgende. */
+const NAMENLIJST_OPNIEUW_MS = 10_000
+
+/**
  * Een namenlijst voor de plugin: een naam per regel, CRLF, UTF-8, naast
  * live.json. Alleen schrijven als er iets verandert -- het bestand wordt anders
  * tien keer per seconde overschreven terwijl er niets anders in staat.
@@ -947,14 +967,27 @@ function schrijfNamenlijst(bestand: string, namen: string[], max: number, wat: s
   const lijst = namen.filter(bruikbareNaam).slice(0, max)
   const inhoud = lijst.join('\r\n') + (lijst.length > 0 ? '\r\n' : '')
   const pad = join(liveMap(), bestand)
+  const nu = Date.now()
+  const vorige = namenlijstStand.get(pad)
+  if (vorige && vorige.inhoud === inhoud) {
+    if (vorige.gelukt && existsSync(pad)) return
+    if (!vorige.gelukt && nu - vorige.poging < NAMENLIJST_OPNIEUW_MS) return
+  }
+  const stand: { inhoud: string; gelukt: boolean; poging: number; fout?: string } = { inhoud, gelukt: false, poging: nu }
+  namenlijstStand.set(pad, stand)
   try {
-    if (existsSync(pad) && readFileSync(pad, 'utf8') === inhoud) return
-    const tijdelijk = pad + '.tmp'
-    writeFileSync(tijdelijk, inhoud)
-    renameSync(tijdelijk, pad)
-    log(`${wat} aan de plugin: ${lijst.length} variabelen`)
+    /* Een nieuwe lijst die al zo op schijf staat (na een herstart van de app): niets te doen. */
+    if (!(existsSync(pad) && readFileSync(pad, 'utf8') === inhoud)) {
+      const tijdelijk = pad + '.tmp'
+      writeFileSync(tijdelijk, inhoud)
+      renameSync(tijdelijk, pad)
+      log(`${wat} aan de plugin: ${lijst.length} variabelen`)
+    }
+    stand.gelukt = true
   } catch (fout) {
-    log(`${bestand} schrijven mislukt: ${String(fout)}`)
+    /* Dezelfde fout niet elke tien tellen opnieuw in het logboek. */
+    stand.fout = String(fout)
+    if (vorige?.inhoud !== inhoud || vorige.fout !== stand.fout) log(`${bestand} schrijven mislukt: ${stand.fout}`)
   }
 }
 

@@ -1,6 +1,6 @@
 import { useState, type JSX } from "react";
 import { t, type Language } from "../../shared/i18n";
-import type { MetingBeeld } from "../../shared/meetstand";
+import { stilReden, type MetingBeeld } from "../../shared/meetstand";
 import type { TelefoonActies } from "./telefoon";
 
 /*
@@ -65,7 +65,7 @@ export function MeetApp({
                 regels: meting.regels,
                 tijd: duur(meting.seconden),
               })
-            : t(language, "meet.wacht")}
+            : t(language, stilReden(meting))}
         </b>
       </section>
       <p className="meet-uitleg">{t(language, "meet.vinkUitleg")}</p>
@@ -98,7 +98,7 @@ export function MeetApp({
       <button
         type="button"
         className="meet-opslaan"
-        disabled={bezig}
+        disabled={bezig || meting.bekijken}
         onClick={opslaan}
       >
         {t(language, "meet.opslaan")}

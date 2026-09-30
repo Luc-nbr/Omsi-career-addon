@@ -35,10 +35,13 @@
  *   nog liep kon via "hervatten" verder). "OMSI" is dan een eigen nepproces:
  *   een kopie van PING.EXE met de proefnaam.
  *
+ * - (tegenlezing 30-09) de meetstand meet niet: het beeld zegt "bekijken",
+ *   afvinken en "Meting opslaan" weigeren, en er komt geen map `metingen`.
+ *
  * Op de oude code (vóór 28-09) faalt dit: geen vraag, en alles werd in de
  * echte map geschreven. Het deel over de Game Bar faalt op d9eeeda, het deel
  * over START en de werker op 3880b6d, dat over de plugin, de busknoppen en de
- * overlay op 09905c1.
+ * overlay op 09905c1, dat over de meetstand op dbc58ae.
  */
 const { app, BrowserWindow } = require('electron')
 const { createHash } = require('node:crypto')
@@ -228,6 +231,31 @@ app.whenReady().then(async () => {
     }
   })()
   klopt('het logboek zegt waarom', /vrij rijden geweigerd: alleen bekijken/.test(logboek) && /dienst niet begonnen: alleen bekijken/.test(logboek))
+
+  // (tegenlezing 30-09, punt 2) De meetstand meet niet: een meting kwam in de kopie en was weg zodra de app sloot,
+  // terwijl "Meting opslaan" zei dat hij klaar was. Nu zegt het beeld waarom, en vinken en opslaan weigeren.
+  const meetBeeld = await js(
+    `window.career.saveSettings({ meetstand: true }).then(() => window.career.metingStand()).then((s) => JSON.stringify(s), (f) => 'fout: ' + f.message)`
+  )
+  const meetVink = await js(`window.career.metingVink('halte', true).then((u) => JSON.stringify(u), (f) => 'fout: ' + f.message)`)
+  const meetOpslaan = await js(`window.career.metingOpslaan().then((u) => JSON.stringify(u), (f) => 'fout: ' + f.message)`)
+  await js(`window.career.saveSettings({ meetstand: false })`)
+  const meetLog = (() => {
+    try {
+      return fs.readFileSync(join(kopie, 'logs', 'omsi-enhancer.log'), 'utf8')
+    } catch {
+      return ''
+    }
+  })()
+  klopt(
+    `de meetstand: het beeld zegt bekijken (${meetBeeld.slice(0, 90)}), vinken ${meetVink}, opslaan ${meetOpslaan}, geen metingen in de kopie`,
+    /"bekijken":true/.test(meetBeeld) &&
+      /"loopt":false/.test(meetBeeld) &&
+      meetVink === 'false' &&
+      meetOpslaan === 'null' &&
+      !fs.existsSync(join(kopie, 'metingen')) &&
+      /meting niet opgeslagen: alleen bekijken/.test(meetLog)
+  )
 
   // (tegenlezing 29-09) Geen overlay: een dienst die nog liep kon via "hervatten" verder.
   const vensters = BrowserWindow.getAllWindows().length

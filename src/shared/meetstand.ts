@@ -56,4 +56,28 @@ export interface MetingBeeld {
   afgevallen: number
   /** De bestandsnaam (zonder map) van de laatst opgeslagen meting. */
   opgeslagen?: string
+  /**
+   * Waarom er niet gemeten wordt terwijl er wel gereden wordt:
+   * - `opgeslagen`: de meting is net opgeslagen; een nieuwe begint bij de
+   *   volgende dienst of vrije rit, of als de meetstand weer aan gaat;
+   * - `vol`: de meting is zo groot als hij mag worden; eerst opslaan.
+   */
+  rust?: 'opgeslagen' | 'vol'
+  /**
+   * De app draait in "alleen bekijken" (een nieuwere versie schreef de
+   * gegevens): wat hij opslaat, is weg zodra hij sluit. Dan meet hij niet, en
+   * vinken en opslaan staan uit.
+   */
+  bekijken?: boolean
+}
+
+/**
+ * Welke tekst er staat als er niet gemeten wordt: alleen bekijken (dan nooit),
+ * een meting die vol is of net opgeslagen, of er loopt geen dienst of vrije rit.
+ */
+export function stilReden(meting: MetingBeeld): 'meet.bekijken' | 'meet.vol' | 'meet.rust' | 'meet.wacht' {
+  if (meting.bekijken) return 'meet.bekijken'
+  if (meting.rust === 'vol') return 'meet.vol'
+  if (meting.rust === 'opgeslagen') return 'meet.rust'
+  return 'meet.wacht'
 }

@@ -17,6 +17,8 @@ const { join } = require('node:path')
 
 app.setPath('userData', mkdtempSync(join(tmpdir(), 'omsi-check-')))
 setTimeout(() => { console.error('time-out'); app.exit(1) }, 180000).unref()
+// Een eigen map voor live.json: zo schrijft de app in deze proef nooit in de map van de echte plugin, ook niet als OMSI draait (tegenlezing 30-09).
+process.env.OMSI_ENHANCER_LIVEMAP ??= require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'omsi-proef-live-'))
 require('../out/main/index.js')
 
 const wacht = (ms) => new Promise((r) => setTimeout(r, ms))

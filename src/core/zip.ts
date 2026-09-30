@@ -1,6 +1,8 @@
 import { constants as bufferConstants } from 'node:buffer'
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
-import { deflateRawSync, inflateRawSync } from 'node:zlib'
+import { promisify } from 'node:util'
+import * as zlib from 'node:zlib'
+import { deflateRaw, deflateRawSync, inflateRawSync } from 'node:zlib'
 import iconv from 'iconv-lite'
 
 /*
@@ -127,8 +129,9 @@ const CRC_TABEL = (() => {
   return tabel
 })()
 
-export function crc32(buf: Buffer): number {
-  let c = 0xffffffff
+/** De crc van `buf`; met `vorige` gaat hij verder waar een eerder stuk ophield. */
+export function crc32(buf: Buffer, vorige = 0): number {
+  let c = (vorige ^ 0xffffffff) >>> 0
   for (let i = 0; i < buf.length; i++) c = CRC_TABEL[(c ^ buf[i]) & 0xff] ^ (c >>> 8)
   return (c ^ 0xffffffff) >>> 0
 }
@@ -233,21 +236,68 @@ export function openZip(pad: string): Zip {
  * seconden). Geen mappen als eigen regel: een pad met / erin is genoeg.
  */
 export function maakZip(bestanden: Array<{ naam: string; inhoud: Buffer }>, nu = new Date()): Buffer {
+  return bouwZip(
+    bestanden.map(({ naam, inhoud }) => ({ naam, inhoud, gepakt: deflateRawSync(inhoud), crc: crc32(inhoud) })),
+    nu
+  )
+}
+
+const deflateRawAchtergrond = promisify(deflateRaw)
+/** Node 20.15 en hoger (Electron 33) rekent de crc zelf, veel sneller dan de tabel hierboven. */
+const zlibCrc = (zlib as { crc32?: (data: Buffer, vorige?: number) => number }).crc32
+/** Zo groot is een stuk voor de crc, en daartussen krijgt de rest van het hoofdproces een beurt. */
+const CRC_STUK = 4 * 1024 * 1024
+
+async function crc32Achtergrond(inhoud: Buffer): Promise<number> {
+  let crc = 0
+  for (let plek = 0; plek < inhoud.length; plek += CRC_STUK) {
+    const stuk = inhoud.subarray(plek, plek + CRC_STUK)
+    crc = zlibCrc ? zlibCrc(stuk, crc) : crc32(stuk, crc)
+    if (plek + CRC_STUK < inhoud.length) await new Promise<void>((klaar) => setImmediate(klaar))
+  }
+  return crc
+}
+
+/**
+ * Hetzelfde als `maakZip`, maar zonder het hoofdproces vast te houden.
+ *
+ * WAAROM
+ * Een meting van een paar uur is 40 tot 70 MB ruwe tekst. `deflateRawSync`
+ * deed daar ruim een seconde over (274 ms per 12 MB, nagemeten in de
+ * tegenlezing van 30-09), en in die tijd stond de overlay stil en telde de
+ * kaartverkoop niet. Hier pakt zlib in zijn eigen draden in, en de crc gaat in
+ * stukken van 4 MB met een beurt voor de rest ertussen.
+ */
+export async function maakZipAchtergrond(bestanden: Array<{ naam: string; inhoud: Buffer }>, nu = new Date()): Promise<Buffer> {
+  const klaar: Ingepakt[] = []
+  for (const { naam, inhoud } of bestanden) {
+    klaar.push({ naam, inhoud, gepakt: await deflateRawAchtergrond(inhoud), crc: await crc32Achtergrond(inhoud) })
+  }
+  return bouwZip(klaar, nu)
+}
+
+interface Ingepakt {
+  naam: string
+  inhoud: Buffer
+  gepakt: Buffer
+  crc: number
+}
+
+/** De koppen, de inhoudsopgave en het slot om bestanden die al ingepakt zijn. */
+function bouwZip(bestanden: Ingepakt[], nu: Date): Buffer {
   if (bestanden.length > 0xfffe) throw new ZipFout('zip64', 'Te veel bestanden voor een zip zonder zip64.')
   const dosTijd = (nu.getHours() << 11) | (nu.getMinutes() << 5) | Math.floor(nu.getSeconds() / 2)
   const dosDatum = ((Math.max(1980, nu.getFullYear()) - 1980) << 9) | ((nu.getMonth() + 1) << 5) | nu.getDate()
   const lokaal: Buffer[] = []
   const lijst: Buffer[] = []
   let plek = 0
-  for (const { naam, inhoud } of bestanden) {
+  for (const { naam, inhoud, gepakt, crc } of bestanden) {
     const schoon = veiligPad(naam)
     if (!schoon) throw new ZipFout('kapot', `Geen bruikbare naam in de zip: ${naam}`)
     const naamBytes = Buffer.from(schoon, 'utf8')
-    const gepakt = deflateRawSync(inhoud)
     /* Winst of niet: een al gepakt bestand gaat er onveranderd in. */
     const methode = gepakt.length < inhoud.length ? 8 : 0
     const data = methode === 8 ? gepakt : inhoud
-    const crc = crc32(inhoud)
     if (plek + 30 + naamBytes.length + data.length > 0xfffffffe) {
       throw new ZipFout('zip64', 'Te groot voor een zip zonder zip64.')
     }

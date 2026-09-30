@@ -747,6 +747,55 @@ nodig. De plugin is niet veranderd (DLL blijft versie 14, sha1 `ec5f85d3...`).
     begint de volgende regel een nieuwe meting.
   - Handleiding voor Luc: `design/ontwerpen/ronde0-meten.md` (Grundorf lijn 76,
     de C2, de o530 U e2 en de MAN NL).
+- **Na de tegenlezing en de proefdraaier van 30-09** (`scripts/probe-meetsessie.ts`
+  legt het vast, zonder Electron; een vergelijking op dbc58ae liet alle zes
+  gedragingen hieronder met een "ja" zien, de nieuwe code met "nee"):
+  - *Na "Meting opslaan" rust de sessie* (`Meetsessie.hervat`): eerst begon
+    de volgende regel meteen een nieuwe map, en wie daarna de meetstand uitzette
+    hield een losse map over. Nu pas weer bij een nieuwe dienst of vrije rit
+    (`meetstandRegel` let op het begin van het rijden), of als de meetstand
+    weer aan gaat. Na een zip die terug te lezen is gaat de ruwe map weg;
+    `ruimOp` houdt de nieuwste `METINGEN_BEWAARD` (5) metingen; een meting
+    stopt bij `MEET_MAX_BYTES` (250 MB) met "De meting is vol". `metingen`
+    staat in `NIET_MEE` (core/versiewacht.ts). Handleiding: 15-30 MB per uur
+    per bus in plaats van 8.
+  - *Alleen bekijken meet niet*: de gebruikersmap is dan een kopie die bij het
+    sluiten weggaat, en "Meting opslaan" zei "Stuur dat bestand op" van een zip
+    die daarna verdween. `metingGeweigerd` weigert vinken en opslaan, het beeld
+    krijgt `bekijken` (tekst `meet.bekijken`), en `werkGetallenBij` slaat de
+    pluginmap over (die elke seconde "schrijven mislukt" in het logboek zette).
+    `probe-alleenbekijken.cjs` kijkt het na.
+  - *`getallen.txt` niet om en om* (`schrijfNamenlijst` in core/live.ts): een
+    exemplaar schrijft alleen als ZIJN lijst verandert of het bestand weg is.
+    Twee exemplaren met een andere lijst (Lucs app en een testexemplaar)
+    schreven het eerst elke seconde om de beurt terug. Alle Electron-proeven
+    die het hoofdproces laden, hebben nu een eigen `OMSI_ENHANCER_LIVEMAP`.
+  - *Prestaties*: `meetNamenVoor` rekent per bus één keer (eerst 3 ms per keer,
+    tot 45 ms per seconde); een lege varlist wordt na 10 s opnieuw gelezen
+    (`nogEensProberen`); `schrijfNamenlijst` leest het bestand niet meer bij
+    elke aanroep; opslaan pakt in op de achtergrond (`maakZipAchtergrond` in
+    core/zip.ts: 10 MB kostte 177 ms vast, nu hoogstens 3 ms achter elkaar).
+  - *In het bestand erbij*: de plek op de kaart en de flitspalen (§5: kant en
+    bereik van een paal), de tank, en de hele kaartverkoop (`slecht`,
+    `gegeven`, soort; §5: of `ticketSlecht` betrouwbaar aangaat). `bus.model`
+    wordt ingekort zoals `pad`. Geen regel `vraag` meer terwijl OMSI een bus
+    laadt. Een vink die weer uitgaat schrapt zijn afdruk, een tweede vink van
+    dezelfde stap geeft `dump-<n>-<stap>-2.json`. In `meting.json` heet het
+    totaal `meetregels`. In de afdrukken wordt wat de speler in de IBIS als
+    nummer of pincode intikt `null` (`AFDRUK_GEHEIM`: `IBIS_PIN`,
+    `6_numer_kierowcy`, ...).
+  - *Het contract*: `VoorvalUitslag` kreeg `rit` en `halte?`; elke
+    `VoorvalSpoorRegel` draagt `soort`, `rit` en `halte?`, `begin` het hele
+    `Voorval` (een reactief voorval komt niet uit het zaad), `einde` de
+    uitslag. Het bedrijf boekt ALLEEN uit `Onderweg.voorvallen` met
+    `somVanVoorvallen`, nooit uit `Onderweg.bedrag` (dat is het loon, met de
+    voorvallen erin); `Onderweg.voorvalContract` zegt met welke versie. Contract
+    1 was nog niet uitgeleverd, dus het bleef 1. **De cloud inlichten vóór hij
+    merget.**
+  - Niet veranderd: een afdruk is die van tot 2 s na de vink (de plugin schrijft
+    getallen.json eens per twee tellen; de handleiding zegt "3 tellen
+    vasthouden", en voor deuren, laatkomer en doorrijden staat het bewijs in de
+    regels). B18 (`[vars]`) hoort niet in de meetstand.
 - **Nog open (rest van ronde 1, na de meting):** B2 (aankomst en 120/180 s), B4
   (voorvalprofiel in `busklaar.ts` en knopsoort `'cabine'`), B5 (`aanHalte()`).
   Het hoofdproces doet één ding tegelijk: in de eerste seconden na het starten
@@ -2878,8 +2927,12 @@ Er staan probes in `scripts/`:
   (B6: verkopen tellen met de overlay dicht; met een ander pad naar
   `main/index.js` op een oudere bouw te draaien), `probe-meetstand.cjs` (de
   meetstand in de echte app met een nagebootste plugin; met een map erachter
-  ook een plaatje van de afvinklijst) en `probe-meetnamen.ts` (welke namen de
-  meetstand per bus vraagt en of dat in de 512 past; alleen lezen). De twee
+  ook een plaatje van de afvinklijst), `probe-meetnamen.ts` (welke namen de
+  meetstand per bus vraagt en of dat in de 512 past; alleen lezen) en
+  `probe-meetsessie.ts` (de meetsessie en `schrijfGetallen` los, zonder
+  Electron: rust na het opslaan, vol, opruimen, afdrukken, de zip op de
+  achtergrond, twee exemplaren; 30-09). Alle Electron-proeven die
+  `out/main/index.js` laden, zetten nu een eigen `OMSI_ENHANCER_LIVEMAP`. De twee
   Electron-proeven gebruiken `proefvangrails.cjs`: eigen gebruikersmap, eigen
   map voor live.json, en elke schrijfactie in OMSI, in Lucs gebruikersmap of in
   de map van de echte plugin wordt geweigerd. Draai `probe-modi.cjs` met

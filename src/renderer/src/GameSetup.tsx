@@ -19,7 +19,7 @@ import type {
 } from '../../shared/api'
 import { MODIFIER_CODES, SCANCODES } from '../../shared/scancodes'
 import { ControllersTab } from './Controllers'
-import type { MetingBeeld } from '../../shared/meetstand'
+import { stilReden, type MetingBeeld } from '../../shared/meetstand'
 
 interface Props {
   language: Language
@@ -478,13 +478,13 @@ function MeetstandKaart({ language }: { language: Language }): JSX.Element {
                   regels: beeld.regels,
                   tijd: `${Math.floor(beeld.seconden / 60)}:${String(beeld.seconden % 60).padStart(2, '0')}`
                 })} · ${klaar}/${beeld.stappen.length}`
-              : t(language, 'meet.wacht')}
+              : t(language, stilReden(beeld))}
           </p>
           {beeld.afgevallen > 0 && (
             <p className="note warn">{t(language, 'meet.afgevallen', { n: beeld.afgevallen })}</p>
           )}
           <div className="actions" style={{ marginTop: 8 }}>
-            <button type="button" className="btn" data-meting="opslaan" onClick={opslaan}>
+            <button type="button" className="btn" data-meting="opslaan" disabled={beeld.bekijken} onClick={opslaan}>
               {t(language, 'meet.opslaan')}
             </button>
             <button type="button" className="btn secondary" data-meting="map" onClick={() => void window.career.metingMap()}>

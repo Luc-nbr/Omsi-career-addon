@@ -22,9 +22,11 @@ import { completeDuty, type CareerState } from '../src/core/career'
 import type { Duty } from '../src/core/types'
 import {
   VOORVAL_CATALOGUS,
+  VOORVAL_CONTRACT,
   VOORVAL_SOORTEN,
   geldigeVoorvalUitslag,
   somVanVoorvallen,
+  type VoorvalSpoorRegel,
   type VoorvalUitslag
 } from '../src/shared/voorval'
 
@@ -142,6 +144,8 @@ const rolstoel: VoorvalUitslag = {
   id: 'v1',
   soort: 'rolstoel',
   start: 612,
+  rit: 1,
+  halte: 4,
   stappen: [
     { id: 'stil', gehaald: true },
     { id: 'deur', gehaald: true },
@@ -157,6 +161,7 @@ const aanrijding: VoorvalUitslag = {
   id: 'v2',
   soort: 'aanrijding',
   start: 640,
+  rit: 2,
   stappen: [{ id: 'stil', gehaald: false }],
   afloop: 'mis',
   verschoondS: 0,
@@ -186,6 +191,45 @@ klopt('een onbekende soort is ongeldig', geldigeVoorvalUitslag({ ...rolstoel, so
 klopt('een kapot bedrag is ongeldig', geldigeVoorvalUitslag({ ...rolstoel, bedrag: 'tien' }) === undefined && geldigeVoorvalUitslag({ ...rolstoel, bedrag: Number.NaN }) === undefined)
 klopt('een stap zonder uitkomst is ongeldig', geldigeVoorvalUitslag({ ...rolstoel, stappen: [{ id: 'stil' }] }) === undefined)
 klopt('wat er verder in staat valt weg', !('geheim' in (geldigeVoorvalUitslag({ ...rolstoel, geheim: 1 }) ?? {})))
+// Waar het gebeurde (tegenlezing 30-09, punt 3): rit en halte gaan mee, en zonder rit is een uitslag ongeldig.
+klopt('een uitslag met rit en halte gaat heel door JSON en het nakijken', JSON.stringify(geldigeVoorvalUitslag(JSON.parse(JSON.stringify(rolstoel)))) === JSON.stringify(rolstoel))
+klopt('zonder rit is een uitslag ongeldig', geldigeVoorvalUitslag({ ...rolstoel, rit: undefined }) === undefined)
+klopt('een rit of halte die geen heel getal vanaf nul is, is ongeldig', [{ rit: -1 }, { rit: 1.5 }, { halte: -2 }, { halte: 'vier' }, { halte: null }].every((fout) => geldigeVoorvalUitslag({ ...rolstoel, ...fout }) === undefined))
+klopt('zonder halte blijft het veld weg', !('halte' in (geldigeVoorvalUitslag({ ...rolstoel, halte: undefined }) ?? { halte: 0 })))
+// Het geld één keer (punt 4): het contract staat erbij, en het bedrijf rekent alleen met de voorvallen.
+klopt(`onderweg: de versie van het contract staat bij de voorvallen (${metVoorvallen.voorvalContract})`, metVoorvallen.voorvalContract === VOORVAL_CONTRACT && !('voorvalContract' in ow))
+klopt(
+  'het bedrijf rekent met somVanVoorvallen(voorvallen), niet met het bedrag van onderweg (dat heeft de premie en de boetes erbij)',
+  somVanVoorvallen(metVoorvallen.voorvallen ?? []).bedrag === -15.5 && metVoorvallen.bedrag !== -15.5
+)
+// Een spoor met voorvalregels: de rittenstaat telt ze niet als halte, rem of flits.
+const voorvalRegels: VoorvalSpoorRegel[] = [
+  {
+    t: 'voorval',
+    k: 612,
+    id: 'v1',
+    soort: 'rolstoel',
+    rit: 1,
+    halte: 4,
+    wat: 'begin',
+    voorval: {
+      id: 'v1',
+      soort: 'rolstoel',
+      start: 612,
+      stappen: [{ id: 'stil', meetbaar: true }],
+      vensterS: 120,
+      verschoonMaxS: 180,
+      verschoonWijze: 'stilstand',
+      plek: { soort: 'halte', rit: 1, halte: 4 }
+    }
+  },
+  { t: 'voorval', k: 613, id: 'v1', soort: 'rolstoel', rit: 1, halte: 4, wat: 'stap', stap: 'stil', gehaald: true },
+  { t: 'voorval', k: 614, id: 'v1', soort: 'rolstoel', rit: 1, halte: 4, wat: 'einde', uitslag: rolstoel }
+]
+klopt(
+  'voorvalregels in het spoor veranderen de rittenstaat niet',
+  JSON.stringify(bouwRittenstaat(duty, regels)) === JSON.stringify(bouwRittenstaat(duty, [...regels.slice(0, 2), ...voorvalRegels, ...regels.slice(2)]))
+)
 klopt(
   `de catalogus: 30 soorten (V1-V32 zonder V8 en V24), elk nummer één keer`,
   VOORVAL_SOORTEN.length === 30 &&

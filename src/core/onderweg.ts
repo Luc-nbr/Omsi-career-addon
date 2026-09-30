@@ -1,4 +1,4 @@
-import { somVanVoorvallen, type VoorvalBeeld, type VoorvalUitslag } from '../shared/voorval'
+import { VOORVAL_CONTRACT, somVanVoorvallen, type VoorvalBeeld, type VoorvalUitslag } from '../shared/voorval'
 import type { SpeedSign } from './geo'
 import type { Rittenstaat } from './rittenstaat'
 import type { Duty } from './types'
@@ -304,12 +304,19 @@ export interface Onderweg {
   gebeurtenis?: Uitslag
   /**
    * Hoe de voorvallen van de dienst afliepen (B7, shared/voorval.ts). Dit is
-   * het contract met de cloud: het bedrijf boekt hieruit kas, reputatie en XP.
-   * Ontbreekt in logboeken van voor de voorvallen, en zolang de motor er niet
-   * is (ronde 2).
+   * het contract met de cloud: het bedrijf boekt hieruit kas, reputatie en XP,
+   * met `somVanVoorvallen` -- en alleen hieruit. Ontbreekt in logboeken van
+   * voor de voorvallen, en zolang de motor er niet is (ronde 2).
    */
   voorvallen?: VoorvalUitslag[]
-  /** Wat er netto bij het loon komt (negatief: eraf). */
+  /** Met welke versie van het contract (`VOORVAL_CONTRACT`) de voorvallen hierboven geschreven zijn; staat er alleen bij als die er zijn. */
+  voorvalContract?: number
+  /**
+   * Wat er netto bij het loon van de loopbaan komt (negatief: eraf), de
+   * voorvallen inbegrepen. ALLEEN VOOR HET LOON: het bedrijf boekt hier niets
+   * uit, anders telde het geld van een voorval twee keer in de kas (zie "GELD"
+   * in shared/voorval.ts).
+   */
   bedrag: number
 }
 
@@ -332,7 +339,7 @@ export function onderwegVan(
     flitsen,
     boetes,
     gebeurtenis,
-    ...(voorvallen.length > 0 ? { voorvallen: [...voorvallen] } : {}),
+    ...(voorvallen.length > 0 ? { voorvallen: [...voorvallen], voorvalContract: VOORVAL_CONTRACT } : {}),
     bedrag: Math.round(((gebeurtenis?.bedrag ?? 0) - boetes + uitVoorvallen) * 100) / 100
   }
 }

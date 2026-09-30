@@ -25,9 +25,30 @@
  * Bedragen zijn euro's, zoals het loon in career.ts en `Onderweg.bedrag`. Het
  * bedrijf rekent in hele centen: `Math.round(bedrag * 100)`, één keer, bij het
  * boeken.
+ *
+ * GELD: ÉÉN KEER, EN WIE WAT BOEKT
+ * `onderwegVan` telt de voorvallen al mee in `Onderweg.bedrag`, en dat bedrag
+ * gaat in het loon van de loopbaan (`CareerEntry.pay`). Het bedrijf boekt
+ * NIET uit `Onderweg.bedrag` (en niet uit het loon): de kas, de reputatie en
+ * de ervaring komen alleen uit `Onderweg.voorvallen`, opgeteld met
+ * `somVanVoorvallen`. Zo telt een voorval één keer in de loopbaan en één keer
+ * in het bedrijf, zoals Luc koos (D3: de loopbaan staat los van het bedrijf),
+ * en nooit twee keer in de kas (tegenlezing 30-09, punt 4).
+ *
+ * WAAR HET GEBEURDE
+ * Een uitslag en elke spoorregel dragen de rit en de halte, zoals de andere
+ * regels van het spoor (core/rittenstaat.ts): de rittenstaat zet de
+ * verschoning bij die halte ("+4:10, waarvan 3:30 verschoond: reiziger
+ * onwel", §3.4), en het logboek en de cloud weten waar het was. De regel
+ * `begin` draagt het hele voorval: een reactief voorval (V5, V6, V17, V21-V23)
+ * komt niet uit het zaad, en na een herstart kende de motor anders zijn soort,
+ * venster en plek niet meer (tegenlezing 30-09, punt 3).
+ *
+ * Contract 1 was nog niet uitgeleverd (de cloud had alleen het ontwerp) toen
+ * dit erbij kwam; daarom bleef het 1.
  */
 
-/** De versie van dit contract. Omhoog bij elke wijziging die de cloud raakt. */
+/** De versie van dit contract. Omhoog bij elke wijziging die de cloud raakt; staat bij de gegevens als `Onderweg.voorvalContract`. */
 export const VOORVAL_CONTRACT = 1
 
 /** Per categorie aan of uit te zetten (§3.3). */
@@ -175,13 +196,21 @@ export type StapUitkomst = boolean | null
 
 /**
  * Hoe een voorval afliep. DIT IS HET CONTRACT MET DE CLOUD: het logboek bewaart
- * het (`Onderweg.voorvallen`), en het bedrijf boekt het (kas, reputatie, XP).
+ * het (`Onderweg.voorvallen`), en het bedrijf boekt het (kas, reputatie, XP)
+ * -- alleen hieruit, niet uit `Onderweg.bedrag`; zie "GELD" bovenaan.
  */
 export interface VoorvalUitslag {
   id: string
   soort: VoorvalSoort
   /** Wanneer het begon, zoals `Voorval.start`. */
   start: number
+  /**
+   * In welke rit het begon, geteld zoals in de rittenstaat (0 is de eerste
+   * rit van de dienst); tussen twee ritten de rit die net klaar is.
+   */
+  rit: number
+  /** Bij welke halte van die rit (de halte waar de bus heen reed), als de app dat wist. */
+  halte?: number
   /** Alleen de stappen die er waren; een stap die deze bus niet meet staat er met `null`. */
   stappen: Array<{ id: string; gehaald: StapUitkomst }>
   /**
@@ -222,21 +251,32 @@ export interface VoorvalBeeld {
   toetsen?: Record<string, string>
 }
 
-/**
- * Een regel in het ritspoor (core/rittenstaat.ts), zoals `t: 'flits'`: zo loopt
- * een voorval na een herstart van de app verder waar het was.
- */
-export interface VoorvalSpoorRegel {
+/** Wat elke spoorregel van een voorval draagt. */
+interface VoorvalSpoorKop {
   t: 'voorval'
   /** De klok van het spel in minuten, zoals elke spoorregel. */
   k: number
   id: string
-  wat: 'begin' | 'stap' | 'knop' | 'einde'
-  stap?: string
-  gehaald?: boolean
-  knop?: VoorvalKnop
-  verschoondS?: number
+  soort: VoorvalSoort
+  /** Rit en halte zoals in de andere spoorregels (core/rittenstaat.ts): waar de bus toen was. */
+  rit: number
+  halte?: number
 }
+
+/**
+ * Een regel in het ritspoor (core/rittenstaat.ts), zoals `t: 'flits'`: zo loopt
+ * een voorval na een herstart van de app verder waar het was, en zet de
+ * rittenstaat de verschoning bij de halte.
+ * - `begin`: het hele voorval, ook een reactief dat niet uit het zaad komt;
+ * - `stap`: een stap gehaald of gemist;
+ * - `knop`: een knop op de voorvalkaart;
+ * - `einde`: de uitslag, zoals hij in `Onderweg.voorvallen` komt.
+ */
+export type VoorvalSpoorRegel =
+  | (VoorvalSpoorKop & { wat: 'begin'; voorval: Voorval })
+  | (VoorvalSpoorKop & { wat: 'stap'; stap: string; gehaald: boolean })
+  | (VoorvalSpoorKop & { wat: 'knop'; knop: VoorvalKnop })
+  | (VoorvalSpoorKop & { wat: 'einde'; uitslag: VoorvalUitslag })
 
 /** Hoe vaak (§3.3). Reactieve voorvallen over veiligheid (V21, V22) tellen niet mee voor het maximum. */
 export type VoorvalFrequentie = 'uit' | 'rustig' | 'normaal' | 'druk'
@@ -304,6 +344,11 @@ export function geldigeVoorvalUitslag(ruw: unknown): VoorvalUitslag | undefined 
     return undefined
   }
   if (verschoondS < 0 || !Array.isArray(r.stappen)) return undefined
+  /* Rit en halte tellen zoals in de rittenstaat: hele getallen vanaf nul. */
+  const rit = eindig(r.rit)
+  if (rit === undefined || rit < 0 || !Number.isInteger(rit)) return undefined
+  const halte = r.halte === undefined ? undefined : eindig(r.halte)
+  if (r.halte !== undefined && (halte === undefined || halte < 0 || !Number.isInteger(halte))) return undefined
   const stappen: VoorvalUitslag['stappen'] = []
   for (const stap of r.stappen) {
     if (!stap || typeof stap !== 'object') return undefined
@@ -316,6 +361,8 @@ export function geldigeVoorvalUitslag(ruw: unknown): VoorvalUitslag | undefined 
     id: r.id,
     soort: r.soort,
     start,
+    rit,
+    ...(halte !== undefined ? { halte } : {}),
     stappen,
     afloop: r.afloop as VoorvalUitslag['afloop'],
     verschoondS,
