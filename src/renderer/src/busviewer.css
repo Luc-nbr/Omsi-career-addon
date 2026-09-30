@@ -386,3 +386,27 @@
     max-height: none;
   }
 }
+
+/* Het ontwikkelpaneel van het lakdoek (Lakstudio L1, alleen in doel 'lakstudio'). */
+.lak-ontwikkel .lak-rij {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 6px 0;
+}
+.lak-ontwikkel .lak-klein {
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.lak-tweede {
+  position: fixed;
+  right: 344px;
+  bottom: 16px;
+  width: 320px;
+  height: 180px;
+  border: 1px solid var(--rand, #888);
+  border-radius: 6px;
+  z-index: 5;
+}

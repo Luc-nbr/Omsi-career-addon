@@ -34,7 +34,7 @@ function luister<T extends unknown[]>(kanaal: string, doe: (...args: T) => void)
 
 const brug: Bus3dBrug = {
   busModel3d: (relatiefPad, kleurstelling) => ipcRenderer.invoke('bus:model3d', relatiefPad, kleurstelling),
-  busLak3d: (pakket, kleurstelling) => ipcRenderer.invoke('bus:lak3d', pakket, kleurstelling),
+  busLak3d: (pakket, kleurstelling, extra) => ipcRenderer.invoke('bus:lak3d', pakket, kleurstelling, extra),
   busOmgeving3d: () => ipcRenderer.invoke('bus:omgeving3d'),
   busHeldenbeeld: (pakket, kleurstelling, sleutel, webp) =>
     ipcRenderer.invoke('bus:heldenbeeld', pakket, kleurstelling, sleutel, new Uint8Array(webp)),

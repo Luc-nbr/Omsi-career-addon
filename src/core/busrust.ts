@@ -171,7 +171,12 @@ export interface RustInvoerDeel {
 export function busRust(
   kop: Bus3dPakKop,
   delen: RustInvoerDeel[],
-  kleurstelling: string | undefined
+  kleurstelling: string | undefined,
+  /**
+   * De busopties van de Lakstudio (lakstudio-ontwerp §4.9): extra setvars, na
+   * die van de kleurstelling (zoals OMSI ze na de .cti zou zetten), in elk deel.
+   */
+  extra: Array<[string, number]> = []
 ): ReturnType<typeof rustRegels> & { vars: Array<[string, number]>; bron: 'script' | 'regels' } {
   const vermeldingen: RustVermelding[] = kop.vermeldingen.map((v) => ({
     deel: kop.stukken[v.stuk]?.deel ?? 0,
@@ -201,6 +206,7 @@ export function busRust(
     const info = deel.modelcfg ? leesKleurstellingen(deel.modelcfg, dirname(deel.busPad)) : undefined
     const gekozen = kleurstelling ? zoekKleurstelling(info, kleurstelling) : undefined
     if (info && gekozen) kleurVars = [[info.variabele, gekozen.index], ...Object.entries(gekozen.setvars)]
+    if (extra.length) kleurVars = [...kleurVars, ...extra]
     if (d === 0) vars = kleurVars
     /*
      * De startwaarden pas als de regels erom vragen: met de rekenmachine is dat

@@ -1,6 +1,8 @@
 import { heldenSleutel, type Bus3dLak, type Bus3dManifest, type Bus3dMeting } from '../../../shared/bus3d'
 import { klok, type AfdrukVraag, type NaarWerker, type StandBericht, type VanWerker } from './berichten'
-import { Camera } from './camera'
+import { Camera, type Plat } from './camera'
+import { Lakdoek } from './lak/lakdoek'
+import type { Laag } from '../../../shared/lak'
 import { LICHT, Tekenaar, zetLicht } from './teken'
 import type { Mogelijkheden, Ontleder } from './texturen'
 
@@ -31,6 +33,8 @@ interface Viewer {
   /** Het draaiplateau van de dealerstand (§6), en wanneer er voor het laatst invoer was. */
   plateau: boolean
   laatsteInvoer: number
+  /** De tweede viewport van de Lakstudio (§4.8): de andere kant, plat, 320×180. */
+  tweede?: boolean
 }
 
 const doel = self as unknown as {
@@ -201,9 +205,53 @@ function bouwTekenaar(): void {
   }
   tekenaar = new Tekenaar(gl, mag, ontleder, () => plan())
   if (omgeving) tekenaar.zetOmgeving(omgeving)
+  // Een nieuwe context: het lakdoek begint opnieuw, zodra de bus weer scherp staat (lakNaHerstel).
+  if (lakdoek?.actief && lakLaatste) lakNaHerstel = true
+  lakdoek = undefined
 }
 
 let omgeving: Parameters<Tekenaar['zetOmgeving']>[0] | undefined
+
+/**
+ * Het lakdoek na een contextverlies (§4.13, P4): zodra de bus weer scherp staat,
+ * opnieuw in de LICHTE stand, met de familie en de laatste lagen (het project
+ * staat in het venster en in main; hier gaat niets verloren). Het venster hoort
+ * het via 'lakHerstart'.
+ */
+function herstartLak(): void {
+  lakNaHerstel = false
+  const l = lakLaatste
+  if (!l || !tekenaar?.scene || contextWeg) return
+  const v = viewerVan(l.viewer)
+  const t = tekenaar
+  v.camera.zoomMin = 0.1
+  void (async () => {
+    const ld = lakdoekVoor(t)
+    const klaar = await ld.start(l.familie, { licht: true, vlakX: l.spiegel?.vlakX })
+    ld.zetLagen(l.lagen, l.spiegel)
+    return klaar
+  })().then(
+    (klaar) => {
+      plan()
+      stuur({ soort: 'lakHerstart', viewer: l.viewer, klaar })
+    },
+    (fout) => stuur({ soort: 'lakHerstart', viewer: l.viewer, klaar: { fout: fout instanceof Error ? fout.message : String(fout) } })
+  )
+}
+
+/*
+ * HET LAKDOEK (Lakstudio, lakstudio-ontwerp §4.1): in deze werker en deze
+ * context. Het hangt aan de tekenaar; een nieuwe context of een andere bus maakt
+ * het opnieuw (het ontwerp staat in main, niets gaat verloren).
+ */
+let lakdoek: Lakdoek | undefined
+/** Het laatste lakStart met de lagen van daarna: daarmee herstart het lakdoek na een contextverlies. */
+let lakLaatste: { viewer: number; familie: Extract<NaarWerker, { soort: 'lakStart' }>['familie']; lagen: Laag[]; spiegel?: { aan: boolean; vlakX?: number } } | undefined
+let lakNaHerstel = false
+function lakdoekVoor(t: Tekenaar): Lakdoek {
+  if (!lakdoek || lakdoek.tekenaar !== t) lakdoek = new Lakdoek(gl!, t, ontleder)
+  return lakdoek
+}
 
 // ------------------------------------------------------------ laden
 const laad: {
@@ -347,6 +395,8 @@ function tik(): void {
   const dt = laatsteTik ? (nu - laatsteTik) / 1000 : 0
   laatsteTik = nu
   const beweegt = v.camera.stap(Math.min(dt, 0.1))
+  // De lak eerst: samenstellen als er iets veranderde (§4.13: elk beeld kan, ook tijdens het slepen).
+  if (lakdoek?.actief && lakdoek.tekenaar === t) lakdoek.werk()
   maatDoek(v.b, v.h)
   /*
    * Zodra alles scherp staat de schaduwkaart één keer opnieuw: roosters en gaas
@@ -367,7 +417,8 @@ function tik(): void {
   const b = laad.bericht
   let held: Promise<Blob> | undefined
   let heldSleutel = ''
-  if (scherp && !beweegt && scene && b && !b.licht && !b.foto) {
+  // Geen heldenbeeld in de studio: een half ontwerp mag het heldenbeeld van de basis niet overschrijven (§4.1).
+  if (scherp && !beweegt && scene && b && !b.licht && !b.foto && !lakdoek?.actief) {
     heldSleutel = heldenSleutel(v.b / v.h, v.dpr)
     const k = `${scene.manifest.pakket}|${b.lak?.kleurstelling ?? ''}|${heldSleutel}`
     if (!laad.heldGedaan.has(k)) {
@@ -380,6 +431,7 @@ function tik(): void {
   if (beeldtijden.length > 120) beeldtijden.shift()
   v.inVlucht++
   stuur({ soort: 'beeld', viewer: v.id, bitmap, laad: laad.nr }, [bitmap])
+  tekenTweede(v, t)
 
   if (held && scene && b) {
     const pakket = scene.manifest.pakket
@@ -404,6 +456,7 @@ function tik(): void {
     if (scherp && laad.scherp === undefined) {
       laad.scherp = klok() - laad.t0
       meldStand(v, 'scherp', voortgang)
+      if (lakNaHerstel) herstartLak()
     } else if (!scherp && nu - laad.laatsteStand > 250) {
       laad.laatsteStand = nu
       meldStand(v, 'texturen', voortgang)
@@ -417,6 +470,33 @@ function tik(): void {
   if (draait) v.camera.draai(6 * Math.min(dt, 0.1))
   // Doortekenen zolang de camera beweegt of er texturen klaarliggen; anders plant een nieuwe textuur zelf een beeld.
   if (beweegt || draait || t.texturen.wachtendeUploads() > 0) plan()
+}
+
+/**
+ * De tweede viewport (§4.8): zolang het lakdoek loopt en een viewer als
+ * `tweede` is aangemeld, na het gewone beeld hetzelfde beeld van de andere kant,
+ * plat. Welke kant: de tegenovergestelde van waar de camera nu kijkt.
+ */
+function tekenTweede(hoofd: Viewer, t: Tekenaar): void {
+  if (!lakdoek?.actief) return
+  for (const w of viewers.values()) {
+    if (!w.tweede || w.b < 2 || w.h < 2 || w.inVlucht >= 2) continue
+    const draai = ((hoofd.camera.nu.draai % 360) + 360) % 360
+    const rechtsInBeeld = hoofd.camera.plat ? hoofd.camera.plat === 'rechts' : draai > 180
+    const kant: Plat = rechtsInBeeld ? 'links' : 'rechts'
+    w.camera.zetDoos(...doosVan(t))
+    maatDoek(w.b, w.h)
+    t.teken(w.camera.platBeeld(w.b / w.h, kant, 1), w.b, w.h)
+    const bm = doek.transferToImageBitmap()
+    w.inVlucht++
+    stuur({ soort: 'beeld', viewer: w.id, bitmap: bm, laad: laad.nr }, [bm])
+    maatDoek(hoofd.b, hoofd.h)
+  }
+}
+
+function doosVan(t: Tekenaar): [[number, number, number], [number, number, number]] {
+  const d = t.scene?.doos
+  return d ? [[...d.min] as [number, number, number], [...d.max] as [number, number, number]] : [[-1.25, 0, -6], [1.25, 3, 6]]
 }
 
 const PLATEAU_WACHT = 6000
@@ -606,6 +686,8 @@ doel.onmessage = (e) => {
     // Na een tweede verlies is dit [Opnieuw]: de context terug, of een verse.
     if (wachtOpOpnieuw) naVerliesOpnieuw()
     const nieuw = laad.bericht?.manifest.pakket !== m.manifest.pakket
+    // Een andere bus: het lakdoek van de vorige bus weg (de venster-kant start het opnieuw als het moet).
+    if (nieuw) lakdoek?.stop()
     laad.nr = m.laad
     laad.bericht = m
     laad.t0 = m.t0
@@ -642,6 +724,7 @@ doel.onmessage = (e) => {
     const v = viewerVan(m.viewer)
     const i = m.invoer
     if (i.soort === 'sleep') v.camera.sleep(i.dx, i.dy)
+    else if (i.soort === 'schuif') v.camera.schuif(i.dx, i.dy, v.h)
     else if (i.soort === 'zoom') v.camera.zoomStap(i.factor)
     else if (i.soort === 'stand') v.camera.stand(i.stand)
     else if (i.soort === 'draai') v.camera.draai(i.graden)
@@ -685,6 +768,123 @@ doel.onmessage = (e) => {
       (u) => stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: u }, [u.beeld, ...(u.masker ? [u.masker] : []), ...(u.id ? [u.id] : [])]),
       (fout) => stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: { fout: String(fout) } })
     )
+  } else if (m.soort === 'lakStart') {
+    const v = viewerVan(m.viewer)
+    if (!tekenaar?.scene || contextWeg) return stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: { fout: 'geen bus' } })
+    lakLaatste = { viewer: m.viewer, familie: m.familie, lagen: m.lagen, spiegel: m.spiegel }
+    lakNaHerstel = false
+    const t = tekenaar
+    // In de studio mag je dichterbij: tot 0,1 keer de inpasafstand (§4.12).
+    v.camera.zoomMin = 0.1
+    // Ook een fout bij het maken (een shader die niet compileert) wordt een antwoord, geen hangende vraag.
+    void (async () => {
+      const ld = lakdoekVoor(t)
+      const klaar = await ld.start(m.familie, { licht: m.licht, vlakX: m.spiegel?.vlakX })
+      ld.zetLagen(m.lagen, m.spiegel)
+      return klaar
+    })().then(
+      (klaar) => {
+        plan()
+        stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: klaar })
+      },
+      (fout) => stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: { fout: fout instanceof Error ? fout.message : String(fout) } })
+    )
+  } else if (m.soort === 'lakLagen') {
+    if (lakLaatste) lakLaatste = { ...lakLaatste, lagen: m.lagen, spiegel: m.spiegel ?? lakLaatste.spiegel }
+    lakdoek?.zetLagen(m.lagen, m.spiegel)
+    plan()
+  } else if (m.soort === 'lakBeeld') {
+    lakdoek?.zetBeeld(m.id, m.beeld)
+    plan()
+  } else if (m.soort === 'lakMasker') {
+    lakdoek?.toonMaskerAan(m.aan)
+    plan()
+  } else if (m.soort === 'lakStreek') {
+    lakdoek?.streek(m.laag, m.streek)
+    plan()
+  } else if (m.soort === 'lakKies') {
+    const v = viewerVan(m.viewer)
+    if (!lakdoek?.actief) return stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: { fout: 'geen lakdoek' } })
+    const cam = v.camera.beeld(v.b / Math.max(1, v.h))
+    stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: lakdoek.kies(cam.beeldProj, m.x, m.y, v.b, v.h) })
+  } else if (m.soort === 'lakExport') {
+    const ld = lakdoek
+    if (!ld?.actief) return stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: { fout: 'geen lakdoek' } })
+    void ld
+      .exporteer({ tegel: m.tegel, alleen: m.alleen, metRgba: m.metRgba, voortgang: (p) => stuur({ soort: 'lakVoortgang', ...p }) })
+      .then(
+        (uit) => {
+          const overdracht: Transferable[] = []
+          for (const u of uit) {
+            overdracht.push(u.dds.buffer)
+            if (u.rgba) overdracht.push(u.rgba.buffer)
+          }
+          stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: uit }, overdracht)
+          plan()
+        },
+        (fout) => stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: { fout: fout instanceof Error ? fout.message : String(fout) } })
+      )
+  } else if (m.soort === 'lakMeet') {
+    const v = viewerVan(m.viewer)
+    const ld = lakdoek
+    if (!ld?.actief || !tekenaar) return stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: { fout: 'geen lakdoek' } })
+    // Slepen nabootsen: elk beeld een andere laag-stand, samenstellen en tekenen tot de GPU klaar is (P3: ≥ 50 fps).
+    const g = gl!
+    const px = new Uint8Array(4)
+    const tijden: number[] = []
+    const samen: number[] = []
+    maatDoek(v.b, v.h)
+    ld.meten = true
+    for (let i = 0; i < (m.beelden ?? 60); i++) {
+      const t0 = performance.now()
+      ld.duw()
+      const t1 = performance.now()
+      ld.werk()
+      samen.push(performance.now() - t1)
+      tekenaar.teken(v.camera.beeld(v.b / v.h), v.b, v.h)
+      g.readPixels(0, 0, 1, 1, g.RGBA, g.UNSIGNED_BYTE, px)
+      tijden.push(performance.now() - t0)
+    }
+    ld.meten = false
+    doek.transferToImageBitmap().close()
+    plan()
+    stuur({
+      soort: 'antwoord',
+      vraag: m.vraag,
+      uitkomst: {
+        beeld: { p50: kwantiel(tijden, 0.5), p95: kwantiel(tijden, 0.95), max: Math.max(...tijden) },
+        samenstellen: { p50: kwantiel(samen, 0.5), p95: kwantiel(samen, 0.95) },
+        gpuLak: ld.gpuBytes(),
+        gpu: tekenaar.gpuBytes(v.b, v.h)
+      }
+    })
+  } else if (m.soort === 'lakProef') {
+    const ld = lakdoek
+    if (!ld?.actief) return stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: { fout: 'geen lakdoek' } })
+    if (m.wat === 'testBasis') {
+      ld.testBasis(m.kleur)
+      plan()
+      return stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: { ok: true } })
+    }
+    const u = ld.proef({ wat: m.wat, doel: m.doel ?? '', ids: m.ids, keer: m.keer })
+    if (!u) return stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: { fout: 'geen doel' } })
+    plan()
+    stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: u }, u.px ? [u.px.buffer] : [])
+  } else if (m.soort === 'lakMaskers') {
+    const ld = lakdoek
+    if (!ld?.actief) return stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: { fout: 'geen lakdoek' } })
+    const uit = ld.maskersOpnieuw()
+    plan()
+    stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: uit })
+  } else if (m.soort === 'lakStop') {
+    lakLaatste = undefined
+    lakNaHerstel = false
+    lakdoek?.stop()
+    plan()
+  } else if (m.soort === 'tweede') {
+    const v = viewerVan(m.viewer)
+    v.tweede = m.aan
+    plan()
   } else if (m.soort === 'meet') {
     const v = viewerVan(m.viewer)
     const t = tekenaar

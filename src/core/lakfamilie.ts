@@ -934,6 +934,13 @@ function rpcKandidaten(familie: Familie): string[] {
 }
 
 const VARIANT = /_(üfenster|ufenster|full|pop|trans|nl|neu|b|pre)\.rpc$/i
+/**
+ * Reclamesjablonen (een map "Werbung", "Reklame", "Advert..."): hun MA is alleen
+ * het reclamevlak, niet de lak. De HH20 heeft alleen zulke (Texture/Werbung/
+ * C2_21_Standard.rpc: MA wit op dak en onderrand, 35% gelijk aan de lak), en een
+ * lak met M = MA zou de rode carrosserie niet raken. Die komen in fase 3 (L6).
+ */
+const RECLAME = /[\\/](werbung[^\\/]*|reklame[^\\/]*|advert[^\\/]*|ads?)[\\/]/i
 
 /** De helderheid van een beeld, per pixel. */
 function helderheid(t: Textuur): Float64Array {
@@ -1021,6 +1028,7 @@ export function zoekSjabloon(familie: Familie, d: FamilieDoel): FamilieSjabloon 
   const stam = d.stam.toLowerCase()
   const opNaam = (bs: string): boolean => basename(bs).toLowerCase().replace(/\.[^.]+$/, '') === `${stam}_bs`
   const lijst = rpcKandidaten(familie)
+    .filter((rpc) => !RECLAME.test(rpc))
     .map((rpc) => ({ rpc, s: leesRpc(rpc) }))
     .filter((k) => k.s.bs && k.s.ma)
     .sort((a, b) => Number(opNaam(b.s.bs!)) - Number(opNaam(a.s.bs!)) || Number(VARIANT.test(a.rpc)) - Number(VARIANT.test(b.rpc)))

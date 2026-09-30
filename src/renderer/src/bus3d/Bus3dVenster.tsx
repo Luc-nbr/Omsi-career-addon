@@ -10,6 +10,8 @@ import {
 } from '../../../shared/bus3d'
 import { useLanguage, useT } from '../language'
 import { BusViewer, type ViewerStand } from '../BusViewer'
+import { Ontwikkelpaneel } from './lak/Ontwikkelpaneel'
+import type { ViewerHandvat } from './verbinding'
 
 /**
  * HET 3D-VENSTER: VIEWER PLUS ZIJPANEEL (bus3d-ontwerp §8.1, §8.2)
@@ -69,6 +71,8 @@ export function Bus3dVenster({ vraag, instellingen, stand }: Props): JSX.Element
   const [meer, zetMeer] = useState(false)
   const [hervat, zetHervat] = useState(false)
   const [scherpVoor, zetScherpVoor] = useState<string>()
+  /** De viewer zelf, voor het lakdoek (Lakstudio). */
+  const [handvat, zetHandvat] = useState<ViewerHandvat>()
   const scherp = scherpVoor === pad
   const zoekRef = useRef<HTMLInputElement>(null)
   const lijstRef = useRef<HTMLUListElement>(null)
@@ -319,6 +323,7 @@ export function Bus3dVenster({ vraag, instellingen, stand }: Props): JSX.Element
           }}
           onHervat={() => zetHervat(true)}
           onKies={() => kies(inBeeld)}
+          onHandvat={zetHandvat}
         />
       </div>
       <aside className="bv-paneel" aria-label={titel}>
@@ -329,7 +334,18 @@ export function Bus3dVenster({ vraag, instellingen, stand }: Props): JSX.Element
           {vraag.vloot?.kenteken ? <span className="bv-uitvoering">{vraag.vloot.kenteken}</span> : null}
         </header>
 
-        <section className="bv-blok bv-kleuren">
+        {vraag.doel === 'lakstudio' ? (
+          <Ontwikkelpaneel
+            pad={pad}
+            handvat={handvat}
+            projectId={vraag.lak?.projectId}
+            bedrijf={vraag.lak?.bedrijf?.naam}
+            licht={stand.licht}
+            klaarVoorLak={scherp}
+          />
+        ) : null}
+
+        <section className="bv-blok bv-kleuren" hidden={vraag.doel === 'lakstudio'}>
           <h2 className="bv-blokkop">{t('bv.schemes')}</h2>
           {lijst === undefined ? (
             <p className="bv-zacht">…</p>

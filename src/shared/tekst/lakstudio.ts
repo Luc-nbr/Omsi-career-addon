@@ -168,5 +168,21 @@ export const TEKST_LAKSTUDIO = {
   },
   'ls.dev.masker': { en: 'Show mask', de: 'Maske zeigen', fr: 'Afficher le masque', nl: 'Masker tonen' },
   'ls.dev.kleur': { en: 'Fill colour', de: 'Füllfarbe', fr: 'Couleur de remplissage', nl: 'Vulkleur' },
-  'ls.dev.export': { en: 'Export', de: 'Exportieren', fr: 'Exporter', nl: 'Exporteren' }
+  'ls.dev.export': { en: 'Export', de: 'Exportieren', fr: 'Exporter', nl: 'Exporteren' },
+  'ls.dev.strook': { en: 'Stripe', de: 'Streifen', fr: 'Bande', nl: 'Strook' },
+  'ls.dev.stand.links': { en: 'Left', de: 'Links', fr: 'Gauche', nl: 'Links' },
+  'ls.dev.stand.rechts': { en: 'Right', de: 'Rechts', fr: 'Droite', nl: 'Rechts' },
+  'ls.dev.stand.voorvlak': { en: 'Front', de: 'Front', fr: 'Avant', nl: 'Voorkant' },
+  'ls.dev.stand.achtervlak': { en: 'Rear', de: 'Heck', fr: 'Arrière', nl: 'Achterkant' },
+  'ls.dev.stand.dak': { en: 'Roof', de: 'Dach', fr: 'Toit', nl: 'Dak' },
+  'ls.dev.stand.schuin': { en: 'Angled', de: 'Schräg', fr: 'En biais', nl: 'Schuin' },
+  'ls.dev.tekst': { en: '+ Text', de: '+ Text', fr: '+ Texte', nl: '+ Tekst' },
+  'ls.dev.tweede': { en: 'Second view', de: 'Zweite Ansicht', fr: 'Deuxième vue', nl: 'Tweede beeld' },
+  'ls.dev.aanwijzen': { en: 'Pick (centre)', de: 'Zeigen (Mitte)', fr: 'Désigner (centre)', nl: 'Aanwijzen (midden)' },
+  'ls.dev.herstart': {
+    en: 'The graphics card was reset: the canvas restarted in light mode.',
+    de: 'Die Grafikkarte wurde zurückgesetzt: die Leinwand läuft wieder, im leichten Modus.',
+    fr: 'La carte graphique a été réinitialisée : la toile a redémarré en mode léger.',
+    nl: 'De videokaart is opnieuw begonnen: het lakdoek draait weer, in de lichte stand.'
+  }
 } as const

@@ -1,4 +1,4 @@
-import { graden, kijkNaar, perspectief, projecteer, vermenigvuldig, type Mat4, type Vec3 } from './wiskunde'
+import { graden, kijkNaar, orthografisch, perspectief, projecteer, vermenigvuldig, type Mat4, type Vec3 } from './wiskunde'
 
 /**
  * DE CAMERA VAN HET 3D-VENSTER (bus3d-ontwerp §6)
@@ -19,10 +19,13 @@ import { graden, kijkNaar, perspectief, projecteer, vermenigvuldig, type Mat4, t
  * doel + R · (cos k · sin d, sin k, -cos k · cos d).
  */
 
-export type Stand = 'voor' | 'zijkant' | 'achter' | 'schuin' | 'terug'
+export type Stand = 'voor' | 'zijkant' | 'achter' | 'schuin' | 'terug' | Plat
+
+/** De platte aanzichten van de Lakstudio (§4.12, toetsen 1-5): orthografisch. */
+export type Plat = 'links' | 'rechts' | 'voorvlak' | 'achtervlak' | 'dak'
 
 export const BEGIN = { draai: 215, kantel: 8, zoom: 1 }
-const STANDEN: Record<Exclude<Stand, 'terug'>, { draai: number; kantel: number }> = {
+const STANDEN: Record<Exclude<Stand, 'terug' | Plat>, { draai: number; kantel: number }> = {
   voor: { draai: 180, kantel: 6 },
   zijkant: { draai: 270, kantel: 5 },
   achter: { draai: 0, kantel: 6 },
@@ -55,6 +58,12 @@ export class Camera {
   /** Waar de camera naartoe gaat, en waar hij nu is (naloop). */
   doelStand: CameraStand = { ...BEGIN }
   nu: CameraStand = { ...BEGIN }
+  /** Een plat aanzicht (Lakstudio), of niets: dan perspectief. */
+  plat?: Plat
+  /** Verschuiving van het mikpunt (Lakstudio: middelste knop of Shift), in de wereld. */
+  schuifBij: Vec3 = [0, 0, 0]
+  /** De kleinste zoom: 0,55 in de viewer, 0,1 in de Lakstudio (§4.12). */
+  zoomMin = ZOOM_MIN
   /** De doos in de wereld (min, max). */
   private doos: { min: Vec3; max: Vec3 } = { min: [-1.25, 0, -6], max: [1.25, 3, 6] }
 
@@ -69,6 +78,12 @@ export class Camera {
   }
 
   sleep(dx: number, dy: number): void {
+    // Draaien in een plat aanzicht schakelt naar Schuin (§2.3).
+    if (this.plat) {
+      this.plat = undefined
+      this.doelStand = { ...STANDEN.schuin, zoom: 1 }
+      this.nu = { ...this.doelStand }
+    }
     this.doelStand.draai -= dx * 0.35
     this.doelStand.kantel = klem(this.doelStand.kantel + dy * 0.25, KANTEL_MIN, KANTEL_MAX)
   }
@@ -82,12 +97,30 @@ export class Camera {
   }
 
   zoomStap(factor: number): void {
-    this.doelStand.zoom = klem(this.doelStand.zoom * factor, ZOOM_MIN, ZOOM_MAX)
+    this.doelStand.zoom = klem(this.doelStand.zoom * factor, this.zoomMin, ZOOM_MAX)
+  }
+
+  /** Verschuiven in het beeldvlak: dx/dy in pixels van een beeld dat `hoogte` pixels hoog is. */
+  schuif(dx: number, dy: number, hoogte = 800): void {
+    const c = this.beeld(1)
+    const rechts: Vec3 = [c.beeld[0], c.beeld[4], c.beeld[8]]
+    const op: Vec3 = [c.beeld[1], c.beeld[5], c.beeld[9]]
+    const r = this.inpasAfstand(1) * this.nu.zoom
+    const perPixel = (2 * r * Math.tan(LENS / 2)) / Math.max(1, hoogte)
+    for (let a = 0; a < 3; a++) this.schuifBij[a] += (-rechts[a] * dx + op[a] * dy) * perPixel
   }
 
   stand(naam: Stand): void {
+    if (naam === 'links' || naam === 'rechts' || naam === 'voorvlak' || naam === 'achtervlak' || naam === 'dak') {
+      this.plat = naam
+      this.doelStand = { ...this.doelStand, zoom: 1 }
+      this.schuifBij = [0, 0, 0]
+      return
+    }
+    this.plat = undefined
     if (naam === 'terug') {
       this.doelStand = { ...BEGIN }
+      this.schuifBij = [0, 0, 0]
       return
     }
     const s = STANDEN[naam]
@@ -138,9 +171,43 @@ export class Camera {
    * De matrices voor een beeld. `anders` voor een afdruk met een eigen stand of
    * een eigen mikpunt en afstand (de close-up van een zijruit).
    */
+  /**
+   * Een plat aanzicht (§4.12): orthografisch van opzij, voor, achter of boven,
+   * passend op de doos, met de zoom en de verschuiving erbij. `plat` kan ook van
+   * buiten komen (de tweede viewport toont de andere kant).
+   */
+  platBeeld(verhouding: number, plat: Plat, zoom = this.nu.zoom): CameraBeeld {
+    const d = this.doos
+    const midden: Vec3 = [(d.min[0] + d.max[0]) / 2 + this.schuifBij[0], (d.min[1] + d.max[1]) / 2 + this.schuifBij[1], (d.min[2] + d.max[2]) / 2 + this.schuifBij[2]]
+    const maat: Vec3 = [d.max[0] - d.min[0], d.max[1] - d.min[1], d.max[2] - d.min[2]]
+    const r = Math.max(maat[0], maat[1], maat[2]) + 5
+    // In de wereld is x gespiegeld: de rechterzijde (deurkant, o3d +x) ligt aan -X.
+    const richting: Record<Plat, { oog: Vec3; op: Vec3; b: number; h: number }> = {
+      rechts: { oog: [-1, 0, 0], op: [0, 1, 0], b: maat[2], h: maat[1] },
+      links: { oog: [1, 0, 0], op: [0, 1, 0], b: maat[2], h: maat[1] },
+      voorvlak: { oog: [0, 0, 1], op: [0, 1, 0], b: maat[0], h: maat[1] },
+      achtervlak: { oog: [0, 0, -1], op: [0, 1, 0], b: maat[0], h: maat[1] },
+      dak: { oog: [0, 1, 0], op: [0, 0, 1], b: maat[0], h: maat[2] }
+    }
+    const k = richting[plat]
+    const oog: Vec3 = [midden[0] + k.oog[0] * r, midden[1] + k.oog[1] * r, midden[2] + k.oog[2] * r]
+    const beeld = kijkNaar(oog, midden, k.op)
+    // Inpassen met 8% rand, dan de zoom.
+    let halfB = (k.b / 2) * 1.08
+    let halfH = (k.h / 2) * 1.08
+    if (halfB / halfH < verhouding) halfB = halfH * verhouding
+    else halfH = halfB / verhouding
+    halfB *= zoom
+    halfH *= zoom
+    const proj = orthografisch(-halfB, halfB, -halfH, halfH, 0.1, 2 * r + 20)
+    return { beeld, proj, beeldProj: vermenigvuldig(proj, beeld), oog, doel: midden, dichtbij: 0.1, ver: 2 * r + 20 }
+  }
+
   beeld(verhouding: number, anders?: { stand?: CameraStand; doel?: Vec3; afstand?: number }): CameraBeeld {
+    if (this.plat && !anders) return this.platBeeld(verhouding, this.plat)
     const s = anders?.stand ?? this.nu
     const doel: Vec3 = [...(anders?.doel ?? this.mikpunt())]
+    if (!anders) for (let a = 0; a < 3; a++) doel[a] += this.schuifBij[a]
     const r = anders?.afstand ?? this.inpasAfstand(verhouding) * s.zoom
     const d = graden(s.draai)
     const k = graden(s.kantel)

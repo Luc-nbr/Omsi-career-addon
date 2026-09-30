@@ -239,7 +239,8 @@ export type Bus3dAntwoord =
  */
 export interface Bus3dBrug {
   busModel3d(relatiefPad: string, kleurstelling?: string): Promise<Bus3dAntwoord>
-  busLak3d(pakket: string, kleurstelling?: string): Promise<Bus3dLak | { reden: Bus3dReden }>
+  /** `extra`: de busopties van de Lakstudio (lakstudio-ontwerp §4.9). */
+  busLak3d(pakket: string, kleurstelling?: string, extra?: Array<[string, number]>): Promise<Bus3dLak | { reden: Bus3dReden }>
   busOmgeving3d(): Promise<Bus3dOmgeving>
   busHeldenbeeld(pakket: string, kleurstelling: string | undefined, sleutel: string, webp: ArrayBuffer): Promise<boolean>
   busFotoAlsKlaar(relatiefPad: string, kleurstelling?: string, verhouding?: 'breed' | 'smal'): Promise<string | undefined>

@@ -683,6 +683,97 @@ hoort niet onder je handen opnieuw op te komen (`probe-beweging.cjs`,
 
 ## 5. Openstaand werk
 
+### 5.000000 Lakstudio L1 en L2: het lakdoek en opslaan in OMSI (30-09-2026)
+
+Ontwerp §4, §5, §10; tak `claude/lakstudio`. Alles achter de schakelaar
+`bus3d` (standaard uit): zonder schakelaar is er geen 3D-venster, geen studio
+en is de wachtrij leeg, dus blijft de app gelijk. Er is nog geen studio voor
+spelers (L3); het 3D-venster heeft in doel `lakstudio` een ontwikkelpaneel.
+
+**L2, opslaan** (commit b8ce728, zie daar): `shared/lak.ts` (contract, naamregels,
+.cti in cp1252), `shared/bcn.ts` (eigen BC1/BC3), `shared/dds.ts` (DX9-kop, volle
+keten, `_#low`), `core/lakfamilie.ts` (familie, lakplekken op de schil,
+meeliftende KI-bussen, conflicten, sjablonen, busopties), `core/lakstudio.ts`
+(plan, plaatsen via de add-on-manager met de .cti als laatste, opnieuw opslaan,
+verwijderen, klaarzetten en wachtrij, teller, wezen), `main/grendel.ts`,
+`main/lakstudio.ts` (IPC met bewaking; wachtrij na OMSI en vóór launchOmsi).
+
+**L1, het lakdoek** (`src/renderer/src/bus3d/lak/`): alles in de renderer-werker.
+- `lakdoek.ts`: laknet per doel (alleen wat nu zichtbaar is, met het item dat
+  nu geldt; uv teruggeschoven, kopieën over tegelgrenzen, haarlijnen alleen op
+  de buitenranden van uv-eilanden), masker (G/B/A in één gang, dan 26 richtingen
+  voor R met een stencil die al gevonden texels overslaat), MIN/MAX-plek voor
+  "gedeeld", zones, JFA-zaad, beide samenstelpaden, uitvloeien (kleur van de
+  buur, alfa van de basis), override van `Texturen.voorPlek`, pick (RGBA32UI),
+  penseel, export in tegels (zelfde omzetting als het hele doel, verschoven, dus
+  byte-gelijk), mips op de processor, BC in codeerwerkers, PBO-uitlezen.
+- `lakshaders.ts`, `zones.ts` (k-means in Lab op ≤ 4096 monsters), `recept.ts`,
+  `lagen.ts` (ongedaan maken), `codeer.ts`, `Ontwikkelpaneel.tsx`.
+- `werker.ts`: berichten `lak*`; na een contextverlies start de werker het
+  lakdoek zelf opnieuw in de lichte stand met de laatste lagen (`lakHerstart`).
+- Busopties: `busRust`/`bus3dLak`/`lakStempel` kennen extra setvars.
+
+**Proeven:** `scripts/probe-lakstudio.ts` (node, nagebootste OMSI-map: P1, P2,
+P8, P9, P13, P15, P16, wezen) en `scripts/probe-lakstudio-beeld.cjs` (Electron
+met de gebouwde werker: P3-P7, P16, en de GPU-export geplaatst in de
+nagebootste map, gezien door `kleurstelling.ts`, en weer verwijderd). Beide
+schrijven alleen in de proefmap; de echte OMSI-map wordt gelezen.
+
+**Wat de GPU-proef leerde (vastgelegd in de code):**
+- ANGLE (D3D11) tekende na `drawArrays` + `drawElements(LINES)` in één vao per
+  texel een tweede fragment op (0,0,0): 88% "gedeeld" op de SD77. De randen
+  hebben nu een eigen vao.
+- De tekenaar laat CULL_FACE (frontFace CW) en DEPTH_TEST aan; elke gang van het
+  lakdoek zet eerst de staat schoon (`staatSchoon`), anders viel de
+  schermvullende driehoek weg zodra er tussen twee tegels een beeld getekend was.
+- Een dieptekaart die nog op eenheid 0 hing, maakte een terugkoppeling: de
+  dieptegangen vielen stil weg.
+- Takken met `pow` per laag (afbeelding, penseel, sjabloon) rekende de
+  HLSL-vertaler allemaal uit: 10 ms bij 4096² met 32 lagen. Nu SRGB8-decals, het
+  penseel alleen als dekking, en de sjabloonkeuze buiten de lus: 3 ms.
+- `gl.finish()` wacht in Chromium niet op de GPU; tijden worden gemeten met
+  het uitlezen van één pixel.
+
+**Afwijkingen van het ontwerp:**
+- Glas is alleen glas als geen driehoek zonder glas de texel raakt (een
+  randlijn van een ruit maakte anders elke raamrand glas; MA lakt daar).
+- "Gedeeld" meet alle assen in dezelfde stap (de grootste maat, ≈ 4,5 cm): per
+  as apart werd elke binnenhuid achter de buitenhuid gedeeld.
+- Zones: donker en kleurloos (L* < 30, chroma < 12) is nooit lak, behalve de
+  grootste zone (SD77: de onderkant); een zone ≥ 2% met de tint van een lakzone
+  is wél lak (schaduw en vuil); met twee kleurloze lakzones is elk grijs
+  daartussen lak (HH20: zwart en lichtgrijs met verloop).
+- Wielen (o3d-naam Rad, wheel, Reifen, Felge, Tyre) zijn beschermd zoals glas: op
+  de HH20 zijn banden en carrosserie even zwart.
+- Reclamesjablonen (map `Werbung`) tellen niet: de HH20 heeft alleen die
+  (C2_21_Standard: MA = reclamevlak), dus de HH20 rekent met het automatische
+  masker.
+- NL202 wordt BC3, niet BC1: EN92_1.tga heeft overal alfa 0/15/74 (het
+  reflectiemasker); de regel "BC1 alleen bij alfa overal 255" beslist.
+- De tijd van "masker plus zaad" staat warm in de proef (de eerste keer vertaalt
+  ANGLE de shaders, 26-159 ms); samenstellen wordt gemeten over reeksen van 10
+  (los gemeten klokte de GPU terug).
+
+**Gemeten (RTX 4070 SUPER, 30-09):** samenstellen bij 4096² met 32 lagen
+2,0-2,7 ms (pad 1), HH20 gedeeld pad 1,6 ms; slepen p95 1,7-3,2 ms per beeld;
+masker plus zaad warm 16-53 ms per doel (koud 10-139 ms); export C2 GN 3× 4096² 1,9 s in het
+lakdoek (11 s met het laden van de Hybrid-achterwagen), SD77 0,5 s; plaatsen
+0,1-0,9 s; lakdoek boven de viewer C2 GN 415 MB, NLC 119 MB, licht 23-49 MB;
+herstart na contextverlies 1,0 s. Het automatische masker tegen MA: SD77 98,2%
+en 100%, NL202 98,3%.
+
+**Proef 14 van probe-bus3d-venster.cjs** (pauze na 60 s zonder focus) faalde
+twee keer op 30-09: er had steeds een venster van de proef-app de focus (de
+logregel `omsi-zonder-focus` kwam niet). De pauzeregel in main/bus3dvenster.ts
+is sinds 8e8c27a niet veranderd; het hangt af van wat er op het bureaublad
+gebeurt.
+
+**Nog niet (L3 en later):** de studio voor spelers; de geen-kopie-regel bij
+gedeelde texels en `ls.spiegelschrift`; de silhouet-hints (`extra`) die de werker
+zou meten; het front- en achtervlak van stroken als echte vlakken; de export
+van doelen van een ander familielid vanuit het venster (de proef laadt daarvoor
+de bakker, zoals het venster het straks moet doen); het penseel is minimaal.
+
 ### 5.00000 Lakstudio L0: kleurstellingen gelezen zoals Omsi.exe (30-09-2026)
 
 Ontwerp: `design/ontwerpen/lakstudio.md` (de livery-editor in het 3D-venster;

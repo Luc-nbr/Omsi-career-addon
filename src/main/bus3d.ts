@@ -81,8 +81,11 @@ export type Bus3dWerkerModel =
 export interface Bus3dDienst {
   /** `bus:model3d`: het manifest (uit de cache, of nieuw gebouwd) plus de lak. */
   model3d(relatiefPad: string, kleurstelling?: string, venster?: WebContents): Promise<Bus3dAntwoord>
-  /** `bus:lak3d`: de lak van een andere kleurstelling voor een pakket dat er al is. */
-  lak3d(pakket: string, kleurstelling?: string, venster?: WebContents): Promise<Bus3dLak | { reden: Bus3dReden }>
+  /**
+   * `bus:lak3d`: de lak van een andere kleurstelling voor een pakket dat er al
+   * is; `extra` zijn de busopties van de Lakstudio (§4.9).
+   */
+  lak3d(pakket: string, kleurstelling?: string, venster?: WebContents, extra?: Array<[string, number]>): Promise<Bus3dLak | { reden: Bus3dReden }>
   /** `bus:omgeving3d`: hemel en wolken van "Buiten" (§5.6), met hun texturen in het register. */
   omgeving3d(): Promise<Bus3dOmgeving>
   /** `bus:heldenbeeld`: het beeld dat het venster maakte toen de bus scherp stond (§9). */
@@ -370,11 +373,12 @@ export function maakBus3dDienst(af: Bus3dAfhankelijk): Bus3dDienst {
    * ruststand -- welke meshes, welk materiaal -- moet nog steeds uitgerekend
    * worden (§5.2).
    */
-  async function lak(z: Bus3dZijspoor, kleurstelling: string | undefined): Promise<Bus3dLak | undefined> {
+  async function lak(z: Bus3dZijspoor, kleurstelling: string | undefined, extra?: Array<[string, number]>): Promise<Bus3dLak | undefined> {
     const uit = await metWacht<{ lak: Bus3dLak; textuurBronnen: Bus3dTextuurBron[] } | { reden: Bus3dReden }>({
       soort: 'bus3d:lak',
       pakket: z.pakket,
-      kleurstelling
+      kleurstelling,
+      extra: extra?.length ? extra : undefined
     })
     if ('reden' in uit) return undefined
     for (const t of uit.textuurBronnen) texturen.set(t.id, t)
@@ -449,11 +453,16 @@ export function maakBus3dDienst(af: Bus3dAfhankelijk): Bus3dDienst {
     }
   }
 
-  async function lak3d(pakket: string, kleurstelling?: string, venster?: WebContents): Promise<Bus3dLak | { reden: Bus3dReden }> {
+  async function lak3d(
+    pakket: string,
+    kleurstelling?: string,
+    venster?: WebContents,
+    extra?: Array<[string, number]>
+  ): Promise<Bus3dLak | { reden: Bus3dReden }> {
     if (!isBus3dId(String(pakket))) return { reden: 'fout' }
     const z = cache.zijspoor(pakket)
     if (!z) return { reden: 'verouderd' }
-    const uit = await inDeRij(kanaalVan('lak', venster), async () => (await lak(z, kleurstelling)) ?? leegLak(kleurstelling))
+    const uit = await inDeRij(kanaalVan('lak', venster), async () => (await lak(z, kleurstelling, extra)) ?? leegLak(kleurstelling))
     return uit
   }
 
@@ -776,13 +785,22 @@ function stroom(pad: string, type: string, vraag: Request): Response {
   return new Response(lijf, { status: 200, headers: { ...kop, 'Content-Length': String(grootte) } })
 }
 
+/** Busopties uit het venster (Lakstudio §4.9): alleen [naam, getal]-paren, hooguit 64, namen zonder rare tekens. */
+function extraVars(x: unknown): Array<[string, number]> | undefined {
+  if (!Array.isArray(x)) return undefined
+  const uit = x
+    .filter((p): p is [string, number] => Array.isArray(p) && typeof p[0] === 'string' && /^[\w .-]{1,64}$/.test(p[0]) && typeof p[1] === 'number' && Number.isFinite(p[1]))
+    .slice(0, 64)
+  return uit.length ? uit : undefined
+}
+
 /** De IPC voor het 3D-venster (§11.3). De preload `bus3d` geeft ze door (F2). */
 export function registreerBus3dIpc(ipcMain: IpcMain, dienst: Bus3dDienst): void {
   ipcMain.handle('bus:model3d', (event: IpcMainInvokeEvent, relatiefPad: unknown, kleurstelling: unknown) =>
     dienst.model3d(String(relatiefPad ?? ''), typeof kleurstelling === 'string' ? kleurstelling : undefined, event.sender)
   )
-  ipcMain.handle('bus:lak3d', (event: IpcMainInvokeEvent, pakket: unknown, kleurstelling: unknown) =>
-    dienst.lak3d(String(pakket ?? ''), typeof kleurstelling === 'string' ? kleurstelling : undefined, event.sender)
+  ipcMain.handle('bus:lak3d', (event: IpcMainInvokeEvent, pakket: unknown, kleurstelling: unknown, extra: unknown) =>
+    dienst.lak3d(String(pakket ?? ''), typeof kleurstelling === 'string' ? kleurstelling : undefined, event.sender, extraVars(extra))
   )
   // Het venster kan een pakket niet lezen: vergeten, zodat [Opnieuw] echt opnieuw bouwt.
   ipcMain.on('bus:stuk3d', (_event, pakket: unknown) => dienst.stuk(String(pakket ?? '')))

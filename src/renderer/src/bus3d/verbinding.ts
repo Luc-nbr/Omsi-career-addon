@@ -1,4 +1,5 @@
 import type { Bus3dLak, Bus3dManifest, Bus3dOmgeving } from '../../../shared/bus3d'
+import type { Laag, LakFamilieInfo } from '../../../shared/lak'
 import { klok, type AfdrukVraag, type Invoer, type NaarWerker, type StandBericht, type VanWerker } from './berichten'
 
 /**
@@ -31,6 +32,24 @@ export interface ViewerHandvat {
   afdruk(a: AfdrukVraag): Promise<{ beeld: ArrayBuffer; masker?: ArrayBuffer; id?: ArrayBuffer; idTabel?: unknown } | { fout: string }>
   meet(wat: 'draaien' | 'schaduw' | 'geheugen', beelden?: number): Promise<unknown>
   weg(): void
+  /** De Lakstudio (lakstudio-ontwerp §4.1): het lakdoek in de werker van deze viewer. */
+  studio: {
+    start(familie: LakFamilieInfo, lagen: Laag[], spiegel?: { aan: boolean; vlakX?: number }, licht?: boolean): Promise<unknown>
+    lagen(lagen: Laag[], spiegel?: { aan: boolean; vlakX?: number }): void
+    beeld(id: string, beeld: ImageBitmap): void
+    masker(aan: boolean): void
+    kies(x: number, y: number): Promise<unknown>
+    streek(laag: number, streek: Extract<NaarWerker, { soort: 'lakStreek' }>['streek']): void
+    exporteer(opties?: { tegel?: number; alleen?: string[]; metRgba?: boolean }): Promise<unknown>
+    meet(beelden?: number): Promise<unknown>
+    stop(): void
+    /** Voor de proef (P3-P6): zie `Lakdoek.proef`. */
+    proef(o: Omit<Extract<NaarWerker, { soort: 'lakProef' }>, 'soort' | 'vraag'>): Promise<unknown>
+    /** De maskers opnieuw na andere busopties (§4.9). */
+    maskers(): Promise<unknown>
+    /** Deze viewer is de tweede viewport (de andere kant, §4.8). */
+    tweede(aan: boolean): void
+  }
 }
 
 interface Aangemeld {
@@ -51,6 +70,10 @@ export class Verbinding {
   private volgendeVraag = 0
   private volgendeLaad = 0
   private omgevingGestuurd = false
+  /** De voortgang van een lak-export (§2.1: "Lak maken … In OMSI zetten …"). */
+  opLakVoortgang?: (v: { doel: string; stap: string; deel: number }) => void
+  /** Het lakdoek herstartte na een contextverlies, licht (P4). */
+  opLakHerstart?: (klaar: unknown) => void
   /** Wat de werker bij het starten meldde: WebGL2 of niet, en wat voor kaart. */
   gereed: Promise<Extract<VanWerker, { soort: 'gereed' }>>
 
@@ -85,6 +108,8 @@ export class Verbinding {
       } else if (m.soort === 'stand') this.viewers.get(m.viewer)?.luister.opStand?.(m)
       else if (m.soort === 'fout') this.viewers.get(m.viewer)?.luister.opFout?.(m)
       else if (m.soort === 'held') this.viewers.get(m.viewer)?.luister.opHeld?.(m)
+      else if (m.soort === 'lakVoortgang') this.opLakVoortgang?.({ doel: m.doel, stap: m.stap, deel: m.deel })
+      else if (m.soort === 'lakHerstart') this.opLakHerstart?.(m.klaar)
       else if (m.soort === 'antwoord') {
         const k = this.vragen.get(m.vraag)
         this.vragen.delete(m.vraag)
@@ -151,6 +176,20 @@ export class Verbinding {
       plateau: (aan) => zelf.stuur({ soort: 'plateau', viewer: id, aan }),
       afdruk: (a) => zelf.vraag((vraag) => ({ soort: 'afdruk', vraag, viewer: id, afdruk: a })) as ReturnType<ViewerHandvat['afdruk']>,
       meet: (wat, beelden) => zelf.vraag((vraag) => ({ soort: 'meet', vraag, viewer: id, wat, beelden })),
+      studio: {
+        start: (familie, lagen, spiegel, licht) => zelf.vraag((vraag) => ({ soort: 'lakStart', vraag, viewer: id, familie, lagen, spiegel, licht })),
+        lagen: (lagen, spiegel) => zelf.stuur({ soort: 'lakLagen', lagen, spiegel }),
+        beeld: (beeldId, beeld) => zelf.stuur({ soort: 'lakBeeld', id: beeldId, beeld }, [beeld]),
+        masker: (aan) => zelf.stuur({ soort: 'lakMasker', aan }),
+        kies: (x, y) => zelf.vraag((vraag) => ({ soort: 'lakKies', vraag, viewer: id, x, y })),
+        streek: (laag, streek) => zelf.stuur({ soort: 'lakStreek', laag, streek }),
+        exporteer: (o) => zelf.vraag((vraag) => ({ soort: 'lakExport', vraag, tegel: o?.tegel, alleen: o?.alleen, metRgba: o?.metRgba })),
+        meet: (beelden) => zelf.vraag((vraag) => ({ soort: 'lakMeet', vraag, viewer: id, beelden })),
+        stop: () => zelf.stuur({ soort: 'lakStop' }),
+        maskers: () => zelf.vraag((vraag) => ({ soort: 'lakMaskers', vraag })),
+        proef: (o) => zelf.vraag((vraag) => ({ soort: 'lakProef', vraag, ...o })),
+        tweede: (aan) => zelf.stuur({ soort: 'tweede', viewer: id, aan })
+      },
       weg: () => {
         // Het laatste beeld meteen loslaten, niet pas als de vuilnisman langskomt (8 MB videogeheugen per doek).
         const v = zelf.viewers.get(id)

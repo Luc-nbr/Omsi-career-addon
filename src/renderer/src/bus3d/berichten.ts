@@ -1,4 +1,5 @@
 import type { Bus3dLak, Bus3dManifest, Bus3dMeting, Bus3dOmgeving } from '../../../shared/bus3d'
+import type { Laag, LakFamilieInfo } from '../../../shared/lak'
 import type { CameraStand, Stand } from './camera'
 import type { Vec3 } from './wiskunde'
 
@@ -16,6 +17,8 @@ export type Invoer =
   | { soort: 'sleep'; dx: number; dy: number }
   | { soort: 'zoom'; factor: number }
   | { soort: 'stand'; stand: Stand }
+  /** Verschuiven (middelste knop of Shift, §2.3), in pixels. */
+  | { soort: 'schuif'; dx: number; dy: number }
   | { soort: 'draai'; graden: number }
   | { soort: 'kantel'; graden: number }
 
@@ -68,6 +71,30 @@ export type NaarWerker =
   | { soort: 'plateau'; viewer: number; aan: boolean }
   | { soort: 'afdruk'; vraag: number; viewer: number; afdruk: AfdrukVraag }
   | { soort: 'meet'; vraag: number; viewer: number; wat: 'draaien' | 'schaduw' | 'geheugen'; beelden?: number }
+  /*
+   * De Lakstudio (lakstudio-ontwerp §4.1): het lakdoek in dezelfde werker en
+   * context. Antwoorden gaan als 'antwoord' op het vraagnummer; de voortgang van
+   * de export als 'lakVoortgang'.
+   */
+  | { soort: 'lakStart'; vraag: number; viewer: number; familie: LakFamilieInfo; lagen: Laag[]; spiegel?: { aan: boolean; vlakX?: number }; licht?: boolean }
+  | { soort: 'lakLagen'; lagen: Laag[]; spiegel?: { aan: boolean; vlakX?: number } }
+  | { soort: 'lakBeeld'; id: string; beeld: ImageBitmap }
+  | { soort: 'lakMasker'; aan: boolean }
+  | { soort: 'lakKies'; vraag: number; viewer: number; x: number; y: number }
+  | {
+      soort: 'lakStreek'
+      laag: number
+      streek: { punten: number[]; straalCm: number; hardheid: number; dekking: number; gum: boolean; camera: number[]; kleur: string }
+    }
+  | { soort: 'lakExport'; vraag: number; tegel?: number; alleen?: string[]; metRgba?: boolean }
+  | { soort: 'lakMeet'; vraag: number; viewer: number; beelden?: number }
+  | { soort: 'lakStop' }
+  /** Voor de proef (P3-P6), zie `Lakdoek.proef`. */
+  | { soort: 'lakProef'; vraag: number; wat: 'masker' | 'effect' | 'teken' | 'tijd' | 'testBasis' | 'plek'; doel?: string; ids?: number[]; keer?: number; kleur?: [number, number, number] }
+  /** Na andere busopties (een nieuwe ruststand): de maskers opnieuw (§4.9, P16). */
+  | { soort: 'lakMaskers'; vraag: number }
+  /** De tweede viewport (§4.8): deze viewer toont de andere kant, plat, zolang het lakdoek loopt. */
+  | { soort: 'tweede'; viewer: number; aan: boolean }
 
 export interface StandBericht {
   soort: 'stand'
@@ -98,6 +125,12 @@ export type VanWerker =
       pakket?: string
     }
   | { soort: 'antwoord'; vraag: number; uitkomst: unknown }
+  | { soort: 'lakVoortgang'; doel: string; stap: string; deel: number }
+  /**
+   * Na een contextverlies (§4.13, P4): de werker startte het lakdoek zelf opnieuw,
+   * in de lichte stand en met de laatste lagen; `klaar` is wat lakStart gaf.
+   */
+  | { soort: 'lakHerstart'; viewer: number; klaar: unknown }
 
 /** Nu, in ms sinds 1970, met de fijnheid van `performance.now()`. */
 export const klok = (): number => performance.timeOrigin + performance.now()

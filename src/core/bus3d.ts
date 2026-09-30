@@ -1197,7 +1197,9 @@ export function bus3dLak(
   omsiMap: string,
   manifest: Bus3dManifest,
   kleurstelling: string | undefined,
-  kop?: Bus3dPakKop
+  kop?: Bus3dPakKop,
+  /** Busopties van de Lakstudio (§4.9): extra setvars na die van de kleurstelling. */
+  extra: Array<[string, number]> = []
 ): { lak: Bus3dLak; textuurBronnen: Bus3dTextuurBron[] } {
   const t0 = performance.now()
   const lak: Bus3dLak = {
@@ -1219,7 +1221,7 @@ export function bus3dLak(
       const bus = leesBusBestand(busPad)
       delen.push({ busPad, modelcfg: bus?.model ? join(dirname(busPad), ...bus.model.split(/[\\/]+/)) : '' })
     }
-    const rust = busRust(kop, delen, kleurstelling)
+    const rust = busRust(kop, delen, kleurstelling, extra)
     lak.zichtbaar = rust.zichtbaar
     lak.items = rust.items
     lak.alphascale = rust.alphascale
@@ -1240,7 +1242,7 @@ export function bus3dLak(
     if (!info) continue
     const gekozen = zoekKleurstelling(info, kleurstelling)
     if (!gekozen) continue
-    if (d === 0) lak.vars = kleurVarsVan(info, kleurstelling) ?? []
+    if (d === 0) lak.vars = [...(kleurVarsVan(info, kleurstelling) ?? []), ...extra]
     for (const [plek, pad] of Object.entries(gekozen.texturen)) {
       const standaard = info.plekken[plek]
       if (!standaard || !existsSync(pad)) continue
@@ -1290,8 +1292,13 @@ export function bus3dLak(
  * .cti's kan het nummer, een setvar of een textuur nu anders zijn (HHA12,
  * " silber", de MAN LC), en de stempels van de bestanden zien dat niet.
  */
-export function lakStempel(omsiMap: string, manifest: Bus3dManifest, kleurstelling: string | undefined): string {
-  const h = createHash('sha1').update(`lak-3|${kleurstelling ?? ''}`)
+export function lakStempel(
+  omsiMap: string,
+  manifest: Bus3dManifest,
+  kleurstelling: string | undefined,
+  extra: Array<[string, number]> = []
+): string {
+  const h = createHash('sha1').update(`lak-3|${kleurstelling ?? ''}${extra.length ? `|${JSON.stringify(extra)}` : ''}`)
   const stempel = (pad: string): void => {
     try {
       const st = statSync(pad)

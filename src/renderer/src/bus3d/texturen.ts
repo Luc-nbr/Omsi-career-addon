@@ -171,8 +171,22 @@ export class Texturen {
     return this.samplers.hemel
   }
 
+  /**
+   * De Lakstudio (lakstudio-ontwerp §4.1): de samengestelde lak van een doel
+   * vervangt de textuur van zijn plek, in hetzelfde beeld. Eén override per plek;
+   * `undefined` haalt hem weg. De texturen van de override zijn van het lakdoek.
+   */
+  private vervangen = new Map<number | string, GpuTextuur>()
+  zetVervanging(plek: number | string, gpu: GpuTextuur | undefined): void {
+    if (gpu) this.vervangen.set(plek, gpu)
+    else this.vervangen.delete(plek)
+    this.opVerandering()
+  }
+
   /** De textuur die nu op deze plek hoort, of een andere maat van dezelfde zolang die nog laadt. */
   voorPlek(plek: number | string): GpuTextuur | undefined {
+    const eigen = this.vervangen.get(plek)
+    if (eigen) return eigen
     const doel = this.doelen.get(plek)
     if (!doel) return undefined
     const ingang = this.ingangen.get(`${doel.t.id}@${doel.k}`)
