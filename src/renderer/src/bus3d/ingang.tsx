@@ -75,6 +75,13 @@ interface Proefhaak {
     analyseNa(lagen: Laag[], spiegel?: { aan: boolean; vlakX?: number }): Promise<unknown>
     /** P7: [Schuif naar een vrij stuk]. */
     schuif(id: string): Promise<unknown>
+    /**
+     * Tegenlezing L3 punt 1: een export terwijl de context wegvalt (pauze met
+     * vrijgeven, zoals minimaliseren): de export moet een fout geven, geen lege DDS.
+     */
+    exportMetVerlies(naMs?: number): Promise<unknown>
+    /** Snelle lak: een vrije plek voor de naam of het logo (`Lakdoek.vrijePlek`). */
+    vrij(id: string, zoek: Parameters<ViewerHandvat['studio']['vrij']>[1]): Promise<unknown>
   }
 }
 
@@ -220,6 +227,29 @@ function Proefviewer(): JSX.Element {
             h.studio.lagen(lagen, spiegel)
           }),
         schuif: async (id) => handvat.current?.studio.schuif(id),
+        vrij: async (id, zoek) => handvat.current?.studio.vrij(id, zoek),
+        exportMetVerlies: async (naMs = 40) => {
+          const h = handvat.current
+          if (!h) return { fout: 'geen viewer' }
+          const v = Verbinding.get()
+          const oud = v.opLakHerstart
+          const herstart = new Promise((klaar) => {
+            const klok = setTimeout(() => klaar({ fout: 'geen herstart binnen 60 s' }), 60000)
+            v.opLakHerstart = (k) => {
+              clearTimeout(klok)
+              klaar(k)
+            }
+          })
+          const exp = h.studio.exporteer({ metRgba: false })
+          await new Promise((k) => setTimeout(k, naMs))
+          h.pauze(true, true)
+          const uit = (await exp) as unknown
+          h.pauze(false)
+          const k = await herstart
+          v.opLakHerstart = oud
+          const dds = Array.isArray(uit) ? (uit as Array<{ dds: Uint8Array }>).map((x) => ({ bytes: x.dds.length, nul: x.dds.subarray(128).every((b) => b === 0) })) : undefined
+          return { uitkomst: Array.isArray(uit) ? 'dds' : uit, dds, herstart: Boolean(k && typeof k === 'object' && !('fout' in (k as object))) }
+        },
         opties: async (extra) => {
           const h = handvat.current
           const pakket = laatste.current?.pakket

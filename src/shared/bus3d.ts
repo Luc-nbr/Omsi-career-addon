@@ -239,8 +239,18 @@ export type Bus3dAntwoord =
  */
 export interface Bus3dBrug {
   busModel3d(relatiefPad: string, kleurstelling?: string): Promise<Bus3dAntwoord>
-  /** `extra`: de busopties van de Lakstudio (lakstudio-ontwerp §4.9). */
-  busLak3d(pakket: string, kleurstelling?: string, extra?: Array<[string, number]>): Promise<Bus3dLak | { reden: Bus3dReden }>
+  /**
+   * `extra`: de busopties van de Lakstudio (lakstudio-ontwerp §4.9).
+   * `alleenGeschreven`: een variabele die niemand zet is 0 (of wat het script
+   * bij het starten zet), zoals in OMSI met een eigen lak; anders de gewone
+   * waarde van het model (`typischVan`).
+   */
+  busLak3d(
+    pakket: string,
+    kleurstelling?: string,
+    extra?: Array<[string, number]>,
+    opties?: { alleenGeschreven?: boolean }
+  ): Promise<Bus3dLak | { reden: Bus3dReden }>
   busOmgeving3d(): Promise<Bus3dOmgeving>
   busHeldenbeeld(pakket: string, kleurstelling: string | undefined, sleutel: string, webp: ArrayBuffer): Promise<boolean>
   busFotoAlsKlaar(relatiefPad: string, kleurstelling?: string, verhouding?: 'breed' | 'smal'): Promise<string | undefined>
@@ -277,9 +287,14 @@ export interface Bus3dBrug {
   terugUitStudio(naam?: string): Promise<number>
   lakProjecten(relatiefPad: string): Promise<LakProject[]>
   lakDoelen(relatiefPad: string, start?: string, extra?: Record<string, string[]>): Promise<LakFamilieInfo | undefined>
-  lakOpties(relatiefPad: string): Promise<LakOptie[]>
+  lakOpties(relatiefPad: string, start?: string): Promise<LakOptie[]>
   lakLaad(projectId: string): Promise<LakProject | undefined>
-  lakBewaar(project: LakProject): Promise<LakProject | undefined>
+  /** `{ fout: 'groot' }`: het ontwerp is groter dan 4 MB en werd niet bewaard. */
+  lakBewaar(project: LakProject): Promise<LakProject | { fout: string } | undefined>
+  /** De bestanden van de start die een geplaatste lak noemt en die weg zijn (§5.6). */
+  lakOntbrekend(projectId: string): Promise<string[]>
+  /** De export begint (true) of is klaar (false): dan wacht een buswissel en de pauze (§4.1). */
+  lakBezig(aan: boolean): Promise<boolean>
   lakBeeld(projectId: string, bytes: Uint8Array): Promise<{ id: string; soort: string } | undefined>
   lakBeeldBytes(projectId: string, beeldId: string): Promise<Uint8Array | undefined>
   lakNaamVrij(relatiefPad: string, naam: string, projectId?: string): Promise<NaamFout | undefined>

@@ -2,6 +2,16 @@ import type { Bus3dLak, Bus3dManifest, Bus3dMeting, Bus3dOmgeving } from '../../
 import type { Laag, LakFamilieInfo, LakStart } from '../../../shared/lak'
 import type { CameraStand, Stand } from './camera'
 import type { DecalAnalyse } from './lak/lakdoek'
+
+/** Waar Snelle lak de naam of het logo zoekt: delen van de lengte, en hoogtes (m boven de onderkant) op voorkeur. */
+export interface LakVrijVraag {
+  zVan: number
+  zTot: number
+  zVoorkeur: number
+  banden: Array<[number, number]>
+  /** Laag-id's waar de plek niet mag overlappen (het logo mijdt de naam). */
+  vermijd?: string[]
+}
 import type { Vec3 } from './wiskunde'
 
 /**
@@ -123,13 +133,15 @@ export type NaarWerker =
   | { soort: 'lakKleuren'; vraag: number }
   /** [Schuif naar een vrij stuk] (§4.8). */
   | { soort: 'lakSchuif'; vraag: number; id: string }
-  /** Een vrije plek voor de naam of het logo van Snelle lak (tussen `van` en `tot` van de lengte). */
-  | { soort: 'lakVrij'; vraag: number; id: string; van: number; tot: number }
+  /** Een vrije plek voor de naam of het logo van Snelle lak (zie `Lakdoek.vrijePlek`). */
+  | { soort: 'lakVrij'; vraag: number; id: string; zoek: LakVrijVraag }
+  /** Welke [visible]-variabelen meshes OVER de lak hebben (§4.9; `Lakdoek.ligging`). */
+  | { soort: 'lakLigging'; vraag: number; texturen: string[] }
   | { soort: 'lakExport'; vraag: number; tegel?: number; alleen?: string[]; metRgba?: boolean }
   | { soort: 'lakMeet'; vraag: number; viewer: number; beelden?: number }
   | { soort: 'lakStop' }
   /** Voor de proef (P3-P6), zie `Lakdoek.proef`. */
-  | { soort: 'lakProef'; vraag: number; wat: 'masker' | 'effect' | 'teken' | 'tijd' | 'testBasis' | 'plek'; doel?: string; ids?: number[]; keer?: number; kleur?: [number, number, number] }
+  | { soort: 'lakProef'; vraag: number; wat: 'masker' | 'effect' | 'teken' | 'tijd' | 'testBasis' | 'plek' | 'zijL' | 'zijR'; doel?: string; ids?: number[]; keer?: number; kleur?: [number, number, number] }
   /** Na andere busopties (een nieuwe ruststand): de maskers opnieuw (§4.9, P16). */
   | { soort: 'lakMaskers'; vraag: number }
   /** De tweede viewport (§4.8): deze viewer toont de andere kant, plat, zolang het lakdoek loopt. */

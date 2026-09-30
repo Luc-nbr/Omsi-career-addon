@@ -56,6 +56,12 @@ export const TEKST_LAKSTUDIO = {
     nl: 'Aan de andere kant staat dit in spiegelschrift, want daar deelt de bus dezelfde lak.'
   },
   'ls.schuif': { en: 'Move to a free area', de: 'Auf eine freie Stelle schieben', fr: 'Déplacer vers une zone libre', nl: 'Schuif naar een vrij stuk' },
+  'ls.opDeur': {
+    en: 'Part of this falls on a door, window or wheel arch and will be missing on the bus there. Drag it to a clear panel.',
+    de: 'Ein Teil davon fällt auf eine Tür, Scheibe oder einen Radkasten und fehlt dort auf dem Bus. Zieh es auf eine freie Fläche.',
+    fr: "Une partie tombe sur une porte, une vitre ou un passage de roue et manquera là sur le bus. Fais-la glisser sur un panneau libre.",
+    nl: 'Een deel hiervan valt op een deur, ruit of wielkast en ontbreekt daar op de bus. Sleep het naar een vrij vlak.'
+  },
   'ls.kopieDeur': {
     en: 'The copy on the other side falls on a door or window.',
     de: 'Die Kopie auf der anderen Seite fällt auf eine Tür oder Scheibe.',
@@ -170,7 +176,8 @@ export const TEKST_LAKSTUDIO = {
   'ls.ongedaan': { en: 'Undo (Ctrl+Z)', de: 'Rückgängig (Strg+Z)', fr: 'Annuler (Ctrl+Z)', nl: 'Ongedaan maken (Ctrl+Z)' },
   'ls.opnieuw': { en: 'Redo (Ctrl+Y)', de: 'Wiederholen (Strg+Y)', fr: 'Rétablir (Ctrl+Y)', nl: 'Opnieuw (Ctrl+Y)' },
   'ls.meer': { en: 'More', de: 'Mehr', fr: 'Plus', nl: 'Meer' },
-  'ls.naam': { en: 'Name', de: 'Name', fr: 'Nom', nl: 'Naam' },
+  // "Naam in OMSI": naast "Naam op de bus" van Snelle lak waren het twee naamvelden zonder verschil (beoordeling L3 punt 11).
+  'ls.naam': { en: 'Name in OMSI', de: 'Name in OMSI', fr: 'Nom dans OMSI', nl: 'Naam in OMSI' },
   'ls.mijnLak': { en: 'My livery {n}', de: 'Meine Lackierung {n}', fr: 'Ma livrée {n}', nl: 'Mijn lak {n}' },
   'ls.omsiOpen': {
     en: 'OMSI is open. Your livery will be added to OMSI as soon as you close OMSI.',
@@ -226,7 +233,8 @@ export const TEKST_LAKSTUDIO = {
   },
   // Snelle lak (§2.1)
   'ls.snel.titel': { en: 'Quick livery', de: 'Schnelllackierung', fr: 'Livrée rapide', nl: 'Snelle lak' },
-  'ls.kleur.titel': { en: 'Colour', de: 'Farbe', fr: 'Couleur', nl: 'Kleur' },
+  // Het tabblad met het gereedschap en de gekozen laag; "Kleur" zei niet wat erachter zat (beoordeling L3 punt 11).
+  'ls.kleur.titel': { en: 'Tool', de: 'Werkzeug', fr: 'Outil', nl: 'Gereedschap' },
   'ls.snel.kleuren': { en: 'Colours', de: 'Farben', fr: 'Couleurs', nl: 'Kleuren' },
   'ls.snel.kleur1': { en: 'Colour 1: body', de: 'Farbe 1: Karosserie', fr: 'Couleur 1 : carrosserie', nl: 'Kleur 1: carrosserie' },
   'ls.snel.kleur2': { en: 'Colour 2: stripe', de: 'Farbe 2: Streifen', fr: 'Couleur 2 : bande', nl: 'Kleur 2: strook' },
@@ -390,6 +398,24 @@ export const TEKST_LAKSTUDIO = {
   'ls.opties.techniekUitleg': { en: 'Changes how the bus works.', de: 'Ändert, wie der Bus funktioniert.', fr: 'Change le fonctionnement du bus.', nl: 'Verandert hoe de bus werkt.' },
   'ls.opties.geen': { en: 'This bus has no bus options.', de: 'Dieser Bus hat keine Busoptionen.', fr: "Ce bus n'a pas d'options.", nl: 'Deze bus heeft geen busopties.' },
   'ls.opties.waarde': { en: 'Value', de: 'Wert', fr: 'Valeur', nl: 'Waarde' },
+  // Bekende busopties met een leesbare naam; de rest krijgt een naam uit de variabele (LakPanelen `optieNaam`).
+  'ls.optie.hide_hochbahn_ext': { en: 'HOCHBAHN lettering (outside)', de: 'HOCHBAHN-Schriftzug (außen)', fr: 'Inscription HOCHBAHN (extérieur)', nl: 'HOCHBAHN-opschrift (buiten)' },
+  'ls.optie.decal_ebus_rear': { en: 'E-bus sticker at the rear', de: 'E-Bus-Aufkleber hinten', fr: 'Autocollant e-bus arrière', nl: 'E-bus-sticker achter' },
+  'ls.optie.vis_grill_invisible': { en: 'Front grille', de: 'Frontgrill', fr: 'Calandre', nl: 'Grille voorop' },
+  'ls.optie.vis_wheels': { en: 'Wheels (dirty)', de: 'Räder (verschmutzt)', fr: 'Roues (sales)', nl: 'Wielen (vuil)' },
+  'ls.optie.vis_number': { en: 'Number plate field', de: 'Kennzeichenfeld', fr: "Support de plaque", nl: 'Kentekenveld' },
+  'ls.optie.vis_mirrors': { en: 'Mirrors', de: 'Spiegel', fr: 'Rétroviseurs', nl: 'Spiegels' },
+  'ls.optie.vis_curtains': { en: 'Curtains', de: 'Vorhänge', fr: 'Rideaux', nl: 'Gordijnen' },
+  'ls.optie.vis_rear_doors': { en: 'Rear doors', de: 'Hintertüren', fr: 'Portes arrière', nl: 'Achterdeuren' },
+  'ls.optie.vis_fenster_type': { en: 'Window type', de: 'Fenstertyp', fr: 'Type de fenêtres', nl: 'Soort ramen' },
+  'ls.optie.vis_aircond': { en: 'Air conditioning', de: 'Klimaanlage', fr: 'Climatisation', nl: 'Airco' },
+  'ls.optie.vis_matrix_rear': { en: 'Destination display at the rear', de: 'Zielanzeige hinten', fr: 'Girouette arrière', nl: 'Bestemmingsbord achter' },
+  'ls.optie.vis_matrix_side': { en: 'Destination display at the side', de: 'Zielanzeige seitlich', fr: 'Girouette latérale', nl: 'Bestemmingsbord opzij' },
+  'ls.optie.tuer2_ist_sst': { en: 'Door 2 is a sliding door', de: 'Tür 2 ist Schwenkschiebetür', fr: 'Porte 2 coulissante', nl: 'Deur 2 is een schuifdeur' },
+  'ls.optie.hybrid': { en: 'Hybrid (roof unit)', de: 'Hybrid (Dachaufbau)', fr: 'Hybride (module de toit)', nl: 'Hybride (dakopbouw)' },
+  'ls.optie.wagennummer_vis': { en: 'Fleet number', de: 'Wagennummer', fr: 'Numéro de parc', nl: 'Wagennummer' },
+  'ls.optie.abbiegeassistent': { en: 'Turn assistant', de: 'Abbiegeassistent', fr: "Assistant d'angle mort", nl: 'Afslagassistent' },
+  'ls.optie.neue_decke': { en: 'New ceiling', de: 'Neue Decke', fr: 'Nouveau plafond', nl: 'Nieuw plafond' },
   'ls.vlak.uitleg': {
     en: 'The mirror plane lies in the middle of the bus. Shift it if the two sides are not the same.',
     de: 'Die Spiegelebene liegt in der Mitte des Busses. Verschiebe sie, wenn die beiden Seiten nicht gleich sind.',
@@ -420,7 +446,33 @@ export const TEKST_LAKSTUDIO = {
   },
   'ls.dag': { en: 'Day', de: 'Tag', fr: 'Jour', nl: 'Dag' },
   'ls.status': { en: 'Livery {b}×{h} · {texels} texels/m', de: 'Lackierung {b}×{h} · {texels} Texel/m', fr: 'Livrée {b}×{h} · {texels} texels/m', nl: 'Lak {b}×{h} · {texels} texels/m' },
-  'ls.status.ookOp': { en: 'also on: {bussen}', de: 'auch auf: {bussen}', fr: 'aussi sur : {bussen}', nl: 'ook op: {bussen}' },
+  'ls.status.ookOp': { en: 'also on {bussen} other buses', de: 'auch auf {bussen} weiteren Bussen', fr: 'aussi sur {bussen} autres bus', nl: 'ook op {bussen} andere bussen' },
+  'ls.uitvoeringen': { en: '{n} other versions', de: '{n} weitere Ausführungen', fr: '{n} autres versions', nl: '{n} andere uitvoeringen' },
+  'ls.bekijk.deze': { en: 'This bus', de: 'Dieser Bus', fr: 'Ce bus', nl: 'Deze bus' },
+  'ls.bediening': {
+    en: 'Right-drag: turn · wheel: zoom · middle button or Shift: move',
+    de: 'Rechts ziehen: drehen · Rad: zoomen · mittlere Taste oder Umschalt: verschieben',
+    fr: 'Glisser clic droit : tourner · molette : zoom · bouton du milieu ou Maj : déplacer',
+    nl: 'Rechts slepen: draaien · wiel: zoomen · middelste knop of Shift: verschuiven'
+  },
+  'ls.bewaar.groot': {
+    en: 'Your design is larger than 4 MB and was not saved. Remove a few brush strokes or a layer.',
+    de: 'Dein Entwurf ist größer als 4 MB und wurde nicht gespeichert. Entferne ein paar Pinselstriche oder eine Ebene.',
+    fr: "Ton projet dépasse 4 Mo et n'a pas été enregistré. Supprime quelques coups de pinceau ou un calque.",
+    nl: 'Je ontwerp is groter dan 4 MB en is niet bewaard. Haal een paar penseelstreken of een laag weg.'
+  },
+  'ls.bewaar.fout': {
+    en: 'Your design could not be saved.',
+    de: 'Dein Entwurf konnte nicht gespeichert werden.',
+    fr: "Ton projet n'a pas pu être enregistré.",
+    nl: 'Je ontwerp kon niet bewaard worden.'
+  },
+  'ls.ontbreekt': {
+    en: 'This livery uses {n} file(s) from the livery it started from that are gone: {bestanden}. Save again to use the standard there.',
+    de: 'Diese Lackierung nutzt {n} Datei(en) der Ausgangslackierung, die fehlen: {bestanden}. Speichere erneut, dann gilt dort der Standard.',
+    fr: 'Cette livrée utilise {n} fichier(s) de la livrée de départ qui ont disparu : {bestanden}. Enregistre à nouveau pour utiliser le standard.',
+    nl: 'Deze lak gebruikt {n} bestand(en) van de lak waarmee hij begon, en die zijn weg: {bestanden}. Sla opnieuw op, dan geldt daar de standaard.'
+  },
   'ls.kiBussen': { en: '{n} AI buses', de: '{n} KI-Busse', fr: '{n} bus IA', nl: '{n} KI-bussen' },
   // Addons (§5.6-§5.8)
   'ls.ad.titel': { en: 'Custom liveries', de: 'Eigene Lackierungen', fr: 'Livrées personnelles', nl: 'Eigen kleurstellingen' },
@@ -435,6 +487,18 @@ export const TEKST_LAKSTUDIO = {
   'ls.ad.ookOntwerp': { en: 'Also throw away the design', de: 'Auch den Entwurf verwerfen', fr: 'Supprimer aussi le projet', nl: 'Ook het ontwerp weggooien' },
   'ls.ad.nietPlaatsen': { en: "Don't add", de: 'Nicht einsetzen', fr: 'Ne pas ajouter', nl: 'Niet plaatsen' },
   'ls.ad.overnemen': { en: 'Adopt', de: 'Übernehmen', fr: 'Reprendre', nl: 'Overnemen' },
+  'ls.ad.leunt': {
+    en: "Custom livery '{naam}' uses {n} file(s) from this add-on.",
+    de: "Die eigene Lackierung '{naam}' nutzt {n} Datei(en) aus diesem Add-on.",
+    fr: "La livrée personnelle '{naam}' utilise {n} fichier(s) de cet add-on.",
+    nl: "Eigen kleurstelling '{naam}' gebruikt {n} bestand(en) uit dit pakket."
+  },
+  'ls.ad.weesZeker': {
+    en: 'Remove these {n} file(s) from OMSI?',
+    de: 'Diese {n} Datei(en) aus OMSI entfernen?',
+    fr: 'Supprimer ces {n} fichier(s) d’OMSI ?',
+    nl: 'Deze {n} bestand(en) uit OMSI weghalen?'
+  },
   'ls.ad.versie': { en: 'version {v} · {n} files', de: 'Version {v} · {n} Dateien', fr: 'version {v} · {n} fichiers', nl: 'versie {v} · {n} bestanden' },
   'ls.ad.uit': {
     en: 'Custom liveries appear here once the 3D view is switched on (Settings → App).',

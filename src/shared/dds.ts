@@ -131,6 +131,22 @@ export function leesDdsKop(bytes: Uint8Array): DdsKop | undefined {
   return { b, h, niveaus, formaat, fourcc, dx10: fourcc === 'DX10', plakken, compleet: Boolean(formaat) && o === bytes.length }
 }
 
+/**
+ * Is niveau 0 helemaal nul (zwart, alfa 0)? Zo ziet een export eruit die op
+ * een verloren WebGL-context uitgelezen werd: `getBufferSubData` gaf niets, de
+ * buffer bleef nul, en de codeerder maakte daar een formeel geldige DDS van
+ * (tegenlezing L3 punt 1). Die mag nooit in OMSI komen. Een echte lak heeft
+ * altijd ergens een texel met kleur of alfa.
+ */
+export function ddsLeeg(bytes: Uint8Array): boolean {
+  const kop = leesDdsKop(bytes)
+  const n0 = kop?.plakken[0]
+  if (!n0) return false
+  const eind = Math.min(bytes.length, n0.off + n0.len)
+  for (let i = n0.off; i < eind; i++) if (bytes[i] !== 0) return false
+  return true
+}
+
 /** Het aantal niveaus van een volle keten tot 1x1. */
 export function volleKeten(b: number, h: number): number {
   return Math.floor(Math.log2(Math.max(1, b, h))) + 1

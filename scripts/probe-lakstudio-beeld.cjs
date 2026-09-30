@@ -653,6 +653,8 @@ async function ronde() {
         const mk = await reken(win, `window.__bv.studio.proef({ wat: 'masker', doel: ${J(d.id)} })`)
         const mkPx = mk?.px ? b64(mk.px) : undefined
         const onder = []
+        // Per texel de eerste lettermesh in wiens doos hij valt: waar blijft de oude lak staan?
+        const welke = new Map()
         if (letters && plek?.px && mkPx) {
           const px = b64(plek.px)
           const eb = plek.b
@@ -662,26 +664,35 @@ async function ronde() {
           for (let i = 0; i < n; i += 4) {
             if (px[n + i + 3] === 0) continue
             const w = [0, 1, 2].map((k) => doos.min[k] + ((px[i + k] + px[n + i + k]) / 2 / 255) * g)
-            const binnen = letters.some((l) => [0, 1, 2].every((k) => w[k] >= l.min[k] - 0.06 && w[k] <= l.max[k] + 0.06))
+            const l0 = letters.find((l) => [0, 1, 2].every((k) => w[k] >= l.min[k] - 0.06 && w[k] <= l.max[k] + 0.06))
             // Alleen wat buiten ligt en geen glas is (de rest lakt geen enkele laag).
             const t = i / 4
             const j = (Math.floor(t / eb) * 2 * mk.b + (t % eb) * 2) * 4
-            if (binnen && mkPx[j] > 127 && mkPx[j + 1] < 128) onder.push(t)
+            if (l0 && mkPx[j] > 127 && mkPx[j + 1] < 128) {
+              onder.push(t)
+              welke.set(t, l0.o3d)
+            }
           }
         }
         const basisHH = lf.decodeer(d.standaard)
         const nietGelakt = new Map()
+        const nietPerMesh = new Map()
         const telOnder = (e) => {
           if (!e?.px) return -1
           const px = b64(e.px)
           const eb = plek.b
           let gelakt = 0
           nietGelakt.clear()
+          nietPerMesh.clear()
           for (const t of onder) {
             const x = (t % eb) * 2
             const y = Math.floor(t / eb) * 2
-            if (px[(y * e.b + x) * 4] > 127) gelakt++
-            else if (basisHH) {
+            if (px[(y * e.b + x) * 4] > 127) {
+              gelakt++
+              continue
+            }
+            nietPerMesh.set(welke.get(t), (nietPerMesh.get(welke.get(t)) ?? 0) + 1)
+            if (basisHH) {
               // De kleur van de basis daar, grof (per 32 in elk kanaal), om te zien welke zone het is.
               const i = (y * basisHH.breedte + x) * 4
               const k = `#${[0, 1, 2].map((c) => ((basisHH.pixels[i + c] >> 5) << 5).toString(16).padStart(2, '0')).join('')}`
@@ -708,7 +719,7 @@ async function ronde() {
         r.opties = { o1, erbij, eraf, letters, onder: onder.length, onderVoor, onderNa }
         klopt(`P16 HH20: busopties wisselen ${o1?.totaalMs} ms (lak ${o1?.lakMs}, masker ${o1?.maskerMs}) (≤ 300), ${o1?.zichtbaar} vermeldingen zichtbaar`, (o1?.totaalMs ?? 999) <= 300)
         klopt(
-          `P5 HH20 hide_hochbahn_ext = 1: ${onderNa} van de ${onder.length} carrosserietexels (buiten, geen glas) in de rechthoek van het opschrift (${letters?.length ?? 0} meshes: ${(letters ?? []).map((l) => l.o3d).join(', ')}) gelakt; vóór het verbergen ${onderVoor} (de letters liggen binnen de 5 cm en dekken niet af); het masker wint ${erbij} en verliest ${eraf} texels; niet gelakt (kleur van de basis): ${[...nietGelakt.entries()].sort((p, q) => q[1] - p[1]).slice(0, 4).map(([k, n]) => `${k} ${n}`).join(', ')}`,
+          `P5 HH20 hide_hochbahn_ext = 1: ${onderNa} van de ${onder.length} carrosserietexels (buiten, geen glas) in de rechthoek van het opschrift (${letters?.length ?? 0} meshes: ${(letters ?? []).map((l) => l.o3d).join(', ')}) gelakt; vóór het verbergen ${onderVoor} (de letters liggen binnen de 5 cm en dekken niet af); het masker wint ${erbij} en verliest ${eraf} texels; niet gelakt (kleur van de basis): ${[...nietGelakt.entries()].sort((p, q) => q[1] - p[1]).slice(0, 4).map(([k, n]) => `${k} ${n}`).join(', ')}; per doos: ${[...nietPerMesh.entries()].sort((p, q) => q[1] - p[1]).map(([k, n]) => `${k} ${n}`).join(', ')}`,
           onder.length > 0 && onderNa >= 0.97 * onder.length && eraf === 0
         )
         const a = await reken(win, `window.__bv.afdruk(${J({ stand: { draai: 270, kantel: 3, zoom: 1 }, b: 1280, h: 720, formaat: 'png' })})`)
@@ -822,6 +833,13 @@ async function ronde() {
             `P4 NLC: na een geforceerd contextverlies herstart het lakdoek in ${v?.ms} ms, licht (${Math.round(herstartMB)} MB, bewerkmaat ${v?.klaar?.doelen?.map((d) => `${d.editB}x${d.editH}`).join(', ')}), met de lagen (export daarna: ${Array.isArray(e) ? 'ok' : J(e).slice(0, 80)})`,
             Boolean(v?.klaar?.doelen) && herstartMB <= 160 && Boolean(licht) && Array.isArray(e)
           )
+          // Tegenlezing L3 punt 1: de context valt weg TIJDENS de export: een fout, geen zwarte, doorzichtige DDS.
+          const mv = await reken(win, `window.__bv.studio.exportMetVerlies(40)`, 120000)
+          uitslag.exportMetVerlies = mv
+          klopt(
+            `herstel 1: de context valt weg tijdens de export: ${typeof mv?.uitkomst === 'object' ? `fout "${mv.uitkomst.fout}"` : `${mv?.uitkomst} ${J(mv?.dds)}`} (geen DDS); daarna herstart het lakdoek (${mv?.herstart})`,
+            Boolean(mv && typeof mv.uitkomst === 'object' && mv.uitkomst.fout) && Boolean(mv.herstart)
+          )
         }
       } catch (fout) {
         klopt(`P4 lichte stand ${pad}: ${String(fout).slice(0, 200)}`, false)
@@ -844,8 +862,8 @@ app.whenReady().then(async () => {
   } finally {
     fs.writeFileSync(path.join(UIT, 'log.txt'), logregels.join('\n'))
     await werker?.terminate()
-    process.exitCode = fouten ? 1 : 0
-    app.quit()
+    // app.exit en niet process.exitCode + app.quit: Electron negeert exitCode, en dan gaf "1 fout(en)" toch 0 (proefdraaier punt 5).
+    app.exit(fouten ? 1 : 0)
   }
 })
 app.on('window-all-closed', () => undefined)

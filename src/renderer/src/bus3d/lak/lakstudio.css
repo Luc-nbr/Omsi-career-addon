@@ -387,8 +387,9 @@
   position: absolute;
   right: 12px;
   bottom: 12px;
-  width: 320px;
-  height: 180px;
+  /* Groot genoeg om een naam en een logo te beoordelen (beoordeling L3 punt 14). */
+  width: 480px;
+  height: 270px;
   margin: 0;
   border: 1px solid rgba(255, 255, 255, 0.45);
   border-radius: 8px;
@@ -501,7 +502,10 @@
   grid-row: 2;
   grid-column: 3;
   min-height: 0;
-  overflow: auto;
+  min-width: 0;
+  /* Geen schuifbalk opzij: een lange keuzelijst (lettertypen) krimpt mee (beoordeling L3 punt 13). */
+  overflow-x: hidden;
+  overflow-y: auto;
   border-left: 1px solid var(--vel-rand);
   padding: 10px 12px 16px;
   scrollbar-width: thin;
@@ -513,6 +517,19 @@
   gap: 6px;
   margin-bottom: 6px;
   color: var(--vel-zacht);
+}
+
+.ls-rechts select,
+.ls-rechts input:not([type='checkbox']):not([type='radio']):not([type='color']),
+.ls-rechts .ls-invoer {
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.ls-rechts label,
+.ls-rechts .ls-veld {
+  min-width: 0;
 }
 
 .ls-blok {
@@ -794,6 +811,16 @@
 .ls-status {
   margin-left: auto;
   color: var(--vel-zacht);
+}
+
+/* Hoe de bus draait (beoordeling L3 punt 16): klein, naast de aanzichten. */
+.ls-bediening {
+  color: var(--vel-zacht);
+  font-size: 11px;
+}
+
+.ls-bekijkkeuze {
+  max-width: 260px;
 }
 
 @media (max-width: 1099px) {

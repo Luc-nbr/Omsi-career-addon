@@ -187,8 +187,14 @@ export function maakBus3dVenster(ipcMain: IpcMain, af: Bus3dVensterAfhankelijk):
     if (BrowserWindow.getFocusedWindow()) laatsteFocus = nu
     const verborgen = alGetoond && (!win.isVisible() || win.isMinimized())
     const zonderFocus = omsi && nu - laatsteFocus > ZONDER_FOCUS_MS
+    /*
+     * Maakt de studio een lak, dan nog geen pauze: pauze geeft de WebGL-context
+     * op, en een export die dan doorliep las een dode context uit en schreef
+     * zwarte, doorzichtige texturen (tegenlezing L3 punt 1). De klok hierboven
+     * kijkt elke 2 s opnieuw: na de export komt de pauze alsnog.
+     */
     const nieuw: Bus3dVensterStand = {
-      pauze: verborgen || zonderFocus,
+      pauze: (verborgen || zonderFocus) && !af.lakBezig?.(),
       licht: omsi,
       reden: verborgen ? 'verborgen' : zonderFocus ? 'omsi-zonder-focus' : undefined
     }

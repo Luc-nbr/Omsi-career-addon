@@ -843,7 +843,11 @@ doel.onmessage = (e) => {
     )
   } else if (m.soort === 'lakVrij') {
     const ld = lakdoek
-    stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: ld?.actief ? (ld.vrijePlek(m.id, m.van, m.tot) ?? null) : null })
+    stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: ld?.actief ? (ld.vrijePlek(m.id, m.zoek) ?? null) : null })
+  } else if (m.soort === 'lakLigging') {
+    // Kan vóór het lakdoek (de standaardwaarden van de busopties, §4.9): alleen de bus in beeld is nodig.
+    if (!tekenaar?.scene || contextWeg) return stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: {} })
+    stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: lakdoekVoor(tekenaar).ligging(m.texturen) })
   } else if (m.soort === 'lakSchuif') {
     const ld = lakdoek
     stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: ld?.actief ? (ld.schuifVrij(m.id) ?? null) : null })
@@ -855,6 +859,8 @@ doel.onmessage = (e) => {
   } else if (m.soort === 'lakExport') {
     const ld = lakdoek
     if (!ld?.actief) return stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: { fout: 'geen lakdoek' } })
+    // Geen export op een context die weg is (pauze, TDR): die gaf zwarte, doorzichtige texturen (tegenlezing L3 punt 1).
+    if (contextWeg || gl?.isContextLost()) return stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: { fout: 'het 3D-beeld is weg (gepauzeerd of verloren); probeer het opnieuw' } })
     void ld
       .exporteer({ tegel: m.tegel, alleen: m.alleen, metRgba: m.metRgba, voortgang: (p) => stuur({ soort: 'lakVoortgang', ...p }) })
       .then(

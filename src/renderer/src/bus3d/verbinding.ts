@@ -1,6 +1,7 @@
 import type { Bus3dLak, Bus3dManifest, Bus3dOmgeving } from '../../../shared/bus3d'
 import type { Laag, LakFamilieInfo, LakStart, Plaats, Streek } from '../../../shared/lak'
 import type { DecalAnalyse } from './lak/lakdoek'
+import type { LakVrijVraag } from './berichten'
 import { klok, type AfdrukVraag, type Invoer, type NaarWerker, type StandBericht, type VanWerker } from './berichten'
 
 /**
@@ -61,7 +62,9 @@ export interface ViewerHandvat {
     penseelEinde(): Promise<(Streek & { laagId: string }) | null>
     kleuren(): Promise<unknown>
     schuif(id: string): Promise<Plaats | null>
-    vrij(id: string, van: number, tot: number): Promise<Plaats | null>
+    vrij(id: string, zoek: LakVrijVraag): Promise<{ plaats: Plaats; band: number; schaal: number; deel: number } | null>
+    /** Per [visible]-variabele: liggen haar meshes over de lak (§4.9)? */
+    ligging(texturen: string[]): Promise<Record<string, { overLak: boolean; deel: number }>>
     exporteer(opties?: { tegel?: number; alleen?: string[]; metRgba?: boolean }): Promise<unknown>
     meet(beelden?: number): Promise<unknown>
     stop(): void
@@ -233,7 +236,9 @@ export class Verbinding {
           >,
         kleuren: () => zelf.vraag((vraag) => ({ soort: 'lakKleuren', vraag })),
         schuif: (laagId) => zelf.vraag((vraag) => ({ soort: 'lakSchuif', vraag, id: laagId })) as Promise<Plaats | null>,
-        vrij: (laagId, van, tot) => zelf.vraag((vraag) => ({ soort: 'lakVrij', vraag, id: laagId, van, tot })) as Promise<Plaats | null>,
+        vrij: (laagId, zoek) =>
+          zelf.vraag((vraag) => ({ soort: 'lakVrij', vraag, id: laagId, zoek })) as Promise<{ plaats: Plaats; band: number; schaal: number; deel: number } | null>,
+        ligging: (texturen) => zelf.vraag((vraag) => ({ soort: 'lakLigging', vraag, texturen })) as Promise<Record<string, { overLak: boolean; deel: number }>>,
         exporteer: (o) => zelf.vraag((vraag) => ({ soort: 'lakExport', vraag, tegel: o?.tegel, alleen: o?.alleen, metRgba: o?.metRgba })),
         meet: (beelden) => zelf.vraag((vraag) => ({ soort: 'lakMeet', vraag, viewer: id, beelden })),
         stop: () => zelf.stuur({ soort: 'lakStop' }),

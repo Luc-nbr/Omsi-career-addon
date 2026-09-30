@@ -8,11 +8,13 @@ import {
   bewaarProject,
   haalUitWachtrij,
   klaarzetten,
+  lakkenDieLeunenOp,
   lakLijst,
   leesBeeld,
   leesProject,
   leesWachtrij,
   nieuwProjectId,
+  ontbrekendeAfhankelijk,
   plaatsLak,
   projecten,
   verwerkWachtrij,
@@ -81,8 +83,10 @@ export interface LakstudioAfhankelijk {
 }
 
 export interface Lakstudio {
-  /** Maakt de studio nu een lak? Dan wacht een buswissel in het venster (§4.1). */
+  /** Maakt de studio nu een lak (export of plaatsen)? Dan wacht een buswissel in het venster (§4.1), en ook de pauze. */
   bezig(): boolean
+  /** Voor de add-on-manager (§5.6): welke eigen lakken bestanden van deze add-on noemen. */
+  leunenOp(addonId: string): Array<{ naam: string; aantal: number }>
   /** Vlak voordat de app OMSI start: de wachtrij eerst (§5.7c). */
   voorStart(): Promise<void>
   /** OMSI is dicht (de wacht in index.ts), of de app start: de wachtrij afwerken. */
@@ -98,6 +102,14 @@ const isBus = (x: unknown): x is string =>
 
 export function maakLakstudio(ipcMain: IpcMain, af: LakstudioAfhankelijk): Lakstudio {
   let maken = 0
+  /*
+   * De studio meldt het begin en het einde van de export (tegenlezing L3 punt 4):
+   * "tijdens het maken wacht de wissel" gold anders alleen voor het plaatsen, en
+   * een 3D-klik tijdens de export liet de werker het lakdoek wissen terwijl hij
+   * er nog uit las. Met een grens van 2 minuten, voor een venster dat wegviel.
+   */
+  let exportSinds = 0
+  const exportBezig = (): boolean => exportSinds > 0 && Date.now() - exportSinds < 120_000
   const omgeving = (): LakOmgeving => ({ omsi: af.omsi(), userData: af.userData(), log: af.log })
 
   /** Wat het pakket van elk lid weet; bouwt ontbrekende pakketten (in de werker). */
@@ -202,20 +214,38 @@ export function maakLakstudio(ipcMain: IpcMain, af: LakstudioAfhankelijk): Lakst
     }
   }
 
+  /*
+   * De wachtrij (§5.7). Per lak: de familie opnieuw MET de start (de maat van de
+   * uitvoer hangt ervan af; zonder start gaf `lakPlan` elke 20 s 'formaat',
+   * tegenlezing L3 punt 2), en OMSI vlak voor het schrijven nog eens peilen: het
+   * uitrekenen van de familie kan seconden duren (punt 5 en proefdraaier punt 7).
+   */
   async function omsiDicht(waarom: string): Promise<void> {
     if (!af.aan() || leesWachtrij(af.userData()).length === 0) return
     if (await af.omsiDraait()) return
     maken++
     try {
       await af.grendel.probeer(async () => {
+        const klaar: ReturnType<typeof verwerkWachtrij> = []
         const families = new Map<string, Familie>()
         for (const w of leesWachtrij(af.userData())) {
-          if (!families.has(w.bus)) families.set(w.bus, await familieMet(w.bus))
+          const project = leesProject(af.userData(), w.projectId)
+          const eigenCti = leesRegister(af.userData())
+            .addons.find((a) => a.soort === 'lak' && a.lak?.projectId === w.projectId)
+            ?.bestanden.find((b) => /\.cti$/i.test(b.pad))
+            ?.pad.split('/')
+            .pop()
+          const familie = await familieMet(w.bus, { start: project?.startKleurstelling, eigenCti })
+          families.set(w.projectId, familie)
+          if (await af.omsiDraait()) {
+            af.log(`Lakstudio: OMSI startte terwijl de wachtrij werd afgewerkt (${waarom}); de rest wacht`)
+            break
+          }
+          klaar.push(...verwerkWachtrij(omgeving(), () => familie, () => false, w.projectId))
         }
-        const klaar = verwerkWachtrij(omgeving(), (bus) => families.get(bus) ?? familieVan(af.omsi(), bus), () => false)
         for (const k of klaar) {
           if (!('ok' in k.uitkomst)) continue
-          const f = families.get(leesProject(af.userData(), k.projectId)?.bus ?? '')
+          const f = families.get(k.projectId)
           meldVeranderd(f ? f.leden.map((l) => l.rel) : [], k.naam)
           af.naarHoofd(LAK_KANALEN.geplaatst, { naam: k.naam })
           af.venster()?.stuur(LAK_KANALEN.geplaatst, { naam: k.naam })
@@ -266,7 +296,8 @@ export function maakLakstudio(ipcMain: IpcMain, af: LakstudioAfhankelijk): Lakst
   )
   studio(
     LAK_KANALEN.opties,
-    (_e, rel) => (isBus(rel) ? lakOpties(familieVan(af.omsi(), rel, { sjablonen: false })) : []),
+    (_e, rel, start) =>
+      isBus(rel) ? lakOpties(familieVan(af.omsi(), rel, { sjablonen: false }), typeof start === 'string' ? start : undefined) : [],
     [] as ReturnType<typeof lakOpties>
   )
   studio(LAK_KANALEN.laad, (_e, id) => (isId(id) ? leesProject(af.userData(), id) : undefined), undefined as LakProject | undefined)
@@ -276,9 +307,28 @@ export function maakLakstudio(ipcMain: IpcMain, af: LakstudioAfhankelijk): Lakst
       const project = p as LakProject
       if (!project || typeof project !== 'object' || !isBus(project.bus)) return undefined
       const id = isId(project.id) ? project.id : nieuwProjectId()
-      return bewaarProject(af.userData(), { ...project, id, gemaakt: project.gemaakt || new Date().toISOString() })
+      // Waar en als welke versie de lak geplaatst is, weet alleen main: niet van de renderer overnemen (tegenlezing L3 punt 10).
+      const opSchijf = isId(project.id) ? leesProject(af.userData(), id) : undefined
+      try {
+        return bewaarProject(af.userData(), { ...project, id, geplaatst: opSchijf?.geplaatst, gemaakt: project.gemaakt || new Date().toISOString() })
+      } catch (fout) {
+        // Niet stil (punt 11): de studio toont het, en opslaan in OMSI gaat dan niet door.
+        af.logFout('Lakstudio bewaren', fout)
+        return { fout: fout instanceof Error && /te groot/.test(fout.message) ? 'groot' : 'fout' }
+      }
     },
-    undefined as LakProject | undefined
+    undefined as LakProject | { fout: string } | undefined
+  )
+  // De bestanden van de start die een geplaatste lak noemt en die er niet meer zijn (§5.6, tegenlezing L3 punt 7).
+  studio(LAK_KANALEN.ontbrekend, (_e, id) => (isId(id) ? ontbrekendeAfhankelijk(omgeving(), id) : []), [] as string[])
+  // Het begin en einde van de export (punt 4): dan wacht een buswissel, en pauzeert het venster niet.
+  studio(
+    LAK_KANALEN.bezig,
+    (_e, aan) => {
+      exportSinds = aan === true ? Date.now() : 0
+      return true
+    },
+    false
   )
   studio(
     LAK_KANALEN.beeld,
@@ -321,11 +371,10 @@ export function maakLakstudio(ipcMain: IpcMain, af: LakstudioAfhankelijk): Lakst
       if (await af.omsiDraait()) return { fout: 'omsi' }
       const register = leesRegister(af.userData())
       const addon = register.addons.find((a) => a.soort === 'lak' && a.lak?.projectId === id)
-      const uit = verwijderLak(omgeving(), id, {
-        ookOntwerp: ookOntwerp === true,
-        keuze: keuze === 'alles' || keuze === 'laten' ? keuze : undefined
-      })
-      if ('ok' in uit && addon?.lak) meldVeranderd(addon.lak.familie, addon.lak.naam)
+      const k = keuze === 'alles' || keuze === 'laten' ? keuze : undefined
+      const uit = verwijderLak(omgeving(), id, { ookOntwerp: ookOntwerp === true, keuze: k })
+      // [Alles laten staan] verandert niets: geen gebeurtenis, geen foto's vergeten (proefdraaier punt 10).
+      if ('ok' in uit && k !== 'laten' && addon?.lak) meldVeranderd(addon.lak.familie, addon.lak.naam)
       return uit
     }, 'lakstudio: verwijderen')
     return r
@@ -344,6 +393,16 @@ export function maakLakstudio(ipcMain: IpcMain, af: LakstudioAfhankelijk): Lakst
   hoofd('lak:wachtrij', () => leesWachtrij(af.userData()), [] as ReturnType<typeof leesWachtrij>)
   hoofd('lak:nietPlaatsen', (id) => (isId(id) ? haalUitWachtrij(af.userData(), id) : false), false)
   hoofd('lak:verwijderHoofd', (id, ookOntwerp, keuze) => verwijder(id, ookOntwerp, keuze), { fout: 'fout' } as unknown)
+  // Vóór verwijderen vanuit Addons ook ls.gebruik (§5.6 stap 1, proefdraaier punt 12).
+  hoofd(
+    'lak:gebruikHoofd',
+    (id) => {
+      if (!isId(id)) return []
+      const lak = leesRegister(af.userData()).addons.find((a) => a.soort === 'lak' && a.lak?.projectId === id)?.lak
+      return lak ? bussenInKleurstelling(af.eigenBussen?.() ?? [], lak.bus, lak.naam) : []
+    },
+    [] as number[]
+  )
   hoofd('lak:wezen', () => wezen(omgeving()), [] as ReturnType<typeof wezen>)
   hoofd(
     'lak:weesWeg',
@@ -369,7 +428,12 @@ export function maakLakstudio(ipcMain: IpcMain, af: LakstudioAfhankelijk): Lakst
   klok.unref?.()
 
   return {
-    bezig: () => maken > 0,
+    bezig: () => maken > 0 || exportBezig(),
+    leunenOp: (addonId) => {
+      if (!af.aan()) return []
+      const addon = leesRegister(af.userData()).addons.find((a) => a.id === addonId && a.soort !== 'lak')
+      return addon ? lakkenDieLeunenOp(af.userData(), addon) : []
+    },
     voorStart: () => omsiDicht('vlak voor het starten van OMSI'),
     omsiDicht,
     wachtendVoor: (rel) =>

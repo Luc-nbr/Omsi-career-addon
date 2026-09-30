@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type DragEvent, type JSX, type ReactNode } from 'react'
 import type { Laag, LakOptie, LakStart, SnelleLakStand, StrookSjabloon } from '../../../../shared/lak'
 import type { TextKey } from '../../../../shared/i18n'
+import { TEKST_LAKSTUDIO } from '../../../../shared/tekst/lakstudio'
 import { useT } from '../../language'
 import type { DecalAnalyse } from './lakdoek'
 import { OFL_LETTERTYPEN } from './lettertypen'
@@ -386,24 +387,55 @@ export function LagenLijst({
 
 /* ------------------------------------------------------------------ de gekozen laag */
 
+/**
+ * De meldingen bij de gekozen decal, BOVEN in het paneel (eerst stonden ze
+ * helemaal onderaan, onder de knoppen; beoordeling L3): spiegelschrift met
+ * [Schuif naar een vrij stuk], de kopie op een deur of ruit, en letters die op
+ * een deur, ruit of wielkast vallen.
+ */
+export function LaagMeldingen({ laag, spiegelAan, analyse, onSchuif }: { laag: Laag; spiegelAan: boolean; analyse?: DecalAnalyse; onSchuif: () => void }): JSX.Element | null {
+  const t = useT()
+  const plaats = 'plaats' in laag ? laag.plaats : undefined
+  if (!analyse || !plaats) return null
+  const opDeur = Math.min(analyse.vrij ?? 1, analyse.kopie ? (analyse.vrijKopie ?? 1) : 1) < 0.9
+  return (
+    <>
+      {plaats.spiegel === 'gekoppeld' && spiegelAan && !analyse.kopie ? (
+        <p className="ls-melding" data-melding="spiegelschrift">
+          {t('ls.spiegelschrift')}{' '}
+          <button type="button" className="ls-link" data-knop="schuif" onClick={onSchuif}>
+            {t('ls.schuif')}
+          </button>
+        </p>
+      ) : null}
+      {analyse.kopie && (analyse.kopieDeur ?? 0) >= 0.1 ? (
+        <p className="ls-melding" data-melding="kopieDeur">
+          {t('ls.kopieDeur')}
+        </p>
+      ) : null}
+      {opDeur ? (
+        <p className="ls-melding" data-melding="opDeur">
+          {t('ls.opDeur')}
+        </p>
+      ) : null}
+    </>
+  )
+}
+
 export function LaagPaneel({
   laag,
   spiegelAan,
-  analyse,
   onWijzig,
   onWeg,
   onDupliceer,
-  onStap,
-  onSchuif
+  onStap
 }: {
   laag: Laag
   spiegelAan: boolean
-  analyse?: DecalAnalyse
   onWijzig: (deel: Partial<Laag>, vast: boolean) => void
   onWeg: () => void
   onDupliceer: () => void
   onStap: (richting: 1 | -1) => void
-  onSchuif: () => void
 }): JSX.Element {
   const t = useT()
   const plaats = 'plaats' in laag ? laag.plaats : undefined
@@ -450,19 +482,6 @@ export function LaagPaneel({
           />
           {t('ls.laag.richting')}
         </label>
-      ) : null}
-      {analyse && plaats?.spiegel === 'gekoppeld' && spiegelAan && !analyse.kopie ? (
-        <p className="ls-melding" data-melding="spiegelschrift">
-          {t('ls.spiegelschrift')}{' '}
-          <button type="button" className="ls-link" data-knop="schuif" onClick={onSchuif}>
-            {t('ls.schuif')}
-          </button>
-        </p>
-      ) : null}
-      {analyse?.kopie && (analyse.kopieDeur ?? 0) >= 0.1 ? (
-        <p className="ls-melding" data-melding="kopieDeur">
-          {t('ls.kopieDeur')}
-        </p>
       ) : null}
       <div className="ls-rij">
         <label className="ls-vink">
@@ -762,15 +781,23 @@ export function PenseelPaneel({
 
 /* ------------------------------------------------------------------ onder [Meer▾] */
 
-/** Een leesbare naam voor een busoptie: de mesh zonder map, nummers en extensie ("21_decals_aussen_hochbahn.o3d" → "decals aussen hochbahn"). */
-function optieNaam(o: LakOptie): string {
-  const m = o.meshes[0]
-  if (!m) return o.variabele
-  return m
-    .replace(/\.o3d$/i, '')
-    .replace(/^\d+[_ -]*/, '')
+/**
+ * Een leesbare naam voor een busoptie (beoordeling L3 punt 10): een bekende
+ * variabele in de taal van de speler (`ls.optie.*`), anders de variabele zelf
+ * zonder vis_/hide_/CTI en zonder liggende streepjes ("vis_rear_doors" → "Rear
+ * doors"). Eerst was het de naam van de eerste mesh ("e wheel fr1").
+ */
+function optieNaam(o: LakOptie, t: ReturnType<typeof useT>): string {
+  const sleutel = `ls.optie.${o.variabele.toLowerCase()}`
+  if (sleutel in TEKST_LAKSTUDIO) return t(sleutel as TextKey)
+  const kaal = o.variabele
+    .replace(/^(vis|hide|show|decal)_/i, '')
+    .replace(/^(cti|sv)_/i, '')
+    .replace(/_(vis|visible)$/i, '')
     .replace(/[_-]+/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
     .trim()
+  return kaal ? kaal.charAt(0).toUpperCase() + kaal.slice(1) : o.variabele
 }
 
 export function OptiesPaneel({
@@ -795,7 +822,7 @@ export function OptiesPaneel({
     const w = waarden[o.variabele] ?? 0
     const tweewaardig = o.waarden.every((x) => x === 0 || x === 1)
     return (
-      <div key={o.variabele} className="ls-optie" data-optie={o.variabele}>
+      <div key={o.variabele} className="ls-optie" data-optie={o.variabele} title={o.variabele}>
         {tweewaardig ? (
           <label className="ls-vink">
             <input
@@ -805,11 +832,11 @@ export function OptiesPaneel({
               checked={o.verberg === undefined ? w === 1 : w !== o.verberg}
               onChange={(e) => onZet(o.variabele, o.verberg === undefined ? (e.target.checked ? 1 : 0) : e.target.checked ? 1 - o.verberg : o.verberg)}
             />
-            {optieNaam(o)}
+            {optieNaam(o, t)}
           </label>
         ) : (
           <label className="ls-veld">
-            <span>{optieNaam(o)}</span>
+            <span>{optieNaam(o, t)}</span>
             <select disabled={!mogelijk} value={w} onChange={(e) => onZet(o.variabele, Number(e.target.value))}>
               {[...new Set([0, ...o.waarden])].map((x) => (
                 <option key={x} value={x}>
@@ -819,7 +846,6 @@ export function OptiesPaneel({
             </select>
           </label>
         )}
-        <small className="ls-zacht">{o.variabele}</small>
       </div>
     )
   }
@@ -835,7 +861,8 @@ export function OptiesPaneel({
           {techniek.map(rij)}
         </>
       ) : null}
-      {ms !== undefined ? <p className="ls-zacht" data-optiesms={ms}>{ms} ms</p> : null}
+      {/* De meettijd (P16) alleen voor de proef, niet in beeld (beoordeling L3 punt 10). */}
+      {ms !== undefined ? <span hidden data-optiesms={ms} /> : null}
     </Blok>
   )
 }

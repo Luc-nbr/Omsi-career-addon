@@ -56,9 +56,15 @@ export function strook(sjabloon: StrookSjabloon, kleur: string, maat: Busmaat, n
     kleur,
     ...extra
   })
+  /*
+   * Een band die onderaan begint, begint ONDER de doos: [boundingbox] van de .bus
+   * begint vaak boven de onderrand van de carrosserie, en dan bleef daar een
+   * streep grondkleur onder de band (O560, C2).
+   */
+  const onder = -0.5
   switch (sjabloon) {
     case 'onderband':
-      return b(0, Math.max(0.2, raamH * 0.35))
+      return b(onder, Math.max(0.2, raamH * 0.35))
     case 'raamband':
       return b(raamH - 0.12, raamH + 0.02)
     case 'dakband':
@@ -68,12 +74,12 @@ export function strook(sjabloon: StrookSjabloon, kleur: string, maat: Busmaat, n
     case 'golf':
       return b(raamH * 0.3, raamH * 0.55, { golf: 0.12, zijden: 'zijden' })
     case 'tweekleurig':
-      return b(0, raamH)
+      return b(onder, raamH)
     // Front- en achtervlak: het vlak zelf (waar de normaal naar voren of achteren wijst), over de hele hoogte.
     case 'frontvlak':
-      return b(0, hoogte + 0.1, { zijden: 'voor' })
+      return b(onder, hoogte + 0.1, { zijden: 'voor' })
     case 'achtervlak':
-      return b(0, hoogte + 0.1, { zijden: 'achter' })
+      return b(onder, hoogte + 0.1, { zijden: 'achter' })
   }
 }
 
@@ -225,8 +231,24 @@ export function volgBand(lagen: Laag[], maat: Busmaat, vast: ReadonlySet<string>
 }
 
 /** De kleur van de naam zonder eigen kleur 3: wit, of op de band de grondkleur. */
-function naamKleur(snel: SnelleLakStand, opBand: boolean): string {
+export function naamKleur(snel: SnelleLakStand, opBand: boolean): string {
   return snel.kleuren[2] ?? (opBand ? (snel.kleuren[0] ?? '#1d3f8f') : '#ffffff')
+}
+
+/**
+ * Waar naam en logo van Snelle lak mogen staan, in hoogte (m boven de onderkant,
+ * het midden van de decal): eerst tussen de bovenkant van de band en de raamlijn,
+ * dan op de band zelf. Het zijbeeld van de werker (`Lakdoek.vrijePlek`) zoekt
+ * daarin een stuk zonder deur, ruit, wielkast of beschermd wapen.
+ */
+export function naamBanden(lagen: Laag[], maat: Busmaat): Array<[number, number]> {
+  const raam = raamHoogte(maat)
+  const band = lagen.find((l) => l.id === RECEPT_ID.strook)
+  const zijband = band && band.soort === 'strook' && band.zijden !== 'voor' && band.zijden !== 'achter' ? band : undefined
+  const onder = zijband && zijband.h2 < raam ? zijband.h2 : raam * 0.35
+  const uit: Array<[number, number]> = [[onder + 0.03, raam - 0.03]]
+  if (zijband && zijband.h2 - Math.max(0, zijband.h1) > 0.2) uit.push([Math.max(0.1, zijband.h1) + 0.02, Math.min(zijband.h2, raam) - 0.02])
+  return uit
 }
 
 /**
@@ -306,7 +328,8 @@ export function pasSnelleLak(
             beeld: snel.logo,
             witDoorzichtig: true,
             verhouding: snel.logoVerhouding,
-            plaats: plaatsOp('R', 0.8, boven(uit, maat, 0.6 * (snel.logoVerhouding ?? 0.5)), 0.6, maat)
+            // Een logo heeft letters: aan de andere kant dezelfde richting, geen spiegelbeeld (beoordeling L3 punt 4).
+            plaats: { ...plaatsOp('R', 0.8, boven(uit, maat, 0.6 * (snel.logoVerhouding ?? 0.5)), 0.6, maat), zelfdeRichting: true }
           }
     zet(RECEPT_ID.logo, nieuw, undefined)
   } else zet(RECEPT_ID.logo, undefined, undefined)
@@ -363,20 +386,22 @@ export function vulStraal(lab: V3, alle: V3[]): number {
 }
 
 /**
- * "Effen in de kleuren van deze lak" (§4.4): per lakzone een zonelaag met de
- * mediane kleur van de huidige lak op die texels. Logo's, wagennummers en
- * reclame verdwijnen, want die tekent de basis niet.
+ * "Effen in de kleuren van deze lak" (§4.4): per kleurvlak van de lak op de bus
+ * (`Lakdoek.kleurenVanStart`: minstens 3% van de lak, zonder stukken kleiner dan
+ * 0,4 m²) een zonelaag in zijn mediane kleur, op dat vlak (`bron: 'start'`).
+ * Letters, wagennummers en logo's gaan op in het vlak eromheen.
  */
-export function effenInKleuren(zones: Array<Pick<Zone, 'lab' | 'lak'> & { kleur?: string }>, naam: (i: number) => string): Laag[] {
+export function effenInKleuren(zones: Array<Pick<Zone, 'lab' | 'lak'> & { kleur?: string; deel?: number }>, naam: (i: number) => string): Laag[] {
   const alle = zones.map((z) => z.lab as V3)
   return zones
-    .filter((z) => z.lak && z.kleur)
+    .filter((z) => z.lak && z.kleur && (z.deel === undefined || z.deel >= 0.03))
     .map((z, i) => ({
       ...basis(naam(i + 1)),
       soort: 'zone' as const,
       centrum: z.lab,
       straal: zoneStraal(z.lab as V3, alle),
-      kleur: z.kleur!
+      kleur: z.kleur!,
+      bron: 'start' as const
     }))
 }
 

@@ -6791,6 +6791,12 @@ function registerHandlers(): void {
       }))
       .reverse()
   )
+  /*
+   * Eigen lakken die bestanden van deze add-on noemen (Lakstudio §5.6, tegenlezing
+   * L3 punt 7): de start van een lak (interieur, velgen) komt uit een ander pakket.
+   * Addons toont ze vóór het verwijderen en laat het bevestigen.
+   */
+  handle('addon:lakAfhankelijk', (_event, id: string) => lakstudio?.leunenOp(String(id)) ?? [])
   handle('addon:verwijder', (event, id: string) =>
     eenTegelijk(async () => {
       if (await isOmsiRunning()) return { fout: 'omsi' }

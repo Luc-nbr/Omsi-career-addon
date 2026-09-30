@@ -18,6 +18,7 @@
  * P13 terugval: geen [CTC], een ontbrekende map, conflicten, NG313
  * P15 klaarzetten terwijl OMSI "draait", en de wachtrij
  * P16 busopties (de indeling; wisselen in ≤ 300 ms is L1)
+ * herstel: de meldingen van de proefdraaier en de tegenlezing van L3 (zie `pHerstel`)
  */
 import { createHash } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, closeSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -42,9 +43,11 @@ import {
   type LakOmgeving
 } from '../src/core/lakstudio'
 import { leesRegister } from '../src/core/addon'
+import { maakLakstudio } from '../src/main/lakstudio'
+import { niveauBytes } from '../src/shared/bcn'
 import { codeerBc, heeftAlfa, mipKeten } from '../src/shared/bcn'
-import { leesDdsKop, lowUitDds, schrijfDds, ddsKop } from '../src/shared/dds'
-import { ctiTekst, omsiHoofdletters, type LakProject } from '../src/shared/lak'
+import { leesDdsKop, lowUitDds, niveauMaten, schrijfDds, ddsKop } from '../src/shared/dds'
+import { cp1252Vriendelijk, ctiTekst, naamFout, omsiHoofdletters, type LakProject } from '../src/shared/lak'
 import { ontleedTextuur, pakBmpUit, textuurKop, type Textuur } from '../src/core/textuur'
 import { leesPng } from '../src/core/png'
 import { maakGrendel } from '../src/main/grendel'
@@ -771,6 +774,179 @@ async function pWees(): Promise<void> {
   writeFileSync(join(UD, 'addons.json'), JSON.stringify({ addons: JSON.parse(register.toString()).addons.filter((a: { lak?: { projectId: string } }) => a.lak?.projectId !== p.id) }))
 }
 
+/* ------------------------------------------------------------------ herstel na de tegenlezing van L3 */
+
+/**
+ * Wat de proefdraaier en de tegenlezer van L3 vonden, nagespeeld op de
+ * nagebootste map: onzichtbare tekens in de naam (punt 8), een lege DDS van een
+ * verloren context (punt 1), een `versie` die van de renderer komt (punt 10),
+ * opnieuw opslaan dat halverwege een uitzondering gooit (punt 3), een oude regel
+ * in de wachtrij na direct plaatsen (punt 15), elke uiterlijk-variabele expliciet
+ * in de .cti (§4.9, proefdraaier punt 4), en in main (main/lakstudio.ts, met een
+ * nagebootste IPC): de wachtrij met de maat van de start (punt 2), OMSI die start
+ * terwijl de wachtrij rekent (punt 5), en [Alles laten staan] zonder gebeurtenis
+ * (proefdraaier punt 10).
+ */
+async function pHerstel(): Promise<void> {
+  // Punt 8: vaste spatie en zacht afbreekstreepje.
+  const nbsp = naamFout('Stadtwerke\u00a0Lucstad')
+  const alleen = naamFout('\u00a0')
+  const zacht = naamFout('Lucstad\u00ad')
+  klopt(
+    `herstel 8: een vaste spatie of zacht afbreekstreepje in de naam is een fout (${nbsp?.fout}, ${alleen?.fout}, ${zacht?.fout}); bij het invullen wordt "A\\u00a0B" "${cp1252Vriendelijk('A\u00a0B')}"`,
+    nbsp?.fout === 'teken' && alleen?.fout === 'teken' && zacht?.fout === 'teken' && cp1252Vriendelijk('A\u00a0B') === 'A B'
+  )
+
+  // Punt 1: een DDS die helemaal nul is (uitgelezen op een verloren context) komt niet in OMSI.
+  const rel = 'Vehicles\\MAN_SD200\\MAN_SD77.bus'
+  const f = await familieMet(rel)
+  const { texturen } = texturenVoor(f, [30, 60, 120])
+  const d0 = f.doelen[0]
+  const leeg = schrijfDds(
+    d0.uitB,
+    d0.uitH,
+    'bc3',
+    niveauMaten(d0.uitB, d0.uitH, Math.floor(Math.log2(Math.max(d0.uitB, d0.uitH))) + 1).map((m) => new Uint8Array(niveauBytes(m.b, m.h, 'bc3')))
+  )
+  const pl = project(rel, 'Lakstudio Herstel leeg')
+  const voor1 = boom(join(NEP, 'Vehicles', 'MAN_SD200'))
+  const u1 = plaatsLak(omgeving, { familie: f, project: pl, naam: pl.naam, texturen: texturen.map((t) => (t.doel === d0.id ? { doel: t.doel, dds: leeg } : t)) })
+  klopt(
+    `herstel 1: een lege DDS (zwart, alfa 0) wordt geweigerd (${'fout' in u1 ? `${u1.fout}: ${u1.detail}` : 'geplaatst'}), 0 schrijfacties`,
+    'fout' in u1 && u1.fout === 'formaat' && boomGelijk(voor1, boom(join(NEP, 'Vehicles', 'MAN_SD200'))).length === 0
+  )
+
+  // Punt 10: een versie van de renderer ("../..") komt niet buiten de projectmap.
+  const pv = { ...project(rel, 'Lakstudio Herstel versie'), geplaatst: { naam: 'x', nnnn: 1, versie: '../../../buiten' as unknown as number } }
+  const u10 = plaatsLak(omgeving, { familie: f, project: pv, naam: pv.naam, texturen })
+  const buiten = existsSync(join(UD, 'buiten')) || existsSync(join(UD, 'lakstudio', 'buiten'))
+  klopt(`herstel 10: een versie "../../../buiten" wordt versie 1 (${'ok' in u10 ? u10.versie : JSON.stringify(u10)}), niets buiten de projectmap`, 'ok' in u10 && u10.versie === 1 && !buiten)
+
+  // Punt 3: opnieuw opslaan dat halverwege een uitzondering gooit (een bestand dat vastzit): de vorige versie staat terug.
+  if ('ok' in u10) {
+    const naPlaatsen = boom(join(NEP, 'Vehicles', 'MAN_SD200'))
+    const regVoor = leesRegister(UD).addons.find((a) => a.lak?.projectId === pv.id)
+    const pv2 = { ...pv, geplaatst: { naam: pv.naam, nnnn: u10.nnnn, versie: u10.versie } }
+    const anders = texturenVoor(f, [200, 40, 40]).texturen
+    let gegooid = 0
+    const u3 = plaatsLak(omgeving, {
+      familie: await familieMet(rel, { eigenCti: u10.plan.cti[0].rel.split('/').pop() }),
+      project: pv2,
+      naam: pv.naam,
+      texturen: anders,
+      kopieerHaak: () => {
+        gegooid++
+        const f2 = new Error('EBUSY: resource busy or locked (nagebootst)') as NodeJS.ErrnoException
+        f2.code = 'EBUSY'
+        throw f2
+      }
+    })
+    const naFout = boom(join(NEP, 'Vehicles', 'MAN_SD200'))
+    const regNa = leesRegister(UD).addons.find((a) => a.lak?.projectId === pv.id)
+    const lijst = kleurstellingenVanBus(join(NEP, rel))
+    klopt(
+      `herstel 3: opnieuw opslaan dat halverwege gooit (${'fout' in u3 ? u3.fout : 'ok?'}, ${gegooid} keer) zet de vorige versie terug: dezelfde bestanden (${boomGelijk(naPlaatsen, naFout).length} anders), in het register (versie ${regNa?.lak?.versie}), en in OMSI`,
+      'fout' in u3 && boomGelijk(naPlaatsen, naFout).length === 0 && regNa?.lak?.versie === regVoor?.lak?.versie && Boolean(zoekKleurstelling(lijst, pv.naam))
+    )
+    verwijderLak(omgeving, pv.id)
+  }
+
+  // Punt 15: na direct plaatsen staat er geen oude regel meer in de wachtrij.
+  const pw = project(rel, 'Lakstudio Herstel wachtrij')
+  klaarzetten(omgeving, { familie: f, project: pw, naam: pw.naam, texturen })
+  const u15 = plaatsLak(omgeving, { familie: f, project: pw, naam: pw.naam, texturen })
+  klopt(`herstel 15: na direct plaatsen staat de lak niet meer in de wachtrij (${leesWachtrij(UD).filter((w) => w.projectId === pw.id).length})`, 'ok' in u15 && !leesWachtrij(UD).some((w) => w.projectId === pw.id))
+  verwijderLak(omgeving, pw.id)
+
+  // §4.9: elke uiterlijk-variabele expliciet in de .cti (de O560: vis_wheels 1 zoals 3 van de 4 kleurstellingen; OMSI begint met 0).
+  const o560 = 'Vehicles\\ABCoach_O560\\O560_E6.bus'
+  const fo = await familieMet(o560)
+  const po = project(o560, 'Lakstudio Herstel setvars', {}, 'snel', 'Stadtbus Haren')
+  const uo = plaatsLak(omgeving, { familie: fo, project: po, naam: po.naam, texturen: texturenVoor(fo, [20, 60, 160]).texturen })
+  const uiterlijk = lakOpties(fo).filter((o) => o.soort === 'uiterlijk')
+  const cti = 'ok' in uo ? leesCti(join(NEP, ...uo.plan.cti[0].rel.split('/'))) : undefined
+  const sv = new Map((cti?.setvars ?? []).map(([v, w]) => [v.toLowerCase(), w]))
+  klopt(
+    `herstel §4.9: de .cti schrijft elke uiterlijk-variabele (${uiterlijk.length}: ${uiterlijk.map((o) => `${o.variabele}=${sv.get(o.variabele.toLowerCase()) ?? '-'}`).join(', ')}), vis_wheels = 1, na de items`,
+    Boolean(cti) && uiterlijk.every((o) => sv.has(o.variabele.toLowerCase())) && sv.get('vis_wheels') === '1' && cti!.setvarNaItem
+  )
+  if ('ok' in uo) verwijderLak(omgeving, po.id)
+
+  // Main (main/lakstudio.ts) met een nagebootste IPC en een nagebootst 3D-venster.
+  const kanalen = new Map<string, (e: unknown, ...a: unknown[]) => unknown>()
+  let omsiDraait = false
+  let draaitNaFamilie = false
+  let veranderd = 0
+  const main = maakLakstudio({ handle: (k: string, f2: (e: unknown, ...a: unknown[]) => unknown) => kanalen.set(k, f2) } as never, {
+    omsi: () => NEP,
+    userData: () => UD,
+    log: (r) => logregels.push(r),
+    logFout: (w, f2) => logregels.push(`FOUT ${w}: ${String(f2)}`),
+    aan: () => true,
+    omsiDraait: async () => omsiDraait,
+    bus3d: () =>
+      ({
+        lakPakket: async (r: string) => {
+          // Na het uitrekenen van de familie "start OMSI" (punt 5).
+          if (draaitNaFamilie) omsiDraait = true
+          const b = await bouwBus3d({ omsiMap: ECHT, relatiefPad: r, geregistreerd: reg })
+          return b.bouw ? { manifest: b.bouw.manifest, kop: b.bouw.kop } : { reden: b.reden }
+        },
+        registreerLos: () => new Map(),
+        kleurstellingenVeranderd: () => void veranderd++
+      }) as never,
+    venster: () => ({ vanStudio: () => true, vanHoofd: () => true, stuur: () => undefined }) as never,
+    grendel: maakGrendel(),
+    naarHoofd: () => undefined
+  })
+
+  // Punt 2: een start met een grotere textuur (TH O550, "Mueller (LIT-YP 22)": 2048² → 4096²). Klaargezet met de start;
+  // main werkt de wachtrij af met de familie MET de start (eerst gaf dat elke 20 s 'formaat').
+  const o550 = 'Vehicles\\TH_Ueberlandbus\\O550_Euro2.bus'
+  const start = 'Mueller (LIT-YP 22)'
+  const fz = await familieMet(o550)
+  const fs = await familieMet(o550, { start })
+  const pz = project(o550, 'Lakstudio Herstel start', {}, 'snel', start)
+  const kz = klaarzetten(omgeving, { familie: fs, project: pz, naam: pz.naam, texturen: texturenVoor(fs, [10, 120, 60]).texturen })
+  // Punt 5: OMSI start terwijl main de familie uitrekent: niets schrijven, de lak blijft wachten.
+  draaitNaFamilie = true
+  await main.omsiDicht('proef: OMSI start tijdens het rekenen')
+  draaitNaFamilie = false
+  const nogNiet = !zoekKleurstelling(kleurstellingenVanBus(join(NEP, o550)), pz.naam)
+  klopt(
+    `herstel 5: OMSI start terwijl de wachtrij de familie uitrekent: niets geschreven, de lak wacht nog (${leesWachtrij(UD).some((w) => w.projectId === pz.id)})`,
+    'klaargezet' in kz && nogNiet && leesWachtrij(UD).some((w) => w.projectId === pz.id)
+  )
+  omsiDraait = false
+  await main.omsiDicht('proef: OMSI dicht')
+  const geplaatst = zoekKleurstelling(kleurstellingenVanBus(join(NEP, o550)), pz.naam)
+  klopt(
+    `herstel 2: de start maakt het doel ${fz.doelen[0]?.uitB}² → ${fs.doelen[0]?.uitB}²; main plaatst de klaargezette lak met die maat (${geplaatst ? `nr. ${geplaatst.index}` : `wacht: ${leesWachtrij(UD).find((w) => w.projectId === pz.id)?.reden}`})`,
+    fs.doelen[0]?.uitB !== fz.doelen[0]?.uitB && Boolean(geplaatst) && !leesWachtrij(UD).some((w) => w.projectId === pz.id)
+  )
+
+  // Proefdraaier punt 10: [Alles laten staan] na een handmatige wijziging verandert niets, dus geen gebeurtenis.
+  const reg10 = leesRegister(UD).addons.find((a) => a.lak?.projectId === pz.id)
+  if (reg10) {
+    const tex = reg10.bestanden.find((b) => /\.dds$/i.test(b.pad))!
+    const pad = join(NEP, ...tex.pad.split('/'))
+    const inhoud = readFileSync(pad)
+    inhoud[300] ^= 0xff
+    writeFileSync(pad, inhoud)
+    const verwijder = kanalen.get('lak:verwijderHoofd')!
+    const h = (await verwijder({}, pz.id, false)) as { fout?: string }
+    const voorLaten = veranderd
+    const l = (await verwijder({}, pz.id, false, 'laten')) as { ok?: boolean }
+    const naLaten = veranderd
+    const a = (await verwijder({}, pz.id, false, 'alles')) as { ok?: boolean }
+    klopt(
+      `herstel P10: handmatig gewijzigd → '${h.fout}'; [Alles laten staan] ${l.ok ? 'ok' : '?'} zonder gebeurtenis (${naLaten - voorLaten}); [Alles weghalen] ${a.ok ? 'ok' : '?'} met gebeurtenis (${veranderd - naLaten})`,
+      h.fout === 'handmatig' && Boolean(l.ok) && naLaten === voorLaten && Boolean(a.ok) && veranderd > naLaten
+    )
+  } else klopt('herstel P10: de lak van punt 2 staat niet in het register', false)
+  writeFileSync(join(UD, 'lakstudio', 'wachtrij.json'), JSON.stringify({ lakken: [] }))
+}
+
 /* ------------------------------------------------------------------ de ronde */
 
 async function hoofd(): Promise<void> {
@@ -789,6 +965,7 @@ async function hoofd(): Promise<void> {
   if (doe('P16')) p16()
   if (doe('P5')) p5texcoord()
   if (doe('wees')) await pWees()
+  if (doe('herstel')) await pHerstel()
   const echtNa = ['Vehicles/MB_C2_EN_BVG/Texture/Repaints/rep_GN', 'Vehicles/MAN_SD200/Texture'].map((m) => statSync(join(ECHT, m)).mtimeMs)
   klopt('de echte OMSI-map is niet aangeraakt (tijden van de CTC-mappen gelijk)', echtVoor.every((t, i) => t === echtNa[i]))
   uitslag.P2 = p2rijen

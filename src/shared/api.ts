@@ -986,6 +986,10 @@ export interface CareerApi extends BedrijfPlanApi {
   lakWezen(): Promise<Array<{ id: string; cti: string; naam: string; nnnn: number; bestanden: string[] }>>
   lakWeesWeg(id: string): Promise<unknown>
   lakWeesOvernemen(id: string): Promise<unknown>
+  /** Eigen bussen die in deze lak rijden (ls.gebruik), vóór verwijderen vanuit Addons (§5.6 stap 1). */
+  lakGebruik(projectId: string): Promise<number[]>
+  /** Eigen lakken die bestanden van deze add-on noemen (de start, §5.6): de waarschuwing bij verwijderen. */
+  addonLakAfhankelijk(addonId: string): Promise<Array<{ naam: string; aantal: number }>>
   /** Een kleurstelling kwam erbij of ging weg (Lakstudio): de lijsten opnieuw vragen. */
   opKleurstellingenVeranderd(luisteraar: (bussen: string[]) => void): () => void
   /**

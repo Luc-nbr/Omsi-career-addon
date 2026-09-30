@@ -104,6 +104,8 @@ const OMZET: Record<string, string> = {
  * blijft zoals hij is ("Ärger" blijft "Ärger").
  */
 export function cp1252Vriendelijk(naam: string): string {
+  // Onzichtbare tekens die cp1252 wel kent (tegenlezing L3 punt 8): een vaste spatie wordt een gewone, een zacht afbreekstreepje valt weg.
+  naam = naam.replace(/\u00a0/g, ' ').replace(/\u00ad/g, '')
   if ([...naam].every((t) => cp1252Byte(t) >= 0)) return naam
   return [...naam.normalize('NFKD').replace(/[\u0300-\u036f]/g, '')]
     .map((t) => OMZET[t] ?? t)
@@ -141,6 +143,13 @@ export function naamFout(naam: string, bestaand: Iterable<string> = []): NaamFou
     const c = t.codePointAt(0) ?? 0
     // Stuurtekens (ook tab en regeleinde): de .cti telt regels, een regeleinde verschuift alles erna.
     if (c < 0x20 || c === 0x7f || cp1252Byte(t) < 0) return { fout: 'teken', teken: t }
+    /*
+     * Onzichtbaar maar wel in cp1252 (tegenlezing L3 punt 8): een vaste spatie
+     * (U+00A0) en een zacht afbreekstreepje (U+00AD). Anders bestaan er twee
+     * namen die er in OMSI en in de app hetzelfde uitzien ("Stadtwerke Lucstad"
+     * met een gewone en met een vaste spatie), of een naam die leeg lijkt.
+     */
+    if (c === 0xa0 || c === 0xad) return { fout: 'teken', teken: c === 0xa0 ? 'U+00A0' : 'U+00AD' }
   }
   if (/^[ \t]|[ \t]$/.test(naam)) return { fout: 'rand' }
   if (naam.startsWith('[')) return { fout: 'haak' }
@@ -296,7 +305,17 @@ interface LaagBasis {
 
 export type Laag = LaagBasis &
   (
-    | { soort: 'zone'; centrum: [number, number, number]; straal: number; kleur: string }
+    | {
+        soort: 'zone'
+        centrum: [number, number, number]
+        straal: number
+        kleur: string
+        /**
+         * 'start': een kleurvlak van de start-kleurstelling ("effen in de kleuren
+         * van deze lak"), gemeten op de vage start in plaats van op de detailbron.
+         */
+        bron?: 'start'
+      }
     | {
         soort: 'strook'
         sjabloon: StrookSjabloon
@@ -436,6 +455,12 @@ export interface LakDoel {
   bakker: string
   /** Het sjabloon van de maker (§3.3), als er een past. */
   sjabloon?: LakSjabloon
+  /**
+   * De bron-id van de textuur die de start-kleurstelling op deze plek legt (als
+   * er een start is en hij deze plek vervangt): de basis bij "precies", en de
+   * kleuren bij "effen in de kleuren". Los van wat het venster toont.
+   */
+  startTextuur?: string
 }
 
 /** Een .rpc-sjabloon, zonder paden: de studio haalt de beelden op id. */
@@ -456,6 +481,8 @@ export interface LakSjabloon {
 export interface LakLid {
   /** Relatief .bus/.ovh/.sco-pad. */
   bus: string
+  /** De naam uit de .bus (`[friendlyname]`), voor "Komt ook op": geen bestandsnaam. */
+  naam?: string
   /** Bestuurbaar (een .bus die niet KI of geparkeerd is). */
   bestuurbaar: boolean
   /** Welke doelen dit lid draagt. */
@@ -488,8 +515,51 @@ export interface LakOptie {
   verberg?: number
   /** De o3d-namen die aan deze variabele hangen (voor een naam in de studio). */
   meshes: string[]
-  /** Ligt een van die meshes over de lak (alfamesh)? Dan bij Effen en Snelle lak standaard verborgen. */
+  /**
+   * Heeft een van die meshes een alfamateriaal zonder tekst- of scripttextuur?
+   * Een grove voorselectie: of zo'n mesh echt OVER de lak ligt (binnen 5 cm,
+   * §4.9), meet de werker aan de meetkunde (`lakLigging`).
+   */
   overLak: boolean
+  /**
+   * De waarde die de bus zonder deze setvar toont zoals de maker het bedoelde:
+   * wat de meeste kleurstellingen zetten (een kleurstelling die hem niet zet telt
+   * als 0; core/busrust.ts `typischVan`). Een eigen lak schrijft die expliciet
+   * (§4.9 "ook 0"): OMSI begint anders met 0, en dan had de O560 geen wielen.
+   */
+  typisch: number
+  /** De waarde die de start-kleurstelling zet, als hij dat doet. */
+  start?: number
+}
+
+/**
+ * De setvars die een lak in de .cti schrijft (§4.9), en waarmee de studio de bus
+ * toont, zodat het voorbeeld is wat OMSI straks laat zien (beoordeling L3 punt 3):
+ * - elke UITERLIJK-variabele expliciet: wat de speler koos, anders bij "precies"
+ *   de waarde van de start en verder de gewone waarde (`typisch`);
+ * - TECHNIEK alleen als de speler hem koos, of bij "precies" en "effen in de
+ *   kleuren" als de start hem zet.
+ * Puur: main (core/lakstudio.ts `lakPlan`) en de studio rekenen hiermee.
+ */
+export function effectieveOpties(opties: LakOptie[], project: Pick<LakProject, 'opties' | 'start'>): Array<[string, number]> {
+  const gekozen = new Map(Object.entries(project.opties ?? {}).map(([v, w]) => [omsiHoofdletters(v), w]))
+  const vanStart = project.start === 'precies' || project.start === 'effenKleuren'
+  const uit: Array<[string, number]> = []
+  for (const o of opties) {
+    const k = gekozen.get(omsiHoofdletters(o.variabele))
+    const w =
+      k !== undefined && Number.isFinite(k)
+        ? k
+        : o.soort === 'uiterlijk'
+          ? project.start === 'precies'
+            ? (o.start ?? o.typisch)
+            : o.typisch
+          : vanStart
+            ? o.start
+            : undefined
+    if (w !== undefined) uit.push([o.variabele, w])
+  }
+  return uit
 }
 
 /* ------------------------------------------------------------------ opslaan (main ↔ studio) */
@@ -543,6 +613,10 @@ export const LAK_KANALEN = {
   weesOvernemen: 'lak:weesOvernemen',
   exporteer: 'lak:exporteer',
   importeer: 'lak:importeer',
+  /** De bestanden van de start die een geplaatste lak noemt en die weg zijn (§5.6). */
+  ontbrekend: 'lak:ontbrekend',
+  /** De studio exporteert (aan) of is klaar (uit): een buswissel en de pauze wachten (§4.1). */
+  bezig: 'lak:bezig',
   /** Gebeurtenis naar beide vensters: een kleurstelling kwam erbij of ging weg (§5.6, punt 8). */
   kleurstellingenVeranderd: 'bus:kleurstellingenVeranderd',
   /** Gebeurtenis: een klaargezette lak is geplaatst (§5.7). */

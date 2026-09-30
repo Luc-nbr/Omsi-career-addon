@@ -2,13 +2,14 @@ import { createHash, randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import iconv from 'iconv-lite'
-import { leesDdsKop, lowUitDds, volleKeten } from '../shared/dds'
+import { ddsLeeg, leesDdsKop, lowUitDds, volleKeten } from '../shared/dds'
 import {
   LAK_CTI,
   LAK_KOP,
   ctiBytes,
   ctiDatum,
   ctiNaam,
+  effectieveOpties,
   lakSlug,
   lakSubmap,
   naamFout,
@@ -21,12 +22,12 @@ import {
 import {
   controleerStappen,
   installeerStappen,
+  InstallatieFout,
   leesRegister,
   loopAf,
   MAX_PAD,
   openBron,
   planStappen,
-  registreer,
   reserveMap,
   ruimMappenOp,
   ruimteVoor,
@@ -85,7 +86,15 @@ export const projectMap = (ud: string, id: string): string => {
   return join(lakMap(ud), id)
 }
 const projectPad = (ud: string, id: string): string => join(projectMap(ud, id), 'project.json')
-const versieMap = (ud: string, id: string, v: number): string => join(projectMap(ud, id), 'versies', String(v))
+/**
+ * De map van een versie. Alleen een geheel getal: een `versie` die van de
+ * renderer kwam ("../..") kwam anders buiten de projectmap uit, en daar doet
+ * `schrijfStaging` een rmSync (tegenlezing L3 punt 10).
+ */
+const versieMap = (ud: string, id: string, v: number): string => {
+  if (!Number.isInteger(v) || v < 1 || v > 1e6) throw new Error(`geen versie: ${String(v)}`)
+  return join(projectMap(ud, id), 'versies', String(v))
+}
 const tellerPad = (ud: string): string => join(lakMap(ud), 'teller.json')
 const wachtrijPad = (ud: string): string => join(lakMap(ud), 'wachtrij.json')
 
@@ -260,6 +269,8 @@ export function lakPlan(omgeving: LakOmgeving, invoer: LakPlanInvoer): { plan: L
     if (!kop || !kop.formaat || kop.dx10 || !kop.compleet) return { fout: 'formaat', detail: `${d.id}: geen DXT1/DXT5 met een complete keten` }
     if (kop.b !== d.uitB || kop.h !== d.uitH) return { fout: 'formaat', detail: `${d.id}: ${kop.b}x${kop.h}, verwacht ${d.uitB}x${d.uitH}` }
     if (kop.niveaus !== volleKeten(kop.b, kop.h)) return { fout: 'formaat', detail: `${d.id}: ${kop.niveaus} niveaus, verwacht ${volleKeten(kop.b, kop.h)}` }
+    // Helemaal nul: uitgelezen op een verloren WebGL-context (tegenlezing L3 punt 1). Nooit in OMSI.
+    if (ddsLeeg(dds)) return { fout: 'formaat', detail: `${d.id}: een lege textuur (zwart, alfa 0): het 3D-venster verloor zijn beeld tijdens het maken` }
   }
   if (perDoel.size !== familie.doelen.length) return { fout: 'formaat', detail: 'texturen voor onbekende doelen' }
 
@@ -313,17 +324,19 @@ export function lakPlan(omgeving: LakOmgeving, invoer: LakPlanInvoer): { plan: L
     // 8. De afhankelijke bestanden bestaan (startItems nam alleen bestaande mee).
     for (const a of afhankelijk) if (!existsSync(join(omsi, ...a.split('/')))) return { fout: 'fout', detail: `ontbreekt: ${a}` }
   }
-  // Setvars (§5.4 punt 7): alleen onder de regel, alleen variabelen die de familie kent, na alle items.
-  const bekend = new Map(lakOpties(familie).map((o) => [omsiHoofdletters(o.variabele), o.variabele]))
-  const setvars: Array<[string, number]> = []
+  /*
+   * Setvars (§5.4 punt 7, §4.9): alleen onder de regel, alleen variabelen die de
+   * familie kent, na alle items. Elke uiterlijk-variabele EXPLICIET (ook de
+   * gewone waarde): OMSI begint met 0, dus een setvar die de lak niet zet, zag
+   * er in OMSI anders uit dan in de studio (beoordeling L3 punt 3, proefdraaier
+   * punt 4). Dezelfde functie bepaalt wat de studio toont (`effectieveOpties`).
+   */
+  const lijst = lakOpties(familie, project.startKleurstelling)
+  const bekend = new Set(lijst.map((o) => omsiHoofdletters(o.variabele)))
   for (const [v, w] of Object.entries(project.opties ?? {})) {
-    const spelling = bekend.get(omsiHoofdletters(v))
-    if (!spelling || !Number.isFinite(w)) {
-      meldingen.push(`busoptie ${v} kent de familie niet; niet geschreven`)
-      continue
-    }
-    setvars.push([spelling, w])
+    if (!bekend.has(omsiHoofdletters(v)) || !Number.isFinite(w)) meldingen.push(`busoptie ${v} kent de familie niet; niet geschreven`)
   }
+  const setvars = effectieveOpties(lijst, project)
   const metSetvars = setvars.length > 0 && familie.optiesMogelijk
   if (setvars.length > 0 && !familie.optiesMogelijk) meldingen.push('busopties niet geschreven: de setvar-regel wordt niet gehaald (ls.opties)')
 
@@ -377,8 +390,8 @@ function schrijfStaging(ud: string, projectId: string, versie: number, plan: Lak
 }
 
 function leesStagingBytes(ud: string, projectId: string, versie: number): LakTextuur[] {
-  const map = join(versieMap(ud, projectId, versie), 'bytes')
   try {
+    const map = join(versieMap(ud, projectId, versie), 'bytes')
     return readdirSync(map)
       .filter((n) => /^d\d+\.dds$/.test(n))
       .map((n) => ({ doel: n.replace(/\.dds$/, ''), dds: new Uint8Array(readFileSync(join(map, n))) }))
@@ -436,18 +449,21 @@ export function plaatsLak(omgeving: LakOmgeving, invoer: PlaatsInvoer): PlaatsUi
   const bestaand = register.addons.find((a) => a.soort === 'lak' && a.lak?.projectId === project.id)
   if (bestaand) return opnieuwOpslaan(omgeving, invoer, bestaand)
   const nnnn = volgendNnnn(ud, familie)
-  const versie = (project.geplaatst?.versie ?? 0) + 1
+  const vorige = project.geplaatst?.versie
+  const versie = (Number.isInteger(vorige) && (vorige as number) > 0 ? (vorige as number) : 0) + 1
   const p = lakPlan(omgeving, { familie, project, naam: invoer.naam, texturen: invoer.texturen, nnnn, datum: nu })
   if ('fout' in p) return p
-  return zetNeer(omgeving, invoer, p.plan, versie)
+  return zetNeer(omgeving, invoer, p.plan, versie, schrijfStaging(ud, project.id, versie, p.plan, invoer.texturen))
 }
 
-/** De staging schrijven en via de add-on-manager plaatsen; de .cti als laatste. */
-function zetNeer(omgeving: LakOmgeving, invoer: PlaatsInvoer, plan: LakPlan, versie: number): PlaatsUitkomst {
+/**
+ * Plaatsen uit een staging (`boom`, al geschreven) via de add-on-manager; de .cti
+ * als laatste. Gooit alleen bij een schrijffout (dan is alles al teruggedraaid).
+ */
+function zetNeer(omgeving: LakOmgeving, invoer: PlaatsInvoer, plan: LakPlan, versie: number, boom: string): PlaatsUitkomst {
   const { omsi, userData: ud } = omgeving
   const nu = omgeving.nu?.() ?? new Date()
   const { familie, project } = invoer
-  const boom = schrijfStaging(ud, project.id, versie, plan, invoer.texturen)
   const bron = openBron(boom)
   try {
     const register = leesRegister(ud)
@@ -476,8 +492,6 @@ function zetNeer(omgeving: LakOmgeving, invoer: PlaatsInvoer, plan: LakPlan, ver
       ? { ...bron, kopieer: (b: Parameters<typeof bron.kopieer>[0], naar: string) => (haak(b.pad), bron.kopieer(b, naar)) }
       : bron
     const uit = loopAf(installeerStappen(metHaak, { ...addonPlan, naam: `Lakstudio: ${plan.naam}` }, omsi, ud, nu))
-    // In het register de .cti's VOOROP: verwijderen haalt ze dan eerst weg (§5.6, punt 5).
-    uit.addon.bestanden.sort((a, b) => Number(/\.cti$/i.test(b.pad)) - Number(/\.cti$/i.test(a.pad)))
     uit.addon.soort = 'lak'
     uit.addon.bussen = []
     uit.addon.lak = {
@@ -490,9 +504,11 @@ function zetNeer(omgeving: LakOmgeving, invoer: PlaatsInvoer, plan: LakPlan, ver
       versie,
       afhankelijk: plan.afhankelijk
     }
-    registreer(ud, omsi, uit)
+    registreerLak(omgeving, uit)
     zetTeller(ud, plan.nnnn)
     ruimVersiesOp(ud, project.id, [versie])
+    // Een oudere regel in de wachtrij geldt niet meer: die zou later nog eens geplaatst worden (tegenlezing L3 punt 15).
+    haalUitWachtrij(ud, project.id)
     const index = plan.index[familie.bus] ?? Object.values(plan.index)[0] ?? 0
     omgeving.log?.(
       `Lakstudio: '${plan.naam}' geplaatst als nr. ${plan.nnnn} versie ${versie} (${uit.geschreven} bestanden, index ${index})` +
@@ -505,16 +521,46 @@ function zetNeer(omgeving: LakOmgeving, invoer: PlaatsInvoer, plan: LakPlan, ver
 }
 
 /**
+ * In het register, met de .cti's VOOROP: verwijderen haalt ze dan eerst weg
+ * (§5.6, punt 5). Lukt het register niet, dan gaat de installatie terug met de
+ * .cti's EERST (tegenlezing L3 punt 12): `registreer` van de add-on-manager
+ * draait de lijst om, en dan ging de .cti als laatste weg. Alle bestanden van
+ * een lak zijn nieuw (de harde eis van het plan), dus terugdraaien is weghalen.
+ */
+function registreerLak(omgeving: LakOmgeving, uit: { addon: Addon }): void {
+  const { omsi, userData: ud } = omgeving
+  const isCti = (p: string): boolean => /\.cti$/i.test(p)
+  const bestanden = [...uit.addon.bestanden].sort((a, b) => Number(isCti(b.pad)) - Number(isCti(a.pad)))
+  const addon: Addon = { ...uit.addon, bestanden }
+  try {
+    const register = leesRegister(ud)
+    schrijfRegister(ud, { addons: [...register.addons, addon] })
+    uit.addon = addon
+  } catch (fout) {
+    verwijderGewijzigd(omsi, bestanden.map((b) => b.pad))
+    rmSync(reserveMap(ud, addon.id), { recursive: true, force: true })
+    const vol = (fout as NodeJS.ErrnoException).code === 'ENOSPC'
+    throw new InstallatieFout(vol ? 'ruimte' : 'fout', fout instanceof Error ? fout.message : String(fout), true)
+  }
+}
+
+/** De map met de reservekopie van de vorige versie tijdens opnieuw opslaan. */
+const terugMap = (ud: string, id: string): string => join(projectMap(ud, id), 'terug')
+
+/**
  * Opnieuw opslaan (§5.6): eerst alles controleren (niets met de hand
  * veranderd), dan het nieuwe plan (zelfde naam, zelfde nummer, nieuwe
- * texturen), dan de oude versie weg met de .cti eerst, dan de nieuwe erin. Gaat
- * dat laatste mis, dan komt de oude versie terug uit zijn eigen staging.
+ * texturen) en de nieuwe staging, een reservekopie van wat er nu in OMSI staat,
+ * dan de oude versie weg met de .cti eerst, dan de nieuwe erin. Gaat dat laatste
+ * mis -- ook met een uitzondering (een bestand dat vastzit, EBUSY door Defender)
+ * -- dan komt de vorige versie terug uit de reservekopie (tegenlezing L3 punt 3).
  */
 function opnieuwOpslaan(omgeving: LakOmgeving, invoer: PlaatsInvoer, oud: Addon): PlaatsUitkomst {
   const { omsi, userData: ud } = omgeving
   const nu = omgeving.nu?.() ?? new Date()
   const { familie, project } = invoer
   const lak = oud.lak!
+  const isCti = (p: string): boolean => /\.cti$/i.test(p)
   // 1. Eerst alles controleren: is er iets met de hand veranderd, dan niets aanraken tot de speler kiest.
   const controle = controleerStappen(oud, omsi)
   if (controle.gewijzigd.length > 0 && invoer.keuze !== 'weggooien') return { fout: 'handmatig', bestanden: controle.gewijzigd }
@@ -523,21 +569,75 @@ function opnieuwOpslaan(omgeving: LakOmgeving, invoer: PlaatsInvoer, oud: Addon)
   const eigenPaden = new Set(oud.bestanden.map((b) => b.pad.toLowerCase()))
   const p = lakPlan(omgeving, { familie, project, naam, texturen: invoer.texturen, nnnn: lak.nnnn, datum: nu, eigenNaam: naam, eigenPaden })
   if ('fout' in p) return p
-  // 3. De vorige versie weg, de .cti eerst (die staat voorop in het register).
+  const versie = (Number.isInteger(lak.versie) && lak.versie > 0 ? lak.versie : 0) + 1
+  // 3. De nieuwe staging en een reservekopie van wat er NU staat, vóór er iets weggaat: een fout hier raakt OMSI niet.
+  const boom = schrijfStaging(ud, project.id, versie, p.plan, invoer.texturen)
+  const terug = join(terugMap(ud, project.id), 'omsi')
+  rmSync(terugMap(ud, project.id), { recursive: true, force: true })
+  for (const b of oud.bestanden) {
+    const van = schrijfpad(omsi, b.pad)
+    if (!existsSync(van)) continue
+    const naar = join(terug, ...b.pad.split('/'))
+    mkdirSync(dirname(naar), { recursive: true })
+    writeFileSync(naar, readFileSync(van))
+  }
+  if (invoer.omsiDraait?.()) return { omsi: true }
+  // 4. De vorige versie weg: een met de hand gewijzigde .cti eerst (bij weggooien), dan de rest met de .cti voorop.
   const register = leesRegister(ud)
+  if (invoer.keuze === 'weggooien') verwijderGewijzigd(omsi, controle.gewijzigd.filter(isCti))
   const weg = loopAf(verwijderStappen(oud, register, omsi, ud))
   if (invoer.keuze === 'weggooien') verwijderGewijzigd(omsi, weg.gewijzigd)
   schrijfRegister(ud, { addons: register.addons.filter((a) => a.id !== oud.id) })
   rmSync(reserveMap(ud, oud.id), { recursive: true, force: true })
-  // 4. De nieuwe versie.
-  const uit = zetNeer(omgeving, invoer, p.plan, lak.versie + 1)
-  if ('ok' in uit) return uit
-  // 5. Mislukt: de vorige versie terug uit haar eigen staging.
-  const oudBytes = leesStagingBytes(ud, project.id, lak.versie)
-  const terug = lakPlan(omgeving, { familie, project, naam, texturen: oudBytes, nnnn: lak.nnnn, datum: new Date(oud.geinstalleerd), eigenNaam: naam })
-  const hersteld = 'plan' in terug ? zetNeer(omgeving, { ...invoer, texturen: oudBytes }, terug.plan, lak.versie) : terug
-  omgeving.log?.(`Lakstudio: opnieuw opslaan van '${naam}' mislukte; de vorige versie ${'ok' in hersteld ? 'staat terug' : 'kon niet terug'}`)
+  // 5. De nieuwe versie.
+  let uit: PlaatsUitkomst
+  try {
+    uit = zetNeer(omgeving, invoer, p.plan, versie, boom)
+  } catch (fout) {
+    uit = { fout: 'fout', detail: fout instanceof Error ? fout.message : String(fout) }
+  }
+  if ('ok' in uit) {
+    rmSync(terugMap(ud, project.id), { recursive: true, force: true })
+    return uit
+  }
+  // 6. Mislukt: de vorige versie terug, precies zoals ze stond.
+  let hersteld = false
+  try {
+    hersteld = zetTerug(omgeving, oud, terug)
+  } catch (fout) {
+    omgeving.log?.(`Lakstudio: terugzetten van '${naam}' gaf een fout: ${fout instanceof Error ? fout.message : String(fout)}`)
+  }
+  if (hersteld) rmSync(terugMap(ud, project.id), { recursive: true, force: true })
+  omgeving.log?.(
+    `Lakstudio: opnieuw opslaan van '${naam}' mislukte (${'fout' in uit ? `${uit.fout}${uit.detail ? `: ${uit.detail}` : ''}` : 'omsi'}); ` +
+      `de vorige versie ${hersteld ? 'staat terug' : `kon niet terug (de reservekopie staat in ${terug})`}`
+  )
   return uit
+}
+
+/**
+ * De vorige versie van een lak terug uit de reservekopie (`terug`): via de
+ * add-on-manager, alleen als elk bestand nieuw is, de .cti als laatste, en met
+ * dezelfde gegevens in het register.
+ */
+function zetTerug(omgeving: LakOmgeving, oud: Addon, terug: string): boolean {
+  const { omsi, userData: ud } = omgeving
+  if (!existsSync(terug)) return false
+  const bron = openBron(terug)
+  try {
+    const plan: Plan = loopAf(planStappen(bron, omsi, leesRegister(ud)))
+    if (plan.regels.some((r) => r.staat !== 'nieuw') || plan.code.length || plan.nooit.length || plan.geweigerd.length) return false
+    const isCti = (p: string): boolean => /\.cti$/i.test(p)
+    plan.regels.sort((a, b) => Number(isCti(a.doel)) - Number(isCti(b.doel)))
+    const uit = loopAf(installeerStappen(bron, { ...plan, naam: oud.naam }, omsi, ud, new Date(oud.geinstalleerd)))
+    uit.addon.soort = 'lak'
+    uit.addon.bussen = []
+    uit.addon.lak = oud.lak
+    registreerLak(omgeving, uit)
+    return true
+  } finally {
+    bron.sluit()
+  }
 }
 
 /** Verwijder bestanden die de speler koos weg te gooien (alleen van deze lak, dus uit het register). */
@@ -580,6 +680,8 @@ export function verwijderLak(
   const controle = controleerStappen(addon, omsi)
   if (controle.gewijzigd.length > 0 && !opties.keuze) return { fout: 'handmatig', bestanden: controle.gewijzigd }
   if (opties.keuze === 'laten') return { ok: true, verwijderd: 0, blijvend: addon.bestanden.map((b) => b.pad) }
+  // [Alles weghalen]: een met de hand gewijzigde .cti eerst, vóór de texturen waar hij naar wijst (tegenlezing L3 punt 12).
+  if (opties.keuze === 'alles') verwijderGewijzigd(omsi, controle.gewijzigd.filter((p) => /\.cti$/i.test(p)))
   const uit = loopAf(verwijderStappen(addon, register, omsi, ud))
   if (opties.keuze === 'alles') verwijderGewijzigd(omsi, uit.gewijzigd)
   schrijfRegister(ud, { addons: register.addons.filter((a) => a.id !== addon.id) })
@@ -643,7 +745,8 @@ export function klaarzetten(omgeving: LakOmgeving, invoer: PlaatsInvoer): { klaa
   const eigenPaden = oud ? new Set(oud.bestanden.map((b) => b.pad.toLowerCase())) : undefined
   const p = lakPlan(omgeving, { familie, project, naam, texturen: invoer.texturen, nnnn, datum: nu, eigenNaam: oud ? naam : undefined, eigenPaden })
   if ('fout' in p) return p
-  const versie = (oud?.lak?.versie ?? 0) + 1
+  const vorige = oud?.lak?.versie
+  const versie = (Number.isInteger(vorige) && (vorige as number) > 0 ? (vorige as number) : 0) + 1
   schrijfStaging(ud, project.id, versie, p.plan, invoer.texturen)
   const rest = leesWachtrij(ud).filter((l) => l.projectId !== project.id)
   schrijfWachtrij(ud, [...rest, { projectId: project.id, naam, bus: project.bus, versie, sinds: nu.toISOString() }])
@@ -662,11 +765,14 @@ export function klaarzetten(omgeving: LakOmgeving, invoer: PlaatsInvoer): { klaa
 export function verwerkWachtrij(
   omgeving: LakOmgeving,
   familieVan: (bus: string) => Familie,
-  omsiDraait: () => boolean
+  omsiDraait: () => boolean,
+  /** Alleen deze lak (main peilt OMSI per lak, vlak voor het schrijven, §5.7). */
+  alleen?: string
 ): Array<{ projectId: string; naam: string; uitkomst: PlaatsUitkomst }> {
   const { userData: ud } = omgeving
   const uit: Array<{ projectId: string; naam: string; uitkomst: PlaatsUitkomst }> = []
   for (const w of leesWachtrij(ud)) {
+    if (alleen && w.projectId !== alleen) continue
     if (omsiDraait()) break
     const project = leesProject(ud, w.projectId)
     const texturen = leesStagingBytes(ud, w.projectId, w.versie)

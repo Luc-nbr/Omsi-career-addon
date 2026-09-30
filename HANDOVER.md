@@ -683,7 +683,110 @@ hoort niet onder je handen opnieuw op te komen (`probe-beweging.cjs`,
 
 ## 5. Openstaand werk
 
-### 5.0000000 Lakstudio L3: de studio voor spelers (30-09-2026)
+### 5.00000000 Lakstudio L3: herstel na proefdraaier, beoordelaar en tegenlezer (30-09-2026)
+
+Tak `claude/lakstudio`, op 520b3d6. Nog steeds alles achter de schakelaar `bus3d`
+(`probe-modi.cjs`: zonder schakelaar geen lakknoppen, en Addons toont zonder
+schakelaar ook geen paneel "Eigen kleurstellingen" meer).
+
+**Beeld (gerepareerd):**
+- **Het zijbeeld** (`lakdoek.ts` `zijbeeld`, ZIJ_VS/ZIJ_FS): de bus orthografisch
+  per zijde (1,5 cm per pixel), met wat de speler daar ziet: lak, of een deur,
+  ruit, wiel, afdekker of een vlak dat > 60° wegdraait. Met sommentabellen zoekt
+  `vrijePlek` voor de naam en het logo van Snelle lak een rechthoek met ≥ 98,5%
+  vrije lak, met marges, eerst op volle maat, dan 85% en 70%, en dezelfde plek
+  gespiegeld voor de kopie. De naam viel eerst over deuren en wielkasten
+  ("dtwerke Lucstad") en het logo achter het BVG-wapen. Valt een laag voor < 90%
+  op vrije lak, dan zegt het paneel `ls.opDeur`.
+- **De geen-kopie-regel** kijkt in het zijbeeld naar gedeelde texels op de
+  buitenhuid, niet naar de UV-voetafdruk: de SD77 deelt SD77_02 met binnenwanden
+  en stangen, en kreeg links geen naam en geen logo.
+- **Voorbeeld = OMSI:** de studio toont de bus met alleen de setvars die de .cti
+  schrijft (`alleenGeschreven` in `busRust`/`bus3dLak`), en de .cti schrijft een
+  expliciete waarde voor elke uiterlijk-variabele (`effectieveOpties` in
+  `shared/lak.ts`, §4.9). `overLak` is nu meetkundig (een alfamesh binnen 5 cm van
+  het laknet) in plaats van "materiaal met alfa": de O560 schrijft `vis_wheels 1`.
+  Een variabele die alleen in `visual*.osc` staat, is uiterlijk
+  (`vis_grill_invisible` van de SD77).
+- **Het zonemasker** (ZONE_FS + MORF_FS): Z per texel, gesloten en dan geopend
+  met een straal van 1-8 texels (± 3 bij 4096). Weg zijn de witte stippellijnen
+  langs de naden op donkere lak en de spikkels achter op de C2 en rond de roosters
+  van de O560.
+- **Eén bus, één lak** (`zones.ts` `zonesGelijk`): een zone (≥ 2%) met de kleur van
+  een lakzone van een ander doel van dezelfde bus is ook lak. De rode schort van de
+  HH20 was op de achterwagen lak (11,6%) en op de voorwagen niet (9,2%); onder de
+  weggehaalde HOCHBAHN-letters bleven 944 texels rood, nu 21 (blauw, een ingebakken
+  detail van < 2%).
+- Driehoeken buiten het laknet (`overig`, A = 0,4 in het masker) houden de basis:
+  een ruitvlak van de C2 werd zwart.
+- **"Effen in de kleuren van deze lak"** kleurt de kleurvlakken van de start
+  (`maakStartVlakken`: zones op 1/8, samengevoegde componenten, lidmaatschap in
+  twee RGBA8-texturen; lagen met `bron: 'start'`, vlag 32). De O560 bleef eerst
+  helemaal wit en de C2 helemaal geel. De stalen van Snelle lak komen ook uit de
+  start (de O560 krijgt zijn rood).
+- Het logo en een afbeelding houden standaard dezelfde richting (geen ƆUL links);
+  "Wit wordt doorzichtig" haalt alleen het wit weg dat met de rand verbonden is,
+  met 2 px kleur-naar-alfa (de witte L van LUC blijft).
+- De onderband van Snelle lak begint 0,5 m onder de doos: er bleef een groene strook.
+- De basis staat op de bewerkmaat; de export laadt de volle basis even erbij.
+
+**Schrijven en veiligheid (tegenlezer 1-15):** een export op een verloren context
+wordt een fout, niet een zwarte DDS (`leesPbo` gooit bij WAIT_FAILED en na de
+tijd, `exporteer` toetst `isContextLost`, de werker weigert `lakExport` zolang de
+context weg is, de pauze wacht zolang de studio bezig is, en main weigert een lege
+DDS). De start gaat overal mee (wachtrij, [Bewerken], `startTextuur`). Opnieuw
+opslaan maakt eerst staging en plan, kopieert de oude bestanden naar
+`<project>/terug`, en zet ze ook bij een exception terug. `lak:bezig` en een
+generatieteller in het lakdoek. OMSI wordt na het uitrekenen van de familie en per
+lak opnieuw gepeild. Een weesbestand weghalen vraagt twee keer, met de bestanden.
+Addons waarschuwt voor lakken die op een pakket leunen, en de studio meldt
+ontbrekende bestanden (`ls.ontbreekt`). U+00A0 en U+00AD geweigerd.
+`gpuBytes` telt basis, sjablonen, zonemasker en startvlakken; de codeerwerkers
+stoppen in `stop()`. `geplaatst` komt van schijf en de versie moet een geheel
+getal zijn. Bewaren boven 4 MB geeft een melding. De .cti gaat bij terugdraaien als
+eerste weg. Bakken op de `bakker` van main. Na direct plaatsen uit de wachtrij.
+[Alles laten staan] meldt niets meer. Verwijderen vanuit Addons vraagt `ls.gebruik`.
+`probe-lakstudio-beeld.cjs` eindigt met `app.exit(1)` bij een fout.
+
+**Bediening:** "Komt ook op" noemt de `[friendlyname]` en heeft een keuzelijst;
+busopties heten naar hun betekenis (`ls.optie.*`, 17 variabelen) met de variabele
+als tooltip, zonder meettijd; "Naam in OMSI"; het tabblad heet "Gereedschap";
+staal 3 kleurt de tekst; het kader van de kopie tekent alleen als die kant naar de
+camera kijkt; geen horizontale schuifbalk rechts; het beeld van de andere kant is
+480×270; een regel over de bediening (rechts slepen = draaien); de meldingen van
+een laag staan bovenaan het paneel.
+
+**Verworpen, met reden:**
+- KI-leden zonder doostoets (proefdraaier 9): de KI-bussen gebruiken dezelfde
+  textuur met dezelfde UV; 21 cm naast de doos is de maat van het model, niet van
+  de lak. Een KI-lid uitsluiten zou de lak op de KI-bussen weghalen. Voor P10.
+- `MB_KI_C2_E6_Gn_main` laadt `_trail.tga` (beoordelaar 19): een KI-voorwagen is
+  een heel pakket met de achterwagen; zo staat het in de .bus van de maker.
+- BVG-wapens en gouden kaders van de SD77 (beoordelaar 8): MA van de maker
+  beschermt ze; "Ook over rubbers en lampen" lakt nu ook met een sjabloon over
+  alles wat buiten ligt en geen glas is.
+- D-DIN (beoordelaar 18): de licentie is nog niet nagekeken (zie hieronder).
+- `plugin/out` in de werkmap (proefdraaier 14): nodig voor de installer, niet voor L3.
+- Een tweede proefronde tegelijk (beoordelaar 20): omgeving, niets aan de code.
+
+**P3 samenstellen:** pad 1 op de C2 Solo gaf in losse rondes 4,06-4,44 ms (eis
+≤ 4) en in de laatste volle ronde 3,63 ms. Gemeten terwijl andere programma's de
+GPU voor ± 38-41% gebruikten (nvidia-smi); 520b3d6 geeft onder dezelfde last
+4,22 ms (eerder, met een lege GPU, 2,68). De nieuwe texturen
+(zonemasker, startvlakken) kosten 0,2 ms; een textuurlezing in een tak binnen de
+lus over de lagen kostte 3 ms (de HLSL-vertaler las hem per laag) en staat nu
+buiten de lus.
+
+**Gemeten (RTX 4070 SUPER met die last, `probe-lakstudio-studio.cjs`, 96 ok):**
+studio klaar O560 4,9 s (lakdoek 0,77 s), SD77 3,0 s (0,62), C2 4,7 s (0,75),
+C2 GN 11,0 s; opslaan 1,7 / 1,2 / 2,3 s, C2 GN 7,2 s. Naam en logo van Snelle lak
+op vrije lak aan beide kanten: 0,99-1,0 (eis ≥ 0,98, met kopie). De afdrukken van
+de proef staan voor Luc in het klad (`afdruk-na/`).
+
+**Nog niet:** opslaan van de C2 GN duurt 7,2 s (§2.1 wil ≤ 6 s): het laden van de
+Hybrid-achterwagen om zijn doel te bakken is het meeste daarvan (GPU-proef:
+lakdoek 3,0 s, met het laden 15,5 s). Onzichtbaar bakken zonder een hele bus te
+laden (§4.14) is nog werk. De P3-meting opnieuw op een lege GPU.
 
 Ontwerp §1, §2, §10 (L3); tak `claude/lakstudio`. Nog steeds alles achter de
 schakelaar `bus3d` (beslissing 5): zonder schakelaar geen [Lak maken], geen

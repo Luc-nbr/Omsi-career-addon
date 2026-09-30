@@ -70,8 +70,8 @@ export function Ontwikkelpaneel({ pad, handvat, projectId, bedrijf, licht, klaar
           spiegel: { aan: true },
           gemaakt: nu,
           bewaard: nu
-        } as LakProject))!
-      if (weg || !p) return
+        } as LakProject)) as LakProject
+      if (weg || !p || 'fout' in p) return
       zetGesch(begin(p))
       zetNaam(p.naam)
     })()
@@ -144,7 +144,8 @@ export function Ontwikkelpaneel({ pad, handvat, projectId, bedrijf, licht, klaar
     if (!handvat || !gesch) return
     zetUitkomst(undefined)
     zetBezig(t('ls.maken'))
-    const bewaard = await brug.lakBewaar({ ...gesch.heden, naam })
+    const b = await brug.lakBewaar({ ...gesch.heden, naam })
+    const bewaard = b && !('fout' in b) ? b : undefined
     const uit = (await handvat.studio.exporteer()) as Array<{ doel: string; dds: Uint8Array }> | { fout: string }
     if ('fout' in uit) {
       zetBezig(undefined)

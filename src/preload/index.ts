@@ -205,6 +205,8 @@ const api: CareerApi = {
   lakWezen: () => ipcRenderer.invoke('lak:wezen'),
   lakWeesWeg: (id) => ipcRenderer.invoke('lak:weesWeg', id),
   lakWeesOvernemen: (id) => ipcRenderer.invoke('lak:weesOvernemen', id),
+  lakGebruik: (id) => ipcRenderer.invoke('lak:gebruikHoofd', id),
+  addonLakAfhankelijk: (id) => ipcRenderer.invoke('addon:lakAfhankelijk', id),
   opKleurstellingenVeranderd: (luisteraar) => {
     const heen = (_gebeurtenis: unknown, bussen: string[]): void => luisteraar(bussen)
     ipcRenderer.on('bus:kleurstellingenVeranderd', heen)

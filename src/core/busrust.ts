@@ -176,7 +176,15 @@ export function busRust(
    * De busopties van de Lakstudio (lakstudio-ontwerp §4.9): extra setvars, na
    * die van de kleurstelling (zoals OMSI ze na de .cti zou zetten), in elk deel.
    */
-  extra: Array<[string, number]> = []
+  extra: Array<[string, number]> = [],
+  /**
+   * Het voorbeeld van een eigen lak (Lakstudio, beoordeling L3 punt 3): wat de
+   * kleurstelling en de busopties niet zetten, is 0 of wat het script bij het
+   * starten zet, zoals in OMSI. Zonder deze vlag vult de app die aan met de
+   * gewone uitvoering van het model (`typischVan`), en toonde de studio een bus
+   * die OMSI met die lak nooit laat zien.
+   */
+  alleenGeschreven = false
 ): ReturnType<typeof rustRegels> & { vars: Array<[string, number]>; bron: 'script' | 'regels' } {
   const vermeldingen: RustVermelding[] = kop.vermeldingen.map((v) => ({
     deel: kop.stukken[v.stuk]?.deel ?? 0,
@@ -221,7 +229,7 @@ export function busRust(
         return {}
       }
     }
-    const typisch = info ? typischVan(info.lijst, gekozen) : {}
+    const typisch = info && !alleenGeschreven ? typischVan(info.lijst, gekozen) : {}
     const kleinVars = klein(Object.fromEntries(kleurVars))
     return {
       kleurVars: kleinVars,

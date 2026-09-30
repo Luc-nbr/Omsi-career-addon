@@ -12,9 +12,9 @@ import {
   type LakSjabloon,
   type NietOpReden
 } from '../shared/lak'
-import { TextuurZoeker, textuurMappen } from './bus3d'
+import { leesBusBestand, TextuurZoeker, textuurMappen } from './bus3d'
 import { modelVanBus, zoekTextuurVan } from './busmodel'
-import { busLijsten } from './busrust'
+import { busLijsten, typischVan } from './busrust'
 import { ctcBlokken, leesKleurstellingen, textuurSleutel, type Kleurstellingen } from './kleurstelling'
 import { leesPng } from './png'
 import { cfgRegels, leesSchermcfg } from './schermcfg'
@@ -93,6 +93,8 @@ export interface FamilieDoel {
   lowPlekken: Array<{ map: number; plek: string }>
   bakker: string
   sjabloon?: FamilieSjabloon
+  /** De textuur die de start-kleurstelling op een plek van dit doel legt (bij een start). */
+  startPad?: string
 }
 
 export interface FamilieSjabloon {
@@ -760,6 +762,7 @@ export function familieVan(omsi: string, rel: string, opties: FamilieOpties = {}
         const k = lid.kleuren?.lijst.find((x) => omsiHoofdletters(x.naam) === omsiHoofdletters(opties.start!))
         for (const p of d.plekken) {
           const pad = k?.texturen[p.plek]
+          if (pad && !d.startPad && existsSync(pad)) d.startPad = pad
           const m = pad ? maatVan(pad) : undefined
           if (m && m.b * m.h > b * h) {
             b = m.b
@@ -1078,8 +1081,16 @@ const sjabloonGeheugen = new Map<string, FamilieSjabloon | undefined>()
  * `[visible]` of `[matl_change]` van een cfg hem gebruikt; wat nergens gebruikt
  * wordt, telt als techniek (voorzichtig). Een vuistregel; P16 kijkt de bekende
  * gevallen na.
+ *
+ * Een script dat alleen over het UITERLIJK gaat (de bestandsnaam zegt "visual",
+ * zoals Script/visual.osc van de SD200) maakt een variabele geen techniek: daar
+ * leest `(L.L.vis_grill_invisible)` alleen of de O&K-klep getekend wordt
+ * (beoordeling L3 punt 10). setvar.osc van de NLC rekent er wel mee
+ * (vis_CTI_Sitztyp), en blijft techniek.
+ *
+ * `start`: de start-kleurstelling; dan staat bij elke optie de waarde die hij zet.
  */
-export function lakOpties(familie: Familie): LakOptie[] {
+export function lakOpties(familie: Familie, start?: string): LakOptie[] {
   const vars = new Map<string, { naam: string; waarden: Set<number> }>()
   for (const m of familie.mappen) {
     for (const [h, v] of setvarsIn(m)) {
@@ -1089,15 +1100,15 @@ export function lakOpties(familie: Familie): LakOptie[] {
     }
   }
   if (vars.size === 0) return []
-  // De scripts van alle leden, één keer gelezen, in kleine letters.
-  const scripts: string[] = []
+  // De scripts van alle leden, één keer gelezen, in kleine letters; met hun naam (voor de "visual"-regel).
+  const scripts: Array<{ naam: string; tekst: string }> = []
   const gelezen = new Set<string>()
   for (const lid of familie.leden) {
     for (const s of busLijsten(lid.pad).scripts) {
       if (gelezen.has(s.toLowerCase())) continue
       gelezen.add(s.toLowerCase())
       try {
-        scripts.push(readFileSync(s, 'latin1').toLowerCase())
+        scripts.push({ naam: basename(s).toLowerCase(), tekst: readFileSync(s, 'latin1').toLowerCase() })
       } catch {
         // een script dat er niet is, noemt niets
       }
@@ -1123,10 +1134,17 @@ export function lakOpties(familie: Familie): LakOptie[] {
       for (const m of mesh.materialen) if (m.variabele) wissel.add(omsiHoofdletters(m.variabele))
     }
   }
+  // De gewone waarde en die van de start: uit de kleurstellingen van de geopende bus (of het eerste lid).
+  const eigen = familie.leden.find((l) => l.rel.toLowerCase() === familie.bus.toLowerCase()) ?? familie.leden[0]
+  const lijst = eigen?.kleuren?.lijst ?? []
+  const typisch = typischVan(lijst)
+  const gekozen = start ? lijst.find((k) => omsiHoofdletters(k.naam) === omsiHoofdletters(start)) : undefined
+  const startVars = new Map(Object.entries(gekozen?.setvars ?? {}).map(([v, w]) => [omsiHoofdletters(v), w]))
   const uit: LakOptie[] = []
   for (const [h, v] of vars) {
     const klein = v.naam.toLowerCase()
-    const inScript = scripts.some((s) => s.includes(`.l.${klein})`) || s.includes(`.l.${klein} `))
+    const noemen = scripts.filter((s) => s.tekst.includes(`.l.${klein})`) || s.tekst.includes(`.l.${klein} `))
+    const inScript = noemen.some((s) => !/visual/.test(s.naam))
     const meshes = perVar.get(h) ?? []
     const soort: LakOptie['soort'] = !inScript && (meshes.length > 0 || wissel.has(h)) ? 'uiterlijk' : 'techniek'
     const waarden = [...v.waarden].sort((a, b) => a - b)
@@ -1145,7 +1163,9 @@ export function lakOpties(familie: Familie): LakOptie[] {
       waarden,
       verberg,
       meshes: [...new Set(meshes.map((m) => m.o3d))].slice(0, 12),
-      overLak: meshes.some((m) => m.alfa)
+      overLak: meshes.some((m) => m.alfa),
+      typisch: typisch[klein] ?? 0,
+      start: startVars.get(h)
     })
   }
   return uit.sort((a, b) => a.variabele.localeCompare(b.variabele))
@@ -1212,7 +1232,8 @@ export function familieInfo(familie: Familie, idVan: (pad: string) => string | u
     low: d.low,
     plekken: d.plekken,
     bakker: d.bakker,
-    sjabloon: sjabloon(d.sjabloon)
+    sjabloon: sjabloon(d.sjabloon),
+    startTextuur: d.startPad ? idVan(d.startPad) : undefined
   }))
   const uitgesloten = new Set(familie.nietOp.map((n) => n.bus))
   return {
@@ -1220,6 +1241,7 @@ export function familieInfo(familie: Familie, idVan: (pad: string) => string | u
     mappen: familie.mappen.length,
     leden: familie.leden.map((l) => ({
       bus: l.rel,
+      naam: vriendelijkeNaam(l.pad),
       bestuurbaar: l.bestuurbaar,
       doelen: uitgesloten.has(l.rel)
         ? []
@@ -1232,6 +1254,17 @@ export function familieInfo(familie: Familie, idVan: (pad: string) => string | u
     optiesMogelijk: familie.optiesMogelijk,
     geenCtc: familie.geenCtc
   }
+}
+
+/**
+ * De naam van een familielid zoals de speler hem kent: model en uitvoering uit
+ * `[friendlyname]` ("Citaro C2 E6 altes Dashboard"), niet de bestandsnaam
+ * (beoordeling L3 punt 9: "Komt ook op: MB_C2_E6_Solo_altesDashboard").
+ */
+function vriendelijkeNaam(pad: string): string | undefined {
+  const n = leesBusBestand(pad)?.naam
+  const tekst = n ? [n[1], n[2]].map((x) => x.trim()).filter(Boolean).join(' ') : ''
+  return tekst || undefined
 }
 
 /** De cfg's die een map lezen (voor het nummer per cfg na het plaatsen). */

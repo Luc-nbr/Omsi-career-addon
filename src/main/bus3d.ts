@@ -85,7 +85,13 @@ export interface Bus3dDienst {
    * `bus:lak3d`: de lak van een andere kleurstelling voor een pakket dat er al
    * is; `extra` zijn de busopties van de Lakstudio (§4.9).
    */
-  lak3d(pakket: string, kleurstelling?: string, venster?: WebContents, extra?: Array<[string, number]>): Promise<Bus3dLak | { reden: Bus3dReden }>
+  lak3d(
+    pakket: string,
+    kleurstelling?: string,
+    venster?: WebContents,
+    extra?: Array<[string, number]>,
+    alleenGeschreven?: boolean
+  ): Promise<Bus3dLak | { reden: Bus3dReden }>
   /** `bus:omgeving3d`: hemel en wolken van "Buiten" (§5.6), met hun texturen in het register. */
   omgeving3d(): Promise<Bus3dOmgeving>
   /** `bus:heldenbeeld`: het beeld dat het venster maakte toen de bus scherp stond (§9). */
@@ -373,12 +379,18 @@ export function maakBus3dDienst(af: Bus3dAfhankelijk): Bus3dDienst {
    * ruststand -- welke meshes, welk materiaal -- moet nog steeds uitgerekend
    * worden (§5.2).
    */
-  async function lak(z: Bus3dZijspoor, kleurstelling: string | undefined, extra?: Array<[string, number]>): Promise<Bus3dLak | undefined> {
+  async function lak(
+    z: Bus3dZijspoor,
+    kleurstelling: string | undefined,
+    extra?: Array<[string, number]>,
+    alleenGeschreven?: boolean
+  ): Promise<Bus3dLak | undefined> {
     const uit = await metWacht<{ lak: Bus3dLak; textuurBronnen: Bus3dTextuurBron[] } | { reden: Bus3dReden }>({
       soort: 'bus3d:lak',
       pakket: z.pakket,
       kleurstelling,
-      extra: extra?.length ? extra : undefined
+      extra: extra?.length ? extra : undefined,
+      alleenGeschreven: alleenGeschreven || undefined
     })
     if ('reden' in uit) return undefined
     for (const t of uit.textuurBronnen) texturen.set(t.id, t)
@@ -457,12 +469,13 @@ export function maakBus3dDienst(af: Bus3dAfhankelijk): Bus3dDienst {
     pakket: string,
     kleurstelling?: string,
     venster?: WebContents,
-    extra?: Array<[string, number]>
+    extra?: Array<[string, number]>,
+    alleenGeschreven?: boolean
   ): Promise<Bus3dLak | { reden: Bus3dReden }> {
     if (!isBus3dId(String(pakket))) return { reden: 'fout' }
     const z = cache.zijspoor(pakket)
     if (!z) return { reden: 'verouderd' }
-    const uit = await inDeRij(kanaalVan('lak', venster), async () => (await lak(z, kleurstelling, extra)) ?? leegLak(kleurstelling))
+    const uit = await inDeRij(kanaalVan('lak', venster), async () => (await lak(z, kleurstelling, extra, alleenGeschreven)) ?? leegLak(kleurstelling))
     return uit
   }
 
@@ -799,8 +812,14 @@ export function registreerBus3dIpc(ipcMain: IpcMain, dienst: Bus3dDienst): void 
   ipcMain.handle('bus:model3d', (event: IpcMainInvokeEvent, relatiefPad: unknown, kleurstelling: unknown) =>
     dienst.model3d(String(relatiefPad ?? ''), typeof kleurstelling === 'string' ? kleurstelling : undefined, event.sender)
   )
-  ipcMain.handle('bus:lak3d', (event: IpcMainInvokeEvent, pakket: unknown, kleurstelling: unknown, extra: unknown) =>
-    dienst.lak3d(String(pakket ?? ''), typeof kleurstelling === 'string' ? kleurstelling : undefined, event.sender, extraVars(extra))
+  ipcMain.handle('bus:lak3d', (event: IpcMainInvokeEvent, pakket: unknown, kleurstelling: unknown, extra: unknown, opties: unknown) =>
+    dienst.lak3d(
+      String(pakket ?? ''),
+      typeof kleurstelling === 'string' ? kleurstelling : undefined,
+      event.sender,
+      extraVars(extra),
+      Boolean(opties && typeof opties === 'object' && (opties as { alleenGeschreven?: unknown }).alleenGeschreven === true)
+    )
   )
   // Het venster kan een pakket niet lezen: vergeten, zodat [Opnieuw] echt opnieuw bouwt.
   ipcMain.on('bus:stuk3d', (_event, pakket: unknown) => dienst.stuk(String(pakket ?? '')))

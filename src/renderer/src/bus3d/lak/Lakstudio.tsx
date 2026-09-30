@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'rea
 import type { Bus3dManifest, Bus3dVensterStand, Bus3dVensterVraag } from '../../../../shared/bus3d'
 import {
   cp1252Vriendelijk,
+  effectieveOpties,
   type Laag,
   type LakFamilieInfo,
   type LakOptie,
@@ -16,12 +17,14 @@ import {
 import type { TextKey } from '../../../../shared/i18n'
 import { BusViewer, type StudioBediening, type ViewerStand } from '../../BusViewer'
 import { useT } from '../../language'
+import type { Bus3dLak } from '../../../../shared/bus3d'
 import type { Plat } from '../camera'
 import { Verbinding, type ViewerHandvat } from '../verbinding'
 import { beeldVanBytes, leesBeeld } from './beeldimport'
 import type { DecalAnalyse, LakKeuze, LakKlaarInfo } from './lakdoek'
 import {
   AfbeeldingPaneel,
+  LaagMeldingen,
   LaagPaneel,
   LagenLijst,
   OptiesPaneel,
@@ -41,6 +44,8 @@ import {
   decalMaat,
   decalSleutel,
   effenInKleuren,
+  naamBanden,
+  naamKleur,
   nieuwId,
   pasSnelleLak,
   plaatsBij,
@@ -129,11 +134,23 @@ function inVeelhoek(p: [number, number], veelhoek: Array<[number, number]>): boo
  */
 const lakTonen = (p: LakProject): boolean => p.lagen.length > 0 || p.start !== 'snel'
 
-/** De standaardwaarden van de busopties bij een start (§4.9): bij alles behalve "precies" wat over de lak ligt verborgen. */
-function standaardOpties(opties: LakOptie[], start: LakStart, mogelijk: boolean): Record<string, number> {
+/**
+ * De standaardwaarden van de busopties bij een start (§4.9): bij alles behalve
+ * "precies" verborgen wat OVER de lak ligt. Of een onderdeel over de lak ligt,
+ * meet de werker aan de meetkunde (`ligging`: een alfamesh binnen 5 cm van de
+ * lak, geen kenteken of wagennummer); de rest krijgt in de .cti zijn gewone
+ * waarde (`effectieveOpties`).
+ */
+function standaardOpties(
+  opties: LakOptie[],
+  start: LakStart,
+  mogelijk: boolean,
+  ligging: Record<string, { overLak: boolean }> | undefined
+): Record<string, number> {
   if (start === 'precies' || !mogelijk) return {}
   const uit: Record<string, number> = {}
-  for (const o of opties) if (o.soort === 'uiterlijk' && o.overLak && o.verberg !== undefined) uit[o.variabele] = o.verberg
+  const over = (v: string): boolean => Object.entries(ligging ?? {}).some(([k, l]) => l.overLak && k.toLowerCase() === v.toLowerCase())
+  for (const o of opties) if (o.soort === 'uiterlijk' && o.overLak && o.verberg !== undefined && over(o.variabele)) uit[o.variabele] = o.verberg
   return uit
 }
 
@@ -182,9 +199,25 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
   const [afbFout, zetAfbFout] = useState<string>()
   const [logoUrl, zetLogoUrl] = useState<string>()
   const [optiesMs, zetOptiesMs] = useState<number>()
-  const [getoondeOpties, zetGetoondeOpties] = useState<string>()
   const [voorNa, zetVoorNa] = useState(false)
   const [lichtHerstart, zetLichtHerstart] = useState(false)
+  /** De start-kleurstelling van het project (bij [Bewerken] vanuit Addons zit die niet in de vraag; tegenlezing L3 punt 2). */
+  const [startNaam, zetStartNaam] = useState<string | undefined>(kleurstelling)
+  /** Wat het venster nu toont: welke bus, welke kleurstelling, welke busopties (zie `weergave`). */
+  const [getoondeWeergave, zetGetoondeWeergave] = useState<{ pad: string; sleutel: string }>()
+  /** Een nieuw project: de busopties nog uit de meetkunde halen (§4.9), zodra de bus er staat. */
+  const optiesNodig = useRef(false)
+  /** Voor welke bus het lakdoek nu klaar staat (een ander familielid in beeld: nog niet). */
+  const klaarPad = useRef('')
+  const liggingRef = useRef<Record<string, { overLak: boolean; deel: number }> | undefined>(undefined)
+  /** Telt op als de ligging binnen is: dan loopt het start-effect opnieuw. */
+  const [ligTik, zetLigTik] = useState(0)
+  const [bewaarFout, zetBewaarFout] = useState<string>()
+  const [ontbrekend, zetOntbrekend] = useState<string[]>([])
+  const manifestRef = useRef<Bus3dManifest | undefined>(undefined)
+  manifestRef.current = manifest
+  const vraagRef = useRef(vraag)
+  vraagRef.current = vraag
   const beeldRef = useRef<HTMLDivElement>(null)
   const tekstRef = useRef<HTMLInputElement>(null)
   const tweedeDoek = useRef<HTMLCanvasElement>(null)
@@ -219,6 +252,9 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
       d.lakKlaarMs = String(Math.round(klaar.ms))
     }
     if (optiesMs !== undefined) d.lakOptiesMs = String(optiesMs)
+    // Voor de proef: per decal of hij een kopie krijgt en welk deel op vrije lak valt (naam en logo van Snelle lak).
+    d.lakAnalyse = JSON.stringify(analyse)
+    d.lakPlaatsen = JSON.stringify(Object.fromEntries(lagen.filter((l) => 'plaats' in l).map((l) => [l.id, (l as { plaats: Plaats }).plaats])))
     if (uitkomst) d.lakUitkomst = JSON.stringify(uitkomst)
     else delete d.lakUitkomst
   })
@@ -239,11 +275,16 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
       if (bewaarKlok.current) clearTimeout(bewaarKlok.current)
       bewaarKlok.current = setTimeout(() => {
         void brug.lakBewaar({ ...p, id: projectId.current }).then((b) => {
-          if (b?.id) projectId.current = b.id
+          // Niet stil (tegenlezing L3 punt 11): een ontwerp boven 4 MB wordt niet bewaard, en dat moet de speler zien.
+          if (b && 'fout' in b) zetBewaarFout(t(b.fout === 'groot' ? 'ls.bewaar.groot' : 'ls.bewaar.fout'))
+          else {
+            zetBewaarFout(undefined)
+            if (b?.id) projectId.current = b.id
+          }
         })
       }, 2000)
     },
-    [brug]
+    [brug, t]
   )
 
   /** Het project heeft een id nodig (voor beelden): nu bewaren als het er nog geen had. */
@@ -252,7 +293,7 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
     const p = geschRef.current?.heden
     if (!p) return ''
     const b = await brug.lakBewaar({ ...p, id: '', naam: naam || p.naam })
-    if (b?.id) projectId.current = b.id
+    if (b && !('fout' in b) && b.id) projectId.current = b.id
     return projectId.current
   }, [brug, naam])
 
@@ -306,9 +347,16 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
     zetKlaarFout(undefined)
     zetUitkomst(undefined)
     gestartVoor.current = ''
+    klaarPad.current = ''
     verstuurd.current.clear()
     void (async () => {
-      const [f, o] = await Promise.all([brug.lakDoelen(pad, kleurstelling), brug.lakOpties(pad)])
+      let p = vraag.lak?.projectId ? await brug.lakLaad(vraag.lak.projectId) : undefined
+      if (weg) return
+      // De start van het PROJECT (bij [Bewerken] zit hij niet in de vraag): de maat van de uitvoer hangt ervan af.
+      const start = p ? p.startKleurstelling : kleurstelling
+      zetStartNaam(start)
+      zetGetoondeWeergave(undefined)
+      const [f, o] = await Promise.all([brug.lakDoelen(pad, start), brug.lakOpties(pad, start)])
       if (weg) return
       zetFamilie(f)
       zetOpties(o)
@@ -316,15 +364,16 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
         zetKlaarFout(t('ls.geenCtc'))
         return
       }
-      let p = vraag.lak?.projectId ? await brug.lakLaad(vraag.lak.projectId) : undefined
-      if (weg) return
+      optiesNodig.current = false
       if (p) {
         projectId.current = p.id
         naamVolgt.current = false
+        // Bestanden van de start die de lak noemt en die weg zijn (§5.6): melden.
+        void brug.lakOntbrekend(p.id).then((l) => !weg && zetOntbrekend(Array.isArray(l) ? l : []))
       } else {
         const bestaand = await brug.lakProjecten(pad)
         const bedrijf = vraag.lak?.bedrijf?.naam
-        const start = (vraag.lak?.start as LakStart | undefined) ?? 'snel'
+        const soort = (vraag.lak?.start as LakStart | undefined) ?? 'snel'
         const nu = new Date().toISOString()
         projectId.current = ''
         naamVolgt.current = !bedrijf
@@ -333,10 +382,11 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
           id: '',
           naam: cp1252Vriendelijk(bedrijf || t('ls.mijnLak', { n: bestaand.length + 1 })),
           bus: pad,
-          start,
+          start: soort,
           startKleurstelling: kleurstelling,
           lagen: [],
-          opties: standaardOpties(o, start, f.optiesMogelijk),
+          // De busopties komen zodra de bus er staat: of een onderdeel over de lak ligt, meet de werker.
+          opties: {},
           spiegel: { aan: true },
           gemaakt: nu,
           bewaard: nu,
@@ -344,6 +394,7 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
           snel: { kleuren: [null, null, null], strook: 'onderband', naam: bedrijf ?? '', lettertype: STANDAARD_LETTERTYPE }
         }
       }
+      if (!vraag.lak?.projectId) optiesNodig.current = p.start !== 'precies' && f.optiesMogelijk
       const g = begin(p)
       geschRef.current = g
       zetGesch(g)
@@ -367,20 +418,41 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
     void windowsLettertypen().then(zetWindows)
   }, [])
 
-  /* ------------------------------------------------------------------ de busopties in beeld (§4.9) */
-  const optieSleutel = JSON.stringify(heden?.opties ?? {})
+  /* ------------------------------------------------------------------ de weergave: wat OMSI straks toont (§4.9) */
+  /**
+   * Met welke kleurstelling en welke setvars het venster de bus toont. Zolang
+   * de lak niet op de bus staat (een nieuw project, Snelle lak zonder laag): de
+   * bus zoals hij is. Daarna zoals OMSI hem met deze lak laat zien (beoordeling
+   * L3 punt 3): bij Snelle lak en Effen de andere plekken in hun standaard (de
+   * .cti neemt de items van de start niet mee; de gele airco van "AVG Ahlheim"
+   * stond anders wel in de studio), bij "precies" en "effen in de kleuren" die
+   * van de start; en de setvars precies zoals de .cti ze schrijft
+   * (`effectieveOpties`), met 0 voor wat niemand zet (`alleenGeschreven`).
+   */
+  const weergave = (p: LakProject | undefined): { kleurstelling?: string; extra: Array<[string, number]>; alleen: boolean; sleutel: string } => {
+    if (!p || !lakTonen(p)) return { kleurstelling: startNaam, extra: [], alleen: false, sleutel: JSON.stringify([startNaam ?? '', 0]) }
+    const k = p.start === 'precies' || p.start === 'effenKleuren' ? p.startKleurstelling : undefined
+    const extra = familie?.optiesMogelijk ? effectieveOpties(opties, p) : []
+    return { kleurstelling: k, extra, alleen: true, sleutel: JSON.stringify([k ?? '', extra]) }
+  }
+  const gewenst = weergave(heden)
+  // Wat BusViewer uit zichzelf toont (bij elke nieuwe bus): de kleurstelling van de vraag, met de gewone waarden.
+  const nuGetoond = getoondeWeergave?.pad === viewPad ? getoondeWeergave.sleutel : JSON.stringify([kleurstelling ?? '', 0])
+  const optieSleutel = gewenst.sleutel
+  const getoondeOpties = nuGetoond
   const zetOptiesInBeeld = useCallback(
-    async (waarden: Record<string, number>): Promise<number | undefined> => {
-      if (!handvat || !manifest) return undefined
+    async (w: ReturnType<typeof weergave>): Promise<number | undefined> => {
+      const m = manifestRef.current
+      if (!handvat || !m) return undefined
       const t1 = performance.now()
-      const lak = await brug.busLak3d(manifest.pakket, kleurstelling, Object.entries(waarden))
+      const lak: Bus3dLak | { reden: string } = await brug.busLak3d(m.pakket, w.kleurstelling, w.extra, { alleenGeschreven: w.alleen })
       // Ook als het niet lukt: dan start het lakdoek met wat er staat, in plaats van te blijven wachten.
-      zetGetoondeOpties(JSON.stringify(waarden))
+      zetGetoondeWeergave({ pad: huidigPad.current, sleutel: w.sleutel })
       if ('reden' in lak) return undefined
       handvat.lak(lak, performance.timeOrigin + performance.now())
       return performance.now() - t1
     },
-    [brug, handvat, manifest, kleurstelling]
+    [brug, handvat]
   )
 
   /* ------------------------------------------------------------------ het lakdoek starten */
@@ -440,16 +512,37 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
       return
     }
     const p = gesch.heden
-    // Eerst de busopties van het project in beeld (het masker volgt wat zichtbaar is), dan het lakdoek.
-    if (getoondeOpties !== optieSleutel && Object.keys(p.opties).length > 0) {
-      void zetOptiesInBeeld(p.opties)
+    // Een nieuw project: eerst de busopties uit de meetkunde (§4.9), één keer; het effect loopt daarna opnieuw.
+    if (optiesNodig.current && viewPad === pad) {
+      optiesNodig.current = false
+      void handvat.studio
+        .ligging(familie.doelen.map((d) => d.textuur).filter((x): x is string => Boolean(x)))
+        .then((lig) => {
+          liggingRef.current = lig
+          const g = geschRef.current
+          if (!g) return
+          const opt = standaardOpties(opties, g.heden.start, familie.optiesMogelijk, lig)
+          // De beginstand van het project, geen stap in de geschiedenis.
+          const nieuw = { ...g, heden: { ...g.heden, opties: opt } }
+          geschRef.current = nieuw
+          zetGesch(nieuw)
+        })
+        .finally(() => zetLigTik((n) => n + 1))
+      return
+    }
+    // Eerst de bus zoals OMSI hem met deze lak toont (het masker volgt wat zichtbaar is), dan het lakdoek.
+    // Loopt het lakdoek op deze bus al, dan doet het effect hieronder dat (met de maskers erbij).
+    if (klaarPad.current !== viewPad && getoondeOpties !== optieSleutel) {
+      void zetOptiesInBeeld(weergave(p))
       return
     }
     const sleutel = `${viewPad}|${p.start}|${stand.licht}`
     if (gestartVoor.current === sleutel) return
     gestartVoor.current = sleutel
+    const voorPad = viewPad
     void startLakdoek(p, familie, stand.licht).then(async (k) => {
       if (!k) return
+      klaarPad.current = voorPad
       zetKlaar(k)
       zetZoneKleuren(k.doelen[0]?.zones.map((z) => ({ kleur: z.kleur, lak: z.lak })) ?? [])
       // De kleuren van de lak die nu op de bus staat: de stalen van Snelle lak (§2.1), en "Effen in de kleuren".
@@ -459,14 +552,26 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
       const v = lakZones.map((z) => z.kleur!).slice(0, 3)
       while (v.length < 3) v.push(v.length === 0 ? '#1d3f8f' : '#ffffff')
       zetVoorvulling(v as [string, string, string])
-      zetZoneKleuren(kl[0].zones.map((z) => ({ kleur: z.kleur ?? '#808080', lak: z.lak })))
       const nu = geschRef.current?.heden
       if (nu && nu.start === 'effenKleuren' && nu.lagen.length === 0) {
         doeH({ soort: 'vervang', lagen: effenInKleuren(kl[0].zones, (n) => t('ls.laag.zone', { n })) })
       }
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handvat, familie, gesch !== undefined, gesch?.heden.start, manifest, scherpVoor, viewPad, bakPad, stand.licht, getoondeOpties, optieSleutel])
+  }, [handvat, familie, gesch !== undefined, gesch?.heden.start, manifest, scherpVoor, viewPad, bakPad, stand.licht, getoondeOpties, optieSleutel, opties, ligTik])
+
+  // Loopt het lakdoek al en verandert wat OMSI zou tonen (de eerste laag, een busoptie, een andere start), dan
+  // de bus opnieuw in die stand en de maskers erbij (P16: samen ≤ 300 ms).
+  useEffect(() => {
+    if (!klaar || klaarPad.current !== viewPad || !handvat || bakPad || scherpVoor !== viewPad || getoondeOpties === optieSleutel) return
+    const w = weergave(geschRef.current?.heden)
+    const t1 = performance.now()
+    void zetOptiesInBeeld(w).then(async () => {
+      await handvat.studio.maskers()
+      zetOptiesMs(Math.round(performance.now() - t1))
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [klaar, handvat, bakPad, scherpVoor, viewPad, getoondeOpties, optieSleutel])
 
   // Na een contextverlies start de werker het lakdoek zelf opnieuw, licht (P4): beelden opnieuw sturen.
   useEffect(() => {
@@ -518,24 +623,45 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
   /** De naam en het logo van Snelle lak die de speler nog niet zelf verplaatste: die zoeken zelf een vrij stuk. */
   const zelfGezet = useRef(new Set<string>())
   const vrijKlok = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  /**
+   * De naam en het logo op een vrij stuk (§2.1): het zijbeeld van de werker
+   * zoekt, aan beide kanten tegelijk (de spiegel), een stuk zonder deur, ruit,
+   * wielkast, gedeelde texel of beschermd wapen; eerst boven de band, dan op de
+   * band (dan krijgt een naam zonder eigen kleur de grondkleur), en zo nodig
+   * kleiner. Het logo mijdt de naam.
+   */
   const zoekVrij = useCallback(() => {
     if (vrijKlok.current) clearTimeout(vrijKlok.current)
     vrijKlok.current = setTimeout(() => {
       void (async () => {
-        for (const [id, van, tot] of [
-          [RECEPT_ID.tekst, 0.15, 0.85],
-          [RECEPT_ID.logo, 0.55, 0.95]
-        ] as const) {
-          if (zelfGezet.current.has(id) || !handvat || !geschRef.current?.heden.lagen.some((l) => l.id === id)) continue
-          const p = await handvat.studio.vrij(id, van, tot)
+        for (const [id, zVan, zTot, zVoorkeur, vermijd] of [
+          [RECEPT_ID.tekst, 0.1, 0.9, 0.45, []],
+          [RECEPT_ID.logo, 0.45, 0.97, 0.82, [RECEPT_ID.tekst]]
+        ] as Array<[string, number, number, number, string[]]>) {
+          const g0 = geschRef.current
+          if (zelfGezet.current.has(id) || !handvat || !busmaat || !g0?.heden.lagen.some((l) => l.id === id)) continue
+          let r = await handvat.studio.vrij(id, { zVan, zTot, zVoorkeur, banden: naamBanden(g0.heden.lagen, busmaat), vermijd })
+          // Het logo vooraan: vindt het daar geen vrij stuk op ware grootte, dan waar dan ook op de zijkant.
+          if (id === RECEPT_ID.logo && (!r || r.deel < 0.985 || r.schaal < 1)) {
+            const overal = await handvat.studio.vrij(id, { zVan: 0.06, zTot: 0.97, zVoorkeur, banden: naamBanden(g0.heden.lagen, busmaat), vermijd })
+            if (overal && (!r || overal.schaal > r.schaal || (overal.schaal === r.schaal && overal.deel > r.deel))) r = overal
+          }
           const g = geschRef.current
           const l = g?.heden.lagen.find((x) => x.id === id)
+          if (!g || !r || !l || !('plaats' in l) || zelfGezet.current.has(id)) continue
+          let nieuw = { ...l, plaats: { ...l.plaats, midden: r.plaats.midden, breedteM: r.plaats.breedteM } } as Laag
+          if (nieuw.soort === 'tekst' && l.soort === 'tekst') {
+            nieuw = { ...nieuw, hoogteCm: Math.max(8, Math.round(l.hoogteCm * r.schaal)) }
+            if (g.heden.snel && !g.heden.snel.kleuren[2]) nieuw = { ...nieuw, kleur: naamKleur(g.heden.snel, r.band > 0) }
+          }
           // In dezelfde stap als de keuze in het paneel: geen eigen stap in de geschiedenis.
-          if (g && p && l && 'plaats' in l) zet({ ...g, heden: { ...g.heden, lagen: g.heden.lagen.map((x) => (x.id === id ? ({ ...x, plaats: { ...l.plaats, midden: p.midden } } as Laag) : x)) } })
+          zet({ ...g, heden: { ...g.heden, lagen: g.heden.lagen.map((x) => (x.id === id ? nieuw : x)) } })
         }
       })()
     }, 250)
-  }, [handvat, zet])
+    // busmaat is elke render een nieuw object; de doos zelf verandert alleen met klaar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handvat, zet, klaar])
   const pasSnel = useCallback(
     (nieuw: SnelleLakStand, vast: boolean) => {
       const g = geschRef.current
@@ -603,7 +729,7 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
     async (s: LakStart) => {
       const g = geschRef.current
       if (!g || !familie) return
-      const nieuweOpties = standaardOpties(opties, s, familie.optiesMogelijk)
+      const nieuweOpties = standaardOpties(opties, s, familie.optiesMogelijk, liggingRef.current)
       let nieuweLagen: Laag[] = []
       if (s === 'snel' && busmaat) nieuweLagen = pasSnelleLak([], g.heden.snel ?? snel, busmaat, namen, meetTekst)
       if (s === 'effenKleuren' && handvat) {
@@ -620,19 +746,14 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
     [busmaat, familie, handvat, meetTekst, namen, opties, snel, t, zet]
   )
 
+  /** Een busoptie: een stap; het effect hierboven zet de bus in die stand en rekent de maskers opnieuw (P16). */
   const zetOptie = useCallback(
-    async (variabele: string, waarde: number) => {
+    (variabele: string, waarde: number) => {
       const g = geschRef.current
-      if (!g || !handvat) return
-      const nieuw = { ...g.heden.opties, [variabele]: waarde }
-      zet(doe(g, { soort: 'opties', opties: nieuw }))
-      const t1 = performance.now()
-      await zetOptiesInBeeld(nieuw)
-      // P16: de nieuwe ruststand en het masker opnieuw, samen in ≤ 300 ms.
-      await handvat.studio.maskers()
-      zetOptiesMs(Math.round(performance.now() - t1))
+      if (!g) return
+      zet(doe(g, { soort: 'opties', opties: { ...g.heden.opties, [variabele]: waarde } }))
     },
-    [handvat, zet, zetOptiesInBeeld]
+    [zet]
   )
 
   /* ------------------------------------------------------------------ aanwijzen en gereedschap */
@@ -673,7 +794,7 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
       const o = opties.find((x) => k.variabelen!.some((v) => v.toLowerCase() === x.variabele.toLowerCase()) && x.verberg !== undefined)
       zetTip({
         tekst: t('ls.onderdeel'),
-        knop: o && familie?.optiesMogelijk ? { tekst: t('ls.weghalen'), doe: () => void zetOptie(o.variabele, o.verberg!) } : undefined
+        knop: o && familie?.optiesMogelijk ? { tekst: t('ls.weghalen'), doe: () => zetOptie(o.variabele, o.verberg!) } : undefined
       })
     } else if (k.glas) zetTip({ tekst: t('ls.ruit') })
     else if (!k.lak && k.plek) zetTip({ tekst: t('ls.vast') })
@@ -776,6 +897,11 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
       const bm = decalMaat(l)
       if (!bm) continue
       const voeg = (p: Plaats, kopie: boolean): void => {
+        // Alleen een zijde die naar de camera kijkt: het kader van de kopie stond anders door de ruiten heen in beeld (beoordeling L3 punt 12).
+        const n: V3 = p.zijde === 'L' ? [-1, 0, 0] : p.zijde === 'R' ? [1, 0, 0] : p.zijde === 'V' ? [0, 0, 1] : p.zijde === 'A' ? [0, 0, -1] : [0, 1, 0]
+        const c = naarScherm(cam, p.midden as V3, 1, 1)
+        const u = naarScherm(cam, [p.midden[0] + n[0] * 0.5, p.midden[1] + n[1] * 0.5, p.midden[2] + n[2] * 0.5], 1, 1)
+        if (c && u && u.z > c.z) return
         const h = decalHoeken(p, bm.b, bm.h).map(scherm)
         if (h.every(Boolean)) uit.decals.push({ id: l.id, kopie, hoeken: h as Array<[number, number]> })
       }
@@ -976,8 +1102,11 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
       sleepBegin.current = undefined
       if (!g || !van || g.heden === van.heden) return
       // De band van Snelle lak versleept: de naam en het logo gaan mee naar boven de band (in dezelfde stap).
-      const heden = s.soort === 'strook' && s.id === RECEPT_ID.strook && busmaat ? { ...g.heden, lagen: volgBand(g.heden.lagen, busmaat, zelfGezet.current, g.heden.snel) } : g.heden
+      const bandGesleept = s.soort === 'strook' && s.id === RECEPT_ID.strook && busmaat
+      const heden = bandGesleept ? { ...g.heden, lagen: volgBand(g.heden.lagen, busmaat, zelfGezet.current, g.heden.snel) } : g.heden
       zet({ verleden: [...van.verleden, van.heden].slice(-500), heden, toekomst: [] })
+      // Een andere hoogte van de band: naam en logo zoeken opnieuw een vrij stuk (zolang de speler ze niet zelf verplaatste).
+      if (bandGesleept) zoekVrij()
     },
     zweef: (ndc) => zetZweefHandvat(Boolean(ndc && raakHandvat(naarPx(ndc)))),
     dubbel: (ndc) => {
@@ -1083,10 +1212,10 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
   useEffect(() => {
     if (!toonTweede || !tweedeDoek.current) return
     const doek = tweedeDoek.current
-    doek.width = 320
-    doek.height = 180
+    doek.width = 480
+    doek.height = 270
     const h = Verbinding.get().meld(doek, { opCamera: zetCamTweede })
-    h.maat(320, 180, 1)
+    h.maat(480, 270, 1)
     h.studio.tweede(true)
     // De eerste keer één tip (§2.1, 0:28).
     try {
@@ -1114,31 +1243,40 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
     for (const x of eerst) uit.set(x.doel, x.dds)
     let ontbreekt = familie.doelen.map((d) => d.id).filter((d) => !uit.has(d))
     let bakte = false
-    while (ontbreekt.length > 0) {
-      const lid =
-        familie.leden.find((l) => l.bestuurbaar && l.doelen.includes(ontbreekt[0])) ?? familie.leden.find((l) => l.doelen.includes(ontbreekt[0]))
-      if (!lid) return { fout: `${ontbreekt[0]}: geen familielid` }
-      zetBezig(t('ls.bakken', { bus: lid.bus.split('\\').pop()!.replace(/\.bus$/i, '') }))
-      bakte = true
-      const klaarVoor = wachtScherp(lid.bus)
-      zetBakPad(lid.bus)
-      await klaarVoor
-      const p = geschRef.current.heden
-      await handvat.studio.start(familie, p.lagen, p.spiegel, false, { start: p.start, getoond: false })
-      verstuurd.current.clear()
-      await stuurBeelden(p.lagen)
-      const r = (await handvat.studio.exporteer({ alleen: ontbreekt })) as Array<{ doel: string; dds: Uint8Array }> | { fout: string }
-      if ('fout' in r) return r
-      if (r.length === 0) return { fout: `${ontbreekt[0]}: niet te bakken op ${lid.bus}` }
-      for (const x of r) uit.set(x.doel, x.dds)
-      ontbreekt = ontbreekt.filter((d) => !uit.has(d))
-    }
-    if (bakte) {
-      // Terug naar de bus van de studio, en het lakdoek daar opnieuw.
-      const terug = wachtScherp(bekijkPad ?? pad)
-      gestartVoor.current = ''
-      zetBakPad(undefined)
-      await terug
+    try {
+      while (ontbreekt.length > 0) {
+        // Het lid dat main als bakker nakeek (te bakken, bij voorkeur bestuurbaar; tegenlezing L3 punt 13).
+        const bakker = familie.doelen.find((d) => d.id === ontbreekt[0])?.bakker
+        const lid =
+          familie.leden.find((l) => l.bus === bakker) ??
+          familie.leden.find((l) => l.bestuurbaar && l.doelen.includes(ontbreekt[0])) ??
+          familie.leden.find((l) => l.doelen.includes(ontbreekt[0]))
+        if (!lid) return { fout: `${ontbreekt[0]}: geen familielid` }
+        zetBezig(t('ls.bakken', { bus: lid.naam ?? lid.bus.split('\\').pop()!.replace(/\.bus$/i, '') }))
+        bakte = true
+        const klaarVoor = wachtScherp(lid.bus)
+        zetBakPad(lid.bus)
+        await klaarVoor
+        // Ook dat lid in de stand die OMSI toont (busopties): het masker volgt wat zichtbaar is.
+        await zetOptiesInBeeld(weergave(geschRef.current.heden))
+        const p = geschRef.current.heden
+        // Licht: de export rekent het masker toch op volle maat; zo kost het lakdoek hier maar een kwart (proefdraaier punt 6).
+        await handvat.studio.start(familie, p.lagen, p.spiegel, true, { start: p.start, getoond: false })
+        verstuurd.current.clear()
+        await stuurBeelden(p.lagen)
+        const r = (await handvat.studio.exporteer({ alleen: ontbreekt })) as Array<{ doel: string; dds: Uint8Array }> | { fout: string }
+        if ('fout' in r) return r
+        if (r.length === 0) return { fout: `${ontbreekt[0]}: niet te bakken op ${lid.bus}` }
+        for (const x of r) uit.set(x.doel, x.dds)
+        ontbreekt = ontbreekt.filter((d) => !uit.has(d))
+      }
+    } finally {
+      if (bakte) {
+        // Terug naar de bus van de studio (ook na een fout), en het lakdoek daar opnieuw. Niet wachten tot hij weer
+        // scherp staat: plaatsen kan intussen al (proefdraaier punt 6: de C2 GN duurde anders 6,2 s).
+        gestartVoor.current = ''
+        zetBakPad(undefined)
+      }
     }
     return familie.doelen.map((d) => ({ doel: d.id, dds: uit.get(d.id)! }))
   }
@@ -1150,8 +1288,32 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
     zetTip(undefined)
     zetBezig(t('ls.stap.maken'))
     const id = await zorgId()
-    await brug.lakBewaar({ ...g.heden, id, naam })
-    const texturen = await exporteerAlles()
+    // Main plaatst uit project.json: dat moet dus echt bewaard zijn (tegenlezing L3 punt 11).
+    const bewaard0 = id ? await brug.lakBewaar({ ...g.heden, id, naam }) : undefined
+    if (!id || !bewaard0 || 'fout' in bewaard0) {
+      zetBezig(undefined)
+      zetUitkomst({ soort: 'fout', tekst: t(bewaard0 && 'fout' in bewaard0 && bewaard0.fout === 'groot' ? 'ls.bewaar.groot' : 'ls.bewaar.fout') })
+      return
+    }
+    const aanvraag = vraagRef.current.aanvraag
+    /*
+     * De export meldt zich bij main (tegenlezing L3 punt 1 en 4): zolang hij loopt,
+     * wacht een buswissel en pauzeert het venster niet (pauze geeft de context op).
+     */
+    let texturen: Awaited<ReturnType<typeof exporteerAlles>>
+    await brug.lakBezig(true)
+    try {
+      texturen = await exporteerAlles()
+    } catch (fout) {
+      texturen = { fout: fout instanceof Error ? fout.message : String(fout) }
+    } finally {
+      await brug.lakBezig(false)
+    }
+    // Intussen een andere vraag of een ander project: niet plaatsen (de export hoort bij het vorige).
+    if (vraagRef.current.aanvraag !== aanvraag || projectId.current !== id) {
+      zetBezig(undefined)
+      return
+    }
     if ('fout' in texturen) {
       zetBezig(undefined)
       zetUitkomst({ soort: 'fout', tekst: t('ls.fout.formaat', { detail: texturen.fout }) })
@@ -1229,8 +1391,11 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
 
   const bestuurbareLeden = (familie?.leden ?? []).filter((l) => l.bus.toLowerCase() !== pad.toLowerCase() && l.bestuurbaar && l.doelen.length > 0)
   const kiLeden = (familie?.leden ?? []).filter((l) => !l.bestuurbaar && l.doelen.length > 0)
+  /** De naam van een familielid voor de speler: uit [friendlyname], niet de bestandsnaam (beoordeling L3 punt 9). */
+  const lidNaam = (l: { bus: string; naam?: string }): string => l.naam ?? l.bus.split('\\').pop()!.replace(/\.bus$/i, '')
+  const namenUniek = [...new Set(bestuurbareLeden.map(lidNaam))]
   const ookOp = [
-    ...bestuurbareLeden.map((l) => l.bus.split('\\').pop()!.replace(/\.bus$/i, '')),
+    ...(namenUniek.length > 2 ? [t('ls.uitvoeringen', { n: bestuurbareLeden.length })] : namenUniek),
     ...(kiLeden.length ? [t('ls.kiBussen', { n: kiLeden.length })] : [])
   ]
   const opslaanTekst = stand.licht ? t('ls.klaarzetten') : t('ls.opslaan')
@@ -1255,11 +1420,11 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
       return (
         <OptiesPaneel
           opties={opties}
-          waarden={heden.opties}
+          waarden={Object.fromEntries(effectieveOpties(opties, heden))}
           mogelijk={familie?.optiesMogelijk ?? false}
           nietOp={familie?.nietOp[0]?.bus.split('\\').pop()}
           ms={optiesMs}
-          onZet={(v, w) => void zetOptie(v, w)}
+          onZet={(v, w) => zetOptie(v, w)}
         />
       )
     if (meerPaneel === 'start') return <StartPaneel start={heden.start} onStart={(s) => void kiesStart(s)} />
@@ -1287,7 +1452,11 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
       return (
         <SnelleLakPaneel
           snel={snel}
-          voorvulling={voorvulling}
+          voorvulling={[voorvulling[0], voorvulling[1], (() => {
+            // Kleur 3 toont de kleur die de naam nu heeft (wit, of de grondkleur op de band), niet een kleur van de lak (punt 11).
+            const tl = lagen.find((l) => l.id === RECEPT_ID.tekst)
+            return tl && tl.soort === 'tekst' ? tl.kleur : '#ffffff'
+          })()]}
           logo={logoUrl}
           onKleur={(i, k, vast) => {
             const kleuren = [...snel.kleuren] as SnelleLakStand['kleuren']
@@ -1316,7 +1485,6 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
       <LaagPaneel
         laag={laag}
         spiegelAan={spiegelAan}
-        analyse={analyse[laag.id]}
         onWijzig={(deel, vast) => (laag.soort === 'tekst' ? wijzigTekst(laag, deel, vast) : wijzigLaag(laag.id, deel, vast))}
         onWeg={() => {
           doeH({ soort: 'weg', id: laag.id })
@@ -1328,11 +1496,6 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
           zetGekozen(id)
         }}
         onStap={(r) => doeH({ soort: 'verplaats', id: laag.id, naar: lagen.findIndex((l) => l.id === laag.id) + r })}
-        onSchuif={() =>
-          void handvat?.studio.schuif(laag.id).then((p) => {
-            if (p) doeH({ soort: 'wijzig', id: laag.id, deel: { plaats: p } as Partial<Laag> })
-          })
-        }
       />
     ) : null
     const kleurZetter = (k: string, vast: boolean): void => {
@@ -1389,7 +1552,8 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
                 beeld: b.id,
                 witDoorzichtig: b.wit,
                 verhouding: b.verhouding,
-                plaats: plaatsOpZijde(0.8)
+                // Een ingelezen beeld is bijna altijd een logo of een opschrift: niet in spiegelbeeld (beoordeling L3 punt 4).
+                plaats: { ...plaatsOpZijde(0.8), zelfdeRichting: true }
               }
               doeH({ soort: 'voegToe', laag: nieuw })
               zetGekozen(nieuw.id)
@@ -1408,6 +1572,18 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
     else if (gereedschap === 'penseel') gp = <PenseelPaneel stand={penseel} kleur={laag?.soort === 'penseel' ? laag.kleur : kleur} vol={penseelVol} onZet={zetPenseel} onKleur={kleurZetter} />
     return (
       <>
+        {laag ? (
+          <LaagMeldingen
+            laag={laag}
+            spiegelAan={spiegelAan}
+            analyse={analyse[laag.id]}
+            onSchuif={() =>
+              void handvat?.studio.schuif(laag.id).then((p) => {
+                if (p) doeH({ soort: 'wijzig', id: laag.id, deel: { plaats: p } as Partial<Laag> })
+              })
+            }
+          />
+        ) : null}
         {gp}
         {laagPaneel}
       </>
@@ -1514,19 +1690,24 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
           {ookOp.length ? (
             <span className="ls-zacht ls-ookop">
               {t('ls.ookOp', { bussen: ookOp.join(', ') })}
-              {bestuurbareLeden.map((l) => (
-                <button
-                  key={l.bus}
-                  type="button"
-                  className="ls-link"
-                  onClick={() => {
+              {bestuurbareLeden.length ? (
+                <select
+                  className="ls-invoer ls-bekijkkeuze"
+                  aria-label={t('ls.bekijk')}
+                  value={bekijkPad ?? ''}
+                  onChange={(e) => {
                     gestartVoor.current = ''
-                    zetBekijkPad(bekijkPad === l.bus ? undefined : l.bus)
+                    zetBekijkPad(e.target.value || undefined)
                   }}
                 >
-                  {t('ls.bekijk')} {l.bus.split('\\').pop()!.replace(/\.bus$/i, '')}
-                </button>
-              ))}
+                  <option value="">{t('ls.bekijk.deze')}</option>
+                  {bestuurbareLeden.map((l) => (
+                    <option key={l.bus} value={l.bus}>
+                      {t('ls.bekijk')} {lidNaam(l)}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
             </span>
           ) : null}
         </div>
@@ -1673,6 +1854,8 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
             {t('ls.kleur.titel')}
           </button>
         </div>
+        {bewaarFout ? <p className="ls-melding" role="alert">{bewaarFout}</p> : null}
+        {ontbrekend.length ? <p className="ls-melding">{t('ls.ontbreekt', { n: ontbrekend.length, bestanden: ontbrekend.slice(0, 3).join(', ') })}</p> : null}
         {lichtHerstart ? <p className="ls-melding">{t('ls.dev.herstart')}</p> : null}
         {klaar?.licht ? <p className="ls-zacht">{t('ls.licht')}</p> : null}
         {familie?.nietOp.map((n) => (
@@ -1706,16 +1889,21 @@ export function Lakstudio({ vraag, stand }: Props): JSX.Element {
           data-knop="voorna"
           title={t('ls.voorna.uitleg')}
           onPointerDown={() => zetVoorNaAan(true)}
-          onPointerUp={() => zetVoorNaAan(false)}
+          onPointerUp={(e) => {
+            zetVoorNaAan(false)
+            e.currentTarget.blur()
+          }}
+          onPointerCancel={() => zetVoorNaAan(false)}
           onPointerLeave={() => voorNa && zetVoorNaAan(false)}
         >
           {t('ls.voorna')}
         </button>
         <span className="ls-knop ls-dag">{t('ls.dag')}</span>
+        <span className="ls-bediening">{t('ls.bediening')}</span>
         <span className="ls-status" data-status="">
           {eersteDoel ? t('ls.status', { b: eersteDoel.b, h: eersteDoel.h, texels: eersteDoel.texelsPerM }) : '…'}
           {' · '}
-          {t('ls.status.ookOp', { bussen: ookOp.length ? ookOp.join(', ') : '–' })}
+          {t('ls.status.ookOp', { bussen: String(bestuurbareLeden.length + kiLeden.length) })}
         </span>
       </footer>
     </div>
@@ -1737,10 +1925,10 @@ function TweedeKader({ cam, laag, vlakX, kopie }: { cam: Float32Array; laag: Laa
   const s = spiegelPlaats(laag.plaats, vlakX)
   const m = decalMaat(laag)
   if (!s || !m || !kopie) return null
-  const pts = decalHoeken(s.plaats, m.b, m.h).map((p) => naarScherm(cam, p, 320, 180))
+  const pts = decalHoeken(s.plaats, m.b, m.h).map((p) => naarScherm(cam, p, 480, 270))
   if (!pts.every(Boolean)) return null
   return (
-    <svg className="ls-tweedekader" viewBox="0 0 320 180" aria-hidden="true">
+    <svg className="ls-tweedekader" viewBox="0 0 480 270" aria-hidden="true">
       <polygon points={pts.map((p) => `${p!.x},${p!.y}`).join(' ')} />
     </svg>
   )

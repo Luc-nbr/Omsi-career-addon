@@ -533,7 +533,7 @@ export class Bus3dCache {
 /** De opdrachten van de werker `'bus3d'` (main/kaartwerker.ts). */
 export type Bus3dOpdracht =
   | { soort: 'bus3d:model'; relatiefPad: string; geregistreerd: number[] }
-  | { soort: 'bus3d:lak'; pakket: string; kleurstelling?: string; extra?: Array<[string, number]> }
+  | { soort: 'bus3d:lak'; pakket: string; kleurstelling?: string; extra?: Array<[string, number]>; alleenGeschreven?: boolean }
   | { soort: 'bus3d:controle'; pakket: string }
   | { soort: 'bus3d:omgeving' }
   | { soort: 'bus3d:stalen'; relatiefPad: string }
@@ -589,10 +589,10 @@ export async function bus3dWerk(
     if (!z) return { reden: 'verouderd' }
     const t0 = performance.now()
     const extra = opdracht.extra ?? []
-    const stempel = lakStempel(omsiMap, z.manifest, opdracht.kleurstelling, extra)
+    const stempel = lakStempel(omsiMap, z.manifest, opdracht.kleurstelling, extra, opdracht.alleenGeschreven)
     const bekend = cache.leesStand(opdracht.pakket, stempel)
     if (bekend) return { ...bekend, lak: { ...bekend.lak, ms: Math.round(performance.now() - t0) } }
-    const uit = bus3dLak(omsiMap, z.manifest, opdracht.kleurstelling, cache.leesKop(opdracht.pakket), extra)
+    const uit = bus3dLak(omsiMap, z.manifest, opdracht.kleurstelling, cache.leesKop(opdracht.pakket), extra, opdracht.alleenGeschreven)
     cache.schrijfStand(opdracht.pakket, stempel, uit)
     return uit
   }

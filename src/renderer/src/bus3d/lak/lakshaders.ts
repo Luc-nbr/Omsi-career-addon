@@ -63,8 +63,14 @@ uniform float uDiepte;      // meters van dichtbij tot ver
 uniform float uTexelM;      // meters per texel van de dieptekaart
 uniform int uLijn;          // 1 bij de randlijnen
 uniform int uRichtingGang;  // 1: alleen R, met de dieptekaarten; 0: alleen G, B en A (één keer, zonder richting)
+uniform int uOverig;        // 1: driehoeken met deze textuur die NIET in het laknet zitten (binnen, verborgen)
 out vec4 uit;
 void main() {
+  if (uOverig == 1) {
+    // Gebruikt door een mesh die we niet lakken: geen zaad voor het uitvloeien, en de basis blijft (VUL_FS).
+    uit = vec4(0.0, 0.0, 0.0, 0.4);
+    return;
+  }
   if (uRichtingGang == 0) {
     // Beschermd als glas: gemengde materialen (1) en wielen (8).
     bool glas = (vVlag & 9) != 0;
@@ -210,6 +216,11 @@ void main() {
  * (tot het volgende eiland), maar zijn ALFA blijft die van de basis (P5: A van
  * de uitvoer = A van de basis, ook buiten de eilanden). Het zaad en de ruwe
  * samenstelling zijn op volle maat; het doel is een tegel die op uBegin begint.
+ *
+ * Een texel die alleen een mesh buiten het laknet gebruikt (binnen, of een
+ * verborgen variant; A = 0,4 in het masker) houdt de basis: eerst vloeide de
+ * lak daar overheen, en veranderde een ruitvlak van de C2 van donkergrijs naar
+ * zwart (beoordeling L3 punt 17).
  */
 export const VUL_FS = /* glsl */ `#version 300 es
 precision highp float;
@@ -217,14 +228,18 @@ precision highp usampler2D;
 uniform sampler2D uRuw;
 uniform usampler2D uZaad;
 uniform sampler2D uAlfa;
+uniform sampler2D uMasker;
 uniform ivec2 uBegin;
 out vec4 uit;
 void main() {
   ivec2 p = ivec2(gl_FragCoord.xy) + uBegin;
   uvec2 s = texelFetch(uZaad, p, 0).xy;
-  vec3 c = texelFetch(uRuw, s.x == 65535u ? p : ivec2(s), 0).rgb;
-  float a = textureLod(uAlfa, (vec2(p) + 0.5) / vec2(textureSize(uRuw, 0)), 0.0).a;
-  uit = vec4(c, a);
+  vec2 st = (vec2(p) + 0.5) / vec2(textureSize(uRuw, 0));
+  float ma = textureLod(uMasker, st, 0.0).a;
+  bool overig = ma > 0.25 && ma < 0.75;
+  vec4 basis = textureLod(uAlfa, st, 0.0);
+  vec3 c = overig ? basis.rgb : texelFetch(uRuw, s.x == 65535u ? p : ivec2(s), 0).rgb;
+  uit = vec4(c, basis.a);
 }
 `
 
@@ -259,6 +274,10 @@ uniform vec4 uZones[8];         // Lab + lak (1) of niet (0)
 uniform int uZoneAantal;
 uniform vec3 uDoosMin;
 uniform vec3 uDoosMax;
+uniform sampler2D uZoneMasker;  // Z na sluiten (ZONE_FS + MORF_FS): naden en spikkels dicht
+uniform int uZoneTex;           // 1: Z uit uZoneMasker; 0: per texel uit de zones
+uniform sampler2D uStartLid0;   // de kleurvlakken van de start (vlag 32), zone 0-3 in r, g, b, a
+uniform sampler2D uStartLid1;   // zone 4-7
 
 vec3 naarLin(vec3 s) {
   return mix(s / 12.92, pow((s + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), s));
@@ -290,6 +309,50 @@ float zoneZ(vec3 lab) {
     else dAnder = min(dAnder, d);
   }
   return clamp((dAnder - dLak) / 4.0 * 0.5 + 0.5, 0.0, 1.0);
+}
+
+/**
+ * Alles over de zones in één lus (drie lussen kostten bij 4096² een halve ms):
+ * Z (zoals zoneZ), het dichtstbijzijnde centrum, en het dichtstbijzijnde centrum
+ * van een LAKzone (een dichtgemaakte naad: de detailfunctie houdt hem donker).
+ */
+void zoneAlles(vec3 lab, out float z, out vec3 centrum, out vec3 lakc) {
+  float dLak = 1e9;
+  float dAnder = 1e9;
+  float dAlle = 1e9;
+  centrum = lab;
+  lakc = lab;
+  for (int i = 0; i < 8; i++) {
+    if (i >= uZoneAantal) break;
+    float d = distance(lab, uZones[i].xyz);
+    if (d < dAlle) {
+      dAlle = d;
+      centrum = uZones[i].xyz;
+    }
+    if (uZones[i].w > 0.5) {
+      if (d < dLak) {
+        dLak = d;
+        lakc = uZones[i].xyz;
+      }
+    } else dAnder = min(dAnder, d);
+  }
+  z = uZoneAantal == 0 ? 1.0 : clamp((dAnder - dLak) / 4.0 * 0.5 + 0.5, 0.0, 1.0);
+}
+
+/** Het dichtstbijzijnde centrum van een LAKzone (een dichtgemaakte naad: de detailfunctie houdt hem donker). */
+vec3 lakCentrum(vec3 lab) {
+  vec3 beste = lab;
+  float bd = 1e9;
+  for (int i = 0; i < 8; i++) {
+    if (i >= uZoneAantal) break;
+    if (uZones[i].w < 0.5) continue;
+    float d = distance(lab, uZones[i].xyz);
+    if (d < bd) {
+      bd = d;
+      beste = uZones[i].xyz;
+    }
+  }
+  return beste;
 }
 
 /** Het dichtstbijzijnde zonecentrum (voor de detailfunctie). */
@@ -340,7 +403,24 @@ vec4 decal(vec3 p, vec3 n, vec4 v2, vec4 v3, float laag, bool spiegel) {
  * De dekking van laag i op deze plek (zonder het masker); kleur in lineair licht.
  * \`baseLab\` is de detailbron in Lab (voor een zone).
  */
-vec4 laag(int i, vec3 p, vec3 n, vec3 baseLab, vec2 uv, vec2 fw) {
+/**
+ * Hoort deze texel bij kleurvlak j van de start (0..1, lineair gefilterd: gladde
+ * randen)? a en b zijn de twee texels van uStartLid0/1, één keer per texel
+ * gelezen BUITEN de lus over de lagen: een textuur in een tak binnen de lus las
+ * de HLSL-vertaler voor elke laag (P3 ging van 2,5 naar 5,7 ms).
+ */
+float startLid(int j, vec4 a, vec4 b) {
+  if (j == 0) return a.r;
+  if (j == 1) return a.g;
+  if (j == 2) return a.b;
+  if (j == 3) return a.a;
+  if (j == 4) return b.r;
+  if (j == 5) return b.g;
+  if (j == 6) return b.b;
+  return b.a;
+}
+
+vec4 laag(int i, vec3 p, vec3 n, vec3 baseLab, vec2 uv, vec2 fw, vec4 lid0, vec4 lid1) {
   vec4 v0 = uLagen[i * 4];
   vec4 v1 = uLagen[i * 4 + 1];
   vec4 v2 = uLagen[i * 4 + 2];
@@ -350,8 +430,13 @@ vec4 laag(int i, vec3 p, vec3 n, vec3 baseLab, vec2 uv, vec2 fw) {
   float dek = 0.0;
   vec3 kleur = v1.rgb;
   if (soort == 1) {
-    float d = distance(baseLab, v2.xyz);
-    dek = 1.0 - smoothstep(v1.w - 2.0, v1.w + 2.0, d);
+    if ((vlag & 32) != 0) {
+      // Een kleurvlak van de START ("effen in de kleuren van deze lak"; v1.w = het vlak in dit doek, < 0: geen).
+      dek = v1.w < -0.5 ? 0.0 : smoothstep(0.35, 0.65, startLid(int(v1.w + 0.5), lid0, lid1));
+    } else {
+      float d = distance(baseLab, v2.xyz);
+      dek = 1.0 - smoothstep(v1.w - 2.0, v1.w + 2.0, d);
+    }
   } else if (soort == 2) {
     float h = p.y - uDoosMin.y;
     float z = p.z - v3.y;
@@ -394,20 +479,28 @@ vec4 stelSamen(vec3 p, vec3 n, vec2 uv, vec2 st, ivec2 pix, bool metDekking) {
   vec3 detailLab = naarLab(detail);
   vec4 m = texture(uMasker, st);
   float Mzonder = m.r * (1.0 - m.g);
-  float M = Mzonder * zoneZ(detailLab);
+  float zRuw;
+  vec3 centrum;
+  vec3 lakc;
+  zoneAlles(detailLab, zRuw, centrum, lakc);
+  float Z = uZoneTex == 1 ? texture(uZoneMasker, st).r : zRuw;
+  float M = Mzonder * Z;
   vec3 AD = vec3(0.0);
   vec3 MU = vec3(1.0);
   if (uSjabloon == 1) {
     M = texture(uSjabloonMA, st).r;
-    Mzonder = M;
+    // "Ook over rubbers en lampen" (§4.4): buiten en geen glas, ook met een sjabloon (eerst was dat hier MA).
     AD = texture(uSjabloonAD, st).rgb;
     MU = texture(uSjabloonMU, st).rgb;
   }
-  // Zonder sjabloon: s = Y_detail / Y_zonecentrum, geklemd op 0,4..1,3 (§4.4).
-  float yc = helderheid(max(vanLab(zoneCentrum(detailLab)), vec3(1e-4)));
+  // Zonder sjabloon: s = Y_detail / Y_zonecentrum, geklemd op 0,4..1,3 (§4.4). Een dichtgemaakte naad
+  // (Z nu wel, per texel niet) meet tegen de lakzone: dan blijft hij een donkere lijn in de nieuwe kleur.
+  float yc = helderheid(max(vanLab(Z > 0.5 && zRuw < 0.5 ? lakc : centrum), vec3(1e-4)));
   float s = uZoneAantal > 0 ? clamp(helderheid(detail) / max(yc, 1e-4), 0.4, 1.3) : 1.0;
 
   vec2 fw = vec2(fwidth(p.y), fwidth(p.z));
+  vec4 lid0 = texture(uStartLid0, uv);
+  vec4 lid1 = texture(uStartLid1, uv);
   vec3 C = vec3(0.0);
   float A = 0.0;
   // Een lus met een uniforme grens (geen vaste 32 met break): de HLSL-vertaler rolt hem dan niet
@@ -416,7 +509,7 @@ vec4 stelSamen(vec3 p, vec3 n, vec2 uv, vec2 st, ivec2 pix, bool metDekking) {
   // Twee lussen in plaats van één tak per laag: de keuze sjabloon of niet valt één keer per texel.
   if (uSjabloon == 1) {
     for (int i = 0; i < aantal; i++) {
-      vec4 l = laag(i, p, n, detailLab, uv, fw);
+      vec4 l = laag(i, p, n, detailLab, uv, fw, lid0, lid1);
       if (metDekking) l.a = texelFetch(uDekking, ivec3(pix, i / 4), 0)[i - (i / 4) * 4] * uLagen[i * 4].y;
       vec4 v0 = uLagen[i * 4];
       float a = clamp(l.a * (((int(v0.w + 0.5)) & 1) != 0 ? Mzonder : M), 0.0, 1.0);
@@ -429,7 +522,7 @@ vec4 stelSamen(vec3 p, vec3 n, vec2 uv, vec2 st, ivec2 pix, bool metDekking) {
     }
   } else {
     for (int i = 0; i < aantal; i++) {
-      vec4 l = laag(i, p, n, detailLab, uv, fw);
+      vec4 l = laag(i, p, n, detailLab, uv, fw, lid0, lid1);
       if (metDekking) l.a = texelFetch(uDekking, ivec3(pix, i / 4), 0)[i - (i / 4) * 4] * uLagen[i * 4].y;
       vec4 v0 = uLagen[i * 4];
       float a = clamp(l.a * (((int(v0.w + 0.5)) & 1) != 0 ? Mzonder : M), 0.0, 1.0);
@@ -471,11 +564,13 @@ out vec4 uit;
 void main() {
   vec3 lab = naarLab(texture(uDetail, vUv).rgb);
   vec2 fw = vec2(fwidth(vPlek.y), fwidth(vPlek.z));
+  vec4 lid0 = texture(uStartLid0, vUv);
+  vec4 lid1 = texture(uStartLid1, vUv);
   vec4 d = vec4(0.0);
   for (int c = 0; c < 4; c++) {
     int i = uEerste + c;
     if (i >= uAantal) break;
-    vec4 l = laag(i, vPlek, vNormaal, lab, vUv, fw);
+    vec4 l = laag(i, vPlek, vNormaal, lab, vUv, fw, lid0, lid1);
     d[c] = l.a / max(uLagen[i * 4].y, 1e-4);
   }
   uit = d;
@@ -505,6 +600,11 @@ void main() {
  * er landt (R), en dan ook op een gedeelde texel (G) of op glas of een deur (B).
  * Mengen met MAX: een texel die twee keer getekend wordt (kopieën over een
  * tegelgrens) telt één keer. De werker telt het na met readPixels.
+ *
+ * Alleen de BUITENHUID telt (masker R): een decal projecteert langs de as door
+ * de hele bus, en viel ook op binnenwanden, stoelen en stangen die hun textuur
+ * delen (SD77_02, "gedeeld"). Daardoor kreeg de naam van Snelle lak op de SD77
+ * geen kopie aan de andere kant (beoordeling L3 punt 1).
  */
 export const ANALYSE_FS = /* glsl */ `#version 300 es
 precision highp float;
@@ -517,8 +617,8 @@ void main() {
   vec2 st = gl_FragCoord.xy / uMaat;
   vec4 m = texture(uMasker, st);
   vec2 fw = vec2(fwidth(vPlek.y), fwidth(vPlek.z));
-  vec4 l = laag(0, vPlek, vNormaal, vec3(50.0, 0.0, 0.0), vUv, fw);
-  float d = l.a > 0.05 ? 1.0 : 0.0;
+  vec4 l = laag(0, vPlek, vNormaal, vec3(50.0, 0.0, 0.0), vUv, fw, vec4(0.0), vec4(0.0));
+  float d = l.a > 0.05 && m.r > 0.5 && m.a > 0.5 ? 1.0 : 0.0;
   float glas = (vVlag & 3) != 0 ? 1.0 : 0.0;
   uit = vec4(d, d * (m.b > 0.5 ? 1.0 : 0.0), d * glas, 1.0);
 }
@@ -631,10 +731,11 @@ precision highp float;
 uniform sampler2D uBron;
 uniform sampler2D uMasker;
 uniform vec2 uMaat;
+uniform float uLod;       // 3: 1/8 (de zones), 4: 1/16 (de vage start)
 out vec4 uit;
 void main() {
   vec2 st = gl_FragCoord.xy / uMaat;
-  vec3 c = textureLod(uBron, st, 3.0).rgb;
+  vec3 c = textureLod(uBron, st, uLod).rgb;
   vec4 m = texture(uMasker, st);
   // Lineair, als sRGB-bytes terug (het doel is RGBA8): de zones rekenen in Lab op de processor.
   vec3 s = mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
@@ -655,7 +756,7 @@ out vec4 uit;
 void main() {
   vec2 st = gl_FragCoord.xy / uMaat;
   vec4 m = texture(uMasker, st);
-  float z = zoneZ(naarLab(texture(uDetail, st).rgb));
+  float z = uZoneTex == 1 ? texture(uZoneMasker, st).r : zoneZ(naarLab(texture(uDetail, st).rgb));
   float ma = uSjabloon == 1 ? texture(uSjabloonMA, st).r : 0.0;
   uit = vec4(m.r * (1.0 - m.g) * z, ma, m.g, m.a);
 }
@@ -682,5 +783,117 @@ out vec4 uit;
 void main() {
   vec4 m = texture(uMasker, gl_FragCoord.xy / uMaat);
   uit = vec4(m.r * 0.9, m.g * 0.9, m.b, 1.0) * m.a + vec4(0.1, 0.1, 0.1, 0.0) * (1.0 - m.a);
+}
+`
+
+// ------------------------------------------------------------ het zonemasker (naden en spikkels)
+
+/**
+ * Z per texel (§4.4) in een R8-doel, van de detailbron: 1 in een lakzone. Dan
+ * sluiten (MORF_FS): een dunne lijn die geen lakzone is maar aan twee kanten
+ * wel -- een paneelnaad, een schaduwlijntje -- wordt lak, en een losse spikkel
+ * lak in een vlak dat vrij blijft verdwijnt. Anders bleef op donkere lak de witte
+ * basis staan als een stippellijn langs elke naad (beoordeling L3 punt 6,
+ * proefdraaier punt 13), en rafelden de overgangen (punt 7).
+ */
+export const ZONE_FS = /* glsl */ `#version 300 es
+precision highp float;
+precision highp sampler2DArray;
+${LAGEN_GEMEEN}
+uniform vec2 uMaat;
+out vec4 uit;
+void main() {
+  vec2 st = gl_FragCoord.xy / uMaat;
+  uit = vec4(zoneZ(naarLab(texture(uDetail, st).rgb)), 0.0, 0.0, 1.0);
+}
+`
+
+/** Eén richting van een uitzetting (MAX) of krimp (MIN) over `uStraal` texels. */
+export const MORF_FS = /* glsl */ `#version 300 es
+precision highp float;
+uniform sampler2D uBron;
+uniform ivec2 uStap;
+uniform int uStraal;
+uniform int uMax;
+out vec4 uit;
+void main() {
+  ivec2 p = ivec2(gl_FragCoord.xy);
+  ivec2 maat = textureSize(uBron, 0);
+  float w = texelFetch(uBron, p, 0).r;
+  for (int k = 1; k <= 8; k++) {
+    if (k > uStraal) break;
+    for (int t = -1; t <= 1; t += 2) {
+      ivec2 q = clamp(p + uStap * k * t, ivec2(0), maat - 1);
+      float v = texelFetch(uBron, q, 0).r;
+      w = uMax == 1 ? max(w, v) : min(w, v);
+    }
+  }
+  uit = vec4(w, 0.0, 0.0, 1.0);
+}
+`
+
+// ------------------------------------------------------------ het zijbeeld (een vrije plek voor naam en logo)
+
+/**
+ * Het zijbeeld: de bus orthografisch van opzij (of van voren), per pixel wat je
+ * daar van buiten ziet. Plek in o3d-assen: u langs z (of x), v langs y, diepte
+ * langs de as van de zijde. De afdekkers (alle meshes) schrijven "niet te lakken";
+ * het laknet schrijft wat het masker zegt. Zo ziet de naam van Snelle lak wat de
+ * speler ziet: een deur, een ruit, een wielkast, een wapen dat het sjabloon
+ * beschermt (beoordeling L3 punt 2 en 5).
+ */
+export const ZIJ_VS = /* glsl */ `#version 300 es
+precision highp float;
+layout(location = 0) in vec3 aPlek;
+layout(location = 1) in vec3 aNormaal;
+layout(location = 2) in vec2 aUv;
+layout(location = 3) in vec2 aInfo;
+uniform vec4 uVlak;     // u0, u1, v0, v1 (m)
+uniform vec3 uDiep;     // d0, d1, en welke as: 0 = x (zijden), 2 = z (voor en achter)
+uniform float uTeken;   // +1: van de positieve kant (R, V), -1: van de negatieve (L, A)
+out vec3 vNormaal;
+out vec2 vUv;
+flat out int vVlag;
+void main() {
+  bool zij = uDiep.z < 1.0;
+  float u = zij ? aPlek.z : aPlek.x;
+  float d = zij ? aPlek.x : aPlek.z;
+  float cu = (u - uVlak.x) / (uVlak.y - uVlak.x) * 2.0 - 1.0;
+  // Van links (L, -x) en van achteren (A, -z) gezien loopt u de andere kant op; de kolommen houden dezelfde z of x.
+  float cv = (aPlek.y - uVlak.z) / (uVlak.w - uVlak.z) * 2.0 - 1.0;
+  float cd = uTeken > 0.0 ? (uDiep.y - d) / (uDiep.y - uDiep.x) * 2.0 - 1.0 : (d - uDiep.x) / (uDiep.y - uDiep.x) * 2.0 - 1.0;
+  gl_Position = vec4(cu, cv, cd, 1.0);
+  vNormaal = aNormaal;
+  vUv = aUv;
+  vVlag = int(aInfo.x + 0.5);
+}
+`
+export const ZIJ_FS = /* glsl */ `#version 300 es
+precision highp float;
+precision highp sampler2DArray;
+in vec3 vNormaal;
+in vec2 vUv;
+flat in int vVlag;
+${LAGEN_GEMEEN}
+uniform int uAfdekker;  // 1: alle meshes (wat daar ligt, is geen lak); 0: het laknet
+uniform int uAlfatest;
+uniform sampler2D uTex;
+uniform vec3 uAs;       // de richting van de zijde (o3d)
+out vec4 uit;
+void main() {
+  if (uAfdekker == 1) {
+    if (uAlfatest == 1 && texture(uTex, vUv).a < 0.5) discard;
+    uit = vec4(0.0, 0.0, 1.0, 1.0);
+    return;
+  }
+  // Het laknet: vUv is al teruggeschoven naar [0,1].
+  vec4 m = texture(uMasker, vUv);
+  float M = m.r * (1.0 - m.g) * (uZoneTex == 1 ? texture(uZoneMasker, vUv).r : zoneZ(naarLab(texture(uDetail, vUv).rgb)));
+  if (uSjabloon == 1) M = texture(uSjabloonMA, vUv).r * m.r;
+  float ln = length(vNormaal);
+  float recht = ln > 1e-4 ? dot(vNormaal / ln, uAs) : 0.0;
+  // Een deur, een ruit of een wiel (vlaggen 1, 2, 8), of een vlak dat meer dan 60° wegdraait: daar hoort geen naam.
+  float slecht = (vVlag & 11) != 0 || recht < 0.5 ? 1.0 : 0.0;
+  uit = vec4(M, m.b, slecht, 1.0);
 }
 `

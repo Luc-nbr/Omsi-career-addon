@@ -382,6 +382,20 @@ async function zestigSeconden(b) {
   const naamVeld = await js(w, "document.querySelector('input[name=\"lakNaam\"]').value")
   klopt(`${b.kort}: het naamveld volgt de naam op de bus ("${naamVeld}")`, naamVeld === b.naam)
   await slaap(1200)
+  // Naam en logo op een vrij stuk, aan beide kanten (beoordeling L3 punt 1 en 2): de werker meet op het zijbeeld.
+  const analyse = await wachtOp(
+    w,
+    `(() => { const a = JSON.parse(document.documentElement.dataset.lakAnalyse || '{}'); return a['r-tekst'] && a['r-logo'] && a['r-tekst'].vrij !== undefined && a['r-logo'].vrij !== undefined ? a : false })()`,
+    8000
+  )
+  u.snelPlek = analyse
+  for (const id of ['r-tekst', 'r-logo']) {
+    const a = analyse?.[id]
+    klopt(
+      `${b.kort}: ${id === 'r-tekst' ? 'de naam' : 'het logo'} van Snelle lak op vrije lak aan beide kanten (eigen kant ${a?.vrij}, kopie ${a?.kopie ? a.vrijKopie : 'geen'}; ≥ 0,98 en een kopie)`,
+      Boolean(a && a.kopie && a.vrij >= 0.98 && a.vrijKopie >= 0.98)
+    )
+  }
   await afdruk(w, `${b.kort}-3-snellelak`)
 
   // 0:28 [Verder in de studio]: de band is gekozen; de bovenrand omhoog naar de raamlijn.

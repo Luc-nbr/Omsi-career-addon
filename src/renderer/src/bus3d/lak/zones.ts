@@ -202,6 +202,12 @@ export function zonesVan(px: Uint8Array, zaad = 7): { zones: Zone[]; ms: number 
   zones.forEach((z, i) => {
     if (i > 0 && z.lab[0] < 30 && Math.hypot(z.lab[1], z.lab[2]) < 12) z.lak = false
   })
+  ookLak(zones)
+  return { zones, ms: performance.now() - t0 }
+}
+
+/** De tinten en het grijs van de lak (hieronder): alleen zones erbij, nooit eraf. */
+function ookLak(zones: Zone[]): void {
   /*
    * Een schaduw of vuil van de lak: een zone (≥ 2%) met dezelfde tint als een
    * lakzone (kleurhoek binnen 12°, verzadiging 0,6-1,6 keer, niet kleurloos) is
@@ -229,7 +235,34 @@ export function zonesVan(px: Uint8Array, zaad = 7): { zones: Zone[]; ms: number 
     const hoog = Math.max(...grijsLak) + 5
     for (const z of zones) if (!z.lak && z.deel >= 0.02 && tint(z).c < 12 && z.lab[0] >= laag && z.lab[0] <= hoog) z.lak = true
   }
-  return { zones, ms: performance.now() - t0 }
+}
+
+/**
+ * Eén bus, één lak: een zone (≥ 2%) met de kleur (ΔE < 10) van een lakzone van
+ * een ANDER doel van dezelfde bus is ook lak, en daarna de tinten en het grijs
+ * opnieuw. De rode schort van de HH20 is op de achterwagen 11,6% van de lak (een
+ * lakzone) en op de voorwagen 9,2%: daar bleef hij rood, ook onder de weggehaalde
+ * HOCHBAHN-letters (proefdraaier L3 punt 8, 944 texels). Alleen de lakzones van
+ * de eerste regel (≥ 10%) tellen als bron, zodat het niet doorschuift. Past de
+ * lijsten zelf aan; geeft het aantal zones dat erbij kwam.
+ */
+export function zonesGelijk(lijsten: Zone[][]): number {
+  const bron = lijsten.map((zones) => zones.filter((z) => z.lak && z.deel >= 0.1).map((z) => z.lab))
+  let erbij = 0
+  lijsten.forEach((zones, i) => {
+    const anderen = bron.filter((_, j) => j !== i).flat()
+    let hier = 0
+    for (const z of zones) {
+      if (z.lak || z.deel < 0.02) continue
+      if (anderen.some((l) => afstand(l, z.lab) < 10)) {
+        z.lak = true
+        hier++
+      }
+    }
+    if (hier > 0) ookLak(zones)
+    erbij += hier
+  })
+  return erbij
 }
 
 /**

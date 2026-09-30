@@ -1199,7 +1199,9 @@ export function bus3dLak(
   kleurstelling: string | undefined,
   kop?: Bus3dPakKop,
   /** Busopties van de Lakstudio (§4.9): extra setvars na die van de kleurstelling. */
-  extra: Array<[string, number]> = []
+  extra: Array<[string, number]> = [],
+  /** Wat niemand zet is 0 (of de startwaarde van het script), zoals in OMSI met een eigen lak; zie `busRust`. */
+  alleenGeschreven = false
 ): { lak: Bus3dLak; textuurBronnen: Bus3dTextuurBron[] } {
   const t0 = performance.now()
   const lak: Bus3dLak = {
@@ -1221,7 +1223,7 @@ export function bus3dLak(
       const bus = leesBusBestand(busPad)
       delen.push({ busPad, modelcfg: bus?.model ? join(dirname(busPad), ...bus.model.split(/[\\/]+/)) : '' })
     }
-    const rust = busRust(kop, delen, kleurstelling, extra)
+    const rust = busRust(kop, delen, kleurstelling, extra, alleenGeschreven)
     lak.zichtbaar = rust.zichtbaar
     lak.items = rust.items
     lak.alphascale = rust.alphascale
@@ -1296,9 +1298,10 @@ export function lakStempel(
   omsiMap: string,
   manifest: Bus3dManifest,
   kleurstelling: string | undefined,
-  extra: Array<[string, number]> = []
+  extra: Array<[string, number]> = [],
+  alleenGeschreven = false
 ): string {
-  const h = createHash('sha1').update(`lak-3|${kleurstelling ?? ''}${extra.length ? `|${JSON.stringify(extra)}` : ''}`)
+  const h = createHash('sha1').update(`lak-3|${kleurstelling ?? ''}${extra.length ? `|${JSON.stringify(extra)}` : ''}${alleenGeschreven ? '|alleen' : ''}`)
   const stempel = (pad: string): void => {
     try {
       const st = statSync(pad)
