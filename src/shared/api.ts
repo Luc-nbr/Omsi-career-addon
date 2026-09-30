@@ -223,9 +223,14 @@ export interface FreeResult {
   klaargezet: Klaargezet
   /** De naam van de plek waar de bus staat. */
   plek?: string
-  /** `bekijken`: de app draait alleen om te bekijken (main/versiewacht.ts) en zet niets klaar. */
-  fout?: 'geenBus' | 'onvolledig' | 'geenPlek' | 'geenDienstregeling' | 'schrijven' | 'bekijken'
+  /**
+   * `bekijken`: de app draait alleen om te bekijken (main/versiewacht.ts) en zet niets klaar.
+   * `anderSpel`: het andere spel draait al (OMSI 2 of openOMSI; de naam staat in `foutTekst`).
+   */
+  fout?: 'geenBus' | 'onvolledig' | 'geenPlek' | 'geenDienstregeling' | 'schrijven' | 'bekijken' | 'anderSpel'
   foutTekst?: string
+  /** In welk spel de rit begon (zonder: OMSI 2). */
+  motor?: 'omsi' | 'openomsi'
 }
 
 /** De controle op de kaartstap: kan de bus hier neer, en waar. */
@@ -415,8 +420,14 @@ export interface BeginResult {
    * `bekijken`: de app draait alleen om te bekijken (main/versiewacht.ts). Dan
    * begint er niets: geen situatie, geen startscherm, geen OMSI, en de dienst
    * krijgt geen begintijd.
+   *
+   * `anderSpel`: het andere spel draait al (`anderSpel`); de app start nooit
+   * een tweede spel naast het eerste (ontwerp openomsi-koppeling §7).
    */
-  fout?: 'bekijken'
+  fout?: 'bekijken' | 'anderSpel'
+  /** In welk spel de dienst begon of zou beginnen. */
+  motor?: 'omsi' | 'openomsi'
+  anderSpel?: 'omsi' | 'openomsi'
 }
 
 export interface Assignment {
@@ -508,6 +519,45 @@ export interface SessionResult {
   dutyComplete: boolean
   /** Onwaar zolang OMSI niet draait; dan valt er niets te meten. */
   finished: boolean
+  /**
+   * Een dienst in openOMSI (ontwerp openomsi-koppeling §6): daar komt alles
+   * achteraf uit ~/.openomsi/sessions. `loopt`/`herstart`: het spel draait nog;
+   * `wacht`: het is weg en de app wacht (hooguit 30 s) op het sessiebestand;
+   * `klaar`: de afrekening staat hierboven; `onvolledig`: openOMSI schreef geen
+   * rit (gecrasht of hard afgesloten).
+   */
+  spel?: {
+    motor: 'openomsi'
+    stand: 'geenSpel' | 'loopt' | 'herstart' | 'wacht' | 'klaar' | 'onvolledig'
+    /** De processen van de keten (met een sessiebestand, als `klaar`). */
+    pids: number[]
+    /** Processen zonder sessiebestand. */
+    ontbreekt?: number[]
+    haltes?: number
+    teVroeg?: number
+    teLaat?: number
+    schokken?: number
+    gewonden?: number
+  }
+}
+
+/**
+ * Welk spel START neemt, wat er gevonden is en wat er (nog) niet kan (ontwerp
+ * openomsi-koppeling §7).
+ */
+export interface SpelStand {
+  keuze: 'omsi' | 'openomsi' | 'automatisch'
+  /** De motor waarmee START nu zou beginnen. */
+  motor: 'omsi' | 'openomsi'
+  /** Wat er nu draait. */
+  draait?: 'omsi' | 'openomsi'
+  /** Draait het andere spel, dan begint START niets. */
+  anderSpel?: 'omsi' | 'openomsi'
+  openomsi?: { versie?: string; map: string; inOmsiMap: boolean; launcher: boolean; uitTemp: boolean }
+  waarschuwingen: Array<'uitTemp' | 'tweeSpellen'>
+  kan: { overlay: boolean; dienstLive: boolean; motorKnoppen: 'altijd' | 'vooraan' | 'nee'; afrekeningAchteraf: boolean }
+  /** De motor van de dienst die loopt. */
+  dienst: 'omsi' | 'openomsi'
 }
 
 /**
@@ -821,6 +871,10 @@ export interface CareerApi extends BedrijfPlanApi {
   liveStatus(): Promise<{ status?: LiveStatus; vehicle?: VehiclePosition }>
   /** Draait het spel al? Los van de plugin, die zich pas meldt met een bus erin. */
   omsiRunning(): Promise<boolean>
+  /** Welk spel START neemt (OMSI 2 of openOMSI) en wat er gevonden is. */
+  spelStand(): Promise<SpelStand>
+  /** Een dienst in openOMSI afronden: het spel netjes stoppen en de afrekening afwachten. */
+  stopSpel(): Promise<SessionResult>
   /** Het versienummer van de app zelf, zoals het in de installer staat. */
   version(): Promise<string>
   /** Hoe OMSI de vorige keer draaide: op volledig scherm of in een venster. */
@@ -931,6 +985,10 @@ export interface CareerApi extends BedrijfPlanApi {
       tickets?: number
       collisions?: number
       fuelUsed?: number
+      /** Alleen uit openOMSI (ontwerp openomsi-koppeling §6). */
+      teVroeg?: number
+      teLaat?: number
+      bron?: 'openomsi'
     }
   ): Promise<CareerPayload>
   renameDriver(name: string): Promise<CareerPayload>

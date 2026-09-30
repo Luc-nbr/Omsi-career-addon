@@ -16,6 +16,7 @@ import { TEKST_LAKSTUDIO } from './tekst/lakstudio'
 import { TEKST_FUNDAMENT } from './tekst/fundament'
 import { TEKST_INVULLEN } from './tekst/invullen'
 import { TEKST_MEETSTAND } from './tekst/meetstand'
+import { TEKST_OPENOMSI } from './tekst/openomsi'
 import { TEKST_PLANNING } from './tekst/planning'
 import { TEKST_UITVAL } from './tekst/uitval'
 import { TEKST_VLOOTKAART } from './tekst/vlootkaart'
@@ -4901,7 +4902,8 @@ const TEXT = {
   ...TEKST_VLOOTKAART,
   ...TEKST_BUSVIEWER,
   ...TEKST_MEETSTAND,
-  ...TEKST_LAKSTUDIO
+  ...TEKST_LAKSTUDIO,
+  ...TEKST_OPENOMSI
 } as const
 
 /** Voor de proef: elke bron apart. */
@@ -4915,7 +4917,8 @@ export const TEKSTBRONNEN = {
   TEKST_VLOOTKAART,
   TEKST_BUSVIEWER,
   TEKST_MEETSTAND,
-  TEKST_LAKSTUDIO
+  TEKST_LAKSTUDIO,
+  TEKST_OPENOMSI
 } as const
 
 export type TextKey = keyof typeof TEXT

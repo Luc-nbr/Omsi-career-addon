@@ -117,15 +117,7 @@ function rechtenProbleem(reden: unknown): boolean {
   return code === 'EACCES' || code === 'EPERM'
 }
 
-/** Draait OMSI al? Zo ja, dan starten we er geen tweede naast. */
-export function isOmsiRunning(programma = 'Omsi.exe'): Promise<boolean> {
-  return new Promise((resolve) => {
-    const check = spawn('tasklist', ['/FI', `IMAGENAME eq ${programma}`, '/NH'])
-    let output = ''
-    check.stdout.on('data', (chunk) => {
-      output += String(chunk)
-    })
-    check.on('close', () => resolve(output.toLowerCase().includes(programma.toLowerCase())))
-    check.on('error', () => resolve(false))
-  })
-}
+/*
+ * "Draait OMSI al?" staat sinds 0.7.0 in motoren/omsi.ts, naast de andere vragen
+ * over het proces van OMSI 2; openOMSI heeft zijn eigen motor.
+ */

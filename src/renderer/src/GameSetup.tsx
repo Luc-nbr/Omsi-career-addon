@@ -15,7 +15,8 @@ import type {
   OverlayKnoppen,
   OverlayKnopStand,
   OverlayReden,
-  Schakelbaar
+  Schakelbaar,
+  SpelStand
 } from '../../shared/api'
 import { MODIFIER_CODES, SCANCODES } from '../../shared/scancodes'
 import { ControllersTab } from './Controllers'
@@ -363,10 +364,84 @@ function redenTekst(language: Language, reden: OverlayReden | undefined): string
 function AppTab({ language }: { language: Language }): JSX.Element {
   return (
     <>
+      <SpelmotorKaart language={language} />
       <AnimatiesKaart language={language} />
       <Bus3dKaart language={language} />
       <MeetstandKaart language={language} />
     </>
+  )
+}
+
+/**
+ * RIJDEN IN: OMSI 2 OF openOMSI (ontwerp openomsi-koppeling §7)
+ *
+ * Alleen als openomsi.exe gevonden is; wie alleen OMSI 2 heeft, ziet hier
+ * niets. De keuze geldt voor START bij een dienst en bij vrij rijden;
+ * `automatisch` volgt wat er draait. Daaronder eerlijk wat er in openOMSI
+ * (nog) niet kan.
+ */
+function SpelmotorKaart({ language }: { language: Language }): JSX.Element | null {
+  const [stand, setStand] = useState<SpelStand>()
+  const kijk = useCallback(() => {
+    void window.career
+      .spelStand()
+      .then(setStand)
+      .catch(() => undefined)
+  }, [])
+  useEffect(() => {
+    kijk()
+    const klok = setInterval(kijk, 5000)
+    return () => clearInterval(klok)
+  }, [kijk])
+  if (!stand || (!stand.openomsi && stand.keuze !== 'openomsi')) return null
+  const kies = (keuze: SpelStand['keuze']): void => {
+    setStand({ ...stand, keuze })
+    void window.career.saveSettings({ spelmotor: keuze }).then(kijk)
+  }
+  const keuzes: Array<{ id: SpelStand['keuze']; naam: TextKey; uitleg?: TextKey }> = [
+    { id: 'omsi', naam: 'oo.omsi' },
+    { id: 'openomsi', naam: 'oo.openomsi' },
+    { id: 'automatisch', naam: 'oo.automatisch', uitleg: 'oo.automatischUitleg' }
+  ]
+  const oo = stand.openomsi
+  return (
+    <section className="card" data-spelmotor={stand.motor}>
+      <h2 className="section-title">{t(language, 'oo.titel')}</h2>
+      <p className="note">{t(language, 'oo.intro')}</p>
+      <div className="animatie-keuzes" role="radiogroup" aria-label={t(language, 'oo.titel')}>
+        {keuzes.map((keuze) => (
+          <button
+            key={keuze.id}
+            type="button"
+            role="radio"
+            aria-checked={stand.keuze === keuze.id}
+            className="animatie-keuze"
+            data-motor={keuze.id}
+            onClick={() => kies(keuze.id)}
+          >
+            <b>{t(language, keuze.naam)}</b>
+            {keuze.uitleg && <span>{t(language, keuze.uitleg)}</span>}
+          </button>
+        ))}
+      </div>
+      {oo ? (
+        <p className="note" style={{ marginTop: 10 }}>
+          {t(language, 'oo.gevonden', {
+            versie: oo.versie ?? '?',
+            map: oo.inOmsiMap ? t(language, 'oo.mapOmsi') : oo.map
+          })}
+          {!oo.launcher && ` ${t(language, 'oo.zonderLauncher')}`}
+        </p>
+      ) : (
+        <p className="note warn" style={{ marginTop: 10 }}>
+          {t(language, 'oo.nietGevonden')}
+        </p>
+      )}
+      {stand.waarschuwingen.includes('uitTemp') && <p className="note warn">{t(language, 'oo.uitTemp')}</p>}
+      {stand.waarschuwingen.includes('tweeSpellen') && <p className="note warn">{t(language, 'oo.tweeSpellen')}</p>}
+      <p className="note">{t(language, 'oo.zonderLive')}</p>
+      <p className="note">{t(language, 'oo.koppelingNog')}</p>
+    </section>
   )
 }
 

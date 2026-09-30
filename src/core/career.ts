@@ -75,6 +75,15 @@ export interface CareerEntry {
   /** Verbruikte brandstof, als deel van de tank. */
   fuelUsed?: number
   /**
+   * Hoe vaak te vroeg vertrokken en te laat aangekomen, zoals openOMSI het
+   * telt (vóór -120 s en na 180 s, OO/crates/omsi-app/src/career.rs:26-27).
+   * Alleen bij een dienst in openOMSI; zie `bron`.
+   */
+  teVroeg?: number
+  teLaat?: number
+  /** Waar de metingen vandaan komen: zonder is het de plugin in OMSI 2. */
+  bron?: 'openomsi'
+  /**
    * Per halte gepland tegenover werkelijk vertrek; zie core/rittenstaat.ts.
    * Ontbreekt als er niets gemeten kon worden (geen dienstregeling uit het
    * menu, of een andere OMSI-versie dan 2.3.004).
@@ -132,6 +141,19 @@ export interface ActiveDuty {
     harshAccels: number
     collisions: number
     herstarts: number
+  }
+  /**
+   * In welk spel de dienst rijdt (ontwerp openomsi-koppeling §4, §5.3).
+   * Zonder: OMSI 2, zoals altijd. Bij openOMSI de keten van processen (een
+   * herstart van het spel is een nieuw proces) en wanneer die ophield; de
+   * afrekening komt daarna uit ~/.openomsi/sessions.
+   */
+  spel?: {
+    motor: 'omsi' | 'openomsi'
+    keten: Array<{ pid: number; gestart?: string }>
+    /** Wanneer het laatste proces van de keten wegging (ISO). */
+    einde?: string
+    via?: 'launcher' | 'terugval' | 'meerijden'
   }
   /**
    * Stand van kilometerteller en klok bij het begin. Vastgelegd zodra de plugin
@@ -352,6 +374,10 @@ export function completeDuty(
     collisions?: number
     /** Brandstof bij het begin en aan het eind, als deel van 0 tot 1. */
     fuelUsed?: number
+    /** Alleen uit openOMSI: te vroeg vertrokken en te laat aangekomen. */
+    teVroeg?: number
+    teLaat?: number
+    bron?: 'openomsi'
   },
   rittenstaat?: Rittenstaat,
   onderweg?: Onderweg
@@ -381,6 +407,9 @@ export function completeDuty(
     tickets: measured?.tickets,
     collisions: measured?.collisions,
     fuelUsed: measured?.fuelUsed,
+    teVroeg: measured?.teVroeg,
+    teLaat: measured?.teLaat,
+    bron: measured?.bron,
     // Zonder een enkele gemeten halte zegt de staat niets; dan liever geen.
     rittenstaat: rittenstaat && rittenstaat.gemeten > 0 ? rittenstaat : undefined,
     onderweg
