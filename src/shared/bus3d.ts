@@ -273,6 +273,8 @@ export interface Bus3dBrug {
   // ---- de Lakstudio (lakstudio-ontwerp §8): alleen in doel 'lakstudio', achter de schakelaar; nooit paden
   /** "+ Eigen lak": het venster wisselt naar de studio met dezelfde bus. */
   naarStudio(lak?: Bus3dVensterVraag['lak']): Promise<number>
+  /** Na opslaan: terug naar de kleurstellingen waar de studio vandaan kwam, met de nieuwe lak in beeld (§4.1). */
+  terugUitStudio(naam?: string): Promise<number>
   lakProjecten(relatiefPad: string): Promise<LakProject[]>
   lakDoelen(relatiefPad: string, start?: string, extra?: Record<string, string[]>): Promise<LakFamilieInfo | undefined>
   lakOpties(relatiefPad: string): Promise<LakOptie[]>

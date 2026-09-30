@@ -410,3 +410,36 @@
   border-radius: 6px;
   z-index: 5;
 }
+
+/* De Lakstudio in de lijst (lakstudio-ontwerp §4.1, §6): de tegel "+ Eigen lak" en het label van een eigen lak. */
+.bv-eigenlak {
+  margin-top: 8px;
+  height: 36px;
+  border: 1px dashed var(--vel-rand);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--route);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.bv-eigenlak:hover:not(:disabled) {
+  background: var(--vel-hover);
+}
+
+.bv-eigenlak:disabled {
+  color: var(--vel-zacht);
+  cursor: default;
+}
+
+.bv-label-eigen {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--route) 16%, transparent);
+  color: var(--route);
+  font-size: 11px;
+  font-weight: 700;
+}

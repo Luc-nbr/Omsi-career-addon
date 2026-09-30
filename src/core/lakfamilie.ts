@@ -1151,6 +1151,34 @@ export function lakOpties(familie: Familie): LakOptie[] {
   return uit.sort((a, b) => a.variabele.localeCompare(b.variabele))
 }
 
+/**
+ * P5: hoeveel lakmeshes `[texcoordtransX/Y]` gebruiken (een uv die een script
+ * verschuift). Het lakdoek rastert de uv zoals de o3d hem heeft; zolang dit 0
+ * is, klopt dat voor elke texel (§4.3). Per doel: materialen in de cfg's van de
+ * familie met de standaardtextuur van dat doel (of een item daarvan) en een
+ * texcoordtrans.
+ */
+export function texcoordtransTelling(familie: Familie): Record<string, number> {
+  const uit: Record<string, number> = {}
+  const cfgs = new Set<string>()
+  const stam = (n: string): string => basename(n.trim().toLowerCase()).replace(/\.[^.]+$/, '')
+  for (const lid of familie.leden) {
+    if (cfgs.has(lid.cfg.toLowerCase())) continue
+    cfgs.add(lid.cfg.toLowerCase())
+    const cfg = leesSchermcfg(lid.cfg)
+    if (!cfg) continue
+    for (const mesh of cfg.meshes) {
+      for (const m of mesh.materialen) {
+        for (const stand of [m, ...m.items]) {
+          if (!stand.texcoordX && !stand.texcoordY) continue
+          for (const d of familie.doelen) if (stam(m.textuur) === d.stam.toLowerCase()) uit[d.id] = (uit[d.id] ?? 0) + 1
+        }
+      }
+    }
+  }
+  return uit
+}
+
 /* ------------------------------------------------------------------ naar de studio */
 
 /**

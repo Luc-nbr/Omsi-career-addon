@@ -246,7 +246,18 @@ export const ICONEN = {
    * twee kruisjes naast elkaar in dezelfde hoek zeggen niet welk van de twee je
    * logboek opruimt.
    */
-  fotoweg: { d: `${CAMERAHUIS} M8.1 12.3h7.8v2.4H8.1Z` }
+  fotoweg: { d: `${CAMERAHUIS} M8.1 12.3h7.8v2.4H8.1Z` },
+  /*
+   * Een verfroller: een eigen lak maken (Lakstudio). De rol, de beugel en de
+   * steel als drie vlakken die elkaar niet raken, dus `nonzero` mag.
+   */
+  lak: {
+    d:
+      'M4 3h13a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z' +
+      ' M19.5 5.5h1.5a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1h-8.5v1.5h-2V12a1 1 0 0 1 1-1H20V7.5h-.5Z' +
+      ' M10 16h3v5a1 1 0 0 1-1 1h-1a1 1 0 0 1-1-1Z',
+    vulling: 'nonzero'
+  }
 } as const
 
 export type Icoonnaam = keyof typeof ICONEN

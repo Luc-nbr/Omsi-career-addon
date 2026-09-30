@@ -1,0 +1,807 @@
+/*
+ * De Lakstudio (lakstudio-ontwerp §2.2): kop met gereedschap en opslaan, links
+ * de lagen, in het midden de bus, rechts het paneel, onderin de aanzichten en de
+ * statusregel. De kleuren komen van het thema van het hoofdvenster (`.setup`,
+ * theme.css), zoals het zijpaneel van het 3D-venster; het beeld zelf niet.
+ */
+.ls-venster {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr) 320px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: var(--vel);
+  color: var(--vel-ink);
+  font-family: var(--letter);
+  font-feature-settings: var(--cijfers);
+  font-size: 13px;
+}
+
+.ls-kop {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vel-rand);
+}
+
+.ls-kop-rij {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.ls-titel {
+  margin: 0 8px 0 0;
+  font-size: 15px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+
+.ls-gereedschappen {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.ls-gereedschap,
+.ls-knop,
+.ls-tab {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--vel-rand);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--vel-ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ls-gereedschap:hover,
+.ls-knop:hover,
+.ls-tab:hover {
+  background: var(--vel-hover);
+}
+
+.ls-gereedschap.ls-aan,
+.ls-knop.ls-aan,
+.ls-tab.ls-aan {
+  background: color-mix(in srgb, var(--route) 18%, transparent);
+  border-color: var(--route);
+}
+
+.ls-knop:disabled,
+.ls-gereedschap:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.ls-gereedschap:focus-visible,
+.ls-knop:focus-visible,
+.ls-tab:focus-visible,
+.ls-hoofdknop:focus-visible {
+  outline: 2px solid var(--route);
+  outline-offset: 1px;
+}
+
+.ls-gevaar {
+  color: var(--laat, #c0392b);
+}
+
+.ls-geschiedenis {
+  display: flex;
+  gap: 4px;
+}
+
+.ls-geschiedenis .ls-knop {
+  font-size: 16px;
+  padding: 0 9px;
+}
+
+.ls-meer {
+  position: relative;
+  margin-left: auto;
+}
+
+.ls-menu {
+  position: absolute;
+  right: 0;
+  top: 34px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 240px;
+  padding: 4px;
+  border: 1px solid var(--vel-rand);
+  border-radius: 10px;
+  background: var(--vel);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+}
+
+.ls-menu button {
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--vel-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ls-menu button:hover:not(:disabled) {
+  background: var(--vel-hover);
+}
+
+.ls-menu button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.ls-opslaanrij {
+  gap: 8px 10px;
+}
+
+.ls-naamveld {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.ls-naamveld .ls-invoer {
+  width: 260px;
+}
+
+.ls-invoer,
+.ls-veld select,
+.ls-veld input[type='number'] {
+  box-sizing: border-box;
+  height: 30px;
+  padding: 4px 8px;
+  border: 1px solid var(--vel-rand);
+  border-radius: 8px;
+  background: var(--veld);
+  color: var(--vel-ink);
+  font: inherit;
+}
+
+.ls-invoer[aria-invalid='true'] {
+  border-color: var(--laat, #c0392b);
+}
+
+.ls-hoofdknop {
+  height: 32px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: var(--radius-rond, 999px);
+  background: var(--route);
+  color: #ffffff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ls-hoofdknop:hover:not(:disabled) {
+  background: var(--route-diep);
+}
+
+.ls-hoofdknop:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ls-naamfout {
+  color: var(--laat, #c0392b);
+  font-weight: 600;
+}
+
+.ls-zacht {
+  margin: 0;
+  color: var(--vel-zacht);
+  line-height: 1.4;
+}
+
+.ls-ookop {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+}
+
+.ls-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--route);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ls-melding {
+  margin: 6px 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--route) 12%, transparent);
+  line-height: 1.4;
+}
+
+/* ---- links: de lagen ---- */
+.ls-links {
+  grid-row: 2;
+  grid-column: 1;
+  min-height: 0;
+  overflow: auto;
+  border-right: 1px solid var(--vel-rand);
+  scrollbar-width: thin;
+}
+
+.ls-lagen {
+  padding: 10px;
+}
+
+.ls-lagen ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ls-laagrij {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: 7px;
+}
+
+.ls-laagrij.ls-aan {
+  background: color-mix(in srgb, var(--route) 18%, transparent);
+  box-shadow: inset 3px 0 0 var(--route);
+}
+
+.ls-laagrij.ls-verborgen .ls-laagnaam {
+  opacity: 0.5;
+}
+
+.ls-oog {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 5px;
+  border: 0;
+  background: none;
+  color: var(--vel-zacht);
+  cursor: pointer;
+}
+
+.ls-oog svg,
+.ls-slot {
+  width: 100%;
+  height: 100%;
+  fill: currentColor;
+}
+
+.ls-slot {
+  width: 12px;
+  height: 12px;
+  margin-right: 4px;
+  vertical-align: -1px;
+}
+
+.ls-laagnaam {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 4px;
+  border: 0;
+  background: none;
+  color: var(--vel-ink);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.ls-basis {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--vel-lijn);
+}
+
+/* ---- midden: de bus ---- */
+.ls-midden {
+  position: relative;
+  grid-row: 2;
+  grid-column: 2;
+  min-width: 0;
+  min-height: 0;
+}
+
+.ls-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.ls-kader {
+  fill: rgba(255, 255, 255, 0.06);
+  stroke: #ffd24a;
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+}
+
+.ls-kader.ls-kopie {
+  stroke: #9fd3ff;
+}
+
+.ls-hoekhandvat {
+  fill: #ffd24a;
+  stroke: #1b1f27;
+  stroke-width: 1.5;
+}
+
+.ls-rand {
+  stroke: #ffd24a;
+  stroke-width: 2;
+}
+
+.ls-randhandvat {
+  fill: #ffd24a;
+  stroke: #1b1f27;
+  stroke-width: 1;
+}
+
+.ls-gids {
+  stroke: #9fd3ff;
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.ls-gidsnaam {
+  fill: #9fd3ff;
+  font-size: 11px;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.6);
+  stroke-width: 3px;
+}
+
+.ls-vlak {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 1;
+  stroke-dasharray: 8 6;
+}
+
+.ls-tweede {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 320px;
+  height: 180px;
+  margin: 0;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.ls-tweede canvas,
+.ls-tweedekader {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.ls-tweedekader polygon {
+  fill: none;
+  stroke: #9fd3ff;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 3;
+}
+
+.ls-tweede figcaption {
+  position: absolute;
+  left: 8px;
+  top: 6px;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+
+.ls-tip,
+.ls-bezig,
+.ls-laden {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(620px, calc(100% - 24px));
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(20, 24, 30, 0.82);
+  color: #f2f4f7;
+  font-weight: 600;
+  z-index: 5;
+}
+
+.ls-tip {
+  top: 12px;
+}
+
+.ls-tip .ls-link {
+  color: #9fd3ff;
+}
+
+.ls-sluitje {
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.ls-bezig {
+  bottom: 16px;
+}
+
+.ls-laden {
+  top: 50%;
+}
+
+.ls-laden.ls-fout {
+  background: rgba(120, 24, 24, 0.86);
+}
+
+.ls-uitkomst {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(460px, calc(100% - 32px));
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: var(--vel);
+  color: var(--vel-ink);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+  z-index: 10;
+}
+
+.ls-uitkomst p {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.ls-uitkomst.ls-fout {
+  border-top: 4px solid var(--laat, #c0392b);
+}
+
+.ls-uitkomst.ls-ok,
+.ls-uitkomst.ls-klaargezet {
+  border-top: 4px solid var(--optijd, #2e9d5b);
+}
+
+/* ---- rechts: het paneel ---- */
+.ls-rechts {
+  grid-row: 2;
+  grid-column: 3;
+  min-height: 0;
+  overflow: auto;
+  border-left: 1px solid var(--vel-rand);
+  padding: 10px 12px 16px;
+  scrollbar-width: thin;
+}
+
+.ls-paneelkop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  color: var(--vel-zacht);
+}
+
+.ls-blok {
+  padding: 10px 0;
+  border-top: 1px solid var(--vel-lijn);
+}
+
+.ls-blokkop {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vel-zacht);
+}
+
+.ls-kleinkop {
+  margin: 10px 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--vel-zacht);
+}
+
+.ls-rij {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.ls-veld {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 6px 0;
+}
+
+.ls-veld input[type='number'] {
+  width: 82px;
+}
+
+.ls-schuif {
+  grid-template-columns: 1fr;
+}
+
+.ls-schuif input[type='range'] {
+  width: 100%;
+  accent-color: var(--route);
+}
+
+.ls-schuif output {
+  justify-self: end;
+  color: var(--vel-zacht);
+  font-size: 12px;
+  margin-top: -4px;
+}
+
+.ls-vink {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0;
+  cursor: pointer;
+}
+
+.ls-vink input {
+  accent-color: var(--route);
+}
+
+.ls-kleur {
+  width: 44px;
+  height: 30px;
+  padding: 2px;
+  border: 1px solid var(--vel-rand);
+  border-radius: 8px;
+  background: var(--veld);
+  cursor: pointer;
+}
+
+.ls-stalen {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.ls-staal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--vel-zacht);
+}
+
+.ls-staal .ls-kleur {
+  width: 100%;
+  height: 42px;
+}
+
+.ls-staal.ls-gekozen .ls-kleur {
+  border-color: var(--route);
+  box-shadow: 0 0 0 1px var(--route);
+}
+
+.ls-strookkeuze {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.ls-strookknop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 2px;
+  border: 1px solid var(--vel-rand);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--vel-ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.ls-strookknop small {
+  font-size: 10px;
+  line-height: 1.1;
+  color: var(--vel-zacht);
+}
+
+.ls-strookknop.ls-aan {
+  border-color: var(--route);
+  background: color-mix(in srgb, var(--route) 14%, transparent);
+}
+
+.ls-strookplaatje {
+  width: 100%;
+  height: auto;
+}
+
+.ls-plaatje-bus {
+  fill: var(--vel-lijn);
+  stroke: var(--vel-zacht);
+  stroke-width: 0.6;
+}
+
+.ls-plaatje-band {
+  fill: var(--route);
+}
+
+.ls-plaatje-raam {
+  fill: color-mix(in srgb, var(--vel-ink) 30%, transparent);
+}
+
+.ls-plaatje-wiel {
+  fill: var(--vel-ink);
+}
+
+.ls-beeldvak {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 10px;
+  border: 2px dashed var(--vel-rand);
+  border-radius: 10px;
+  color: var(--vel-zacht);
+  text-align: center;
+}
+
+.ls-beeldvak.ls-boven {
+  border-color: var(--route);
+  background: color-mix(in srgb, var(--route) 10%, transparent);
+}
+
+.ls-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.ls-logo img {
+  max-width: 96px;
+  max-height: 48px;
+  object-fit: contain;
+  background: repeating-conic-gradient(#cfd4da 0 25%, #ffffff 0 50%) 0 0 / 10px 10px;
+  border-radius: 4px;
+}
+
+.ls-verder {
+  margin-top: 10px;
+}
+
+.ls-vormen {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+
+.ls-vormknop {
+  aspect-ratio: 1;
+  padding: 6px;
+  border: 1px solid var(--vel-rand);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--vel-ink);
+  cursor: pointer;
+}
+
+.ls-vormknop:hover {
+  background: var(--vel-hover);
+}
+
+.ls-vormplaatje {
+  width: 100%;
+  height: 100%;
+}
+
+.ls-zones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ls-zone {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.ls-zone-vrij {
+  outline: 2px dotted var(--vel-zacht);
+  outline-offset: 1px;
+}
+
+.ls-tekstinvoer {
+  width: 100%;
+  margin-bottom: 4px;
+  font-size: 15px;
+}
+
+.ls-optie {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--vel-lijn);
+}
+
+.ls-optie small {
+  display: block;
+  margin-left: 24px;
+  font-size: 11px;
+}
+
+/* ---- onderin ---- */
+.ls-voet {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--vel-rand);
+}
+
+.ls-zichten {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.ls-dag {
+  cursor: default;
+}
+
+.ls-status {
+  margin-left: auto;
+  color: var(--vel-zacht);
+}
+
+@media (max-width: 1099px) {
+  .ls-venster {
+    grid-template-columns: 160px minmax(0, 1fr) 280px;
+  }
+
+  .ls-titel {
+    max-width: 200px;
+  }
+}

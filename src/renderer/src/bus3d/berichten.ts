@@ -1,6 +1,7 @@
 import type { Bus3dLak, Bus3dManifest, Bus3dMeting, Bus3dOmgeving } from '../../../shared/bus3d'
-import type { Laag, LakFamilieInfo } from '../../../shared/lak'
+import type { Laag, LakFamilieInfo, LakStart } from '../../../shared/lak'
 import type { CameraStand, Stand } from './camera'
+import type { DecalAnalyse } from './lak/lakdoek'
 import type { Vec3 } from './wiskunde'
 
 /**
@@ -21,6 +22,12 @@ export type Invoer =
   | { soort: 'schuif'; dx: number; dy: number }
   | { soort: 'draai'; graden: number }
   | { soort: 'kantel'; graden: number }
+  /** Zoomen naar de cursor (Lakstudio, §2.3): x en y in NDC van de viewer. */
+  | { soort: 'zoomNaar'; factor: number; x: number; y: number }
+  /** Centreren op een punt van de bus (dubbelklik, §2.3), in o3d-assen. */
+  | { soort: 'centreer'; punt: Vec3 }
+  /** Inpassen (toets F): zoom 1, geen verschuiving, het aanzicht blijft. */
+  | { soort: 'inpassen' }
 
 export interface AfdrukVraag {
   /** Een eigen stand, of het mikpunt en de afstand van een close-up (wereld). */
@@ -76,16 +83,48 @@ export type NaarWerker =
    * context. Antwoorden gaan als 'antwoord' op het vraagnummer; de voortgang van
    * de export als 'lakVoortgang'.
    */
-  | { soort: 'lakStart'; vraag: number; viewer: number; familie: LakFamilieInfo; lagen: Laag[]; spiegel?: { aan: boolean; vlakX?: number }; licht?: boolean }
+  | {
+      soort: 'lakStart'
+      vraag: number
+      viewer: number
+      familie: LakFamilieInfo
+      lagen: Laag[]
+      spiegel?: { aan: boolean; vlakX?: number }
+      licht?: boolean
+      /** De start (§4.4): bij 'precies' is de basis de lak die nu op de bus staat. */
+      start?: LakStart
+      /** De lak meteen op de bus (anders pas bij `lakToon`: een nieuw project zonder lagen, §2.1). */
+      getoond?: boolean
+    }
   | { soort: 'lakLagen'; lagen: Laag[]; spiegel?: { aan: boolean; vlakX?: number } }
   | { soort: 'lakBeeld'; id: string; beeld: ImageBitmap }
   | { soort: 'lakMasker'; aan: boolean }
-  | { soort: 'lakKies'; vraag: number; viewer: number; x: number; y: number }
+  /** De lak op de bus aan of uit ([Voor/na], §2.1). */
+  | { soort: 'lakToon'; aan: boolean }
+  | { soort: 'lakKies'; vraag: number; viewer: number; x: number; y: number; onderdeel?: boolean }
+  /**
+   * Het penseel (§4.8): begin, een punt (x, y in NDC van de viewer: de werker wijst
+   * zelf aan), en het einde, dat de streek als vector teruggeeft (antwoord op `vraag`).
+   */
   | {
-      soort: 'lakStreek'
-      laag: number
-      streek: { punten: number[]; straalCm: number; hardheid: number; dekking: number; gum: boolean; camera: number[]; kleur: string }
+      soort: 'lakPenseel'
+      fase: 'begin' | 'punt' | 'einde'
+      vraag?: number
+      viewer: number
+      x: number
+      y: number
+      laagId: string
+      straalCm: number
+      hardheid: number
+      dekking: number
+      gum: boolean
     }
+  /** "Effen in de kleuren van deze lak" (§4.4): per zone de kleur van de lak op de bus. */
+  | { soort: 'lakKleuren'; vraag: number }
+  /** [Schuif naar een vrij stuk] (§4.8). */
+  | { soort: 'lakSchuif'; vraag: number; id: string }
+  /** Een vrije plek voor de naam of het logo van Snelle lak (tussen `van` en `tot` van de lengte). */
+  | { soort: 'lakVrij'; vraag: number; id: string; van: number; tot: number }
   | { soort: 'lakExport'; vraag: number; tegel?: number; alleen?: string[]; metRgba?: boolean }
   | { soort: 'lakMeet'; vraag: number; viewer: number; beelden?: number }
   | { soort: 'lakStop' }
@@ -112,8 +151,14 @@ export interface StandBericht {
 
 export type VanWerker =
   | { soort: 'gereed'; webgl: boolean; detail?: string; info?: Record<string, unknown> }
-  /** `laad`: bij welke bus (het nummer van zijn 'bus'-bericht) dit beeld hoort. */
-  | { soort: 'beeld'; viewer: number; bitmap: ImageBitmap; laad: number }
+  /**
+   * `laad`: bij welke bus (het nummer van zijn 'bus'-bericht) dit beeld hoort.
+   * `cam`: de camera van dit beeld (beeld × projectie, wereldassen), voor de
+   * handvatten van de Lakstudio die het venster over het beeld tekent.
+   */
+  | { soort: 'beeld'; viewer: number; bitmap: ImageBitmap; laad: number; cam?: number[] }
+  /** De geen-kopie-regel (§4.8) per decal-laag: ls.spiegelschrift en ls.kopieDeur. */
+  | { soort: 'lakAnalyse'; uitslag: Record<string, DecalAnalyse> }
   | StandBericht
   | { soort: 'held'; viewer: number; pakket: string; kleurstelling?: string; sleutel: string; webp: ArrayBuffer }
   | {

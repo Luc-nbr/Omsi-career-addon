@@ -1,6 +1,7 @@
 import { useEffect, useState, type DragEvent, type JSX } from 'react'
 import type { Controle, Ontbrekend } from '../../core/addoncheck'
 import type { AddonFout, AddonOverzicht, AddonPlan } from '../../shared/api'
+import type { LakOverzicht } from '../../shared/lak'
 import type { TextKey } from '../../shared/i18n'
 import { Icoon, type Icoonnaam } from './Icoon'
 import { useLanguage, useT } from './language'
@@ -525,6 +526,7 @@ function Geinstalleerd({ voortgang }: { voortgang?: { fase: string; n: number } 
           {melding}
         </p>
       )}
+      <EigenLakken />
       <section className="bd-paneel">
         {!lijst ? null : lijst.length === 0 ? (
           <p className="bd-rustig">{tr('ad.noneInstalled')}</p>
@@ -565,6 +567,147 @@ function Geinstalleerd({ voortgang }: { voortgang?: { fase: string; n: number } 
         <p className="bd-rustig bd-klein">{tr('ad.registerNote')}</p>
       </section>
     </div>
+  )
+}
+
+/* ---- eigen kleurstellingen (Lakstudio, lakstudio-ontwerp §5.6-§5.8) ---- */
+
+/**
+ * De lakken uit de Lakstudio staan apart van de add-ons: ze gaan alleen via de
+ * studio of hier weg (§5.6), met [Bewerken] (de studio met dit ontwerp), wachtende
+ * lakken met [Niet plaatsen] (§5.7), en lakken van een andere installatie (wezen,
+ * §5.8) met [Verwijderen] en [Overnemen]. Zonder de schakelaar `bus3d` geven de
+ * kanalen niets, en staat hier alleen hoe je ze aanzet.
+ */
+/** De naam van een .bus zonder map en extensie. */
+const busNaam = (rel: string): string => (rel.split(/[\\/]/).pop() ?? rel).replace(/\.bus$/i, '')
+
+function EigenLakken(): JSX.Element | null {
+  const tr = useT()
+  const taal = useLanguage()
+  const [lakken, setLakken] = useState<LakOverzicht[]>()
+  const [wezen, setWezen] = useState<Array<{ id: string; cti: string; naam: string; nnnn: number; bestanden: string[] }>>([])
+  const [zeker, setZeker] = useState<string>()
+  const [ookOntwerp, setOokOntwerp] = useState(false)
+  const [handmatig, setHandmatig] = useState<{ id: string; n: number }>()
+  const [melding, setMelding] = useState<string>()
+  const [aan, setAan] = useState<boolean>()
+
+  const laad = (): void => {
+    void window.career.settings().then((s) => setAan(s.bus3d === true))
+    void window.career.lakLijst().then(setLakken)
+    void window.career.lakWezen().then(setWezen)
+  }
+  useEffect(laad, [])
+  useEffect(() => window.career.opKleurstellingenVeranderd(() => laad()), [])
+
+  const verwijder = async (l: LakOverzicht, keuze?: 'alles' | 'laten'): Promise<void> => {
+    setZeker(undefined)
+    setHandmatig(undefined)
+    const r = (await window.career.lakVerwijder(l.projectId, ookOntwerp, keuze)) as { ok?: true; fout?: string; bestanden?: string[] }
+    if (r?.ok) setMelding(tr('ls.verwijderd', { naam: l.naam }))
+    else if (r?.fout === 'handmatig') setHandmatig({ id: l.projectId, n: r.bestanden?.length ?? 1 })
+    else if (r?.fout === 'omsi') setMelding(tr('ls.verwijder.omsi'))
+    else setMelding(tr('ls.fout.fout', { detail: r?.fout ?? '?' }))
+    laad()
+  }
+
+  const bewerken = (l: LakOverzicht): void => {
+    void window.career.bus3dOpen({ doel: 'lakstudio', relatiefPad: l.bus, titel: busNaam(l.bus), lak: { projectId: l.projectId } })
+  }
+
+  if (aan === false) {
+    return (
+      <section className="bd-paneel">
+        <div className="bd-paneelkop">
+          <h2>{tr('ls.ad.titel')}</h2>
+        </div>
+        <p className="bd-rustig">{tr('ls.ad.uit')}</p>
+      </section>
+    )
+  }
+  if (!lakken) return null
+  return (
+    <section className="bd-paneel" data-paneel="eigenLakken">
+      <div className="bd-paneelkop">
+        <h2>{tr('ls.ad.titel')}</h2>
+      </div>
+      {melding && (
+        <p className="bd-melding" role="status">
+          {melding}
+        </p>
+      )}
+      {lakken.length === 0 && wezen.length === 0 ? <p className="bd-rustig">{tr('ls.ad.geen')}</p> : null}
+      <ul className="ad-addons">
+        {lakken.map((l) => (
+          <li key={`${l.projectId}${l.wacht ? '-w' : ''}`}>
+            <span className="ad-addonnaam">
+              <b>{l.naam}</b>
+              <small>
+                {busNaam(l.bus)} · {new Date(l.geplaatst).toLocaleDateString(taal)}
+                {l.wacht ? ` · ${tr('ls.wacht')}` : ` · ${tr('ls.ad.versie', { v: l.versie, n: l.bestanden })}`}
+              </small>
+              {l.reden ? <small>{l.reden}</small> : null}
+            </span>
+            {handmatig?.id === l.projectId ? (
+              <span className="ad-knoppen">
+                <small>{tr('ls.handmatig', { n: handmatig.n })}</small>
+                <button type="button" className="bd-knop gevaar" onClick={() => void verwijder(l, 'alles')}>
+                  {tr('ls.handmatig.alles')}
+                </button>
+                <button type="button" className="bd-knop" onClick={() => void verwijder(l, 'laten')}>
+                  {tr('ls.handmatig.laten')}
+                </button>
+              </span>
+            ) : zeker === l.projectId ? (
+              <span className="ad-knoppen">
+                <label className="bd-rustig">
+                  <input type="checkbox" checked={ookOntwerp} onChange={(e) => setOokOntwerp(e.target.checked)} /> {tr('ls.ad.ookOntwerp')}
+                </label>
+                <button type="button" className="bd-knop gevaar" onClick={() => void verwijder(l)}>
+                  {tr('ad.removeSure')}
+                </button>
+                <button type="button" className="bd-knop" onClick={() => setZeker(undefined)}>
+                  {tr('ad.cancel')}
+                </button>
+              </span>
+            ) : (
+              <span className="ad-knoppen">
+                <button type="button" className="bd-knop" onClick={() => bewerken(l)}>
+                  {tr('ls.ad.bewerken')}
+                </button>
+                {l.wacht ? (
+                  <button type="button" className="bd-knop" onClick={() => void window.career.lakNietPlaatsen(l.projectId).then(laad)}>
+                    {tr('ls.ad.nietPlaatsen')}
+                  </button>
+                ) : (
+                  <button type="button" className="bd-knop" onClick={() => (setOokOntwerp(false), setZeker(l.projectId))}>
+                    {tr('ls.ad.verwijderen')}
+                  </button>
+                )}
+              </span>
+            )}
+          </li>
+        ))}
+        {wezen.map((w) => (
+          <li key={w.id}>
+            <span className="ad-addonnaam">
+              <b>{w.naam}</b>
+              <small>{tr('ls.wees')}</small>
+              <small>{w.cti}</small>
+            </span>
+            <span className="ad-knoppen">
+              <button type="button" className="bd-knop" onClick={() => void window.career.lakWeesOvernemen(w.id).then(laad)}>
+                {tr('ls.ad.overnemen')}
+              </button>
+              <button type="button" className="bd-knop gevaar" onClick={() => void window.career.lakWeesWeg(w.id).then(laad)}>
+                {tr('ls.ad.verwijderen')}
+              </button>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 

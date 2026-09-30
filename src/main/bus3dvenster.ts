@@ -279,6 +279,7 @@ export function maakBus3dVenster(ipcMain: IpcMain, af: Bus3dVensterAfhankelijk):
       if (win !== w) return
       win = undefined
       huidig = undefined
+      voorStudio = undefined
       stopKlok()
       meldHoofd({ open: false })
       af.log('bus3d venster: dicht')
@@ -288,6 +289,7 @@ export function maakBus3dVenster(ipcMain: IpcMain, af: Bus3dVensterAfhankelijk):
       if (win !== w) return
       win = undefined
       huidig = undefined
+      voorStudio = undefined
       stopKlok()
       // Eén melding per keer dat het misgaat; de volgende 3D-klik opent een nieuw venster.
       meldHoofd({ open: false, gecrasht: !gecrashtGemeld })
@@ -434,6 +436,30 @@ export function maakBus3dVenster(ipcMain: IpcMain, af: Bus3dVensterAfhankelijk):
       lak: lak && typeof lak === 'object' ? (lak as Bus3dOpenVraag['lak']) : undefined
     })
   })
+  /*
+   * Na opslaan of klaarzetten in de studio (§4.1, §6): terug naar de
+   * kleurstellingen waar de speler vandaan kwam (de buskeuze, de dealer of het
+   * wagenpark), met de nieuwe lak in beeld. Kiezen blijft een eigen klik
+   * ([Kiezen] of [Overspuiten]): bekijken is niet kiezen.
+   */
+  ipcMain.handle('bus3d:terugUitStudio', (e, naam: unknown) => {
+    if (!vanVenster(e) || !af.aan() || !huidig || huidig.doel !== 'lakstudio') return 0
+    // Alleen terug naar waar de studio vandaan kwam als dat dezelfde bus was; anders de lijst van deze bus.
+    const terug = voorStudio && voorStudio.relatiefPad.toLowerCase() === huidig.relatiefPad.toLowerCase() ? voorStudio : huidig
+    const kleurstelling = typeof naam === 'string' && naam ? naam.slice(0, 80) : terug.kleurstelling
+    // De lijst van deze bus is veranderd: opnieuw lezen bij de volgende keuze.
+    kleurNamen.delete(terug.relatiefPad.toLowerCase())
+    return open({
+      doel: terug.doel === 'lakstudio' ? 'buskeuze' : terug.doel,
+      relatiefPad: terug.relatiefPad,
+      kleurstelling,
+      gekozen: terug.gekozen,
+      titel: terug.titel,
+      naam: terug.naam,
+      vorm: terug.vorm,
+      vloot: terug.vloot
+    })
+  })
   ipcMain.on('bus3d:sluit', (e, aanvraag: unknown) => {
     if (!vanHoofd(e) || !huidig) return
     // Alleen wat het hoofdvenster al had geopend: een nieuwere vraag blijft staan.
@@ -492,7 +518,9 @@ export function maakBus3dVenster(ipcMain: IpcMain, af: Bus3dVensterAfhankelijk):
     }
     const weiger = (): void => af.log(`bus3d venster: kleurstelling "${kleurstelling}" staat niet in de lijst van de bus; telt niet`)
     const bekend = kleurNamen.get(pad.toLowerCase())
-    if (bekend || !kleurstelling) {
+    // Een naam die er net bij kwam (een eigen lak uit de studio): eerst de lijst opnieuw, dan pas weigeren.
+    if (bekend && kleurstelling && !bekend.has(kleurstelling)) kleurNamen.delete(pad.toLowerCase())
+    if ((bekend && (!kleurstelling || bekend.has(kleurstelling))) || !kleurstelling) {
       if (geldig(bekend)) geef()
       else weiger()
       return

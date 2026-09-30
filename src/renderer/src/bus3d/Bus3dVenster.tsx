@@ -10,6 +10,7 @@ import {
 } from '../../../shared/bus3d'
 import { useLanguage, useT } from '../language'
 import { BusViewer, type ViewerStand } from '../BusViewer'
+import { Lakstudio } from './lak/Lakstudio'
 import { Ontwikkelpaneel } from './lak/Ontwikkelpaneel'
 import type { ViewerHandvat } from './verbinding'
 
@@ -43,7 +44,17 @@ const ZOEKEN_VANAF = 12
 /** Zo lang rust voordat het beeld bij zweven of pijltjes wisselt (§7). */
 const RUST_MS = 150
 
-export function Bus3dVenster({ vraag, instellingen, stand }: Props): JSX.Element {
+/**
+ * Het venster in zijn doel: de Lakstudio (doel 'lakstudio', lakstudio-ontwerp
+ * §2) of de kleurstellingen. Het ontwikkelpaneel van het lakdoek (L1) blijft
+ * bereikbaar met `?lakdev=1`.
+ */
+export function Bus3dVenster(props: Props): JSX.Element {
+  if (props.vraag.doel === 'lakstudio' && !new URLSearchParams(location.search).has('lakdev')) return <Lakstudio vraag={props.vraag} stand={props.stand} />
+  return <KleurVenster {...props} />
+}
+
+function KleurVenster({ vraag, instellingen, stand }: Props): JSX.Element {
   const t = useT()
   const taal = useLanguage()
   const brug = window.bus3d!
@@ -103,9 +114,12 @@ export function Bus3dVenster({ vraag, instellingen, stand }: Props): JSX.Element
    * bij dezelfde bus in een andere kleurstelling: dan laadt de viewer alleen de
    * lak en komt er geen nieuw manifest (de beschrijving viel dan weg).
    */
+  const [lijstVersie, zetLijstVersie] = useState(0)
   useEffect(() => {
     zetManifest(undefined)
     zetMeer(false)
+  }, [pad])
+  useEffect(() => {
     let geldig = true
     void brug.busKleurstellingen(pad).then(
       (l) => geldig && zetLijstVan({ pad, lijst: l ?? null }),
@@ -114,7 +128,17 @@ export function Bus3dVenster({ vraag, instellingen, stand }: Props): JSX.Element
     return () => {
       geldig = false
     }
-  }, [brug, pad])
+  }, [brug, pad, lijstVersie])
+  // Een eigen lak kwam erbij of ging weg (Lakstudio §5.6 punt 8): de lijst opnieuw, en de stalen van die naam.
+  useEffect(
+    () =>
+      brug.opKleurstellingenVeranderd((bussen) => {
+        if (!bussen.some((b) => b.toLowerCase() === padRef.current.toLowerCase())) return
+        stalenGevraagd.current = ''
+        zetLijstVersie((v) => v + 1)
+      }),
+    [brug]
+  )
 
   // De stalen: pas als het 3D-beeld staat (of na 1,5 s), want ze delen de werker met het pakket.
   const vulStalen = useCallback((bus: string, deel: Bus3dStalen) => {
@@ -157,9 +181,15 @@ export function Bus3dVenster({ vraag, instellingen, stand }: Props): JSX.Element
   }, [titel])
 
   // De lijst: alfabetisch zoals OMSI ze toont, gefilterd op het zoekveld.
+  // Eigen lakken (Lakstudio) bovenaan, als groep "Eigen" (§6); de rest alfabetisch zoals OMSI ze toont.
+  const eigenNamen = useMemo(() => new Set((lijst?.lijst ?? []).filter((k) => k.eigen || k.wacht).map((k) => k.naam)), [lijst])
+  const wachtNamen = useMemo(() => new Set((lijst?.lijst ?? []).filter((k) => k.wacht).map((k) => k.naam)), [lijst])
   const namen = useMemo(
-    () => (lijst?.lijst ?? []).map((k) => k.naam).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
-    [lijst]
+    () =>
+      (lijst?.lijst ?? [])
+        .map((k) => k.naam)
+        .sort((a, b) => Number(eigenNamen.has(b)) - Number(eigenNamen.has(a)) || a.localeCompare(b, undefined, { sensitivity: 'base' })),
+    [lijst, eigenNamen]
   )
   const zoekLaag = zoek.trim().toLocaleLowerCase()
   const zichtbaar = useMemo(
@@ -398,6 +428,8 @@ export function Bus3dVenster({ vraag, instellingen, stand }: Props): JSX.Element
                     >
                       {staal(kleur)}
                       <span className="bv-rijnaam">{kleur ?? t('bv.standard')}</span>
+                      {kleur && eigenNamen.has(kleur) ? <span className="bv-label-eigen">{t('ls.eigen')}</span> : null}
+                      {kleur && wachtNamen.has(kleur) ? <span className="bv-label-eigen">{t('ls.wacht')}</span> : null}
                       {isGekozen ? <span className="bv-gekozen">✓ {t('bv.chosen')}</span> : null}
                     </li>
                   )
@@ -406,6 +438,19 @@ export function Bus3dVenster({ vraag, instellingen, stand }: Props): JSX.Element
               {zoekLaag && zichtbaar.length === 0 ? <p className="bv-zacht">{t('bv.noHits', { zoek: zoek.trim() })}</p> : null}
             </>
           )}
+          {/* "+ Eigen lak" (lakstudio-ontwerp §4.1): de laatste tegel, in elk doel; het venster wisselt naar de studio. */}
+          {lijst !== undefined ? (
+            <button
+              type="button"
+              className="bv-eigenlak"
+              data-knop="eigenLak"
+              disabled={!lijst}
+              title={!lijst ? t('ls.geenCtc') : undefined}
+              onClick={() => void brug.naarStudio()}
+            >
+              {t('ls.eigenLak')}
+            </button>
+          ) : null}
         </section>
 
         {beschrijving ? (

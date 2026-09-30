@@ -155,7 +155,7 @@ export interface Tegelactie {
   /** Rood bij zweven; alleen voor wat je niet terugkrijgt. */
   gevaarlijk?: boolean;
   /** Het tekentje; standaard het kruis dat iets weggooit. `3d` is de letters "3D". */
-  teken?: "kruis" | "foto" | "fotoweg" | "3d";
+  teken?: "kruis" | "foto" | "fotoweg" | "3d" | "lak";
   /**
    * Altijd zichtbaar (gedempt, vol bij zweven of focus) in plaats van pas bij
    * zweven. Voor de 3D-knop: dat is de enige weg naar 3D en die moet te vinden

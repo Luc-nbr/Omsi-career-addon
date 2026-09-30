@@ -307,7 +307,12 @@ export type Laag = LaagBasis &
         hoek: number
         /** Amplitude in m (golf). */
         golf: number
-        zijden: 'rondom' | 'zijden'
+        /**
+         * Waar de band komt: rondom, alleen de zijwanden, of alleen het voor- of
+         * achtervlak (frontvlak en achtervlak als echte vlakken: waar de normaal
+         * naar voren of naar achteren wijst).
+         */
+        zijden: 'rondom' | 'zijden' | 'voor' | 'achter'
         kleur: string
         verloop?: string
       }
@@ -318,10 +323,18 @@ export type Laag = LaagBasis &
         hoogteCm: number
         kleur: string
         omlijning?: { kleur: string; breedteCm: number }
+        /** In procenten van de letterhoogte (0 = gewoon, 10 = een tiende van een letter ertussen). */
         letterafstand?: number
         plaats: Plaats
       }
-    | { soort: 'afbeelding'; beeld: string; witDoorzichtig: boolean; plaats: Plaats }
+    | {
+        soort: 'afbeelding'
+        beeld: string
+        witDoorzichtig: boolean
+        /** Hoogte gedeeld door breedte van het beeld (de werker rekent met zijn eigen beeld). */
+        verhouding?: number
+        plaats: Plaats
+      }
     | { soort: 'vorm'; vorm: string; kleur: string; plaats: Plaats }
     | { soort: 'penseel'; kleur: string; streken: Streek[] }
   )
@@ -347,6 +360,35 @@ export interface LakProject {
   /** Na het plaatsen: onder welk nummer en welke versie. */
   geplaatst?: { naam: string; nnnn: number; versie: number }
   bedrijf?: { naam: string; kleuren?: string[] }
+  /** Wat de speler in het paneel Snelle lak koos (§2.1); de lagen `r-*` komen daaruit. */
+  snel?: SnelleLakStand
+}
+
+/**
+ * Het paneel Snelle lak (§2.1): wat gekozen is. Een kleur die `null` is, is nog
+ * niet gekozen (het staal toont dan de kleur van de huidige lak). Elke keuze
+ * wordt meteen een gewone laag (`r-grond`, `r-strook`, `r-tekst`, `r-logo`).
+ */
+export interface SnelleLakStand {
+  kleuren: [string | null, string | null, string | null]
+  strook: StrookSjabloon
+  strookGekozen?: boolean
+  naam: string
+  logo?: string
+  /** Hoogte gedeeld door breedte van het logo. */
+  logoVerhouding?: number
+  lettertype?: string
+}
+
+/** Het recept van Snelle lak zoals de huisstijl het bewaart (§6): alleen wat gekozen is. */
+export function receptVan(s: SnelleLakStand): LakRecept | undefined {
+  if (!s.kleuren[0]) return undefined
+  return {
+    kleuren: [s.kleuren[0], s.kleuren[1] ?? undefined, s.kleuren[2] ?? undefined],
+    strook: s.strook,
+    naam: s.naam || undefined,
+    logo: s.logo
+  }
 }
 
 /** Snelle lak en een huisstijl (§6): alleen wat per model klopt. */

@@ -52,6 +52,24 @@ export interface ViewerStand {
   meshesWeg?: number
 }
 
+/**
+ * De bediening van de Lakstudio (lakstudio-ontwerp §2.3): de linkerknop is het
+ * gereedschap, rechts slepen draait, de middelste knop of Shift + links
+ * verschuift, het wiel zoomt naar de cursor en een dubbelklik centreert. De
+ * toetsen doet de studio zelf. Coördinaten in NDC van het beeld (-1..1, y omhoog).
+ */
+export interface StudioBediening {
+  /** Linkerknop: `true` als de sleep bij het gereedschap hoort (dan krijgt het `beweeg` en `los`). */
+  omlaag(ndc: [number, number], e: React.PointerEvent): boolean
+  beweeg(ndc: [number, number], e: React.PointerEvent): void
+  los(ndc: [number, number], e: React.PointerEvent): void
+  /** De muis boven het beeld zonder knop (de cursor van het gereedschap), of weg. */
+  zweef?(ndc: [number, number] | undefined): void
+  dubbel?(ndc: [number, number]): void
+  /** De CSS-cursor boven de bus. */
+  cursor?: string
+}
+
 interface Props {
   relatiefPad: string
   kleurstelling?: string
@@ -80,6 +98,8 @@ interface Props {
   onHandvat?: (h: ViewerHandvat) => void
   /** Het beeld begint met focus, zodat de pijltjes meteen werken (§8.1). */
   autoFocus?: boolean
+  /** De Lakstudio: een andere bediening, en geen eigen knoppen onderin (de studio heeft een onderbalk). */
+  studio?: StudioBediening
 }
 
 /** DPR = min(apparaat, 2), en nooit meer dan 1920x1080 tekenpixels (§5.8, §10). */
@@ -141,8 +161,11 @@ export function BusViewer({
   onHervat,
   onKies,
   onHandvat,
-  autoFocus
+  autoFocus,
+  studio
 }: Props): JSX.Element {
+  const studioRef = useRef(studio)
+  studioRef.current = studio
   const t = useT()
   const doekRef = useRef<HTMLCanvasElement>(null)
   const kaderRef = useRef<HTMLDivElement>(null)
@@ -462,8 +485,27 @@ export function BusViewer({
   }
   const aanwijzers = useRef(new Map<number, { x: number; y: number }>())
   const knijp = useRef(0)
+  /** In de studio: wat de knop die nu omlaag is, doet. */
+  const modus = useRef<'draai' | 'schuif' | 'gereedschap' | undefined>(undefined)
+  const ndcVan = (e: { clientX: number; clientY: number }): [number, number] => {
+    const r = doekRef.current!.getBoundingClientRect()
+    return [((e.clientX - r.left) / Math.max(1, r.width)) * 2 - 1, 1 - ((e.clientY - r.top) / Math.max(1, r.height)) * 2]
+  }
 
   const omlaag = (e: React.PointerEvent<HTMLCanvasElement>): void => {
+    const st = studioRef.current
+    if (st) {
+      e.preventDefault()
+      e.currentTarget.focus()
+      zetOvernemen(true)
+      if (e.button === 2) modus.current = 'draai'
+      else if (e.button === 1 || (e.button === 0 && e.shiftKey)) modus.current = 'schuif'
+      else if (e.button === 0) modus.current = st.omlaag(ndcVan(e), e) ? 'gereedschap' : undefined
+      else return
+      e.currentTarget.setPointerCapture(e.pointerId)
+      aanwijzers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      return
+    }
     e.currentTarget.setPointerCapture(e.pointerId)
     aanwijzers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
     if (aanwijzers.current.size === 2) {
@@ -473,6 +515,23 @@ export function BusViewer({
   }
   const beweeg = (e: React.PointerEvent<HTMLCanvasElement>): void => {
     const vorig = aanwijzers.current.get(e.pointerId)
+    const st = studioRef.current
+    if (st) {
+      if (!vorig) {
+        st.zweef?.(ndcVan(e))
+        return
+      }
+      const nu = { x: e.clientX, y: e.clientY }
+      aanwijzers.current.set(e.pointerId, nu)
+      if (modus.current === 'draai') invoer({ soort: 'sleep', dx: nu.x - vorig.x, dy: nu.y - vorig.y })
+      else if (modus.current === 'schuif') {
+        // In tekenpixels: de camera rekent met de maat van het beeld in de werker.
+        const r = doekRef.current!.getBoundingClientRect()
+        const f = (doekRef.current!.height || 1) / Math.max(1, r.height)
+        invoer({ soort: 'schuif', dx: (nu.x - vorig.x) * f, dy: (nu.y - vorig.y) * f })
+      } else if (modus.current === 'gereedschap') st.beweeg(ndcVan(e), e)
+      return
+    }
     if (!vorig) return
     const nu = { x: e.clientX, y: e.clientY }
     aanwijzers.current.set(e.pointerId, nu)
@@ -486,8 +545,12 @@ export function BusViewer({
     invoer({ soort: 'sleep', dx: nu.x - vorig.x, dy: nu.y - vorig.y })
   }
   const omhoog = (e: React.PointerEvent<HTMLCanvasElement>): void => {
+    const was = aanwijzers.current.has(e.pointerId)
     aanwijzers.current.delete(e.pointerId)
     if (aanwijzers.current.size < 2) knijp.current = 0
+    const st = studioRef.current
+    if (st && was && modus.current === 'gereedschap') st.los(ndcVan(e), e)
+    if (st) modus.current = undefined
   }
 
   // Het wiel zoomt altijd boven het beeld (§6); niet passief, anders scrolt de pagina mee.
@@ -495,7 +558,12 @@ export function BusViewer({
     const kader = kaderRef.current!
     const wiel = (e: WheelEvent): void => {
       e.preventDefault()
-      invoer({ soort: 'zoom', factor: e.deltaY > 0 ? 1.08 : 1 / 1.08 })
+      const factor = e.deltaY > 0 ? 1.08 : 1 / 1.08
+      // In de studio naar de cursor (§2.3).
+      if (studioRef.current) {
+        const [x, y] = ndcVan(e)
+        invoer({ soort: 'zoomNaar', factor, x, y })
+      } else invoer({ soort: 'zoom', factor })
     }
     kader.addEventListener('wheel', wiel, { passive: false })
     return () => kader.removeEventListener('wheel', wiel)
@@ -504,6 +572,8 @@ export function BusViewer({
   const onKiesRef = useRef(onKies)
   onKiesRef.current = onKies
   const toets = (e: React.KeyboardEvent): void => {
+    // De studio heeft eigen toetsen (§2.3); die luistert op het venster.
+    if (studioRef.current) return
     if (e.ctrlKey || e.altKey || e.metaKey) return
     const stand = (s: Stand): void => invoer({ soort: 'stand', stand: s })
     const k = e.key
@@ -590,8 +660,11 @@ export function BusViewer({
         onPointerMove={beweeg}
         onPointerUp={omhoog}
         onPointerCancel={omhoog}
-        onDoubleClick={() => invoer({ soort: 'stand', stand: 'terug' })}
+        onPointerLeave={() => studioRef.current?.zweef?.(undefined)}
+        onContextMenu={(e) => studio && e.preventDefault()}
+        onDoubleClick={(e) => (studio?.dubbel ? studio.dubbel(ndcVan(e)) : invoer({ soort: 'stand', stand: 'terug' }))}
         onKeyDown={toets}
+        style={studio?.cursor ? { cursor: studio.cursor } : undefined}
       />
       {regel || labels.length ? (
         <div className={`bv-regel${fout || pauze ? ' bv-regel-fout' : ''}`} role="status">
@@ -613,7 +686,7 @@ export function BusViewer({
           ) : null}
         </div>
       ) : null}
-      {!fout && !pauze ? (
+      {!fout && !pauze && !studio ? (
         <div className="bv-knoppen">
           <button type="button" className="bv-knop" onClick={() => invoer({ soort: 'stand', stand: 'voor' })}>
             {t('bv.viewFront')}

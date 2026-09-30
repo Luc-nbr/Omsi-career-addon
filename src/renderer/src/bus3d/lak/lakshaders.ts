@@ -360,10 +360,13 @@ vec4 laag(int i, vec3 p, vec3 n, vec3 baseLab, vec2 uv, vec2 fw) {
     // De breedte van één texel in t, uit de afgeleiden van y en z buiten de lus (fw).
     float w = max(fw.x + abs(v2.z) * fw.y, 1e-4);
     dek = clamp((t - v2.x) / w + 0.5, 0.0, 1.0) * clamp((v2.y - t) / w + 0.5, 0.0, 1.0);
+    float ln = length(n);
     if ((vlag & 2) != 0) {
-      float ln = length(n);
       dek *= ln > 1e-4 ? smoothstep(0.35, 0.6, abs(n.x / ln)) : 0.0;
     }
+    // Frontvlak (8) en achtervlak (16): alleen waar de normaal naar voren of naar achteren wijst.
+    if ((vlag & 8) != 0) dek *= ln > 1e-4 ? smoothstep(0.35, 0.6, n.z / ln) : 0.0;
+    if ((vlag & 16) != 0) dek *= ln > 1e-4 ? smoothstep(0.35, 0.6, -n.z / ln) : 0.0;
   } else if (soort == 3) {
     vec4 s = decal(p, n, v2, v3, v1.w, (vlag & 4) != 0);
     // Een tekst of vorm is wit met alfa; de kleur komt van de laag. Een afbeelding (kleur < 0) houdt de
@@ -497,6 +500,30 @@ void main() {
 }
 `
 
+/**
+ * De voetafdruk van één decal (§4.8, de geen-kopie-regel): per texel of de decal
+ * er landt (R), en dan ook op een gedeelde texel (G) of op glas of een deur (B).
+ * Mengen met MAX: een texel die twee keer getekend wordt (kopieën over een
+ * tegelgrens) telt één keer. De werker telt het na met readPixels.
+ */
+export const ANALYSE_FS = /* glsl */ `#version 300 es
+precision highp float;
+precision highp sampler2DArray;
+${LAKNET_IN}
+${LAGEN_GEMEEN}
+uniform vec2 uMaat;
+out vec4 uit;
+void main() {
+  vec2 st = gl_FragCoord.xy / uMaat;
+  vec4 m = texture(uMasker, st);
+  vec2 fw = vec2(fwidth(vPlek.y), fwidth(vPlek.z));
+  vec4 l = laag(0, vPlek, vNormaal, vec3(50.0, 0.0, 0.0), vUv, fw);
+  float d = l.a > 0.05 ? 1.0 : 0.0;
+  float glas = (vVlag & 3) != 0 ? 1.0 : 0.0;
+  uit = vec4(d, d * (m.b > 0.5 ? 1.0 : 0.0), d * glas, 1.0);
+}
+`
+
 /** Een basis zonder lagen (voor de ongedekte texels, die daarna uitvloeien). */
 export const KOPIE_FS = /* glsl */ `#version 300 es
 precision highp float;
@@ -575,6 +602,8 @@ precision highp int;
 ${LAKNET_IN}
 uniform int uLaknet;
 uniform int uDoel;
+// Buiten het laknet: wat er getekend wordt (glas: 1 << 8; een onderdeel met [visible]: 4 << 8 | (tekenbeurt + 1) << 12).
+uniform int uVast;
 flat in int vDriehoek;
 layout(location = 0) out uvec4 uit0;
 layout(location = 1) out uvec4 uit1;
@@ -590,7 +619,7 @@ void main() {
   if (uLaknet == 1) {
     uit0 = uvec4(uint(uDoel + 1) | (uint(vVlag) << 8) | (uint(vTeken + 1) << 12), uint(max(vDriehoek, 0)), floatBitsToUint(vUv.x), floatBitsToUint(vUv.y));
   } else {
-    uit0 = uvec4(0u, 0u, 0xffffffffu, 0xffffffffu);
+    uit0 = uvec4(uint(uVast), 0u, 0xffffffffu, 0xffffffffu);
   }
   uit1 = uvec4(floatBitsToUint(vPlek.x), floatBitsToUint(vPlek.y), floatBitsToUint(vPlek.z), (on.x << 16) | on.y);
 }

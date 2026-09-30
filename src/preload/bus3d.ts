@@ -57,6 +57,7 @@ const brug: Bus3dBrug = {
   opKleurstalen: (l) => luister<[string, Bus3dStalen]>('bus3d:stalen', l),
 
   naarStudio: (lak) => ipcRenderer.invoke('bus3d:naarStudio', lak),
+  terugUitStudio: (naam) => ipcRenderer.invoke('bus3d:terugUitStudio', naam),
   lakProjecten: (rel) => ipcRenderer.invoke('lak:projecten', rel),
   lakDoelen: (rel, start, extra) => ipcRenderer.invoke('lak:doelen', rel, start, extra),
   lakOpties: (rel) => ipcRenderer.invoke('lak:opties', rel),

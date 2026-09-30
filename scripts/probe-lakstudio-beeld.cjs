@@ -399,6 +399,59 @@ async function ronde() {
         `P7 ${bus.naam}: ${dozen.length} familieleden met evenveel delen, ${dozen.length - slechteDozen.length} met de doos binnen 5 cm${slechteDozen.length ? ` (anders: ${slechteDozen.map((d) => `${d.lid.split('\\').pop()} ${d.cm} cm${f.nietOp.some((n) => n.bus === d.lid) ? ' — niet op' : ''}`).join(', ')})` : ''}`,
         slechteDozen.every((d) => !bakkers.has(d.lid))
       )
+      // P7 (§4.8): een tekst op gedeelde texels krijgt geen kopie (ls.spiegelschrift), en [Schuif naar een vrij stuk]
+      // brengt hem naar hooguit 2% gedeeld, met een kopie aan de andere kant.
+      if (bus.kort === 'hh20') {
+        const min = doos.min
+        const max = doos.max
+        let proef = 0
+        let gevonden
+        const tekstOp = (id, y, zf) => ({
+          id,
+          naam: 'P7',
+          zichtbaar: true,
+          dekking: 1,
+          detail: 1,
+          soort: 'tekst',
+          tekst: 'Lakstudio',
+          lettertype: 'Arial',
+          hoogteCm: 30,
+          kleur: '#ffffff',
+          plaats: { zijde: 'R', midden: [max[0], min[1] + y, min[2] + (max[2] - min[2]) * zf], breedteM: 1.4, draai: 0, spiegel: 'gekoppeld' }
+        })
+        zoeken: for (const y of [0.6, 0.9, 1.2, 0.4, 2.3]) {
+          for (let zf = 0.08; zf < 0.95; zf += 0.07) {
+            const id = `p7-${proef++}`
+            const u = await reken(win, `window.__bv.studio.analyseNa(${J([...lagen, tekstOp(id, y, zf)])}, { aan: true })`)
+            if (u && u[id] && !u[id].kopie) {
+              gevonden = { id, y, zf, analyse: u[id] }
+              break zoeken
+            }
+          }
+        }
+        r.p7 = { proeven: proef, gevonden }
+        klopt(`P7 HH20: een tekst op gedeelde texels (${gevonden ? `${(gevonden.analyse.gedeeld * 100).toFixed(1)}% gedeeld, na ${proef} plekken` : 'geen plek gevonden'}) krijgt geen kopie (ls.spiegelschrift)`, Boolean(gevonden))
+        if (gevonden) {
+          const plaats = await reken(win, `window.__bv.studio.schuif(${J(gevonden.id)})`)
+          const id = `p7-${proef++}`
+          const nieuw = { ...tekstOp(id, gevonden.y, gevonden.zf), plaats }
+          const u = plaats ? await reken(win, `window.__bv.studio.analyseNa(${J([...lagen, nieuw])}, { aan: true })`) : undefined
+          const a = u?.[id]
+          r.p7.geschoven = { plaats, analyse: a }
+          klopt(
+            `P7 HH20: [Schuif naar een vrij stuk] schoof ${plaats ? `${((plaats.midden[2] - (min[2] + (max[2] - min[2]) * gevonden.zf)) * 100).toFixed(0)} cm` : 'niet'}: ${a ? `${(a.gedeeld * 100).toFixed(1)}% gedeeld, kopie ${a.kopie}` : '-'} (≤ 2%, met kopie)`,
+            Boolean(a && a.gedeeld <= 0.02 && a.kopie)
+          )
+          if (plaats) {
+            await reken(win, `window.__bv.studio.lagen(${J([...lagen, nieuw])}, { aan: true })`)
+            for (const [hoek, stand] of Object.entries({ rechts: { draai: 270, kantel: 3, zoom: 1 }, links: { draai: 90, kantel: 3, zoom: 1 } })) {
+              const af = await reken(win, `window.__bv.afdruk(${J({ stand, b: 1280, h: 720, formaat: 'png' })})`)
+              if (af?.beeld) fs.writeFileSync(path.join(BEELD, `${bus.kort}-p7-geschoven-${hoek}.png`), b64(af.beeld))
+            }
+          }
+        }
+        await reken(win, `window.__bv.studio.lagen(${J(lagen)}, { aan: true })`)
+      }
       // Afdrukken met de lak (P6: op 20 m zonder zichtbare naden; P7: tekst links en de spiegel rechts).
       for (const [hoek, stand] of Object.entries({
         schuin: { draai: 215, kantel: 8, zoom: 1 },

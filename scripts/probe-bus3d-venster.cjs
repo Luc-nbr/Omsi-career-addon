@@ -899,8 +899,19 @@ app.whenReady().then(async () => {
     const licht = await wachtOp(w, `/lichte stand/.test(document.querySelector('.bv-regel')?.innerText ?? '')`, 10000)
     await wachtOp(w, `document.querySelector('.bv-kader')?.dataset.fase === 'scherp'`, 30000)
     await afdruk(w, 'venster-lichte-stand.png')
+    /*
+     * "Zonder focus" nabootsen: wie de proef uit een terminal start, geeft Windows
+     * de nieuwe app vaak de voorgrond, en dan hield een venster van de proef-app de
+     * focus en kwam de pauze nooit (30-09, twee keer). De speler zit dan in OMSI;
+     * hier halen we de focus elke seconde weg bij elk venster van de app.
+     */
+    const zonderFocus = setInterval(() => {
+      for (const x of BrowserWindow.getAllWindows()) if (!x.isDestroyed() && x.isFocused()) x.blur()
+    }, 1000)
+    for (const x of BrowserWindow.getAllWindows()) if (!x.isDestroyed() && x.isFocused()) x.blur()
     const tp = Date.now()
     const pauze = await wachtOp(w, `document.querySelector('.bv-kader')?.dataset.fase === 'pauze'`, 75000, 500)
+    clearInterval(zonderFocus)
     const tPauze = Date.now() - tp
     // In pauze: de foto of het icoon, [Hervatten], geen knoppen van het beeld (§9).
     const hervat = await wachtOp(w, `[...document.querySelectorAll('.bv-regel .bv-knop')].some((b) => /Hervat|Resume|Fortsetzen|Reprendre/i.test(b.textContent)) && !document.querySelector('.bv-knoppen')`, 5000)

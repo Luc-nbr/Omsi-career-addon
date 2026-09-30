@@ -1,5 +1,6 @@
 import type { Bus3dLak, Bus3dManifest, Bus3dOmgeving } from '../../../shared/bus3d'
-import type { Laag, LakFamilieInfo } from '../../../shared/lak'
+import type { Laag, LakFamilieInfo, LakStart, Plaats, Streek } from '../../../shared/lak'
+import type { DecalAnalyse } from './lak/lakdoek'
 import { klok, type AfdrukVraag, type Invoer, type NaarWerker, type StandBericht, type VanWerker } from './berichten'
 
 /**
@@ -18,6 +19,8 @@ export interface ViewerLuisteraar {
   opFout?(f: Extract<VanWerker, { soort: 'fout' }>): void
   opHeld?(h: Extract<VanWerker, { soort: 'held' }>): void
   opEersteBeeld?(): void
+  /** De camera van het laatste beeld (Lakstudio: de handvatten over het beeld). */
+  opCamera?(cam: Float32Array): void
 }
 
 export interface ViewerHandvat {
@@ -34,12 +37,31 @@ export interface ViewerHandvat {
   weg(): void
   /** De Lakstudio (lakstudio-ontwerp §4.1): het lakdoek in de werker van deze viewer. */
   studio: {
-    start(familie: LakFamilieInfo, lagen: Laag[], spiegel?: { aan: boolean; vlakX?: number }, licht?: boolean): Promise<unknown>
+    start(
+      familie: LakFamilieInfo,
+      lagen: Laag[],
+      spiegel?: { aan: boolean; vlakX?: number },
+      licht?: boolean,
+      opties?: { start?: LakStart; getoond?: boolean }
+    ): Promise<unknown>
     lagen(lagen: Laag[], spiegel?: { aan: boolean; vlakX?: number }): void
     beeld(id: string, beeld: ImageBitmap): void
     masker(aan: boolean): void
-    kies(x: number, y: number): Promise<unknown>
-    streek(laag: number, streek: Extract<NaarWerker, { soort: 'lakStreek' }>['streek']): void
+    /** De lak op de bus aan of uit ([Voor/na]). */
+    toon(aan: boolean): void
+    kies(x: number, y: number, onderdeel?: boolean): Promise<unknown>
+    /** Het penseel: begin en punten (x, y in NDC); het einde geeft de streek. */
+    penseel(
+      fase: 'begin' | 'punt',
+      x: number,
+      y: number,
+      laagId: string,
+      s: Pick<Streek, 'straalCm' | 'hardheid' | 'dekking' | 'gum'>
+    ): void
+    penseelEinde(): Promise<(Streek & { laagId: string }) | null>
+    kleuren(): Promise<unknown>
+    schuif(id: string): Promise<Plaats | null>
+    vrij(id: string, van: number, tot: number): Promise<Plaats | null>
     exporteer(opties?: { tegel?: number; alleen?: string[]; metRgba?: boolean }): Promise<unknown>
     meet(beelden?: number): Promise<unknown>
     stop(): void
@@ -70,10 +92,14 @@ export class Verbinding {
   private volgendeVraag = 0
   private volgendeLaad = 0
   private omgevingGestuurd = false
+  /** Wie de camera van een viewer wil volgen (de handvatten van de Lakstudio), naast die viewer zelf. */
+  private camera = new Map<number, Set<(c: Float32Array) => void>>()
   /** De voortgang van een lak-export (§2.1: "Lak maken … In OMSI zetten …"). */
   opLakVoortgang?: (v: { doel: string; stap: string; deel: number }) => void
   /** Het lakdoek herstartte na een contextverlies, licht (P4). */
   opLakHerstart?: (klaar: unknown) => void
+  /** De geen-kopie-regel (§4.8): per decal-laag de uitslag. */
+  opLakAnalyse?: (uitslag: Record<string, DecalAnalyse>) => void
   /** Wat de werker bij het starten meldde: WebGL2 of niet, en wat voor kaart. */
   gereed: Promise<Extract<VanWerker, { soort: 'gereed' }>>
 
@@ -103,6 +129,11 @@ export class Verbinding {
           v.ctx.transferFromImageBitmap(m.bitmap)
           v.beelden++
           if (v.beelden === 1) v.luister.opEersteBeeld?.()
+          if (m.cam) {
+            const c = new Float32Array(m.cam)
+            v.luister.opCamera?.(c)
+            for (const l of this.camera.get(m.viewer) ?? []) l(c)
+          }
         } else m.bitmap.close()
         this.stuur({ soort: 'gezien', viewer: m.viewer })
       } else if (m.soort === 'stand') this.viewers.get(m.viewer)?.luister.opStand?.(m)
@@ -110,6 +141,7 @@ export class Verbinding {
       else if (m.soort === 'held') this.viewers.get(m.viewer)?.luister.opHeld?.(m)
       else if (m.soort === 'lakVoortgang') this.opLakVoortgang?.({ doel: m.doel, stap: m.stap, deel: m.deel })
       else if (m.soort === 'lakHerstart') this.opLakHerstart?.(m.klaar)
+      else if (m.soort === 'lakAnalyse') this.opLakAnalyse?.(m.uitslag)
       else if (m.soort === 'antwoord') {
         const k = this.vragen.get(m.vraag)
         this.vragen.delete(m.vraag)
@@ -138,6 +170,16 @@ export class Verbinding {
   /** Alleen voor het ijken (de proef): lichtwaarden overschrijven. */
   licht(l: Record<string, unknown>): void {
     this.stuur({ soort: 'licht', licht: l })
+  }
+
+  /** De camera van een viewer volgen (elk beeld dat de werker stuurt terwijl de studio loopt). */
+  luisterCamera(viewer: number, l: (c: Float32Array) => void): () => void {
+    const set = this.camera.get(viewer) ?? new Set()
+    set.add(l)
+    this.camera.set(viewer, set)
+    return () => {
+      set.delete(l)
+    }
   }
 
   /** Hemel en wolken: één keer per venster. */
@@ -177,12 +219,21 @@ export class Verbinding {
       afdruk: (a) => zelf.vraag((vraag) => ({ soort: 'afdruk', vraag, viewer: id, afdruk: a })) as ReturnType<ViewerHandvat['afdruk']>,
       meet: (wat, beelden) => zelf.vraag((vraag) => ({ soort: 'meet', vraag, viewer: id, wat, beelden })),
       studio: {
-        start: (familie, lagen, spiegel, licht) => zelf.vraag((vraag) => ({ soort: 'lakStart', vraag, viewer: id, familie, lagen, spiegel, licht })),
+        start: (familie, lagen, spiegel, licht, o) =>
+          zelf.vraag((vraag) => ({ soort: 'lakStart', vraag, viewer: id, familie, lagen, spiegel, licht, start: o?.start, getoond: o?.getoond })),
         lagen: (lagen, spiegel) => zelf.stuur({ soort: 'lakLagen', lagen, spiegel }),
         beeld: (beeldId, beeld) => zelf.stuur({ soort: 'lakBeeld', id: beeldId, beeld }, [beeld]),
         masker: (aan) => zelf.stuur({ soort: 'lakMasker', aan }),
-        kies: (x, y) => zelf.vraag((vraag) => ({ soort: 'lakKies', vraag, viewer: id, x, y })),
-        streek: (laag, streek) => zelf.stuur({ soort: 'lakStreek', laag, streek }),
+        toon: (aan) => zelf.stuur({ soort: 'lakToon', aan }),
+        kies: (x, y, onderdeel) => zelf.vraag((vraag) => ({ soort: 'lakKies', vraag, viewer: id, x, y, onderdeel })),
+        penseel: (fase, x, y, laagId, s) => zelf.stuur({ soort: 'lakPenseel', fase, viewer: id, x, y, laagId, ...s }),
+        penseelEinde: () =>
+          zelf.vraag((vraag) => ({ soort: 'lakPenseel', fase: 'einde', vraag, viewer: id, x: 0, y: 0, laagId: '', straalCm: 0, hardheid: 0, dekking: 0, gum: false })) as Promise<
+            (Streek & { laagId: string }) | null
+          >,
+        kleuren: () => zelf.vraag((vraag) => ({ soort: 'lakKleuren', vraag })),
+        schuif: (laagId) => zelf.vraag((vraag) => ({ soort: 'lakSchuif', vraag, id: laagId })) as Promise<Plaats | null>,
+        vrij: (laagId, van, tot) => zelf.vraag((vraag) => ({ soort: 'lakVrij', vraag, id: laagId, van, tot })) as Promise<Plaats | null>,
         exporteer: (o) => zelf.vraag((vraag) => ({ soort: 'lakExport', vraag, tegel: o?.tegel, alleen: o?.alleen, metRgba: o?.metRgba })),
         meet: (beelden) => zelf.vraag((vraag) => ({ soort: 'lakMeet', vraag, viewer: id, beelden })),
         stop: () => zelf.stuur({ soort: 'lakStop' }),

@@ -27,7 +27,7 @@ import iconv from 'iconv-lite'
 import { bouwBus3d } from '../src/core/bus3d'
 import { omsiRegistratie } from '../src/core/omsiregistratie'
 import { eigenKleurstellingen, kleurstellingenVanBus, leesKleurstellingen, zoekKleurstelling } from '../src/core/kleurstelling'
-import { familieVan, lakInfoVan, lakOpties, type Familie, type LakInfo } from '../src/core/lakfamilie'
+import { familieVan, lakInfoVan, lakOpties, texcoordtransTelling, type Familie, type LakInfo } from '../src/core/lakfamilie'
 import {
   bewaarProject,
   klaarzetten,
@@ -736,6 +736,21 @@ function p16(): void {
   klopt(`P16 NLC ${sitz?.variabele ?? 'vis_Sitztyp'} techniek (${sitz?.soort ?? 'niet gevonden'})`, sitz?.soort === 'techniek')
 }
 
+/* ------------------------------------------------------------------ P5: [texcoordtrans] op lakmeshes */
+
+function p5texcoord(): void {
+  const per: Record<string, number> = {}
+  for (const b of BUSSEN) {
+    const f = familieVan(NEP, b.rel, { sjablonen: false })
+    const t = texcoordtransTelling(f)
+    per[b.naam] = Object.values(t).reduce((a, x) => a + x, 0)
+  }
+  uitslag.P5texcoord = per
+  const som = Object.values(per).reduce((a, x) => a + x, 0)
+  // Het lakdoek rastert de uv zonder [texcoordtrans] (§4.3); bij 0 lakmeshes klopt dat voor elke texel.
+  klopt(`P5 lakmeshes met [texcoordtrans] geteld: ${som} (${Object.entries(per).map(([k, v]) => `${k} ${v}`).join(', ')}); 0 = het lakdoek hoeft ze niet te tekenen`, som === 0)
+}
+
 /* ------------------------------------------------------------------ wezen */
 
 async function pWees(): Promise<void> {
@@ -772,6 +787,7 @@ async function hoofd(): Promise<void> {
   if (doe('P13')) await p13()
   if (doe('P15')) await p15()
   if (doe('P16')) p16()
+  if (doe('P5')) p5texcoord()
   if (doe('wees')) await pWees()
   const echtNa = ['Vehicles/MB_C2_EN_BVG/Texture/Repaints/rep_GN', 'Vehicles/MAN_SD200/Texture'].map((m) => statSync(join(ECHT, m)).mtimeMs)
   klopt('de echte OMSI-map is niet aangeraakt (tijden van de CTC-mappen gelijk)', echtVoor.every((t, i) => t === echtNa[i]))

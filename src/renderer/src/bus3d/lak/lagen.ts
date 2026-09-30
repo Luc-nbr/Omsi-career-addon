@@ -19,6 +19,8 @@ export type Handeling =
   | { soort: 'spiegel'; spiegel: LakProject['spiegel'] }
   | { soort: 'naam'; naam: string }
   | { soort: 'vervang'; lagen: Laag[] }
+  /** Meer tegelijk, als één stap: Snelle lak (lagen en keuzes), een andere start (lagen, start, busopties). */
+  | { soort: 'project'; deel: Partial<Pick<LakProject, 'lagen' | 'snel' | 'start' | 'opties' | 'spiegel'>> }
 
 export const MAX_STAPPEN = 500
 
@@ -63,6 +65,8 @@ export function pasToe(p: LakProject, h: Handeling): LakProject {
       return p.geplaatst ? p : { ...p, naam: h.naam }
     case 'vervang':
       return { ...p, lagen: [...h.lagen] }
+    case 'project':
+      return { ...p, ...h.deel }
   }
 }
 

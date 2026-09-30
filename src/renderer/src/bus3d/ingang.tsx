@@ -61,7 +61,6 @@ interface Proefhaak {
     lagen(lagen: Laag[], spiegel?: { aan: boolean; vlakX?: number }): void
     masker(aan: boolean): void
     kies(x: number, y: number): Promise<unknown>
-    streek(laag: number, streek: Parameters<ViewerHandvat['studio']['streek']>[1]): void
     exporteer(o?: { tegel?: number; alleen?: string[]; metRgba?: boolean }): Promise<unknown>
     meet(beelden?: number): Promise<unknown>
     beeld(id: string, png: string, mime?: string): Promise<void>
@@ -72,6 +71,10 @@ interface Proefhaak {
     opties(extra: Array<[string, number]>): Promise<unknown>
     /** P4: de context bewust kwijt (pauze met vrijgeven) en terug; wacht op de herstart van het lakdoek. */
     verlies(): Promise<unknown>
+    /** P7: de lagen zetten en de uitslag van de geen-kopie-regel afwachten (per decal-laag). */
+    analyseNa(lagen: Laag[], spiegel?: { aan: boolean; vlakX?: number }): Promise<unknown>
+    /** P7: [Schuif naar een vrij stuk]. */
+    schuif(id: string): Promise<unknown>
   }
 }
 
@@ -154,7 +157,6 @@ function Proefviewer(): JSX.Element {
         lagen: (lagen, spiegel) => handvat.current?.studio.lagen(lagen, spiegel),
         masker: (aan) => handvat.current?.studio.masker(aan),
         kies: async (x, y) => handvat.current?.studio.kies(x, y) ?? { fout: 'geen viewer' },
-        streek: (laag, streek) => handvat.current?.studio.streek(laag, streek),
         exporteer: async (o) => {
           const u = (await handvat.current?.studio.exporteer(o)) as Array<{ doel: string; dds: Uint8Array; rgba?: Uint8Array; formaat: string; ms: unknown }> | { fout: string } | undefined
           if (!u || 'fout' in u) return u ?? { fout: 'geen viewer' }
@@ -198,6 +200,26 @@ function Proefviewer(): JSX.Element {
             h.pauze(true, true)
             setTimeout(() => h.pauze(false), 400)
           }),
+        analyseNa: (lagen, spiegel) =>
+          new Promise((klaar) => {
+            const h = handvat.current
+            if (!h) return klaar({ fout: 'geen viewer' })
+            const v = Verbinding.get()
+            const oud = v.opLakAnalyse
+            const ids = lagen.filter((l) => 'plaats' in l && l.zichtbaar).map((l) => l.id)
+            const klok = setTimeout(() => {
+              v.opLakAnalyse = oud
+              klaar({ fout: 'geen analyse binnen 8 s' })
+            }, 8000)
+            v.opLakAnalyse = (u) => {
+              if (!ids.every((id) => id in u)) return
+              clearTimeout(klok)
+              v.opLakAnalyse = oud
+              klaar(u)
+            }
+            h.studio.lagen(lagen, spiegel)
+          }),
+        schuif: async (id) => handvat.current?.studio.schuif(id),
         opties: async (extra) => {
           const h = handvat.current
           const pakket = laatste.current?.pakket

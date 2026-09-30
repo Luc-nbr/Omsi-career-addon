@@ -232,7 +232,14 @@ export function zonesVan(px: Uint8Array, zaad = 7): { zones: Zone[]; ms: number 
   return { zones, ms: performance.now() - t0 }
 }
 
-/** De raamlijn: de meest voorkomende onderkant (klassen van 5 cm) van glasdriehoeken zonder animatie, per zijde. */
+/**
+ * De raamlijn: de onderkant (klassen van 5 cm) van glasdriehoeken zonder
+ * animatie, per zijde. Niet de klasse met het meeste glas maar de LAAGSTE met
+ * minstens 35% daarvan: bij een dubbeldekker (SD77) heeft het bovendek evenveel
+ * glas als het benedendek, en dan kwamen de band, de naam en het logo van Snelle
+ * lak over de ramen van het benedendek. Een los ruitje laag in een wand telt zo
+ * niet mee.
+ */
 export function raamlijn(glas: Array<{ y: number; x: number; opp: number }>): { L?: number; R?: number } {
   const uit: { L?: number; R?: number } = {}
   for (const zijde of ['L', 'R'] as const) {
@@ -242,12 +249,9 @@ export function raamlijn(glas: Array<{ y: number; x: number; opp: number }>): { 
       const k = Math.round(g.y / 0.05)
       klassen.set(k, (klassen.get(k) ?? 0) + g.opp)
     }
+    const max = Math.max(0, ...klassen.values())
     let beste: number | undefined
-    let bw = 0
-    for (const [k, w] of klassen) if (w > bw) {
-      bw = w
-      beste = k
-    }
+    for (const [k, w] of klassen) if (w >= max * 0.35 && (beste === undefined || k < beste)) beste = k
     if (beste !== undefined) uit[zijde] = beste * 0.05
   }
   return uit

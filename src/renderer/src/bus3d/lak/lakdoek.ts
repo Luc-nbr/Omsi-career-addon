@@ -1,11 +1,12 @@
 import { codeerBc, heeftAlfa, mipKeten, type BcFormaat } from '../../../../shared/bcn'
 import { schrijfDds } from '../../../../shared/dds'
 import { itemSleutel } from '../../../../shared/bus3d'
-import type { Laag, LakDoel, LakFamilieInfo, Plaats } from '../../../../shared/lak'
+import type { Laag, LakDoel, LakFamilieInfo, LakStart, Plaats, Streek } from '../../../../shared/lak'
 import type { Beurt, BusScene, Tekenaar } from '../teken'
 import { maakProgramma, type GpuTextuur, type Ontleder } from '../texturen'
 import { eenheid, kijkNaar, orthografisch, projecteer, vermenigvuldig, type Mat4, type Vec3 } from '../wiskunde'
 import {
+  ANALYSE_FS,
   DEKKING_FS,
   DIEPTE_FS,
   DIEPTE_VS,
@@ -29,8 +30,9 @@ import {
   TOON_MASKER_FS,
   VUL_FS
 } from './lakshaders'
-import { spiegelPlaats } from './recept'
-import { raamlijn, zonesVan, type Zone } from './zones'
+import { decalMaat, decalSleutel, spiegelPlaats, TEKST_VAK } from './recept'
+import { tekenVorm } from './vormen'
+import { raamlijn, srgbNaarLab, zonesVan, type Zone } from './zones'
 
 /**
  * HET LAKDOEK (lakstudio-ontwerp §4.3-§4.8, §4.13, §4.14)
@@ -107,9 +109,25 @@ interface Doek {
   penseel: Array<{ tex: WebGLTexture; fb: WebGLFramebuffer; sleutel: string }>
   dekking?: { tex: WebGLTexture; lagen: number; b: number; h: number }
   zones: Zone[]
+  /** De detailbron op 1/8 (sRGB-bytes, masker in A): voor de zone onder de cursor en de kleuren van de start. */
+  klein?: { px: Uint8Array; b: number; h: number }
+  /** Bij "Deze lak precies": de basis is de textuur van de start, niet BS of de standaard (§4.4). */
+  basisIsStart: boolean
+  /** Het id van de textuur die de start-kleurstelling op deze plek legt (als er een is). */
+  startTextuur?: string
   gedeeld: number
   gedekt: number
   ms: Record<string, number>
+}
+
+/** Wat de geen-kopie-regel over een decal weet (§4.8). */
+export interface DecalAnalyse {
+  /** Deel van de voetafdruk op gedeelde texels. */
+  gedeeld: number
+  /** Deel van de spiegelkopie op glas of een geanimeerde mesh (ls.kopieDeur), als er een kopie is. */
+  kopieDeur?: number
+  /** Komt er een kopie aan de andere kant? */
+  kopie: boolean
 }
 
 export interface LakKlaarInfo {
@@ -147,6 +165,10 @@ export interface LakKeuze {
   onderdeel: boolean
   deur: boolean
   lak: boolean
+  /** De kleurzone onder de cursor (Vullen, §1): het centrum in Lab, en of het een lakzone is. */
+  zone?: { index: number; lab: [number, number, number]; lak: boolean; alle: Array<[number, number, number]> }
+  /** Een los onderdeel dat een [visible]-variabele toont of verbergt (ls.onderdeel, §4.9). */
+  variabelen?: string[]
 }
 
 /* ------------------------------------------------------------------ hulp */
@@ -197,6 +219,7 @@ export class Lakdoek {
   private leegVao!: WebGLVertexArrayObject
   private decals?: { tex: WebGLTexture; lagen: number; sleutels: string[] }
   private beelden = new Map<string, ImageBitmap>()
+  private beeldTijd = new Map<string, number>()
   private leeg!: WebGLTexture
   private leegArray!: WebGLTexture
   private raam: { L?: number; R?: number } = {}
@@ -208,6 +231,35 @@ export class Lakdoek {
   /** De laatste tijden (P3). */
   metingen: { samenstellen: number[]; laatste?: Record<string, number> } = { samenstellen: [] }
   licht = false
+  /** De start (§4.4): bij 'precies' is de basis de textuur van de start. */
+  private startSoort: LakStart = 'snel'
+  /**
+   * Staat de lak op de bus? Uit bij [Voor/na] (§2.1, 0:42) en zolang een nieuw
+   * project nog geen laag heeft: de bus staat dan nog in zijn eigen lak (0:01).
+   */
+  private getoond = true
+  /** De penseellagen op volgorde: hun plek (0 of 1) in `Doek.penseel` en in de shader. */
+  private penseelIds: string[] = []
+  /** De geen-kopie-regel (§4.8), per decal op sleutel en plaats. */
+  private analyses = new Map<string, DecalAnalyse>()
+  private analyseNieuw = false
+  /** Per laag-id de laatste uitslag, voor het venster (ls.spiegelschrift, ls.kopieDeur). */
+  private analyseVan = new Map<string, DecalAnalyse>()
+  /** Het venster hoort het als de uitslag van een decal verandert. */
+  opAnalyse?: (uit: Record<string, DecalAnalyse>) => void
+  /** Een streek die nu getekend wordt (§4.8): de punten komen van het aanwijzen in de werker. */
+  private live?: {
+    laagId: string
+    slot: number
+    camera: Float32Array
+    scherm: [number, number]
+    diepte: { tex: WebGLTexture; fb: WebGLFramebuffer }
+    punten: number[]
+    straalCm: number
+    hardheid: number
+    dekking: number
+    gum: boolean
+  }
 
   constructor(
     readonly gl: WebGL2RenderingContext,
@@ -242,7 +294,8 @@ export class Lakdoek {
       gedeeld: p(SCHERM_VS, GEDEELD_FS, [...lagenNamen, 'uBegin']),
       kopie: p(SCHERM_VS, KOPIE_FS, ['uBron', 'uMaat']),
       penseel: p(LAKNET_VS, PENSEEL_FS, ['uTegel', 'uCameraDiepte', 'uCamera', 'uStippen', 'uStipAantal', 'uKleur', 'uHardheid', 'uGum']),
-      pick: p(PICK_VS, PICK_FS, ['uMat', 'uLaknet', 'uDoel']),
+      pick: p(PICK_VS, PICK_FS, ['uMat', 'uLaknet', 'uDoel', 'uVast']),
+      analyse: p(LAKNET_VS, ANALYSE_FS, lagenNamen),
       klein: p(SCHERM_VS, KLEIN_FS, ['uBron', 'uMasker', 'uMaat']),
       toon: p(SCHERM_VS, TOON_MASKER_FS, ['uMasker', 'uMaat']),
       effect: p(SCHERM_VS, EFFECT_FS, lagenNamen),
@@ -274,11 +327,13 @@ export class Lakdoek {
    * zones en het zaad. Doelen van een ander familielid komen bij de export (die
    * laadt dat lid).
    */
-  async start(info: LakFamilieInfo, opties: { licht?: boolean; vlakX?: number } = {}): Promise<LakKlaarInfo> {
+  async start(info: LakFamilieInfo, opties: { licht?: boolean; vlakX?: number; start?: LakStart; getoond?: boolean } = {}): Promise<LakKlaarInfo> {
     const t0 = performance.now()
     this.stop()
     this.info = info
     this.licht = Boolean(opties.licht)
+    this.startSoort = opties.start ?? 'snel'
+    this.getoond = opties.getoond ?? true
     const s = this.tekenaar.scene
     if (!s) throw new Error('geen bus in beeld')
     this.spiegel.vlakX = opties.vlakX ?? (s.manifest.doos.min[0] + s.manifest.doos.max[0]) / 2
@@ -530,7 +585,10 @@ export class Lakdoek {
     const editB = Math.max(256, Math.round(d.uitB / deel))
     const editH = Math.max(256, Math.round(d.uitH / deel))
     t = performance.now()
-    const basis = await this.laadBasis(d.textuur!)
+    // De textuur die de kleurstelling in beeld op deze plek legt: de start (§4.4).
+    const startTextuur = s.lak?.texturen.find((x) => x.plek === plek)?.textuur.id
+    const basisIsStart = this.startSoort === 'precies' && Boolean(startTextuur)
+    const basis = await this.laadBasis(basisIsStart ? startTextuur! : d.textuur!)
     const sjabloon = d.sjabloon ? await this.laadSjabloon(d) : undefined
     ms.basis = Math.round(performance.now() - t)
     const gl = this.gl
@@ -551,6 +609,8 @@ export class Lakdoek {
       resultaatFb: gl.createFramebuffer()!,
       penseel: [],
       zones: [],
+      basisIsStart,
+      startTextuur,
       gedeeld: 0,
       gedekt: 0,
       ms
@@ -571,10 +631,24 @@ export class Lakdoek {
     this.rekenZaad(doek.masker, editB, editH, doek.zaad, editB, editH)
     this.wachtGpu()
     ms.jfa = Math.round(performance.now() - t)
-    // De override: vanaf nu tekent de bus deze lak.
-    const gpu: GpuTextuur = { tex: doek.resultaat, bytes: Math.round((editB * editH * 16) / 3), b: editB, h: editH, lineariseer: false, heeftAlfa: true, staat: 'vol' }
-    this.tekenaar.texturen.zetVervanging(plek, gpu)
+    // De override: vanaf nu tekent de bus deze lak (tenzij hij nog niet getoond wordt, zie `toon`).
+    if (this.getoond) this.tekenaar.texturen.zetVervanging(plek, this.gpuVan(doek))
     return doek
+  }
+
+  private gpuVan(doek: Doek): GpuTextuur {
+    return { tex: doek.resultaat, bytes: Math.round((doek.editB * doek.editH * 16) / 3), b: doek.editB, h: doek.editH, lineariseer: false, heeftAlfa: true, staat: 'vol' }
+  }
+
+  /** De lak op de bus aan of uit ([Voor/na], en de eerste seconden van een nieuw project, §2.1). */
+  toon(aan: boolean): void {
+    if (this.getoond === aan) return
+    this.getoond = aan
+    for (const d of this.doeken) this.tekenaar.texturen.zetVervanging(d.plek, aan ? this.gpuVan(d) : undefined)
+  }
+
+  get zichtbaar(): boolean {
+    return this.getoond
   }
 
   /**
@@ -1032,9 +1106,90 @@ export class Lakdoek {
     gl.deleteFramebuffer(fb)
     gl.deleteTexture(tex)
     this.herstelStaat()
+    doek.klein = { px, b, h }
     const uit = zonesVan(px)
     doek.ms.kmeans = Math.round(uit.ms)
     return uit.zones
+  }
+
+  /** Een textuur op 1/8 als sRGB-bytes, met het masker van het doek in A (zoals de zones). */
+  private klein(doek: Doek, bron: WebGLTexture): { px: Uint8Array; b: number; h: number } {
+    const gl = this.gl
+    this.staatSchoon()
+    const b = Math.max(16, Math.round(doek.doel.uitB / 8))
+    const h = Math.max(16, Math.round(doek.doel.uitH / 8))
+    const tex = this.maakTex(gl.RGBA8, b, h)
+    const fb = gl.createFramebuffer()!
+    this.hang(fb, tex)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb)
+    gl.viewport(0, 0, b, h)
+    const pr = this.progs.klein
+    gl.useProgram(pr.prog)
+    this.bindTex(0, bron, pr.u.uBron)
+    this.bindTex(1, doek.masker, pr.u.uMasker)
+    gl.uniform2f(pr.u.uMaat, b, h)
+    gl.bindVertexArray(this.leegVao)
+    gl.drawArrays(gl.TRIANGLES, 0, 3)
+    const px = new Uint8Array(b * h * 4)
+    gl.readPixels(0, 0, b, h, gl.RGBA, gl.UNSIGNED_BYTE, px)
+    gl.deleteFramebuffer(fb)
+    gl.deleteTexture(tex)
+    this.herstelStaat()
+    return { px, b, h }
+  }
+
+  /** De zone van een detailkleur: het dichtstbijzijnde centrum. */
+  private zoneVan(doek: Doek, lab: [number, number, number]): number {
+    let beste = -1
+    let bd = Infinity
+    doek.zones.forEach((z, i) => {
+      const d = Math.hypot(z.lab[0] - lab[0], z.lab[1] - lab[1], z.lab[2] - lab[2])
+      if (d < bd) {
+        bd = d
+        beste = i
+      }
+    })
+    return beste
+  }
+
+  /**
+   * "Effen in de kleuren van deze lak" (§4.4): per zone van de detailbron de
+   * mediane kleur die de huidige lak (de start) op die texels heeft, op 1/8 (mip 3).
+   * Zonder start-textuur (Standaard) de kleur van de detailbron zelf.
+   */
+  async kleurenVanStart(): Promise<Array<{ doel: string; zones: Array<{ lab: [number, number, number]; lak: boolean; kleur?: string; deel: number }> }>> {
+    const uit: Array<{ doel: string; zones: Array<{ lab: [number, number, number]; lak: boolean; kleur?: string; deel: number }> }> = []
+    for (const d of this.doeken) {
+      const std = d.klein
+      if (!std) continue
+      let start = std
+      if (d.startTextuur && !d.basisIsStart) {
+        const t = await this.laadBasis(d.startTextuur)
+        start = this.klein(d, t.tex)
+        this.gl.deleteTexture(t.tex)
+      }
+      const per = d.zones.map(() => [[], [], []] as number[][])
+      for (let i = 0; i < std.px.length && i < start.px.length; i += 4) {
+        if (std.px[i + 3] < 128) continue
+        const z = this.zoneVan(d, srgbNaarLab(std.px[i], std.px[i + 1], std.px[i + 2]))
+        if (z < 0) continue
+        for (let k = 0; k < 3; k++) per[z][k].push(start.px[i + k])
+      }
+      const mediaan = (l: number[]): number => {
+        const s = [...l].sort((a, b) => a - b)
+        return s[Math.floor(s.length / 2)]
+      }
+      uit.push({
+        doel: d.doel.id,
+        zones: d.zones.map((z, i) => ({
+          lab: z.lab,
+          lak: z.lak,
+          deel: z.deel,
+          kleur: per[i][0].length ? hex([mediaan(per[i][0]), mediaan(per[i][1]), mediaan(per[i][2])]) : undefined
+        }))
+      })
+    }
+    return uit
   }
 
   /** Het zaad van het uitvloeien (JFA) voor een masker; de uitvoer mag groter zijn dan het masker. */
@@ -1113,18 +1268,74 @@ export class Lakdoek {
 
   /* ------------------------------------------------------------------ de lagen */
 
-  /** De lagenstapel (`lakLagen`): alleen onthouden; samengesteld bij het volgende beeld (`werk`). */
+  /**
+   * De lagenstapel (`lakLagen`): onthouden en samengesteld bij het volgende beeld
+   * (`werk`). Penseellagen die niet meer kloppen met hun doek (ongedaan maken, een
+   * andere volgorde) worden hier opnieuw afgespeeld uit hun streken (§4.10).
+   */
   zetLagen(lagen: Laag[], spiegel?: { aan: boolean; vlakX?: number }): void {
     this.lagen = lagen
     if (spiegel) this.spiegel = { aan: spiegel.aan, vlakX: spiegel.vlakX ?? this.spiegel.vlakX }
+    this.speelPenseel()
     this.vuil = true
   }
 
   zetBeeld(id: string, beeld: ImageBitmap): void {
-    this.beelden.get(id)?.close()
+    const oud = this.beelden.get(id)
+    // Een ander beeld onder dezelfde sleutel: de voetafdrukken kloppen niet meer.
+    if (oud) {
+      oud.close()
+      this.analyses.clear()
+    }
     this.beelden.set(id, beeld)
+    this.beeldTijd.set(id, performance.now())
+    if (this.decals) this.gl.deleteTexture(this.decals.tex)
     this.decals = undefined
     this.vuil = true
+  }
+
+  /** De sleutel van een penseellaag zoals hij op zijn doek staat: laag, aantal streken, punten van de laatste. */
+  private static penseelSleutel(l: Extract<Laag, { soort: 'penseel' }>): string {
+    return `${l.id}:${l.streken.length}:${l.streken.at(-1)?.punten.length ?? 0}`
+  }
+
+  /** De penseellagen (hooguit twee, zie de shader) op hun plek, en elk doek gelijk aan zijn streken. */
+  private speelPenseel(): void {
+    if (this.doeken.length === 0) return
+    const lagen = this.lagen.filter((l): l is Extract<Laag, { soort: 'penseel' }> => l.soort === 'penseel').slice(0, 2)
+    this.penseelIds = lagen.map((l) => l.id)
+    lagen.forEach((l, slot) => {
+      const sleutel = Lakdoek.penseelSleutel(l)
+      if (this.doeken.every((d) => d.penseel[slot]?.sleutel === sleutel)) return
+      // Een streek die nu getekend wordt, niet overschrijven: die komt er na het loslaten bij.
+      if (this.live?.laagId === l.id) return
+      this.wisPenseel(slot)
+      for (const s of l.streken) {
+        const diepte = this.cameraDiepte(new Float32Array(s.camera))
+        this.stippen(slot, diepte, s.punten, s)
+        this.weg(diepte)
+      }
+      for (const d of this.doeken) d.penseel[slot].sleutel = sleutel
+    })
+  }
+
+  /** Het penseeldoek op een plek (0 of 1) leeg, en er zeker van zijn dat het er is. */
+  private wisPenseel(slot: number): void {
+    const gl = this.gl
+    for (const d of this.doeken) {
+      while (d.penseel.length <= slot) {
+        const tex = this.maakTex(gl.RGBA8, d.editB, d.editH)
+        const fb = gl.createFramebuffer()!
+        this.hang(fb, tex)
+        d.penseel.push({ tex, fb, sleutel: '' })
+      }
+      const p = d.penseel[slot]
+      gl.bindFramebuffer(gl.FRAMEBUFFER, p.fb)
+      gl.clearColor(0, 0, 0, 0)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+      p.sleutel = ''
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
   }
 
   /** Voor de meting van het slepen (P3): de lagen iets verschuiven, zodat alles opnieuw moet. */
@@ -1138,36 +1349,173 @@ export class Lakdoek {
     this.vuil = true
   }
 
-  /** De lagen met hun spiegelkopieën, zoals de shader ze krijgt (§4.8). */
+  /**
+   * De lagen met hun spiegelkopieën, zoals de shader ze krijgt (§4.8). Geen
+   * kopie waar een tekst, afbeelding of vorm voor meer dan 2% op gedeelde texels
+   * valt: de andere kant krijgt hem daar al, in spiegelschrift (ls.spiegelschrift).
+   */
   private uitgeschreven(): Array<Laag & { spiegelBeeld?: boolean }> {
     const uit: Array<Laag & { spiegelBeeld?: boolean }> = []
+    const nu: Record<string, DecalAnalyse> = {}
+    let anders = false
+    this.analyseNieuw = false
     for (const l of this.lagen) {
       if (!l.zichtbaar) continue
       uit.push(l)
-      if (!this.spiegel.aan || !('plaats' in l)) continue
-      const s = spiegelPlaats((l as { plaats: Plaats }).plaats, this.spiegel.vlakX)
-      if (!s) continue
-      uit.push({ ...l, id: `${l.id}'`, plaats: s.plaats, spiegelBeeld: l.soort === 'tekst' ? false : s.spiegelBeeld } as Laag & { spiegelBeeld?: boolean })
+      if (!('plaats' in l)) continue
+      const s = this.spiegel.aan ? spiegelPlaats((l as { plaats: Plaats }).plaats, this.spiegel.vlakX) : undefined
+      const kopie = s ? ({ ...l, id: `${l.id}'`, plaats: s.plaats, spiegelBeeld: l.soort === 'tekst' ? false : s.spiegelBeeld } as Laag & { spiegelBeeld?: boolean }) : undefined
+      const a = this.analyseer(l, kopie)
+      if (a) {
+        nu[l.id] = a
+        const oud = this.analyseVan.get(l.id)
+        if (!oud || oud.kopie !== a.kopie || Math.abs(oud.gedeeld - a.gedeeld) > 0.001 || (oud.kopieDeur ?? 0) !== (a.kopieDeur ?? 0)) anders = true
+      }
+      if (kopie && (!a || a.kopie)) uit.push(kopie)
+    }
+    // Ook bij een nieuwe meting met dezelfde uitslag: wie een plek uitprobeert (de proef), wil het antwoord.
+    if (anders || this.analyseNieuw || this.analyseVan.size !== Object.keys(nu).length) {
+      this.analyseVan = new Map(Object.entries(nu))
+      this.opAnalyse?.(nu)
     }
     return uit.slice(0, MAX_LAGEN)
+  }
+
+  /** De sleutel van een analyse: de decal en waar hij staat (een ander beeld of een andere plek is een nieuwe). */
+  private static analyseSleutel(l: Laag): string {
+    return `${decalSleutel(l)}|${JSON.stringify((l as { plaats: Plaats }).plaats)}|${l.soort === 'tekst' ? l.hoogteCm : ''}`
+  }
+
+  /** Voor een decal: hoeveel op gedeelde texels valt, en of de kopie op glas of een deur valt (§4.8). */
+  private analyseer(l: Laag, kopie: Laag | undefined): DecalAnalyse | undefined {
+    if (this.doeken.length === 0 || this.meten) return undefined
+    const k = `${Lakdoek.analyseSleutel(l)}|${kopie ? Lakdoek.analyseSleutel(kopie) : '-'}`
+    const bekend = this.analyses.get(k)
+    if (bekend) return bekend
+    const eigen = this.voetafdruk(l)
+    const gedeeld = eigen.dek > 0 ? eigen.gedeeld / eigen.dek : 0
+    const magKopie = gedeeld <= 0.02
+    let kopieDeur: number | undefined
+    if (kopie && magKopie) {
+      const v = this.voetafdruk(kopie)
+      kopieDeur = v.dek > 0 ? v.glas / v.dek : 0
+    }
+    const uit: DecalAnalyse = { gedeeld, kopie: Boolean(kopie) && magKopie, kopieDeur }
+    this.analyseNieuw = true
+    if (this.analyses.size > 400) this.analyses.clear()
+    this.analyses.set(k, uit)
+    return uit
+  }
+
+  /** De voetafdruk van één decal over alle doelen, op een kwart van de bewerkmaat (ANALYSE_FS). */
+  private voetafdruk(l: Laag): { dek: number; gedeeld: number; glas: number } {
+    const gl = this.gl
+    const som = { dek: 0, gedeeld: 0, glas: 0 }
+    // Dezelfde array als het samenstellen (dezelfde sleutels, in dezelfde volgorde): dan wordt hij niet opnieuw gemaakt.
+    const decal = this.decalArray([...this.lagen.filter((x) => x.zichtbaar), l])
+    const blok = this.laagBlokVan([l as Laag & { spiegelBeeld?: boolean }], decal)
+    for (const d of this.doeken) {
+      const b = Math.max(64, Math.round(d.editB / 4))
+      const h = Math.max(64, Math.round(d.editH / 4))
+      this.staatSchoon()
+      const tex = this.maakTex(gl.RGBA8, b, h)
+      const fb = gl.createFramebuffer()!
+      this.hang(fb, tex)
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb)
+      gl.viewport(0, 0, b, h)
+      gl.clearColor(0, 0, 0, 0)
+      gl.clear(gl.COLOR_BUFFER_BIT)
+      gl.enable(gl.BLEND)
+      gl.blendEquation(gl.MAX)
+      this.zetSamenstel(this.progs.analyse, d, blok, 1, [0, 0, 1, 1], [b, h])
+      this.tekenNet(d.net, false)
+      const px = new Uint8Array(b * h * 4)
+      gl.readPixels(0, 0, b, h, gl.RGBA, gl.UNSIGNED_BYTE, px)
+      gl.deleteFramebuffer(fb)
+      gl.deleteTexture(tex)
+      this.herstelStaat()
+      for (let i = 0; i < px.length; i += 4) {
+        if (px[i] < 128) continue
+        som.dek++
+        if (px[i + 1] > 127) som.gedeeld++
+        if (px[i + 2] > 127) som.glas++
+      }
+    }
+    return som
+  }
+
+  /**
+   * [Schuif naar een vrij stuk] (§4.8): de decal in de lengte naar de dichtstbijzijnde
+   * plek waar hij voor hooguit 2% op gedeelde texels valt. Stappen van 5 cm, beide
+   * kanten op, tot de bus op is. Geeft de nieuwe plaats, of niets.
+   */
+  schuifVrij(id: string): Plaats | undefined {
+    const l = this.lagen.find((x) => x.id === id)
+    if (!l || !('plaats' in l) || !this.tekenaar.scene) return undefined
+    const p = (l as { plaats: Plaats }).plaats
+    const doos = this.tekenaar.scene.manifest.doos
+    const lengte = doos.max[2] - doos.min[2]
+    for (let stap = 0.05; stap < lengte; stap += 0.05) {
+      for (const richting of [-1, 1]) {
+        const z = p.midden[2] + richting * stap
+        if (z < doos.min[2] || z > doos.max[2]) continue
+        const plaats: Plaats = { ...p, midden: [p.midden[0], p.midden[1], z] }
+        const v = this.voetafdruk({ ...l, plaats } as Laag)
+        if (v.dek > 0 && v.gedeeld / v.dek <= 0.02) return plaats
+      }
+    }
+    return undefined
+  }
+
+  /**
+   * Een vrije plek voor de naam en het logo van Snelle lak (§2.1): in de lengte,
+   * tussen `van` en `tot` (delen van de lengte), het stuk waar de decal het meest
+   * op lak valt en het minst op ruiten, deuren en gedeelde texels. Bij een
+   * stadsbus stond de naam anders op de achterdeur (SD77: 45% van de lengte). Van
+   * de plekken die bijna even goed zijn (95%), die het dichtst bij de oude.
+   */
+  vrijePlek(id: string, van: number, tot: number): Plaats | undefined {
+    const l = this.lagen.find((x) => x.id === id)
+    if (!l || !('plaats' in l) || !this.tekenaar.scene) return undefined
+    const p = (l as { plaats: Plaats }).plaats
+    if (p.zijde !== 'L' && p.zijde !== 'R') return undefined
+    const doos = this.tekenaar.scene.manifest.doos
+    const lengte = doos.max[2] - doos.min[2]
+    const bm = l.soort === 'afbeelding' ? this.beelden.get(l.beeld) : undefined
+    const half = (decalMaat(l, bm ? bm.height / Math.max(1, bm.width) : undefined)?.b ?? 1) / 2
+    const kandidaten: Array<{ z: number; score: number }> = []
+    for (let f = van; f <= tot + 1e-6; f += 0.1 / lengte) {
+      const z = doos.min[2] + f * lengte
+      if (z - half < doos.min[2] + 0.15 || z + half > doos.max[2] - 0.15) continue
+      const v = this.voetafdruk({ ...l, plaats: { ...p, midden: [p.midden[0], p.midden[1], z] } } as Laag)
+      kandidaten.push({ z, score: v.dek - 3 * v.glas - 3 * v.gedeeld })
+    }
+    if (kandidaten.length === 0) return undefined
+    const max = Math.max(...kandidaten.map((k) => k.score))
+    if (max <= 0) return undefined
+    const goed = kandidaten.filter((k) => k.score >= max * 0.95).sort((a, b) => Math.abs(a.z - p.midden[2]) - Math.abs(b.z - p.midden[2]))
+    return { ...p, midden: [p.midden[0], p.midden[1], goed[0].z] }
   }
 
   /** De decal-array: één laag van 1024×512 per tekst, afbeelding of vorm; alleen opnieuw als er een andere bij kwam. */
   private decalArray(lagen: Laag[]): Map<string, number> {
     const gl = this.gl
-    const sleutel = (l: Laag): string | undefined =>
-      l.soort === 'tekst'
-        ? `t|${l.tekst}|${l.lettertype}|${l.kleur}|${l.omlijning?.kleur ?? ''}|${l.omlijning?.breedteCm ?? 0}|${l.letterafstand ?? 0}`
-        : l.soort === 'afbeelding'
-          ? `a|${l.beeld}|${l.witDoorzichtig ? 1 : 0}`
-          : l.soort === 'vorm'
-            ? `v|${l.vorm}`
-            : undefined
-    const sleutels = [...new Set(lagen.map(sleutel).filter((s): s is string => Boolean(s)))]
+    const sleutels = [...new Set(lagen.map(decalSleutel).filter((s): s is string => Boolean(s)))]
     const plek = new Map(sleutels.map((s, i) => [s, i]))
     if (this.decals && this.decals.sleutels.join('\n') === sleutels.join('\n')) return plek
     if (this.decals) gl.deleteTexture(this.decals.tex)
     this.decals = undefined
+    // Beelden van teksten die geen laag meer hebben, loslaten (elke letter die je typt is een nieuw beeld).
+    const nodig = new Set(this.lagen.map(decalSleutel))
+    const nu = performance.now()
+    for (const [k, b] of this.beelden) {
+      // Een beeld dat net kwam, hoort bij lagen die nog onderweg zijn.
+      if (k.startsWith('t|') && !nodig.has(k) && nu - (this.beeldTijd.get(k) ?? 0) > 5000) {
+        this.beeldTijd.delete(k)
+        b.close()
+        this.beelden.delete(k)
+      }
+    }
     if (sleutels.length === 0) return plek
     const tex = gl.createTexture()!
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, tex)
@@ -1183,7 +1531,7 @@ export class Lakdoek {
     const ctx = doek.getContext('2d', { willReadFrequently: true })!
     for (const [i, s] of sleutels.entries()) {
       ctx.clearRect(0, 0, DECAL_B, DECAL_H)
-      const l = lagen.find((x) => sleutel(x) === s)!
+      const l = lagen.find((x) => decalSleutel(x) === s)!
       tekenDecal(ctx, l, this.beelden)
       const data = ctx.getImageData(0, 0, DECAL_B, DECAL_H)
       gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, i, DECAL_B, DECAL_H, 1, gl.RGBA, gl.UNSIGNED_BYTE, data.data)
@@ -1196,13 +1544,19 @@ export class Lakdoek {
   private laagBlok(doek: Doek): { blok: Float32Array; aantal: number } {
     const lagen = this.uitgeschreven()
     const decal = this.decalArray(lagen)
+    void doek
+    return { blok: this.laagBlokVan(lagen, decal), aantal: lagen.length }
+  }
+
+  private laagBlokVan(lagen: Array<Laag & { spiegelBeeld?: boolean }>, decal: Map<string, number>): Float32Array {
     const blok = new Float32Array(MAX_LAGEN * 16)
     const s = this.tekenaar.scene!
     const zmid = (s.manifest.doos.min[2] + s.manifest.doos.max[2]) / 2
-    let penseel = 0
     lagen.forEach((l, i) => {
       const o = i * 16
-      const vlag = (l.ookOverRubbers ? 1 : 0) | (l.soort === 'strook' && l.zijden === 'zijden' ? 2 : 0) | (l.spiegelBeeld ? 4 : 0)
+      const zijden = l.soort === 'strook' ? l.zijden : undefined
+      const vlag =
+        (l.ookOverRubbers ? 1 : 0) | (zijden === 'zijden' ? 2 : 0) | (l.spiegelBeeld ? 4 : 0) | (zijden === 'voor' ? 8 : 0) | (zijden === 'achter' ? 16 : 0)
       const soort = l.soort === 'zone' ? 1 : l.soort === 'strook' ? 2 : l.soort === 'penseel' ? 4 : 3
       blok.set([soort, l.dekking, l.detail, vlag], o)
       if (l.soort === 'zone') {
@@ -1213,28 +1567,31 @@ export class Lakdoek {
         blok.set([l.h1, l.h2, Math.tan((l.hoek * Math.PI) / 180), l.golf], o + 8)
         blok.set([Math.max(0.5, (s.manifest.doos.max[2] - s.manifest.doos.min[2]) / 2), zmid, 0, 0], o + 12)
       } else if (l.soort === 'penseel') {
-        blok.set([...kleurLin(l.kleur), Math.min(1, penseel++)], o + 4)
+        // Een derde penseellaag heeft geen doek (de shader kent er twee): die telt dan niet mee.
+        const slot = this.penseelIds.indexOf(l.id)
+        blok.set([...kleurLin(l.kleur), slot < 0 ? 0 : slot], o + 4)
+        if (slot < 0) blok[o + 1] = 0
       } else {
         const p = l.plaats
-        const kleur = l.soort === 'afbeelding' ? [-1, -1, -1] : kleurLin(l.kleur)
+        // Een afbeelding, en een tekst die het venster in kleur tekende, houden de kleuren van hun beeld.
+        const eigenKleur = l.soort === 'afbeelding' || (l.soort === 'tekst' && this.beelden.has(decalSleutel(l) ?? ''))
+        const kleur = eigenKleur ? [-1, -1, -1] : kleurLin(l.kleur)
         const zijde = { L: 0, R: 1, V: 2, A: 3, D: 4 }[p.zijde]
         const hoek = (p.draai * Math.PI) / 180
-        const k = decal.get(
-          l.soort === 'tekst'
-            ? `t|${l.tekst}|${l.lettertype}|${l.kleur}|${l.omlijning?.kleur ?? ''}|${l.omlijning?.breedteCm ?? 0}|${l.letterafstand ?? 0}`
-            : l.soort === 'afbeelding'
-              ? `a|${l.beeld}|${l.witDoorzichtig ? 1 : 0}`
-              : `v|${l.vorm}`
-        ) ?? 0
-        const hoogte = l.soort === 'tekst' ? (l.hoogteCm / 100) * 1.35 : p.breedteM * (DECAL_H / DECAL_B)
-        const breedte = l.soort === 'tekst' ? Math.max(p.breedteM, 0.01) : p.breedteM
+        const k = decal.get(decalSleutel(l) ?? '') ?? 0
+        const bm = l.soort === 'afbeelding' ? this.beelden.get(l.beeld) : undefined
+        const maat = decalMaat(l, bm ? bm.height / Math.max(1, bm.width) : undefined)!
         blok.set([...kleur, k], o + 4)
-        blok.set([...p.midden, breedte], o + 8)
-        blok.set([zijde, Math.cos(hoek), Math.sin(hoek), hoogte], o + 12)
+        blok.set([...p.midden, maat.b], o + 8)
+        blok.set([zijde, Math.cos(hoek), Math.sin(hoek), maat.h], o + 12)
       }
     })
-    void doek
-    return { blok, aantal: lagen.length }
+    return blok
+  }
+
+  /** De basis B (§4.4): BS van het sjabloon, de standaard, of bij "Deze lak precies" de start. */
+  private basisVan(doek: Doek): WebGLTexture {
+    return doek.basisIsStart ? doek.basis : (doek.sjabloon?.bs ?? doek.basis)
   }
 
   /** Alle uniforms en texturen van het samenstellen op een programma. */
@@ -1253,7 +1610,7 @@ export class Lakdoek {
     gl.uniform4fv(pr.u.uZones, z)
     gl.uniform1i(pr.u.uZoneAantal, Math.min(8, doek.zones.length))
     gl.uniform1i(pr.u.uSjabloon, doek.sjabloon ? 1 : 0)
-    this.bindTex(0, doek.sjabloon?.bs ?? doek.basis, pr.u.uBasis)
+    this.bindTex(0, this.basisVan(doek), pr.u.uBasis)
     this.bindTex(1, doek.basis, pr.u.uDetail)
     this.bindTex(2, doek.basis, pr.u.uAlfaBron)
     this.bindTex(3, doek.masker, pr.u.uMasker)
@@ -1302,7 +1659,7 @@ export class Lakdoek {
       // De basis overal (voor wat geen driehoek heeft), dan de lagen over het laknet.
       const pk = this.progs.kopie
       gl.useProgram(pk.prog)
-      this.bindTex(0, this.testAchtergrond ?? doek.sjabloon?.bs ?? doek.basis, pk.u.uBron)
+      this.bindTex(0, this.testAchtergrond ?? this.basisVan(doek), pk.u.uBron)
       gl.uniform2f(pk.u.uMaat, maat[0], maat[1])
       gl.bindVertexArray(this.leegVao)
       gl.drawArrays(gl.TRIANGLES, 0, 3)
@@ -1398,21 +1755,16 @@ export class Lakdoek {
 
   /* ------------------------------------------------------------------ penseel (§4.8) */
 
-  /**
-   * Een streek op een penseellaag: dieptebeeld van de camera (de dieptetoets:
-   * niets door de bus heen), dan per 64 stippen één UV-gang over het laknet.
-   */
-  streek(laagIndex: number, streek: { punten: number[]; straalCm: number; hardheid: number; dekking: number; gum: boolean; camera: number[]; kleur: string }): void {
+  /** Het dieptebeeld van een camera (de dieptetoets van het penseel: niets door de bus heen). */
+  private cameraDiepte(cam: Float32Array): { tex: WebGLTexture; fb: WebGLFramebuffer; cam: Float32Array } {
     const gl = this.gl
     this.staatSchoon()
-    const s = this.tekenaar.scene
-    if (!s) return
-    const cam = new Float32Array(streek.camera)
+    const s = this.tekenaar.scene!
     const maat = 1024
-    const diepte = this.maakTex(gl.DEPTH_COMPONENT32F, maat, maat)
-    const fbD = gl.createFramebuffer()!
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fbD)
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, diepte, 0)
+    const tex = this.maakTex(gl.DEPTH_COMPONENT32F, maat, maat)
+    const fb = gl.createFramebuffer()!
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb)
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, tex, 0)
     gl.drawBuffers([gl.NONE])
     gl.viewport(0, 0, maat, maat)
     gl.enable(gl.DEPTH_TEST)
@@ -1423,53 +1775,135 @@ export class Lakdoek {
     this.tekenDiepte(s, cam, false)
     this.tekenDiepte(s, cam, true)
     gl.disable(gl.DEPTH_TEST)
+    this.herstelStaat()
+    return { tex, fb, cam }
+  }
+
+  private weg(d: { tex: WebGLTexture; fb: WebGLFramebuffer }): void {
+    this.gl.deleteFramebuffer(d.fb)
+    this.gl.deleteTexture(d.tex)
+  }
+
+  /** Stippen (xyz in busruimte) op het penseeldoek `slot` van elk doel: per 64 één UV-gang over het laknet. */
+  private stippen(
+    slot: number,
+    diepte: { tex: WebGLTexture; cam: Float32Array },
+    punten: number[],
+    s: Pick<Streek, 'straalCm' | 'hardheid' | 'dekking' | 'gum'>
+  ): void {
+    const gl = this.gl
+    if (punten.length < 3) return
+    this.staatSchoon()
     for (const d of this.doeken) {
-      while (d.penseel.length <= laagIndex) {
-        const tex = this.maakTex(gl.RGBA8, d.editB, d.editH)
-        const fb = gl.createFramebuffer()!
-        this.hang(fb, tex)
-        gl.bindFramebuffer(gl.FRAMEBUFFER, fb)
-        gl.clearColor(0, 0, 0, 0)
-        gl.clear(gl.COLOR_BUFFER_BIT)
-        d.penseel.push({ tex, fb, sleutel: '' })
-      }
-      const p = d.penseel[laagIndex]
+      const p = d.penseel[slot]
+      if (!p) continue
       gl.bindFramebuffer(gl.FRAMEBUFFER, p.fb)
       gl.viewport(0, 0, d.editB, d.editH)
       gl.enable(gl.BLEND)
-      if (streek.gum) gl.blendFuncSeparate(gl.ZERO, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE_MINUS_SRC_ALPHA)
+      if (s.gum) gl.blendFuncSeparate(gl.ZERO, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE_MINUS_SRC_ALPHA)
       else gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
       const pr = this.progs.penseel
       gl.useProgram(pr.prog)
       gl.uniform4fv(pr.u.uTegel, [0, 0, 1, 1])
-      gl.uniformMatrix4fv(pr.u.uCamera, false, cam)
-      this.bindTex(0, diepte, pr.u.uCameraDiepte)
-      const k = kleurLin(streek.kleur).map((c) => (c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055))
-      gl.uniform4f(pr.u.uKleur, k[0], k[1], k[2], streek.dekking)
-      gl.uniform1f(pr.u.uHardheid, Math.min(0.99, streek.hardheid))
-      gl.uniform1i(pr.u.uGum, streek.gum ? 1 : 0)
-      const n = streek.punten.length / 3
+      gl.uniformMatrix4fv(pr.u.uCamera, false, diepte.cam)
+      this.bindTex(0, diepte.tex, pr.u.uCameraDiepte)
+      // Het doek bewaart alleen de dekking; de kleur is die van de laag.
+      gl.uniform4f(pr.u.uKleur, 1, 1, 1, s.dekking)
+      gl.uniform1f(pr.u.uHardheid, Math.min(0.99, s.hardheid))
+      gl.uniform1i(pr.u.uGum, s.gum ? 1 : 0)
+      const n = punten.length / 3
       for (let i = 0; i < n; i += 64) {
-        const stippen = new Float32Array(64 * 4)
+        const st = new Float32Array(64 * 4)
         const m = Math.min(64, n - i)
-        for (let j = 0; j < m; j++) stippen.set([streek.punten[(i + j) * 3], streek.punten[(i + j) * 3 + 1], streek.punten[(i + j) * 3 + 2], streek.straalCm / 100], j * 4)
-        gl.uniform4fv(pr.u.uStippen, stippen)
+        for (let j = 0; j < m; j++) st.set([punten[(i + j) * 3], punten[(i + j) * 3 + 1], punten[(i + j) * 3 + 2], s.straalCm / 100], j * 4)
+        gl.uniform4fv(pr.u.uStippen, st)
         gl.uniform1i(pr.u.uStipAantal, m)
         this.tekenNet(d.net, false)
       }
     }
-    gl.deleteFramebuffer(fbD)
-    gl.deleteTexture(diepte)
     this.herstelStaat()
     this.vuil = true
+  }
+
+  /**
+   * Een streek begint (§4.8, penseel en gum): het dieptebeeld van de camera van
+   * dit moment. De punten komen daarna uit het aanwijzen (`penseelPunt`), en bij
+   * het loslaten geeft `penseelEinde` de streek als vector (met die camera).
+   */
+  penseelBegin(laagId: string, beeldProj: Mat4, scherm: [number, number], s: Pick<Streek, 'straalCm' | 'hardheid' | 'dekking' | 'gum'>): boolean {
+    this.penseelEinde()
+    const slot = this.penseelIds.indexOf(laagId)
+    if (slot < 0) return false
+    if (this.doeken.some((d) => !d.penseel[slot])) this.wisPenseel(slot)
+    const cam = new Float32Array(beeldProj)
+    const d = this.cameraDiepte(cam)
+    this.live = { laagId, slot, camera: cam, scherm, diepte: d, punten: [], ...s }
+    return true
+  }
+
+  /** Een punt van de streek (busruimte): tussen het vorige en dit punt stippen op een kwart van de straal. */
+  penseelPunt(p: Vec3): void {
+    const l = this.live
+    if (!l) return
+    const nieuw: number[] = []
+    const n = l.punten.length
+    if (n >= 3) {
+      const a: Vec3 = [l.punten[n - 3], l.punten[n - 2], l.punten[n - 1]]
+      const afstand = Math.hypot(p[0] - a[0], p[1] - a[1], p[2] - a[2])
+      const stap = Math.max(0.005, l.straalCm / 100 / 4)
+      // Een sprong over de bus heen (een ander vlak) niet invullen.
+      if (afstand < 1.5) for (let t = stap; t < afstand; t += stap) for (let k = 0; k < 3; k++) nieuw.push(a[k] + ((p[k] - a[k]) * t) / afstand)
+    }
+    nieuw.push(p[0], p[1], p[2])
+    l.punten.push(...nieuw)
+    this.stippen(l.slot, { tex: l.diepte.tex, cam: l.camera }, nieuw, l)
+  }
+
+  /** Het einde van de streek: de vector voor de laag (het venster zet hem in de geschiedenis). */
+  penseelEinde(): (Streek & { laagId: string }) | undefined {
+    const l = this.live
+    if (!l) return undefined
+    this.live = undefined
+    this.weg(l.diepte)
+    if (l.punten.length === 0) return undefined
+    const streek: Streek = {
+      punten: l.punten.map((x) => Math.round(x * 10000) / 10000),
+      straalCm: l.straalCm,
+      hardheid: l.hardheid,
+      dekking: l.dekking,
+      gum: l.gum,
+      camera: Array.from(l.camera),
+      scherm: l.scherm
+    }
+    // Het doek heeft deze streek al: straks, als de laag hem heeft, hoeft er niets opnieuw.
+    const laag = this.lagen.find((x): x is Extract<Laag, { soort: 'penseel' }> => x.id === l.laagId && x.soort === 'penseel')
+    if (laag) {
+      const na = Lakdoek.penseelSleutel({ ...laag, streken: [...laag.streken, streek] })
+      for (const d of this.doeken) if (d.penseel[l.slot]) d.penseel[l.slot].sleutel = na
+    }
+    return { ...streek, laagId: l.laagId }
   }
 
   /* ------------------------------------------------------------------ aanwijzen (§4.2) */
 
   private pick?: { fb: WebGLFramebuffer; a: WebGLTexture; b: WebGLTexture; d: WebGLRenderbuffer }
 
-  /** Wat er onder de cursor ligt (NDC x, y in de camera `beeldProj`). */
-  kies(beeldProj: Mat4, x: number, y: number, b: number, h: number): LakKeuze {
+  /**
+   * Wat er onder de cursor ligt (NDC x, y in de camera `beeldProj`). Met
+   * `onderdeel` ook een tweede gang die de meshes met een [visible]-variabele
+   * aanwijst (ls.onderdeel met [Weghalen], §4.9): een opschrift ligt een paar mm
+   * vóór de lak en wint het anders altijd van het laknet.
+   */
+  kies(beeldProj: Mat4, x: number, y: number, b: number, h: number, onderdeel = false): LakKeuze {
+    const k = this.kiesEen(beeldProj, x, y, b, h, false)
+    if (onderdeel) {
+      const o = this.kiesEen(beeldProj, x, y, b, h, true)
+      if (o.variabelen?.length) return { ...k, onderdeel: true, variabelen: o.variabelen }
+    }
+    return k
+  }
+
+  private kiesEen(beeldProj: Mat4, x: number, y: number, b: number, h: number, alleenOnderdeel: boolean): LakKeuze {
     const gl = this.gl
     this.staatSchoon()
     const s = this.tekenaar.scene
@@ -1518,16 +1952,33 @@ export class Lakdoek {
     gl.useProgram(pr.prog)
     gl.uniformMatrix4fv(pr.u.uMat, false, mat)
     gl.uniform1i(pr.u.uLaknet, 0)
+    gl.uniform1i(pr.u.uVast, 0)
     gl.bindVertexArray(s.vao)
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, s.ibSamen)
     for (const bt of [...s.dicht, ...s.test]) gl.drawElements(gl.TRIANGLES, bt.aantal, gl.UNSIGNED_INT, bt.begin * 4)
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, s.ibAlle)
+    // Gemengde materialen zijn ruiten (en hun doorzicht): een klik daarop is ls.ruit, ook buiten het laknet.
+    gl.uniform1i(pr.u.uVast, 1 << 8)
     for (const bt of s.meng.flat()) gl.drawElements(gl.TRIANGLES, bt.aantal, gl.UNSIGNED_INT, bt.begin * 4)
-    gl.uniform1i(pr.u.uLaknet, 1)
-    for (const [i, d] of this.doeken.entries()) {
-      gl.uniform1i(pr.u.uDoel, i)
-      gl.bindVertexArray(d.net.vao)
-      gl.drawArrays(gl.TRIANGLES, 0, d.net.n)
+    if (alleenOnderdeel) {
+      // De meshes die een [visible]-variabele heeft, nog eens met hun tekenbeurt (dezelfde diepte wint met LEQUAL).
+      const zicht = s.lak?.zichtbaar ?? ''
+      s.kop.vermeldingen.forEach((v, vi) => {
+        if (!v.buiten || v.zicht.length === 0) return
+        if (zicht.length === s.kop.vermeldingen.length && zicht[vi] === '0') return
+        const stuk = s.kop.stukken[v.stuk]
+        const basis = s.stukBasis[v.stuk]
+        if (!stuk || !basis) return
+        gl.uniform1i(pr.u.uVast, (4 << 8) | ((vi + 1) << 12))
+        for (const g of stuk.groepen) gl.drawElements(gl.TRIANGLES, g.aantal, gl.UNSIGNED_INT, (basis.index + g.begin) * 4)
+      })
+    } else {
+      gl.uniform1i(pr.u.uLaknet, 1)
+      for (const [i, d] of this.doeken.entries()) {
+        gl.uniform1i(pr.u.uDoel, i)
+        gl.bindVertexArray(d.net.vao)
+        gl.drawArrays(gl.TRIANGLES, 0, d.net.n)
+      }
     }
     const a = new Uint32Array(4)
     const c = new Uint32Array(4)
@@ -1546,9 +1997,20 @@ export class Lakdoek {
     n = eenheid(n)
     const doelNr = (a[0] & 255) - 1
     const vlag = (a[0] >>> 8) & 15
+    const teken = (a[0] >>> 12) - 1
     if (doelNr < 0 || a[2] === 0xffffffff) {
       const iets = c[0] !== 0 || c[1] !== 0 || c[2] !== 0
-      return { glas: false, gedeeld: false, onderdeel: false, deur: false, lak: false, plek: iets ? plek : undefined }
+      const variabelen = teken >= 0 && (vlag & 4) !== 0 ? [...new Set(s.kop.vermeldingen[teken]?.zicht.map(([v]) => v) ?? [])] : undefined
+      return {
+        glas: iets && (vlag & 1) !== 0,
+        gedeeld: false,
+        onderdeel: Boolean(variabelen?.length),
+        deur: false,
+        lak: false,
+        plek: iets ? plek : undefined,
+        normaal: iets ? n : undefined,
+        variabelen
+      }
     }
     const d = this.doeken[doelNr]
     const uv: [number, number] = [new Float32Array(new Uint32Array([a[2]]).buffer)[0], new Float32Array(new Uint32Array([a[3]]).buffer)[0]]
@@ -1558,7 +2020,17 @@ export class Lakdoek {
       const py = Math.min(d.editH - 1, Math.max(0, Math.floor(uv[1] * d.editH)))
       gedeeld = d.maskerBytes[(py * d.editB + px) * 4 + 2] > 127
     }
-    return { doel: d.doel.id, uv, plek, normaal: n, glas: (vlag & 1) !== 0, deur: (vlag & 2) !== 0, onderdeel: (vlag & 4) !== 0, gedeeld, lak: true }
+    // De kleurzone onder de cursor (Vullen): de detailbron op 1/8, het dichtstbijzijnde centrum.
+    let zone: LakKeuze['zone']
+    if (d.klein && d.zones.length) {
+      const k = d.klein
+      const px = Math.min(k.b - 1, Math.max(0, Math.floor(uv[0] * k.b)))
+      const py = Math.min(k.h - 1, Math.max(0, Math.floor(uv[1] * k.h)))
+      const o = (py * k.b + px) * 4
+      const i = this.zoneVan(d, srgbNaarLab(k.px[o], k.px[o + 1], k.px[o + 2]))
+      if (i >= 0) zone = { index: i, lab: d.zones[i].lab, lak: d.zones[i].lak, alle: d.zones.map((z) => z.lab) }
+    }
+    return { doel: d.doel.id, uv, plek, normaal: n, glas: (vlag & 1) !== 0, deur: (vlag & 2) !== 0, onderdeel: (vlag & 4) !== 0, gedeeld, lak: true, zone }
   }
 
   /* ------------------------------------------------------------------ export (§4.14) */
@@ -1911,32 +2383,45 @@ export class Lakdoek {
     this.doeken = []
     if (this.decals) gl.deleteTexture(this.decals.tex)
     this.decals = undefined
+    if (this.live) this.weg(this.live.diepte)
+    this.live = undefined
+    this.penseelIds = []
+    this.analyses.clear()
+    this.analyseVan.clear()
   }
 }
 
 
 /* ------------------------------------------------------------------ decals tekenen (§4.6) */
 
-/** Een tekst, afbeelding of vorm in een laag van de decal-array (wit met alfa; de kleur komt van de laag). */
+/**
+ * Een tekst, afbeelding of vorm in een laag van de decal-array (wit met alfa; de
+ * kleur komt van de laag). Een tekst tekent het venster zelf, met het echte
+ * lettertype (`lettertypen.ts`), en stuurt hem als beeld onder zijn sleutel; is
+ * dat beeld er (nog) niet, dan tekent de werker hem met wat hij kent.
+ */
 function tekenDecal(ctx: OffscreenCanvasRenderingContext2D, l: Laag, beelden: Map<string, ImageBitmap>): void {
   const B = DECAL_B
   const H = DECAL_H
   if (l.soort === 'tekst') {
-    const letter = l.lettertype || 'Arial'
-    ctx.font = `bold 200px "${letter}", "D-DIN", Arial, sans-serif`
+    const vanVenster = beelden.get(decalSleutel(l) ?? '')
+    if (vanVenster) {
+      ctx.drawImage(vanVenster, 0, 0, B, H)
+      return
+    }
+    ctx.font = `700 200px "${l.lettertype || 'Hanken Grotesk'}", "Hanken Grotesk", Arial, sans-serif`
     const maat = ctx.measureText(l.tekst)
-    const breed = Math.max(1, maat.width + (l.letterafstand ?? 0) * l.tekst.length * 20)
-    const hoog = 270
+    const breed = Math.max(1, maat.width + (((l.letterafstand ?? 0) * 2) * l.tekst.length))
     ctx.save()
-    ctx.scale(B / breed, H / hoog)
+    ctx.scale(B / breed, H / TEKST_VAK)
     ctx.textBaseline = 'middle'
     if (l.omlijning && l.omlijning.breedteCm > 0) {
       ctx.lineWidth = (l.omlijning.breedteCm / l.hoogteCm) * 200
       ctx.strokeStyle = 'white'
-      ctx.strokeText(l.tekst, 0, hoog / 2)
+      ctx.strokeText(l.tekst, 0, TEKST_VAK / 2)
     }
     ctx.fillStyle = 'white'
-    ctx.fillText(l.tekst, 0, hoog / 2)
+    ctx.fillText(l.tekst, 0, TEKST_VAK / 2)
     ctx.restore()
   } else if (l.soort === 'afbeelding') {
     const beeld = beelden.get(l.beeld)
@@ -1951,21 +2436,9 @@ function tekenDecal(ctx: OffscreenCanvasRenderingContext2D, l: Laag, beelden: Ma
       ctx.putImageData(d, 0, 0)
     }
   } else if (l.soort === 'vorm') {
-    ctx.save()
-    ctx.scale(B / 100, H / 100)
-    ctx.fillStyle = 'white'
-    ctx.fill(new Path2D(VORMEN[l.vorm] ?? VORMEN.cirkel))
-    ctx.restore()
+    // Het vak van 100×100 op 1024×512: de decal is vierkant op de bus (`decalMaat`), dus de vorm klopt weer.
+    tekenVorm(ctx, l.vorm, B, H)
   }
-}
-
-/** De ingebouwde vormen (§1): paden in een vak van 100×100. */
-export const VORMEN: Record<string, string> = {
-  cirkel: 'M50 5 A45 45 0 1 1 49.9 5 Z',
-  streep: 'M0 40 H100 V60 H0 Z',
-  pijl: 'M5 40 H65 V20 L95 50 L65 80 V60 H5 Z',
-  ster: 'M50 5 L61 38 H95 L67 58 L78 92 L50 72 L22 92 L33 58 L5 38 H39 Z',
-  golf: 'M0 60 Q25 30 50 60 T100 60 V80 Q75 50 50 80 T0 80 Z'
 }
 
 export type { Zone }

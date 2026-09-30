@@ -2,7 +2,7 @@ import { heldenSleutel, type Bus3dLak, type Bus3dManifest, type Bus3dMeting } fr
 import { klok, type AfdrukVraag, type NaarWerker, type StandBericht, type VanWerker } from './berichten'
 import { Camera, type Plat } from './camera'
 import { Lakdoek } from './lak/lakdoek'
-import type { Laag } from '../../../shared/lak'
+import type { Laag, LakStart } from '../../../shared/lak'
 import { LICHT, Tekenaar, zetLicht } from './teken'
 import type { Mogelijkheden, Ontleder } from './texturen'
 
@@ -227,7 +227,7 @@ function herstartLak(): void {
   v.camera.zoomMin = 0.1
   void (async () => {
     const ld = lakdoekVoor(t)
-    const klaar = await ld.start(l.familie, { licht: true, vlakX: l.spiegel?.vlakX })
+    const klaar = await ld.start(l.familie, { licht: true, vlakX: l.spiegel?.vlakX, start: l.start, getoond: l.getoond })
     ld.zetLagen(l.lagen, l.spiegel)
     return klaar
   })().then(
@@ -246,10 +246,23 @@ function herstartLak(): void {
  */
 let lakdoek: Lakdoek | undefined
 /** Het laatste lakStart met de lagen van daarna: daarmee herstart het lakdoek na een contextverlies. */
-let lakLaatste: { viewer: number; familie: Extract<NaarWerker, { soort: 'lakStart' }>['familie']; lagen: Laag[]; spiegel?: { aan: boolean; vlakX?: number } } | undefined
+let lakLaatste:
+  | {
+      viewer: number
+      familie: Extract<NaarWerker, { soort: 'lakStart' }>['familie']
+      lagen: Laag[]
+      spiegel?: { aan: boolean; vlakX?: number }
+      start?: LakStart
+      getoond?: boolean
+    }
+  | undefined
 let lakNaHerstel = false
 function lakdoekVoor(t: Tekenaar): Lakdoek {
-  if (!lakdoek || lakdoek.tekenaar !== t) lakdoek = new Lakdoek(gl!, t, ontleder)
+  if (!lakdoek || lakdoek.tekenaar !== t) {
+    lakdoek = new Lakdoek(gl!, t, ontleder)
+    // De geen-kopie-regel (§4.8): het venster toont ls.spiegelschrift en ls.kopieDeur bij de gekozen laag.
+    lakdoek.opAnalyse = (uitslag) => stuur({ soort: 'lakAnalyse', uitslag })
+  }
   return lakdoek
 }
 
@@ -395,6 +408,7 @@ function tik(): void {
   const dt = laatsteTik ? (nu - laatsteTik) / 1000 : 0
   laatsteTik = nu
   const beweegt = v.camera.stap(Math.min(dt, 0.1))
+  const cam = v.camera.beeld(v.b / v.h)
   // De lak eerst: samenstellen als er iets veranderde (§4.13: elk beeld kan, ook tijdens het slepen).
   if (lakdoek?.actief && lakdoek.tekenaar === t) lakdoek.werk()
   maatDoek(v.b, v.h)
@@ -408,7 +422,7 @@ function tik(): void {
     laad.schaduwNaScherp = true
     t.scene.schaduwVuil = true
   }
-  t.teken(v.camera.beeld(v.b / v.h), v.b, v.h)
+  t.teken(cam, v.b, v.h)
   const scene = t.scene
   const voortgang = t.texturen.voortgang()
   const scherp = Boolean(scene) && voortgang.bezig === 0 && voortgang.klaar === voortgang.totaal
@@ -430,7 +444,8 @@ function tik(): void {
   beeldtijden.push(performance.now() - nu)
   if (beeldtijden.length > 120) beeldtijden.shift()
   v.inVlucht++
-  stuur({ soort: 'beeld', viewer: v.id, bitmap, laad: laad.nr }, [bitmap])
+  // De camera erbij zolang de studio loopt: het venster tekent de handvatten over dit beeld.
+  stuur({ soort: 'beeld', viewer: v.id, bitmap, laad: laad.nr, cam: lakdoek?.actief ? Array.from(cam.beeldProj) : undefined }, [bitmap])
   tekenTweede(v, t)
 
   if (held && scene && b) {
@@ -486,10 +501,11 @@ function tekenTweede(hoofd: Viewer, t: Tekenaar): void {
     const kant: Plat = rechtsInBeeld ? 'links' : 'rechts'
     w.camera.zetDoos(...doosVan(t))
     maatDoek(w.b, w.h)
-    t.teken(w.camera.platBeeld(w.b / w.h, kant, 1), w.b, w.h)
+    const cw = w.camera.platBeeld(w.b / w.h, kant, 1)
+    t.teken(cw, w.b, w.h)
     const bm = doek.transferToImageBitmap()
     w.inVlucht++
-    stuur({ soort: 'beeld', viewer: w.id, bitmap: bm, laad: laad.nr }, [bm])
+    stuur({ soort: 'beeld', viewer: w.id, bitmap: bm, laad: laad.nr, cam: Array.from(cw.beeldProj) }, [bm])
     maatDoek(hoofd.b, hoofd.h)
   }
 }
@@ -724,8 +740,11 @@ doel.onmessage = (e) => {
     const v = viewerVan(m.viewer)
     const i = m.invoer
     if (i.soort === 'sleep') v.camera.sleep(i.dx, i.dy)
-    else if (i.soort === 'schuif') v.camera.schuif(i.dx, i.dy, v.h)
+    else if (i.soort === 'schuif') v.camera.schuif(i.dx, i.dy, v.h, v.b / Math.max(1, v.h))
     else if (i.soort === 'zoom') v.camera.zoomStap(i.factor)
+    else if (i.soort === 'zoomNaar') v.camera.zoomNaar(i.factor, i.x, i.y, v.b / Math.max(1, v.h))
+    else if (i.soort === 'centreer') v.camera.centreer(i.punt)
+    else if (i.soort === 'inpassen') v.camera.inpassen()
     else if (i.soort === 'stand') v.camera.stand(i.stand)
     else if (i.soort === 'draai') v.camera.draai(i.graden)
     else if (i.soort === 'kantel') v.camera.kantel(i.graden)
@@ -771,7 +790,7 @@ doel.onmessage = (e) => {
   } else if (m.soort === 'lakStart') {
     const v = viewerVan(m.viewer)
     if (!tekenaar?.scene || contextWeg) return stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: { fout: 'geen bus' } })
-    lakLaatste = { viewer: m.viewer, familie: m.familie, lagen: m.lagen, spiegel: m.spiegel }
+    lakLaatste = { viewer: m.viewer, familie: m.familie, lagen: m.lagen, spiegel: m.spiegel, start: m.start, getoond: m.getoond }
     lakNaHerstel = false
     const t = tekenaar
     // In de studio mag je dichterbij: tot 0,1 keer de inpasafstand (§4.12).
@@ -779,7 +798,7 @@ doel.onmessage = (e) => {
     // Ook een fout bij het maken (een shader die niet compileert) wordt een antwoord, geen hangende vraag.
     void (async () => {
       const ld = lakdoekVoor(t)
-      const klaar = await ld.start(m.familie, { licht: m.licht, vlakX: m.spiegel?.vlakX })
+      const klaar = await ld.start(m.familie, { licht: m.licht, vlakX: m.spiegel?.vlakX, start: m.start, getoond: m.getoond })
       ld.zetLagen(m.lagen, m.spiegel)
       return klaar
     })().then(
@@ -799,14 +818,40 @@ doel.onmessage = (e) => {
   } else if (m.soort === 'lakMasker') {
     lakdoek?.toonMaskerAan(m.aan)
     plan()
-  } else if (m.soort === 'lakStreek') {
-    lakdoek?.streek(m.laag, m.streek)
+  } else if (m.soort === 'lakToon') {
+    if (lakLaatste) lakLaatste.getoond = m.aan
+    lakdoek?.toon(m.aan)
     plan()
+  } else if (m.soort === 'lakPenseel') {
+    const v = viewerVan(m.viewer)
+    const ld = lakdoek
+    const cam = v.camera.beeld(v.b / Math.max(1, v.h))
+    if (m.fase === 'begin' && ld?.actief) ld.penseelBegin(m.laagId, cam.beeldProj, [v.b, v.h], m)
+    if ((m.fase === 'begin' || m.fase === 'punt') && ld?.actief) {
+      // De werker wijst zelf aan: geen heen en weer per punt, en de camera van de streek is die van dit beeld.
+      const k = ld.kies(cam.beeldProj, m.x, m.y, v.b, v.h)
+      if (k.lak && k.plek) ld.penseelPunt(k.plek)
+    }
+    if (m.fase === 'einde') stuur({ soort: 'antwoord', vraag: m.vraag ?? 0, uitkomst: ld?.penseelEinde() ?? null })
+    plan()
+  } else if (m.soort === 'lakKleuren') {
+    const ld = lakdoek
+    if (!ld?.actief) return stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: { fout: 'geen lakdoek' } })
+    void ld.kleurenVanStart().then(
+      (u) => stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: u }),
+      (fout) => stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: { fout: String(fout) } })
+    )
+  } else if (m.soort === 'lakVrij') {
+    const ld = lakdoek
+    stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: ld?.actief ? (ld.vrijePlek(m.id, m.van, m.tot) ?? null) : null })
+  } else if (m.soort === 'lakSchuif') {
+    const ld = lakdoek
+    stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: ld?.actief ? (ld.schuifVrij(m.id) ?? null) : null })
   } else if (m.soort === 'lakKies') {
     const v = viewerVan(m.viewer)
     if (!lakdoek?.actief) return stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: { fout: 'geen lakdoek' } })
     const cam = v.camera.beeld(v.b / Math.max(1, v.h))
-    stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: lakdoek.kies(cam.beeldProj, m.x, m.y, v.b, v.h) })
+    stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: lakdoek.kies(cam.beeldProj, m.x, m.y, v.b, v.h, m.onderdeel) })
   } else if (m.soort === 'lakExport') {
     const ld = lakdoek
     if (!ld?.actief) return stuur({ soort: 'antwoord', vraag: m.vraag, uitkomst: { fout: 'geen lakdoek' } })
