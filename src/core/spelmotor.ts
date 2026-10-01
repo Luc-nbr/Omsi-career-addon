@@ -1,6 +1,8 @@
 import { execFile, spawn } from 'node:child_process'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
+import { isMotorActie, MOTOR_ACTIES } from '../shared/telefoon'
+import type { Paneel } from './busprofiel'
 
 /**
  * DE SPELMOTOR: OMSI 2 OF openOMSI (ontwerp openomsi-koppeling §4 en §5.1)
@@ -27,8 +29,6 @@ import { join, resolve, sep } from 'node:path'
  */
 
 export type MotorId = 'omsi' | 'openomsi'
-/** Wat de speler kiest in de instellingen; `automatisch` volgt wat er draait. */
-export type MotorKeuze = MotorId | 'automatisch'
 
 export const MOTOR_NAAM: Record<MotorId, string> = { omsi: 'OMSI 2', openomsi: 'openOMSI' }
 
@@ -77,8 +77,12 @@ export interface MotorKan {
   aanrijdingLive: boolean
   /** Scripttriggers (IBIS, AFR, LAWO) op naam indrukken. */
   knopOpNaam: boolean
-  /** Kaartje, wisselgeld en dergelijke: toetsen die de motor zelf afhandelt. */
-  motorKnoppen: 'altijd' | 'vooraan' | 'nee'
+  /**
+   * Kaartje, wisselgeld en de andere motoracties (MOTOR_ACTIES): toetsen die de
+   * motor zelf afhandelt. Er is geen tussenstand "alleen als het spel vooraan
+   * staat" met een toetsaanslag: dat liet Luc vallen (01-10). `nee` = weg.
+   */
+  motorKnoppen: 'altijd' | 'nee'
   /** `-windowed` bij het starten. openOMSI kent die vlag niet (clap weigert hem). */
   vensterVlag: boolean
   /** De schakelaar voor de Steam-overlay en de controle op overlays in het spel. */
@@ -88,6 +92,49 @@ export interface MotorKan {
   afrekeningAchteraf: boolean
   /** De overlay boven het spel. */
   overlay: boolean
+}
+
+/*
+ * De motoracties (kaartje, wisselgeld, knipperlicht, handrem, koplampen) staan
+ * in shared/telefoon.ts, omdat de telefoon en de overlay ze ook moeten kennen:
+ * in openOMSI staan die knoppen er niet.
+ */
+export { isMotorActie, MOTOR_ACTIES }
+
+/** Mag de app deze knop in dit spel laten zien en indrukken? */
+export function knopKanIn(kan: MotorKan, naam: string): boolean {
+  return kan.motorKnoppen !== 'nee' || !isMotorActie(naam)
+}
+
+/**
+ * De apparaten van de bus zonder de motoracties, als het spel die niet via de
+ * app kan (openOMSI; keuze van Luc: weg, niet grijs). Een knop gaat uit zijn
+ * rij, een lege rij verdwijnt, en een aantikbaar vak op het scherm wordt
+ * gewone tekst. Voor OMSI 2 precies hetzelfde voorwerp terug.
+ */
+export function panelenZonderMotoracties(panelen: Paneel[] | undefined, kan: MotorKan): Paneel[] | undefined {
+  if (!panelen || kan.motorKnoppen !== 'nee') return panelen
+  const rijen = (knoppen: Paneel['rijen']): Paneel['rijen'] =>
+    knoppen.map((rij) => rij.filter((knop) => !isMotorActie(knop.actie))).filter((rij) => rij.length > 0)
+  return panelen.map((paneel) => ({
+    ...paneel,
+    rijen: rijen(paneel.rijen),
+    losseRijen: paneel.losseRijen ? rijen(paneel.losseRijen) : undefined,
+    vlak: paneel.vlak
+      ? {
+          ...paneel.vlak,
+          velden: paneel.vlak.velden.map((veld) =>
+            veld.actie && isMotorActie(veld.actie) ? { ...veld, actie: undefined } : veld
+          )
+        }
+      : undefined
+  }))
+}
+
+/** De knoppen met een toets, zonder de motoracties als het spel die niet via de app kan. */
+export function knoppenZonderMotoracties<T extends { beschikbaar: string[] }>(knoppen: T, kan: MotorKan): T {
+  if (kan.motorKnoppen !== 'nee') return knoppen
+  return { ...knoppen, beschikbaar: knoppen.beschikbaar.filter((naam) => !isMotorActie(naam)) }
 }
 
 export const KAN: Record<MotorId, MotorKan> = {
@@ -106,8 +153,9 @@ export const KAN: Record<MotorId, MotorKan> = {
     overlay: true
   },
   /*
-   * 0.7.0 "openOMSI zonder live". Kaartje en wisselgeld blijven grijs (keuze
-   * van Luc); de rest komt met de Lua-plugin `omsihub` in 0.8.0.
+   * 0.7.0 "openOMSI zonder live". De motoracties (kaartje, wisselgeld,
+   * knipperlicht, handrem, koplampen; zie MOTOR_ACTIES) staan er in openOMSI
+   * niet (keuze van Luc); de rest komt met de Lua-plugin `omsihub` in 0.8.0.
    */
   openomsi: {
     dienstLive: false,
@@ -518,26 +566,80 @@ export function spelDraaitIn(h: Herkenning | undefined): boolean {
   return Boolean(h && (h.omsi.length > 0 || h.openomsi.length > 0))
 }
 
-/**
- * Met welke motor een dienst of vrije rit start (ontwerp §7).
+/*
+ * DE SPELKEUZE (keuze van Luc, 01-10)
  *
- * - `automatisch`: wat er draait; draait er niets, dan de laatst gebruikte;
- *   nog nooit gekozen, dan OMSI 2.
- * - Alleen wat gevonden is: zonder openomsi.exe altijd OMSI 2.
- * - NOOIT EEN TWEEDE SPEL: draait de andere motor al, dan start er niets en
- *   zegt de app waarom (`anderSpel`). Een tweede spel naast het eerste schreef
- *   in dezelfde profielen en in dezelfde spelmap.
+ * De speler kiest zelf in welk spel hij rijdt: "Spel: OMSI 2 / openOMSI", in
+ * de instellingen en naast START. Herkennen is alleen voor "welk spel draait
+ * nu"; wat de app start, bepaalt de keuze -- nooit stil wisselen.
+ *
+ * - Zonder openOMSI is er niets te kiezen: OMSI 2, zoals altijd.
+ * - Staat openOMSI er wel en koos de speler nog niet, dan stelt de app een
+ *   spel voor (wat er draait, anders wat het laatst gespeeld is) en vraagt het
+ *   bij de eerste START; er start niets voordat er gekozen is.
+ * - Draait het andere spel al, dan start er niets en zegt de app waarom
+ *   (`anderSpel`). Een tweede spel naast het eerste schreef in dezelfde
+ *   profielen en in dezelfde spelmap.
+ * - Koos de speler openOMSI en is het er niet (meer), dan start er ook niets
+ *   (`nietGevonden`): niet stilletjes OMSI 2.
+ */
+
+/** Waarom de app een spel voorstelt. */
+export type VoorstelReden = 'draait' | 'laatst' | 'alleen' | 'standaard'
+
+export interface Voorstel {
+  motor: MotorId
+  reden: VoorstelReden
+}
+
+/**
+ * Welk spel de app voorstelt als de speler nog niet koos: wat er draait;
+ * anders wat het laatst gespeeld is (ms, uit de bestanden die elk spel
+ * achterlaat: logfile.txt van OMSI 2, ~/.openomsi van openOMSI); anders OMSI 2.
+ */
+export function stelSpelVoor(
+  draait: MotorId | undefined,
+  laatst: { omsi?: number; openomsi?: number },
+  gevonden: { openomsi: boolean }
+): Voorstel {
+  if (draait) return { motor: draait, reden: 'draait' }
+  if (!gevonden.openomsi) return { motor: 'omsi', reden: 'alleen' }
+  const oo = laatst.openomsi ?? 0
+  const om = laatst.omsi ?? 0
+  if (oo > 0 || om > 0) return { motor: oo > om ? 'openomsi' : 'omsi', reden: 'laatst' }
+  return { motor: 'omsi', reden: 'standaard' }
+}
+
+export interface MotorKeuzeUitslag {
+  /** Het spel waarin START begint (of zou beginnen). */
+  motor: MotorId
+  /** Het andere spel draait al: er start niets. */
+  anderSpel?: MotorId
+  /** De speler moet nog kiezen (openOMSI gevonden, nooit gekozen): er start niets. */
+  kiezen?: boolean
+  /** openOMSI gekozen, maar niet gevonden: er start niets. */
+  nietGevonden?: boolean
+}
+
+/**
+ * Met welk spel een dienst of vrije rit start (zie DE SPELKEUZE hierboven).
+ * `voorstel` is wat de app voorstelt als er nog niet gekozen is; dat wordt dan
+ * `motor`, met `kiezen`.
  */
 export function kiesMotor(
-  keuze: MotorKeuze | undefined,
+  keuze: MotorId | undefined,
   draait: MotorId | undefined,
   gevonden: { openomsi: boolean },
-  laatst?: MotorId
-): { motor: MotorId; anderSpel?: MotorId } {
-  const kan = (m: MotorId | undefined): m is MotorId => m === 'omsi' || (m === 'openomsi' && gevonden.openomsi)
-  let motor: MotorId
-  if (keuze === 'omsi' || keuze === 'openomsi') motor = kan(keuze) ? keuze : 'omsi'
-  else if (kan(draait)) motor = draait
-  else motor = kan(laatst) ? laatst : 'omsi'
-  return draait && draait !== motor ? { motor, anderSpel: draait } : { motor }
+  voorstel?: Voorstel
+): MotorKeuzeUitslag {
+  const uit: MotorKeuzeUitslag = { motor: 'omsi' }
+  if (keuze === 'omsi' || keuze === 'openomsi') {
+    uit.motor = keuze
+    if (keuze === 'openomsi' && !gevonden.openomsi) uit.nietGevonden = true
+  } else if (gevonden.openomsi) {
+    uit.motor = voorstel?.motor ?? 'omsi'
+    uit.kiezen = true
+  }
+  if (draait && draait !== uit.motor) uit.anderSpel = draait
+  return uit
 }

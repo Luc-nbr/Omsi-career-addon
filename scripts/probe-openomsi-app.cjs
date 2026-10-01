@@ -12,15 +12,23 @@
  * schrijfactie in de echte OMSI-map, in Lucs gebruikersmap en in zijn
  * ~/.openomsi.
  *
+ *  0. De spelkeuze van Luc: openOMSI staat er en de speler koos nog niet.
+ *     START vraagt het eerst (`kiesSpel`, met een voorstel) en er start niets
+ *     -- geen Omsi.exe, geen openOMSI. Draait openOMSI, dan is dat het voorstel
+ *     ("draait nu"), maar ook dan start er niets voordat er gekozen is.
  *  A. Met een nep-openOMSI-spel weigert de app OMSI 2 te starten: een dienst
  *     en een vrije rit krijgen `anderSpel`, en het nep-Omsi.exe start niet.
  *  B. Een dienst in openOMSI: START gaat via `--cli launch` met de Duty, de
  *     overlay blijft dicht, afronden stopt het spel via `--cli stop` en rekent
  *     af uit het sessiebestand (te vroeg/te laat komen in het logboek). In de
  *     OMSI 2-map verandert niets buiten openOMSI\.
+ *     Kaartje en wisselgeld via de app: geweigerd als motoractie (in openOMSI
+ *     staan ze er niet).
  *  C. Het spel valt hard weg (geen sessiebestand): na de zoektijd (20 s) en de
  *     wachttijd (30 s) zegt de app "onvolledig", zonder te crashen, en de dienst
  *     is gewoon af te ronden.
+ *  D. openOMSI gekozen, maar het is weg (de exe hernoemd): START begint niets
+ *     (`spelNietGevonden`) en start ook niet stil OMSI 2.
  */
 const { app, BrowserWindow } = require('electron')
 const { execFileSync, spawn, spawnSync } = require('node:child_process')
@@ -199,6 +207,21 @@ app.whenReady().then(async () => {
     const api = (naam, ...args) => js(`window.career.${naam}(...${JSON.stringify(args)})`)
     await api('createProfile', 'Proef')
 
+    /* ---- 0. nog niet gekozen: START vraagt het eerst ---- */
+    const stand0 = await api('spelStand')
+    klopt(
+      `openOMSI gevonden, niet gekozen: kiezen ${stand0.kiezen}, voorstel ${stand0.voorstel?.motor} (${stand0.voorstel?.reden})`,
+      stand0.kiezen === true && !stand0.keuze && stand0.voorstel?.reden === 'standaard' && Boolean(stand0.openomsi)
+    )
+    await api('confirmDuty', ASSIGNMENT, '', 'dienst')
+    const begin0 = await api('beginDuty', VERZOEK)
+    klopt(`START zonder keuze: ${begin0.fout} (voorstel ${begin0.voorstel?.motor}), niets gestart`, begin0.fout === 'kiesSpel' && !begin0.launched && Boolean(begin0.voorstel))
+    const vrij0 = await api('startFree', { mapFolder: 'TH_Wald', vehiclePath: BUS })
+    klopt(`vrij rijden zonder keuze: ${vrij0.fout}`, vrij0.fout === 'kiesSpel' && !vrij0.launched)
+    await wacht(1000)
+    klopt('geen Omsi.exe en geen openOMSI gestart', !fs.existsSync(join(merk, 'omsi-gestart')) && !fs.existsSync(verslag))
+    klopt('de dienst begon niet', !(await api('career')).state.activeDuty?.startedAt)
+
     /* ---- A. een nep-openOMSI-spel: OMSI 2 start niet ---- */
     const spel = spawn(join(o2, `${PROEF}Open.exe`), ['--root', o2, '--no-menu', '--map', 'maps/TH_Wald/global.cfg'], {
       stdio: 'ignore',
@@ -207,6 +230,13 @@ app.whenReady().then(async () => {
     })
     eigen.push(spel.pid)
     await wacht(1500)
+    const standVoor = await api('spelStand')
+    klopt(
+      `nog niet gekozen, openOMSI draait: voorstel ${standVoor.voorstel?.motor} (${standVoor.voorstel?.reden}), toch eerst de vraag`,
+      standVoor.kiezen === true && standVoor.voorstel?.motor === 'openomsi' && standVoor.voorstel?.reden === 'draait'
+    )
+    const beginVoor = await api('beginDuty', VERZOEK)
+    klopt(`START: ${beginVoor.fout}, niet stil meegereden in openOMSI`, beginVoor.fout === 'kiesSpel' && !beginVoor.running && !beginVoor.launched)
     await api('saveSettings', { spelmotor: 'omsi' })
     const standA = await api('spelStand')
     klopt(
@@ -257,7 +287,9 @@ app.whenReady().then(async () => {
     const sessie = await api('checkSession')
     klopt(`tijdens het rijden: ${sessie.spel?.stand}, niets gemeten`, sessie.spel?.stand === 'loopt' && !sessie.finished && sessie.drivenKm === undefined)
     klopt('de overlay gaat niet open boven openOMSI', (await api('setOverlay', DUTY, true)) === false)
-    klopt('een knop via de app wordt niet ingedrukt', (await js(`window.career.telefoonToets ? window.career.telefoonToets('ticket_give') : false`)) !== true)
+    klopt('kaartje via de app: niet ingedrukt', (await api('telefoonToets', 'ticket_give')) === false)
+    klopt('wisselgeld via de app: niet ingedrukt', (await api('telefoonToets', 'wisselgeld')) === false)
+    klopt('een IBIS-knop via de app: ook niet (scripttriggers komen in 0.8.0)', (await api('telefoonToets', 'ibis7')) === false)
     const eind = await api('stopSpel')
     klopt(`afronden: gestopt en afgerekend (${eind.spel?.stand}, ${eind.drivenKm} km, ${eind.stopsDone} haltes)`, eind.spel?.stand === 'klaar' && eind.drivenKm === 2.5 && eind.stopsDone === 3)
     klopt(`te vroeg ${eind.spel?.teVroeg}, te laat ${eind.spel?.teLaat}, aanrijdingen ${eind.collisions}, schokken ${eind.harshBrakes}`, eind.spel?.teLaat === 1 && eind.collisions === 1 && eind.harshBrakes === 4)
@@ -301,12 +333,33 @@ app.whenReady().then(async () => {
     const geboektC = await api('completeDuty', DUTY, 'MAN', { stopsDone: laatste.stopsDone, drivenKm: laatste.drivenKm, bron: 'openomsi' })
     klopt('de dienst is af te ronden, zonder metingen', !geboektC.state.activeDuty && geboektC.state.entries[0].drivenKm === undefined)
 
+    /* ---- D. openOMSI gekozen, maar weg ---- */
+    const exe = join(o2, `${PROEF}Open.exe`)
+    fs.renameSync(exe, `${exe}.weg`)
+    try {
+      await wacht(2500)
+      const standD = await api('spelStand')
+      klopt(`openOMSI gekozen maar weg: nietGevonden ${standD.nietGevonden}`, standD.nietGevonden === true && standD.motor === 'openomsi' && standD.keuze === 'openomsi')
+      await api('confirmDuty', ASSIGNMENT, '', 'dienst')
+      const beginD = await api('beginDuty', VERZOEK)
+      klopt(`START: ${beginD.fout}, niets gestart`, beginD.fout === 'spelNietGevonden' && !beginD.launched)
+      const vrijD = await api('startFree', { mapFolder: 'TH_Wald', vehiclePath: BUS })
+      klopt(`vrij rijden: ${vrijD.fout}`, vrijD.fout === 'spelNietGevonden' && !vrijD.launched)
+      await wacht(1000)
+      klopt('en niet stil OMSI 2 gestart', !fs.existsSync(join(merk, 'omsi-gestart')))
+      await api('cancelDuty')
+    } finally {
+      fs.renameSync(`${exe}.weg`, exe)
+    }
+
     klopt(`de vangrails weigerden niets (${geweigerd.length})`, geweigerd.length === 0)
     if (geweigerd.length) console.log(geweigerd.join('\n'))
     const logboek = join(gegevens, 'logs', 'omsi-enhancer.log')
     if (fs.existsSync(logboek)) {
-      const regels = fs.readFileSync(logboek, 'utf8').split(/\r?\n/).filter((r) => /openOMSI|dienst niet begonnen|vrij rijden geweigerd|overlay niet/i.test(r))
-      console.log('\n--- uit het logboek van de app ---\n' + regels.slice(-14).join('\n'))
+      const alle = fs.readFileSync(logboek, 'utf8')
+      klopt('het logboek noemt de geweigerde motoractie', /toets ticket_give: een motoractie/.test(alle) && /toets change_give: een motoractie/.test(alle))
+      const regels = alle.split(/\r?\n/).filter((r) => /openOMSI|dienst niet begonnen|vrij rijden geweigerd|overlay niet|toets /i.test(r))
+      console.log('\n--- uit het logboek van de app ---\n' + regels.slice(-24).join('\n'))
     }
   } catch (fout) {
     console.error(fout)

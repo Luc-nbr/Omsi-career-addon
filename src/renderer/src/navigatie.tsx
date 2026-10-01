@@ -70,6 +70,13 @@ export interface NavFrame {
    * zie core/busmodule.ts.
    */
   busmodules?: { id: string; naam: string; schermen: number; knoppen: number; erbij: boolean }[];
+  /**
+   * In welk spel er gereden wordt; alleen gezet bij openOMSI. Daar laat de
+   * telefoon de motoracties weg (kaartje, wisselgeld, knipperlicht, handrem,
+   * koplampen; zie MOTOR_ACTIES in shared/telefoon.ts): openOMSI regelt die
+   * zelf, en via de app kunnen ze er niet (keuze van Luc).
+   */
+  motor?: "omsi" | "openomsi";
 }
 
 /**

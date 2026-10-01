@@ -170,20 +170,15 @@ export interface Settings {
    */
   meetstand?: boolean
   /**
-   * In welk spel START een dienst of vrije rit begint: OMSI 2, openOMSI, of
-   * `automatisch` (wat er draait, anders de laatst gebruikte). Alleen van
-   * belang als openomsi.exe gevonden is; zie core/spelmotor.ts.
+   * In welk spel START een dienst of vrije rit begint: OMSI 2 of openOMSI. De
+   * speler kiest het zelf (keuze van Luc, 01-10); zonder keuze en met openOMSI
+   * gevonden stelt de app er een voor en vraagt het bij de eerste START. Zonder
+   * openOMSI is er niets te kiezen. Zie core/spelmotor.ts, DE SPELKEUZE.
    */
-  spelmotor?: 'omsi' | 'openomsi' | 'automatisch'
-  /** Waarin de laatste dienst of rit begon; voor `automatisch` zonder draaiend spel. */
-  laatsteMotor?: 'omsi' | 'openomsi'
+  spelmotor?: 'omsi' | 'openomsi'
 }
 
 function geldigeMotorKeuze(waarde: unknown): Settings['spelmotor'] {
-  return waarde === 'omsi' || waarde === 'openomsi' || waarde === 'automatisch' ? waarde : undefined
-}
-
-function geldigeMotor(waarde: unknown): Settings['laatsteMotor'] {
   return waarde === 'omsi' || waarde === 'openomsi' ? waarde : undefined
 }
 
@@ -296,8 +291,7 @@ export function readSettings(userDataPath: string): Settings {
       bus3d: raw.bus3d === true ? true : undefined,
       bus3dVenster: geldigeVensterPlek(raw.bus3dVenster),
       meetstand: raw.meetstand === true ? true : undefined,
-      spelmotor: geldigeMotorKeuze(raw.spelmotor),
-      laatsteMotor: geldigeMotor(raw.laatsteMotor)
+      spelmotor: geldigeMotorKeuze(raw.spelmotor)
     }
   } catch {
     return {
@@ -396,8 +390,7 @@ export function writeSettings(userDataPath: string, settings: Partial<Settings>)
     bus3d: typeof settings.bus3d === 'boolean' ? settings.bus3d || undefined : current.bus3d,
     bus3dVenster: settings.bus3dVenster ? (geldigeVensterPlek(settings.bus3dVenster) ?? current.bus3dVenster) : current.bus3dVenster,
     meetstand: typeof settings.meetstand === 'boolean' ? settings.meetstand || undefined : current.meetstand,
-    spelmotor: geldigeMotorKeuze(settings.spelmotor) ?? current.spelmotor,
-    laatsteMotor: geldigeMotor(settings.laatsteMotor) ?? current.laatsteMotor
+    spelmotor: geldigeMotorKeuze(settings.spelmotor) ?? current.spelmotor
   }
   const path = settingsPath(userDataPath)
   mkdirSync(dirname(path), { recursive: true })

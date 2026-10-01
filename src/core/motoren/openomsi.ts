@@ -13,7 +13,7 @@ import {
   type SpelProces
 } from '../spelmotor'
 import type { VrijStartDeps } from '../vrijstart'
-import { IN_PROEF, OMSI_PROCES } from './omsi'
+import { IN_PROEF, proefProgramma } from './omsi'
 
 /**
  * DE MOTOR "openOMSI" (ontwerp openomsi-koppeling §5 en §6)
@@ -54,12 +54,12 @@ function exeNaam(waarde: string): string {
 export const OPENOMSI_EXE = process.env.OMSI_ENHANCER_PROEFOPENOMSI
   ? exeNaam(process.env.OMSI_ENHANCER_PROEFOPENOMSI)
   : IN_PROEF
-    ? `${OMSI_PROCES}Open.exe`
+    ? proefProgramma('Open')
     : 'openomsi.exe'
 export const OPENOMSI_LAUNCHER_EXE = process.env.OMSI_ENHANCER_PROEFOPENOMSILAUNCHER
   ? exeNaam(process.env.OMSI_ENHANCER_PROEFOPENOMSILAUNCHER)
   : IN_PROEF
-    ? `${OMSI_PROCES}OpenLauncher.exe`
+    ? proefProgramma('OpenLauncher')
     : 'openomsi-launcher.exe'
 
 /**
@@ -97,6 +97,32 @@ export function leesLauncherConfig(thuis: string): LauncherConfig {
   } catch {
     return {}
   }
+}
+
+/**
+ * Wanneer openOMSI het laatst gespeeld is (ms): het nieuwste van launcher.log,
+ * game.log en de sessiebestanden in ~/.openomsi. Voor het voorstel bij de
+ * spelkeuze (core/spelmotor.ts). Alleen lezen.
+ */
+export function laatstGespeeldOpenOmsi(thuis: string): number | undefined {
+  const tijd = (pad: string): number => {
+    try {
+      return statSync(pad).mtimeMs
+    } catch {
+      return 0
+    }
+  }
+  let laatst = Math.max(tijd(join(thuis, 'launcher.log')), tijd(join(thuis, 'game.log')))
+  try {
+    for (const naam of readdirSync(join(thuis, 'sessions'))) {
+      // `<t>-<pid>.json`: t is het moment van schrijven, in seconden.
+      const t = Number(/^(\d+)-\d+\.json$/i.exec(naam)?.[1] ?? 0) * 1000
+      if (t > laatst) laatst = t
+    }
+  } catch {
+    // geen sessions-map
+  }
+  return laatst > 0 ? laatst : undefined
 }
 
 /* -------------------------------------------------------------------------- */

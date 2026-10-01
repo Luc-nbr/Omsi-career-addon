@@ -16,6 +16,10 @@
  *     Ook zonder sessions-map, met een kapot bestand en bij een hergebruikt pid.
  *  5. Een keten waarvan één proces niets schreef (gecrasht): wat er is, telt,
  *     en het ontbrekende pid staat erbij.
+ *  6. De sessie van Lucs proefrit (30-09, openOMSI 0.1.307, TH_Wald 306,
+ *     pid 31028, met de echte instance erbij): een korte rit van 7 s en 0,15 m
+ *     wordt een afrekening van 0 km, 0 haltes, zonder fout; de nieuwe velden
+ *     (comfort, driving, ticketing, driver) storen niet.
  */
 import { copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -110,6 +114,22 @@ function main(): void {
     'na 30 s: wat er is telt (0,567 km), het ontbrekende pid staat erbij',
     erna.stand === 'klaar' && erna.afrekening.km === 0.567 && erna.afrekening.ontbreekt.join() === '616161'
   )
+
+  /* 6. de proefrit van 30-09 */
+  const inst4 = JSON.parse(readFileSync(join(FIX, 'instances', '1790799227-13696-4.json'), 'utf8')) as { pid: number; process_started: number; line: string; tour: string }
+  const proef = leesAfrekening(
+    [{ pid: inst4.pid, gestart: filetimeNaarIso(inst4.process_started) }],
+    thuis,
+    { mapFolder: 'TH_Wald', line: inst4.line, tour: inst4.tour }
+  )
+  klopt('de proefrit wordt een afrekening', isAfrekening(proef))
+  if (isAfrekening(proef)) {
+    console.log(`     ${proef.km} km (${proef.meters.toFixed(3)} m), ${proef.haltes} haltes, ${proef.seconden.toFixed(1)} s, ${proef.schokken} schokken`)
+    klopt('0 km (0,155 m), 0 haltes, 0 te vroeg/te laat, 0 aanrijdingen, 7,2 s', proef.km === 0 && Math.abs(proef.meters - 0.1546) < 0.001 && proef.haltes === 0 && proef.teVroeg === 0 && proef.teLaat === 0 && proef.aanrijdingen === 0 && Math.abs(proef.seconden - 7.167) < 0.01)
+    klopt('uit pid 31028, bestand 1790799329-31028.json', proef.pids.join() === '31028' && proef.bestanden.join() === '1790799329-31028.json')
+  }
+  const andereOmloop = leesAfrekening([{ pid: inst4.pid, gestart: filetimeNaarIso(inst4.process_started) }], thuis, { mapFolder: 'TH_Wald', line: inst4.line, tour: '302 - 725302' })
+  klopt('dezelfde sessie bij een dienst op omloop 302: niet meegeteld', !isAfrekening(andereOmloop) && andereOmloop.afwijkend.includes('1790799329-31028.json'))
 }
 
 main()

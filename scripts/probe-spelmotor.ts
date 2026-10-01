@@ -23,22 +23,43 @@
  *     stopt; de keten loopt door (`herstart`, dan `loopt`), en pas als ook het
  *     kind weg is en de zoektijd voorbij, is het `einde`.
  *  5. Geen tweede spel: met een nep-openOMSI-spel weigert de keuze OMSI 2 te
- *     starten (`anderSpel`), en andersom; `automatisch` neemt wat draait.
+ *     starten (`anderSpel`), en andersom.
+ *  6. De spelkeuze van Luc (01-10): de speler kiest zelf; zonder openOMSI is
+ *     er niets te kiezen (OMSI 2, zoals altijd); met openOMSI en zonder keuze
+ *     vraagt START het eerst, met een voorstel (wat draait, anders wat het
+ *     laatst gespeeld is: logfile.txt van OMSI 2 tegen ~/.openomsi); openOMSI
+ *     gekozen maar weg: niets starten, niet stil OMSI 2. Nooit stil wisselen.
+ *  7. De motoracties (kaartje, wisselgeld, knipperlicht, handrem, koplampen)
+ *     zijn in openOMSI weg uit de knoppen en de apparaten; in OMSI 2 blijft
+ *     alles precies staan.
+ *  8. De echte instances van Lucs proefrit (30-09, launcher 0.1.307, met de
+ *     nieuwe velden en een LAN-spel): afgelopen spellen tellen niet, ook niet
+ *     als het pid nu van een ander openomsi.exe is.
  */
 import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   filetimeNaarIso,
   Herkenner,
+  isMotorActie,
   isSpelOpdracht,
+  KAN,
   kiesMotor,
+  knopKanIn,
+  knoppenZonderMotoracties,
+  leesInstances,
   leesTasklist,
+  MOTOR_ACTIES,
+  panelenZonderMotoracties,
   splitsOpdrachtregel,
+  stelSpelVoor,
   welkeDraait,
   type Herkenning
 } from '../src/core/spelmotor'
-import { KetenWacht } from '../src/core/motoren/openomsi'
+import type { Paneel } from '../src/core/busprofiel'
+import { KetenWacht, laatstGespeeldOpenOmsi } from '../src/core/motoren/openomsi'
+import { laatstGespeeldOmsi } from '../src/core/motoren/omsi'
 import { einde, klopt, proefMap } from './proefhulp'
 import { leeft, NEPSPEL, nodeKopie, wacht } from './nepexe/hulp'
 
@@ -60,7 +81,10 @@ async function main(): Promise<void> {
     args568.includes('Thueringer Wald 2005') && args568.includes('302 - 725302')
   )
   klopt('launcher.log:568 is een spel', isSpelOpdracht(args568))
-  klopt('alle tien de launcher-regels zijn spellen', gestart.every((r) => isSpelOpdracht(splitsOpdrachtregel(r.slice(r.indexOf(' --root '))))))
+  klopt(
+    `alle ${gestart.length} launcher-regels (ook de LAN-spellen van de proefrit) zijn spellen`,
+    gestart.length >= 16 && gestart.every((r) => isSpelOpdracht(splitsOpdrachtregel(r.slice(r.indexOf(' --root ')))))
+  )
   const filter: Array<[string, boolean]> = [
     ['', false],
     ['--launcher', false],
@@ -204,14 +228,123 @@ async function main(): Promise<void> {
   klopt('nep-openOMSI draait, keuze OMSI 2 -> geweigerd (anderSpel openomsi)', k1.motor === 'omsi' && k1.anderSpel === 'openomsi')
   const k2 = kiesMotor('openomsi', welkeDraait(zonderOpen), { openomsi: true })
   klopt('nep-OMSI draait, keuze openOMSI -> geweigerd (anderSpel omsi)', k2.motor === 'openomsi' && k2.anderSpel === 'omsi')
-  const k3 = kiesMotor('automatisch', welkeDraait(zonderOmsi), { openomsi: true }, 'omsi')
-  klopt('automatisch met openOMSI open -> openOMSI, niets geweigerd', k3.motor === 'openomsi' && !k3.anderSpel)
-  const k4 = kiesMotor('automatisch', undefined, { openomsi: true }, 'openomsi')
-  klopt('automatisch zonder spel -> de laatst gebruikte', k4.motor === 'openomsi' && !k4.anderSpel)
-  const k5 = kiesMotor('openomsi', undefined, { openomsi: false })
-  klopt('openOMSI gekozen maar niet gevonden -> OMSI 2', k5.motor === 'omsi')
-  const k6 = kiesMotor(undefined, undefined, { openomsi: true })
-  klopt('nooit gekozen en niets draait -> OMSI 2 (zoals altijd)', k6.motor === 'omsi' && !k6.anderSpel)
+  const k3 = kiesMotor('openomsi', welkeDraait(zonderOmsi), { openomsi: true })
+  klopt('nep-openOMSI draait, keuze openOMSI -> openOMSI (meerijden), niets geweigerd', k3.motor === 'openomsi' && !k3.anderSpel && !k3.kiezen)
+  const k4 = kiesMotor('omsi', welkeDraait(zonderOpen), { openomsi: true })
+  klopt('nep-OMSI draait, keuze OMSI 2 -> OMSI 2, niets geweigerd', k4.motor === 'omsi' && !k4.anderSpel)
+
+  /* ------------------------------------------------------------ 6. de spelkeuze van Luc */
+  const k6 = kiesMotor(undefined, undefined, { openomsi: false })
+  klopt('zonder openOMSI: niets te kiezen, OMSI 2 zoals altijd', k6.motor === 'omsi' && !k6.kiezen && !k6.anderSpel && !k6.nietGevonden)
+  const k6b = kiesMotor(undefined, 'openomsi', { openomsi: false })
+  klopt('zonder gevonden openOMSI maar met een draaiend openOMSI (uit Temp): toch geen tweede spel', k6b.motor === 'omsi' && k6b.anderSpel === 'openomsi')
+  const voorstel = stelSpelVoor(undefined, { omsi: 1000, openomsi: 2000 }, { openomsi: true })
+  const k7 = kiesMotor(undefined, undefined, { openomsi: true }, voorstel)
+  klopt(`openOMSI gevonden, nooit gekozen: START vraagt het eerst (kiezen, voorstel ${k7.motor})`, k7.kiezen === true && k7.motor === 'openomsi' && !k7.anderSpel)
+  const k8 = kiesMotor('openomsi', undefined, { openomsi: false })
+  klopt('openOMSI gekozen maar niet gevonden: niets starten (nietGevonden), niet stil OMSI 2', k8.motor === 'openomsi' && k8.nietGevonden === true)
+  const k9 = kiesMotor(undefined, 'omsi', { openomsi: true }, stelSpelVoor('omsi', {}, { openomsi: true }))
+  klopt('nooit gekozen en OMSI 2 draait: toch eerst de vraag, met OMSI 2 voorgesteld (draait nu)', k9.kiezen === true && k9.motor === 'omsi' && !k9.anderSpel)
+  const voorstellen: Array<[string, ReturnType<typeof stelSpelVoor>, string, string]> = [
+    ['openOMSI draait', stelSpelVoor('openomsi', { omsi: 9e12 }, { openomsi: true }), 'openomsi', 'draait'],
+    ['OMSI 2 draait', stelSpelVoor('omsi', { openomsi: 9e12 }, { openomsi: true }), 'omsi', 'draait'],
+    ['niets draait, openOMSI laatst gespeeld', stelSpelVoor(undefined, { omsi: 1, openomsi: 2 }, { openomsi: true }), 'openomsi', 'laatst'],
+    ['niets draait, OMSI 2 laatst gespeeld', stelSpelVoor(undefined, { omsi: 3, openomsi: 2 }, { openomsi: true }), 'omsi', 'laatst'],
+    ['alleen openOMSI ooit gespeeld', stelSpelVoor(undefined, { openomsi: 2 }, { openomsi: true }), 'openomsi', 'laatst'],
+    ['niets bekend', stelSpelVoor(undefined, {}, { openomsi: true }), 'omsi', 'standaard'],
+    ['alleen OMSI 2 staat er', stelSpelVoor(undefined, { openomsi: 9e12 }, { openomsi: false }), 'omsi', 'alleen']
+  ]
+  for (const [wat, v, motor, reden] of voorstellen) klopt(`voorstel, ${wat}: ${v.motor} (${v.reden})`, v.motor === motor && v.reden === reden)
+  const laatstMap = join(werk, 'laatst')
+  mkdirSync(join(laatstMap, 'OMSI 2'), { recursive: true })
+  mkdirSync(join(laatstMap, '.openomsi', 'sessions'), { recursive: true })
+  klopt('laatst gespeeld zonder bestanden: onbekend', laatstGespeeldOmsi(join(laatstMap, 'OMSI 2')) === undefined && laatstGespeeldOpenOmsi(join(laatstMap, '.openomsi')) === undefined)
+  writeFileSync(join(laatstMap, 'OMSI 2', 'logfile.txt'), 'OMSI\r\n')
+  utimesSync(join(laatstMap, 'OMSI 2', 'logfile.txt'), new Date('2026-09-29T10:00:00Z'), new Date('2026-09-29T10:00:00Z'))
+  copyFileSync(join(FIX, 'sessions', '1790799329-31028.json'), join(laatstMap, '.openomsi', 'sessions', '1790799329-31028.json'))
+  const lOmsi = laatstGespeeldOmsi(join(laatstMap, 'OMSI 2'))
+  const lOpen = laatstGespeeldOpenOmsi(join(laatstMap, '.openomsi'))
+  klopt(
+    `laatst gespeeld: OMSI 2 ${lOmsi ? new Date(lOmsi).toISOString() : '-'} (logfile.txt), openOMSI ${lOpen ? new Date(lOpen).toISOString() : '-'} (sessie van de proefrit)`,
+    lOmsi === Date.parse('2026-09-29T10:00:00Z') && lOpen === 1790799329000
+  )
+  klopt('dan stelt de app openOMSI voor', stelSpelVoor(undefined, { omsi: lOmsi, openomsi: lOpen }, { openomsi: true }).motor === 'openomsi')
+
+  /* ------------------------------------------------------------ 7. de motoracties */
+  for (const naam of ['ticket_give', 'change_give', 'change_take', 'blinker_left_set', 'blinker_right_set', 'blinker_off', 'blinker_warn_toggle', 'parking_brake_toggle', 'kw_scheinwerfer_toggle']) {
+    if (!isMotorActie(naam)) klopt(`${naam} is een motoractie`, false)
+  }
+  klopt(`${MOTOR_ACTIES.length} motoracties (player.rs:460-513 en de aliassen), ook in hoofdletters en als oude naam (kaartje, wisselgeld)`, MOTOR_ACTIES.length === 9 && isMotorActie('Ticket_Give') && isMotorActie('kaartje') && isMotorActie('wisselgeld'))
+  klopt('scripttriggers zijn geen motoracties (IBIS_7, ticketprinter_button_enter, LAWO_Taste_0, cp_feststellbremse_toggle)', ['IBIS_7', 'ticketprinter_button_enter', 'LAWO_Taste_0', 'cp_feststellbremse_toggle'].every((n) => !isMotorActie(n)))
+  klopt('openOMSI: kaartje weg, IBIS_7 blijft; OMSI 2: allebei', !knopKanIn(KAN.openomsi, 'ticket_give') && knopKanIn(KAN.openomsi, 'IBIS_7') && knopKanIn(KAN.omsi, 'ticket_give'))
+  const afr: Paneel = {
+    id: 'afr200',
+    naam: 'AFR 200',
+    regels: ['', ''],
+    tekens: 20,
+    tekstkleur: '#fff',
+    achtergrond: '#000',
+    rijen: [
+      [
+        { actie: 'IBIS_eingabe', opschrift: 'AUSLÖSUNG', breed: true },
+        { actie: 'change_give', opschrift: 'GELD-RÜCKGABE', breed: true }
+      ],
+      [{ actie: 'ticket_give', opschrift: 'KAARTJE' }],
+      [{ actie: 'IBIS_Uhr', opschrift: 'U' }]
+    ],
+    losseRijen: [[{ actie: 'change_take', opschrift: 'GELDLADE' }]],
+    vlak: {
+      verhouding: 2,
+      velden: [
+        { actie: 'ticket_give', tekst: 'Kaartje', links: 0, breedte: 1, boven: 0, hoogte: 1, tekstkleur: '#fff', achtergrond: '#000', uitlijning: 'links' },
+        { actie: 'IBIS_vor', tekst: 'HST VOR', links: 0, breedte: 1, boven: 0, hoogte: 1, tekstkleur: '#fff', achtergrond: '#000', uitlijning: 'links' }
+      ]
+    }
+  } as Paneel
+  const inOpen = panelenZonderMotoracties([afr], KAN.openomsi)![0]
+  const acties = (p: Paneel): string[] => [...p.rijen.flat(), ...(p.losseRijen ?? []).flat()].map((k) => k.actie)
+  klopt(
+    `openOMSI: de AFR 200 zonder wisselgeld en kaartje (${acties(inOpen).join(', ')}), de lege rij weg`,
+    acties(inOpen).join() === 'IBIS_eingabe,IBIS_Uhr' && inOpen.rijen.length === 2 && (inOpen.losseRijen ?? []).length === 0
+  )
+  klopt('openOMSI: een aantikbaar kaartjesvak wordt gewone tekst', inOpen.vlak?.velden[0].actie === undefined && inOpen.vlak?.velden[1].actie === 'IBIS_vor')
+  klopt('OMSI 2: precies hetzelfde voorwerp terug', panelenZonderMotoracties([afr], KAN.omsi)![0] === afr)
+  const knoppen = { beschikbaar: ['ticket_give', 'IBIS_7', 'change_give'], straks: 2 }
+  klopt(
+    'knoppen met een toets: in openOMSI zonder motoracties, in OMSI 2 onveranderd',
+    knoppenZonderMotoracties(knoppen, KAN.openomsi).beschikbaar.join() === 'IBIS_7' &&
+      knoppenZonderMotoracties(knoppen, KAN.openomsi).straks === 2 &&
+      knoppenZonderMotoracties(knoppen, KAN.omsi) === knoppen
+  )
+
+  /* ------------------------------------------------------------ 8. de echte instances van de proefrit */
+  const proefThuis = join(werk, 'proefrit')
+  mkdirSync(join(proefThuis, 'instances'), { recursive: true })
+  for (const naam of readdirSync(join(FIX, 'instances'))) {
+    if (naam.includes('-13696-')) copyFileSync(join(FIX, 'instances', naam), join(proefThuis, 'instances', naam))
+  }
+  const proefInstances = leesInstances(proefThuis)
+  klopt(
+    `drie instances van launcher 0.1.307 gelezen (nieuwe velden: stopping, killed, lan_status; één LAN-spel)`,
+    proefInstances.length === 3 && proefInstances.some((i) => (i as unknown as { lan: string }).lan === 'host')
+  )
+  /*
+   * Het pid van een afgelopen spel nu van een ander openomsi.exe (de nep-launcher
+   * van deze proef): de instance zegt running:false en ended, dus geen spel uit
+   * de instance -- het wordt beoordeeld op zijn eigen opdrachtregel.
+   */
+  const hergebruik = proefInstances.find((i) => i.pid === 31028)!
+  writeFileSync(join(proefThuis, 'instances', 'hergebruik.json'), JSON.stringify({ ...hergebruik, id: 'hergebruik', pid: pid.kaal }))
+  const proefHerkenner = new Herkenner({
+    namen: { omsi: 'Omsi.exe', openomsi: 'openomsi.exe', launcher: 'openomsi-launcher.exe' },
+    thuis: proefThuis,
+    tempMappen: [join(werk, 'Temp')]
+  })
+  const hp = await proefHerkenner.kijk()
+  klopt(
+    'een afgelopen spel uit de instances (running:false, ended) telt niet: het pid is nu de kale launcher',
+    !hp.openomsi.some((p) => p.pid === pid.kaal) && hp.launchers.some((p) => p.pid === pid.kaal && p.bron === 'cim')
+  )
 
   /* ------------------------------------------------------------ 4. de herstart als keten */
   const keten = new KetenWacht([{ pid: pid.spel, gestart: viaCim?.gestart }], { zoekMs: 4000 })

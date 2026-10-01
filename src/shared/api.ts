@@ -226,11 +226,23 @@ export interface FreeResult {
   /**
    * `bekijken`: de app draait alleen om te bekijken (main/versiewacht.ts) en zet niets klaar.
    * `anderSpel`: het andere spel draait al (OMSI 2 of openOMSI; de naam staat in `foutTekst`).
+   * `kiesSpel`: de speler koos nog geen spel (openOMSI staat er); `voorstel` is wat de app voorstelt.
+   * `spelNietGevonden`: openOMSI gekozen, maar niet gevonden.
    */
-  fout?: 'geenBus' | 'onvolledig' | 'geenPlek' | 'geenDienstregeling' | 'schrijven' | 'bekijken' | 'anderSpel'
+  fout?:
+    | 'geenBus'
+    | 'onvolledig'
+    | 'geenPlek'
+    | 'geenDienstregeling'
+    | 'schrijven'
+    | 'bekijken'
+    | 'anderSpel'
+    | 'kiesSpel'
+    | 'spelNietGevonden'
   foutTekst?: string
   /** In welk spel de rit begon (zonder: OMSI 2). */
   motor?: 'omsi' | 'openomsi'
+  voorstel?: SpelVoorstel
 }
 
 /** De controle op de kaartstap: kan de bus hier neer, en waar. */
@@ -423,11 +435,17 @@ export interface BeginResult {
    *
    * `anderSpel`: het andere spel draait al (`anderSpel`); de app start nooit
    * een tweede spel naast het eerste (ontwerp openomsi-koppeling §7).
+   *
+   * `kiesSpel`: de speler koos nog geen spel terwijl openOMSI er staat; er
+   * begint niets tot hij kiest (`voorstel` is wat de app voorstelt).
+   * `spelNietGevonden`: openOMSI gekozen, maar niet gevonden; er begint niets
+   * (niet stilletjes OMSI 2).
    */
-  fout?: 'bekijken' | 'anderSpel'
+  fout?: 'bekijken' | 'anderSpel' | 'kiesSpel' | 'spelNietGevonden'
   /** In welk spel de dienst begon of zou beginnen. */
   motor?: 'omsi' | 'openomsi'
   anderSpel?: 'omsi' | 'openomsi'
+  voorstel?: SpelVoorstel
 }
 
 export interface Assignment {
@@ -545,17 +563,35 @@ export interface SessionResult {
  * Welk spel START neemt, wat er gevonden is en wat er (nog) niet kan (ontwerp
  * openomsi-koppeling §7).
  */
-export interface SpelStand {
-  keuze: 'omsi' | 'openomsi' | 'automatisch'
-  /** De motor waarmee START nu zou beginnen. */
+/**
+ * Het spel dat de app voorstelt als de speler nog niet koos (core/spelmotor.ts):
+ * `draait` (dat spel staat open), `laatst` (het laatst gespeeld), `alleen`
+ * (alleen OMSI 2 staat er), `standaard` (niets bekend: OMSI 2).
+ */
+export interface SpelVoorstel {
   motor: 'omsi' | 'openomsi'
+  reden: 'draait' | 'laatst' | 'alleen' | 'standaard'
+}
+
+export interface SpelStand {
+  /** Wat de speler koos ("Spel: OMSI 2 / openOMSI"); leeg als hij nog niet koos. */
+  keuze?: 'omsi' | 'openomsi'
+  /** Het spel waarmee START nu zou beginnen (bij `kiezen`: het voorstel). */
+  motor: 'omsi' | 'openomsi'
+  /** openOMSI staat er en de speler koos nog niet: START vraagt het eerst. */
+  kiezen: boolean
+  voorstel: SpelVoorstel
+  /** openOMSI gekozen, maar niet gevonden: START begint niets. */
+  nietGevonden: boolean
+  /** Het spel is dat van de dienst die al loopt (opnieuw starten gaat daarin verder). */
+  vanDienst: boolean
   /** Wat er nu draait. */
   draait?: 'omsi' | 'openomsi'
   /** Draait het andere spel, dan begint START niets. */
   anderSpel?: 'omsi' | 'openomsi'
   openomsi?: { versie?: string; map: string; inOmsiMap: boolean; launcher: boolean; uitTemp: boolean }
   waarschuwingen: Array<'uitTemp' | 'tweeSpellen'>
-  kan: { overlay: boolean; dienstLive: boolean; motorKnoppen: 'altijd' | 'vooraan' | 'nee'; afrekeningAchteraf: boolean }
+  kan: { overlay: boolean; dienstLive: boolean; motorKnoppen: 'altijd' | 'nee'; afrekeningAchteraf: boolean }
   /** De motor van de dienst die loopt. */
   dienst: 'omsi' | 'openomsi'
 }

@@ -1,5 +1,20 @@
 # Plan: Omsi-Hub met openOMSI (definitief)
 
+> **Keuzes van Luc (01-10-2026), die gaan voor dit plan.**
+> - De speler kiest zelf zijn spel: "Spel: OMSI 2 / openOMSI" (vier talen), bij het
+>   eerste gebruik voorgesteld op basis van wat er staat of draait, altijd te wijzigen,
+>   en zichtbaar waar een dienst of vrije rit start. Automatisch herkennen is alleen
+>   voor "welk spel draait nu"; de keuze bepaalt wat de app start. Draait het andere
+>   spel al: een duidelijke melding, nooit stil wisselen. Dus geen "automatisch" en
+>   geen "laatst gebruikte" zoals in §7.
+> - Kaartje, wisselgeld, handrem, knipperlicht, koplampen en andere motoracties die
+>   openOMSI niet via plugins doorgeeft: in openOMSI weg (niet tonen, ook niet grijs),
+>   en geen omweg met een toetsaanslag (§3.5 punt 2 en beslissing 3 vervallen).
+> - Geen issue of PR bij openOMSI (§13 vervalt). Wij starten openOMSI en OMSI niet
+>   zelf; Luc doet de handproef.
+> - Stap 0 is gereden (30-09, zonder de knopproef); de bestanden staan in
+>   `scripts/fixtures/openomsi/` (zie HANDOVER §5.000000000).
+
 ## Kern
 
 - **Op dit moment komt er niets uit openOMSI in de app.**

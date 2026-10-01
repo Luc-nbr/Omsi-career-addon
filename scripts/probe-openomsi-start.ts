@@ -12,7 +12,10 @@
  *  1. De Duty voor Lucs dienst (TH_Wald 302) is gelijk aan de fixture-JSON.
  *  2. De terugval-opties zijn precies de lijst uit launcher.log:568 (en uit
  *     een instance met een kleurstelling); geen -windowed; --plate pas vanaf
- *     0.1.307.
+ *     0.1.307. Ook met Lucs proefrit van 30-09 (launcher 0.1.307):
+ *     launcher.log:574 (Hohenkirchen, 07 - Solo) en de instance erbij precies,
+ *     en launcher.log:573 op de LAN-opties na -- de app start nooit een
+ *     LAN-spel (de Duty heeft geen `lan`).
  *  3. Starten via `--cli launch`: de launcher krijgt precies de fixture-JSON,
  *     het antwoord (pid) komt binnen terwijl het spel doordraait.
  *  4. Een fout van de launcher komt letterlijk terug; "no OMSI 2 folder
@@ -132,6 +135,45 @@ async function main(): Promise<void> {
   )
   klopt('met een kleurstelling = de opdrachtregel uit de instance van 19:18', JSON.stringify(metLak) === JSON.stringify(inst2.args))
   klopt('nooit -windowed', ![...args568, ...metLak].some((a) => a.toLowerCase() === '-windowed'))
+
+  /* De proefrit van 30-09: launcher 0.1.307, met een LAN-spel ertussen. */
+  const regel = (nr: number): string[] => {
+    const r = regels.find((x) => x.startsWith(`${nr}\t`))!
+    return splitsOpdrachtregel(r.slice(r.indexOf(' --root ')))
+  }
+  const hohenkirchen = bouwDuty({
+    mapFolder: 'Hohenkirchen - Herrenhof',
+    bus: 'Vehicles\\ABCoach_O560\\O560_E6_AutomVoith.bus',
+    hof: 'Hohenkirchen_V2.0',
+    line: 'Montag - Freitag (Ferien)',
+    tour: '07 - Solo',
+    minuten: 540,
+    datum: '1989-05-30'
+  })
+  const args574 = dutyArgs(hohenkirchen, { root: LUC_ROOT, profiel: 'OMSI-Fan', versie: '0.1.307' })
+  klopt('proefrit: terugval-opties = launcher.log:574 (Hohenkirchen, 07 - Solo), precies', JSON.stringify(args574) === JSON.stringify(regel(574)))
+  const inst5 = JSON.parse(readFileSync(join(FIX, 'instances', '1790799344-13696-5.json'), 'utf8')) as { args: string[]; lan: string }
+  klopt('proefrit: en gelijk aan de opdrachtregel in zijn instance (lan off)', inst5.lan === 'off' && JSON.stringify(args574) === JSON.stringify(inst5.args))
+  const th306 = bouwDuty({
+    mapFolder: 'TH_Wald',
+    bus: 'Vehicles/ABCoach_O560/O560_E6_AutomVoith.bus',
+    hof: 'Thueringer Wald 2005',
+    line: 'Omnibusverkehr Rennsteig',
+    tour: '306 - 725306',
+    minuten: 540,
+    datum: '1989-05-30'
+  })
+  const args573 = dutyArgs(th306, { root: LUC_ROOT, profiel: 'OMSI-Fan', versie: '0.1.307' })
+  const zonderLan = regel(573).filter((a, i, rij) => !['--lan-host', '--lan-name'].includes(a) && !['--lan-host', '--lan-name'].includes(rij[i - 1]))
+  klopt(
+    'proefrit: launcher.log:573 (LAN-host) min de LAN-opties = onze opties; de app start geen LAN-spel',
+    regel(573).includes('--lan-host') && JSON.stringify(args573) === JSON.stringify(zonderLan) && !('lan' in th306)
+  )
+  const pagina2 = JSON.parse(readFileSync(join(FIX, 'proefrit-30-09', 'launcher-duty.json'), 'utf8')) as Record<string, unknown>
+  klopt(
+    'proefrit: launcher-duty.json van 0.1.307 is nog steeds het formaat van de pagina (time 540, traffic 30.0, plate ""), niet dat van de struct',
+    pagina2.time === 540 && pagina2.traffic === 30 && pagina2.plate === '' && typeof hohenkirchen.time === 'string'
+  )
   const metKenteken = { ...(JSON.parse(fixture) as OpenOmsiDuty), plate: 'B-AB 1234' }
   klopt('--plate niet voor 0.1.238', !dutyArgs(metKenteken, { root: LUC_ROOT, versie: '0.1.238' }).includes('--plate'))
   klopt('--plate niet als de versie onbekend is', !dutyArgs(metKenteken, { root: LUC_ROOT }).includes('--plate'))

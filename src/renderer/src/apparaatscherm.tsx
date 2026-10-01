@@ -775,6 +775,8 @@ export interface ApparaatschermProps {
   textuurAdres: (id: string) => string;
   /** Of de bus op deze actie reageert: heeft hij er een toets voor? */
   kan: (actie: string) => boolean;
+  /** Een aanraakvlak dat er in dit spel niet hoort (een motoractie in openOMSI): geen knop. */
+  verberg?: (actie: string) => boolean;
   toets: (actie: string) => void;
   /**
    * Wat er staat zolang er nog nooit een heel beeld getekend is, en zolang de
@@ -802,6 +804,7 @@ export function Apparaatscherm({
   stand,
   textuurAdres,
   kan,
+  verberg,
   toets,
   fallback,
 }: ApparaatschermProps): JSX.Element {
@@ -949,6 +952,7 @@ export function Apparaatscherm({
              * en binnen(null) is 0) geeft geen knop; klikOp slaat hem ook over.
              */
             if (!isRechthoek(klik)) return null;
+            if (verberg?.(klik.actie)) return null;
             /* Binnen het scherm gehouden: wat erbuiten steekt, gaf een schuifbalk. */
             const x0 = binnen(klik.x);
             const y0 = binnen(klik.y);

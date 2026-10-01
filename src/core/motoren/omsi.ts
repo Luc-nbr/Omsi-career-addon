@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process'
+import { statSync } from 'node:fs'
+import { join } from 'node:path'
 import { launchOmsi, type LaunchResult } from '../launch'
 import { leesOmsiProces, sluitOmsi, type Afsluiten, type OmsiProces } from '../omsiProces'
 import { KAN, type MotorKan } from '../spelmotor'
@@ -27,6 +29,15 @@ export const OMSI_PROCES = process.env.OMSI_ENHANCER_PROEFPROCES || 'Omsi'
 export const OMSI_EXE = `${OMSI_PROCES}.exe`
 /** Draait de app in een proef? Dan ziet hij ook het echte openOMSI niet (motoren/openomsi.ts). */
 export const IN_PROEF = Boolean(process.env.OMSI_ENHANCER_PROEFPROCES)
+
+/**
+ * De naam van een ander programma van dezelfde proef: `<proefproces><achter>.exe`.
+ * Zo heten in een proef ook openomsi.exe en de launcher anders (motoren/openomsi.ts),
+ * en blijft het proces van de proef op deze ene plek.
+ */
+export function proefProgramma(achter: string): string {
+  return `${OMSI_PROCES}${achter}.exe`
+}
 
 export const OMSI_KAN: MotorKan = KAN.omsi
 
@@ -61,4 +72,18 @@ export function sluitVastgelopenOmsi(pid: number, start: string | undefined): Pr
 /** OMSI 2 starten, zoals altijd: Omsi.exe, eventueel met `-windowed`. */
 export function startOmsi(omsiPath: string, windowed: boolean): Promise<LaunchResult> {
   return launchOmsi(omsiPath, windowed)
+}
+
+/**
+ * Wanneer OMSI 2 het laatst gespeeld is (ms): OMSI schrijft bij elke start
+ * `logfile.txt` in zijn map; openOMSI doet dat niet (dat schrijft in
+ * ~/.openomsi). Voor het voorstel bij de spelkeuze (core/spelmotor.ts).
+ */
+export function laatstGespeeldOmsi(omsiPad: string | undefined): number | undefined {
+  if (!omsiPad) return undefined
+  try {
+    return statSync(join(omsiPad, 'logfile.txt')).mtimeMs
+  } catch {
+    return undefined
+  }
 }

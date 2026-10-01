@@ -58,6 +58,12 @@ blijft eenmalig een kopie staan als `laststn.osn.voor-omsi-career`. Verder niets
 Sinds 0.4.9 gaat al dat schrijven via een teruggelezen tijdelijk bestand
 (`schrijfVeilig` in `core/veilig.ts`), in de codering die het bestand had.
 
+**Met openOMSI** (sinds 0.7.0, zie 5.000000000) schrijft de app bij het starten
+in de OMSI 2-map alleen `Situations\OMSI Enhancer.*` (bij vrij rijden): geen
+`laststn.osn`, geen `[last_map]`, geen wachtende knoppen en geen lak. openOMSI
+leest het startscherm van OMSI 2 niet, en zijn eigen bestanden (laststn,
+quicksave, toetsen) staan in zijn inhoudsmap `OMSI 2\openOMSI`.
+
 ---
 
 ## 2. Werkafspraken met de gebruiker
@@ -133,6 +139,9 @@ Sinds 0.4.9 gaat al dat schrijven via een teruggelezen tijdelijk bestand
 | `veilig.ts` | Schrijven via een tijdelijk bestand dat teruggelezen wordt; cfg's van OMSI in hun eigen codering |
 | `versiewacht.ts` | Wie schreef het laatst in de gebruikersmap (`laatst-geschreven.json`), de kopie om te bekijken, de bouwstempel |
 | `schrijfslot.ts` | Alleen bekijken: `fs` van een thread schrijft alleen nog binnen de kopie (hoofdproces én kaartwerker) |
+| `spelmotor.ts` | OMSI 2 of openOMSI: wat een spelproces is, de herkenner (instances + één tasklist + CIM per nieuw pid), de spelkeuze (`kiesMotor`, `stelSpelVoor`: de speler kiest, nooit een tweede spel, nooit stil wisselen), wat elke motor kan (`KAN`) en het weglaten van de motoracties in openOMSI (`panelenZonderMotoracties`) |
+| `motoren/omsi.ts` | Alles over het proces Omsi.exe: `OMSI_PROCES`, `isOmsiRunning`, uitlezen bij een vastloper, afsluiten, starten, wanneer OMSI 2 het laatst gespeeld is (logfile.txt). De enige plek die nog naar Omsi.exe zoekt |
+| `motoren/openomsi.ts` | openOMSI: vinden (en de ProductVersion uit de exe), de Duty voor `--cli launch`, de terugval-opties (`dutyArgs`, een kopie van `duty_args`), stoppen, de keten van herstarts, de afrekening uit `~/.openomsi/sessions`, laststn en keyboard.cfg van de inhoudsmap |
 
 ### `src/shared/`
 
@@ -682,6 +691,149 @@ hoort niet onder je handen opnieuw op te komen (`probe-beweging.cjs`,
 ---
 
 ## 5. Openstaand werk
+
+### 5.000000000 openOMSI, 0.7.0 "zonder live": spelmotor, spelkeuze, starten en stoppen, afrekening achteraf (30-09 en 01-10-2026)
+
+Tak `claude/openomsi-vervolg` (op de WIP-commit 3beb1b4, bovenop 0.6.0). Het
+ontwerp staat in `design/ontwerpen/openomsi-koppeling.md` (het definitieve
+plan; OO = de broncode van openOMSI, a29cde2 = Lucs 0.1.238; sinds 30-09 avond
+draait Luc 0.1.307 = 7217091, aan plugins, sessions en instances veranderde
+daartussen niets wezenlijks). Gebouwd: §10 stap 1, 2 en 3. Stap 4-7 (de
+Lua-plugin `omsihub`, live, knoppen) zijn voor 0.8.0.
+
+**Keuzes van Luc (01-10), die gaan voor het plan.**
+- De speler kiest zelf zijn spel: "Spel: OMSI 2 / openOMSI" (vier talen), bij
+  het eerste gebruik voorgesteld, altijd te wijzigen, zichtbaar waar een dienst
+  of vrije rit start. Herkennen is alleen voor "welk spel draait nu"; de keuze
+  bepaalt wat de app start. Draait het andere spel al: een duidelijke melding,
+  nooit stil wisselen. Er is dus GEEN "automatisch" meer (dat stond in de WIP).
+- Kaartje, wisselgeld, knipperlicht, handrem, koplampen en de andere
+  motoracties die openOMSI niet via plugins doorgeeft: in openOMSI weg (niet
+  grijs, niet tonen), en geen omweg met een toetsaanslag.
+- Geen issue of PR bij openOMSI. Wij starten openOMSI en OMSI niet zelf; Luc
+  doet de handproef.
+
+**De proefrit van Luc (30-09, stap 0).** De Lua-plugin laadt, `omsi.info()`
+geeft lijn, omloop, rit/ritten, volgende halte, aankomst/vertrek en vertraging,
+`omsi.vars()` gaf 1086 getallen en 76 strings, schrijven kost gemiddeld 0,6 ms
+en het opdrachtkanaal via `package.path` leest. De knopproef (press/release) is
+NIET gedaan. Zijn bestanden staan als fixture in
+`scripts/fixtures/openomsi/` (zonder zijn gebruikersnaam): de sessie
+`sessions/1790799329-31028.json`, drie instances `*-13696-*.json` (launcher
+0.1.307, met de nieuwe velden `stopping`, `killed`, `lan_status`, `last_line`,
+en een LAN-spel), de regels 569-574 van launcher.log in `launcher-gestart.log`,
+en in `proefrit-30-09/` game.log, launcher-duty.json en data.save.lua (die
+laatste twee zijn voor de Lua-brug).
+
+**Waarom het nodig was.** openOMSI is 64-bits en de Windows-download heeft geen
+32-bits pluginhost: onze DLL laadt er niet. De app zocht bovendien alleen naar
+`Omsi.exe`, dus hij zag niet eens dat er gespeeld werd, en zou naast een draaiend
+openOMSI gewoon OMSI 2 starten.
+
+**Wat er staat.**
+- **Spelmotor** (`core/spelmotor.ts`). Herkennen van goedkoop naar duur: de
+  instances van de launcher (`~/.openomsi/instances`, `running:true` en geen
+  `ended`), één `tasklist /FO CSV /NH` voor Omsi.exe, openomsi.exe en
+  openomsi-launcher.exe, en alleen voor een nieuw openomsi.exe-pid dat de
+  launcher niet kent één CIM-vraag (opdrachtregel, ouder, pad, starttijd),
+  onthouden per pid. Een spel is een openomsi.exe met
+  `--map`/`--situation`/`--no-menu`/`--menu`/`--tutorial` en zonder
+  `--launcher`/`--export-glb`/`--offscreen`/`--server`; kaal is het de
+  launcher. Een exe onder %TEMP% telt mee, met een waarschuwing. In `index.ts`
+  gaat alles via `herken()` (twee tellen geldig): `spelDraait()` voor de
+  Lakstudio, het 3D-venster, add-ons (het slot op de spelmap), de startknop en
+  het opstartvenster; `omsiDraait()` (motoren/omsi.ts) voor wat alleen Omsi.exe
+  doet: options.cfg en keyboard.cfg terugschrijven, de plugin-DLL vasthouden.
+  `actieveMotor()` zegt in welk spel er nu gereden wordt (de dienst, anders de
+  vrije rit, anders wat draait, anders OMSI 2).
+- **De spelkeuze** (`kiesMotor`, `stelSpelVoor`; instelling `spelmotor`:
+  `omsi` | `openomsi`, leeg = nog niet gekozen). Zonder openOMSI is er niets te
+  kiezen: OMSI 2, zoals altijd, en de speler ziet niets nieuws. Staat openOMSI
+  er en koos de speler nog niet, dan geeft START `fout: 'kiesSpel'` met een
+  voorstel (wat er draait; anders wat het laatst gespeeld is: logfile.txt van
+  OMSI 2 tegen launcher.log/game.log/sessions in ~/.openomsi; anders OMSI 2) en
+  vraagt het venster `SpelDialog` het één keer; daarna gaat START gewoon verder.
+  Draait het andere spel: `anderSpel`, er start niets (ook niet "meerijden" in
+  het andere spel). openOMSI gekozen maar weg: `spelNietGevonden`, er start
+  niets -- niet stil OMSI 2. Opnieuw starten na een crash gaat in het spel van
+  de dienst. Te kiezen op twee plekken (`renderer/src/SpelKeuze.tsx`): de
+  schakelaar "Spel: OMSI 2 | openOMSI" naast START op de busstap (alleen als
+  openOMSI gevonden of gekozen is), en het kaartje "Spel" onder Instellingen >
+  App. `spel:stand` geeft keuze, voorstel, `kiezen`, `nietGevonden`,
+  `vanDienst`, wat draait, de gevonden versie en de waarschuwingen.
+- **Motoracties weg in openOMSI** (`MOTOR_ACTIES` in `shared/telefoon.ts`:
+  ticket_give, change_give, change_take, blinker_*, parking_brake_toggle,
+  kw_scheinwerfer_toggle -- wat `Player::action` in openOMSI zelf afhandelt,
+  OO/crates/omsi-app/src/player.rs:145-166 en 460-513). Het hoofdproces haalt ze
+  uit de apparaten en uit `knoppen.beschikbaar` van het beeld
+  (`panelenZonderMotoracties`, `knoppenZonderMotoracties`) en zet `motor:
+  'openomsi'` in het beeld (voor OMSI 2 blijft het beeld teken voor teken
+  gelijk); de telefoon laat dan "Kaartje geven" en "Wisselgeld" in de
+  kaartverkoop weg en een aanraakvlak met een motoractie op een nagebouwd
+  scherm (`verberg` in apparaatscherm.tsx). `omsiToets` weigert ze met een
+  regel in het logboek. In 0.7.0 drukt de app in openOMSI ook geen
+  scripttriggers in (`KAN.openomsi.knopOpNaam` is uit tot de Lua-brug).
+- **Starten** (`motoren/openomsi.ts`): `openomsi-launcher.exe --cli launch <Duty>`.
+  De Duty volgt de struct van de launcher (niet `launcher-duty.json`, dat is het
+  formaat van de pagina: `traffic: 30.0` weigert serde -- ook in 0.1.307 nog).
+  Geen `lan`: de app start nooit een LAN-spel. Terugval (geen launcher-exe, of
+  "no OMSI 2 folder configured"): zelf starten met `dutyArgs`, losgekoppeld,
+  uitvoer naar `openomsi-game.log` naast live.json; `--plate` pas vanaf 0.1.307,
+  nooit `-windowed`. De launcher wordt niet met `execFile` aangeroepen maar met
+  `voerUit`: het spel erft onder Windows de pijp naar onze stdout, en `execFile`
+  zou dan wachten tot het SPEL stopt. Een fout van de launcher komt letterlijk
+  in de voet.
+- **Stoppen** alleen bij het afronden (knop Afronden, `spel:stop`): `--cli stop`;
+  kent de launcher het spel niet, dan taskkill zonder /F (het spel rondt af zoals
+  met Escape), 8 s, pid plus starttijd nakijken, dan /F. Nooit meteen /F: dan is
+  er geen sessie. Het spel blijft draaien als de app dichtgaat, en de dienst
+  blijft dan in het profiel staan (`sluitLopendeDienstAf`).
+- **Herstart als keten** (`KetenWacht`): snel laden en een verloren grafisch
+  apparaat starten een nieuw proces. Een kind van een lid, of een herstart op
+  `quicksave.osn`/`laststn.osn`, komt in de keten (`activeDuty.spel.keten`);
+  is het laatste lid weg, dan zoekt de wacht 20 s. Pas daarna is de dienst voorbij.
+- **Afrekening achteraf** (`leesAfrekening`, `afrekeningNaEinde`): per pid
+  `~/.openomsi/sessions/<t>-<pid>.json` met t niet vóór de start van dat pid;
+  kaart, lijn en omloop moeten passen; de keten telt op. Geen bestand binnen 30 s
+  na het einde: "onvolledig" (gecrasht of hard afgesloten), zonder fout. `duty:session`
+  geeft voor een openOMSI-dienst `spel: { stand, pids, teVroeg, teLaat, … }`;
+  km = metres/1000, haltes = `stops` (hooguit de haltes van de dienst; dat bepaalt
+  het loon, zoals `stopsDone` bij OMSI), aanrijdingen = `crashes`, schokken =
+  `jolts`. In het logboek komen `teVroeg`, `teLaat` en `bron: 'openomsi'` bij.
+- **Eerlijk wat niet kan** (§7): voor een openOMSI-dienst gaat de overlay niet
+  open, het rijscherm zegt "openOMSI draait, nog geen rijgegevens" (of "start
+  opnieuw…", "wacht op het ritverslag", "onvolledig") met één zin over wat er
+  in 0.8.0 komt en dat openOMSI kaartje, wisselgeld, knipperlicht, handrem en
+  koplampen zelf regelt. START heet dan "Start in openOMSI".
+- **keyboard.cfg**: busknoppen gaan ook naar `OMSI 2\openOMSI\Inputs\keyboard.cfg`
+  als dat bestaat (dat volgt openOMSI dan, startup.rs:69-78). openOMSI schrijft
+  het niet terug, dus daar geen wachtrij.
+- **Voortzetten**: opnieuw starten na een crash in openOMSI zet voort vanaf
+  `laststn.osn` uit de inhoudsmap (daarna die van OMSI 2), als die er is.
+
+**Proeven.** Nooit een echt openOMSI: `scripts/nepexe/` heeft een klein C-programma
+(`nepexe.c`, gebouwd met MSVC door de proef zelf) dat onder elke naam een
+Node-script draait, plus `nepspel.cjs` (het spel) en `neplauncher.cjs` (de CLI
+van de launcher). `probe-spelmotor.ts` gebruikt kopieën van node.exe die
+`openomsi.exe` heten (§9.2); wat Luc zelf open heeft, komt in de lijst maar telt
+niet mee. De app-proef (`probe-openomsi-app.cjs`) geeft alles eigen namen
+(`OMSI_ENHANCER_PROEFPROCES`), een eigen `~/.openomsi`
+(`OMSI_ENHANCER_OPENOMSI_MAP`) en een nagebouwde OMSI 2-map, met vangrails. **In
+een proef ziet de app het echte openOMSI nooit**: met `OMSI_ENHANCER_PROEFPROCES`
+heten de programma's `<proef>Open.exe` en `<proef>OpenLauncher.exe`
+(`proefProgramma` in motoren/omsi.ts) en kijkt hij in een lege map voor
+`~/.openomsi` (tenzij `OMSI_ENHANCER_PROEFOPENOMSI` of
+`OMSI_ENHANCER_OPENOMSI_MAP` iets anders zegt). Proeven zonder
+`OMSI_ENHANCER_PROEFPROCES` (probe-modi, probe-geenomsi) zien Lucs openOMSI wel,
+alleen lezend. `probe-spelkeuze.cjs` tekent de schakelaar en de vraag zoals in
+de app en drukt alles in.
+
+**Nog niet (0.8.0 en later).** De Lua-plugin en live-gegevens (§3, stap 4-5;
+de knopproef van stap 0 staat nog open), de handproef (stap 6), de rest van
+stap 7 (kaartpositie, Lakstudio-waarschuwing bij overschaduwing, de
+Steam-overlay-schakelaar verbergen voor openOMSI). De versie staat nog op
+0.6.0: 0.7.0 is het uitbrengen, met installer en draagbare versie volgens
+CLAUDE.md.
 
 ### 5.00000000 Lakstudio L3: herstel na proefdraaier, beoordelaar en tegenlezer (30-09-2026)
 
@@ -3288,6 +3440,22 @@ Er staan probes in `scripts/`:
   en `schermafdruk-addons.cjs`. Allemaal in een eigen map (`PROEF_MAP`), nooit
   de echte OMSI of gebruikersmap; de afsluitproef start en sluit alleen zijn
   eigen nepproces.
+- openOMSI (30-09/01-10, zie §5.000000000): `probe-spelmotor.ts` (herkennen
+  met nep-processen, alle gevallen van ontwerp §9.2, CIM hooguit één keer per
+  pid, de herstart als keten, nooit een tweede spel, de spelkeuze met voorstel
+  en "laatst gespeeld", de motoracties weg in openOMSI, de instances van de
+  proefrit), `probe-openomsi-start.ts` (de Duty tegen de fixture, de
+  terugval-opties tegen launcher.log:568 en 574, 573 op de LAN-opties na,
+  starten en stoppen via een nep-launcher, 8 s zonder /F, het spel overleeft de
+  app, voortzetten, keyboard.cfg, hash-momentopname van de OMSI 2-map),
+  `probe-openomsi-afrekening.ts` (de sessiebestanden van Luc: 0,567 km, keten,
+  onvolledig, de proefrit), `probe-openomsi-app.cjs` (de echte app: eerst de
+  vraag zonder keuze, weigert OMSI 2 naast openOMSI, een dienst in openOMSI van
+  START tot logboek, kaartje en wisselgeld geweigerd, onvolledig zonder crash,
+  openOMSI gekozen maar weg; eerst `npx electron-vite build`) en
+  `probe-spelkeuze.cjs` (de schakelaar en de vraag, getekend en ingedrukt). De
+  fixtures staan in `scripts/fixtures/openomsi/` (Lucs bestanden, zonder zijn
+  gebruikersnaam).
 - `probe-onderweg.ts` — flitspalen (welke borden, welke kant, boete),
   gebeurtenissen, het rapport van de controleurs en wat er van het loon af gaat;
   sinds 29-09 ook het contract van de voorvallen (`shared/voorval.ts`).

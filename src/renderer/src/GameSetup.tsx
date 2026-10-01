@@ -373,12 +373,14 @@ function AppTab({ language }: { language: Language }): JSX.Element {
 }
 
 /**
- * RIJDEN IN: OMSI 2 OF openOMSI (ontwerp openomsi-koppeling §7)
+ * SPEL: OMSI 2 OF openOMSI (keuze van Luc, 01-10; ontwerp openomsi-koppeling §7)
  *
- * Alleen als openomsi.exe gevonden is; wie alleen OMSI 2 heeft, ziet hier
- * niets. De keuze geldt voor START bij een dienst en bij vrij rijden;
- * `automatisch` volgt wat er draait. Daaronder eerlijk wat er in openOMSI
- * (nog) niet kan.
+ * Alleen als openomsi.exe gevonden is (of gekozen was); wie alleen OMSI 2
+ * heeft, ziet hier niets. De speler kiest zelf; er is geen "automatisch" en de
+ * app wisselt nooit uit zichzelf. Koos hij nog niet, dan staat het voorstel
+ * erbij (wat er draait, anders wat het laatst gespeeld is), en vraagt START het
+ * één keer. Daaronder wat er gevonden is, en eerlijk wat er in openOMSI (nog)
+ * niet kan.
  */
 function SpelmotorKaart({ language }: { language: Language }): JSX.Element | null {
   const [stand, setStand] = useState<SpelStand>()
@@ -394,21 +396,26 @@ function SpelmotorKaart({ language }: { language: Language }): JSX.Element | nul
     return () => clearInterval(klok)
   }, [kijk])
   if (!stand || (!stand.openomsi && stand.keuze !== 'openomsi')) return null
-  const kies = (keuze: SpelStand['keuze']): void => {
-    setStand({ ...stand, keuze })
+  const kies = (keuze: 'omsi' | 'openomsi'): void => {
+    setStand({ ...stand, keuze, kiezen: false })
     void window.career.saveSettings({ spelmotor: keuze }).then(kijk)
   }
-  const keuzes: Array<{ id: SpelStand['keuze']; naam: TextKey; uitleg?: TextKey }> = [
-    { id: 'omsi', naam: 'oo.omsi' },
-    { id: 'openomsi', naam: 'oo.openomsi' },
-    { id: 'automatisch', naam: 'oo.automatisch', uitleg: 'oo.automatischUitleg' }
+  const keuzes: Array<{ id: 'omsi' | 'openomsi'; naam: TextKey; uitleg: TextKey }> = [
+    { id: 'omsi', naam: 'oo.omsi', uitleg: 'oo.kiesOmsi' },
+    { id: 'openomsi', naam: 'oo.openomsi', uitleg: 'oo.kiesOpenomsi' }
   ]
+  const reden: Record<SpelStand['voorstel']['reden'], TextKey> = {
+    draait: 'oo.reden.draait',
+    laatst: 'oo.reden.laatst',
+    alleen: 'oo.reden.alleen',
+    standaard: 'oo.reden.standaard'
+  }
   const oo = stand.openomsi
   return (
-    <section className="card" data-spelmotor={stand.motor}>
+    <section className="card" data-spelmotor={stand.keuze ?? ''}>
       <h2 className="section-title">{t(language, 'oo.titel')}</h2>
       <p className="note">{t(language, 'oo.intro')}</p>
-      <div className="animatie-keuzes" role="radiogroup" aria-label={t(language, 'oo.titel')}>
+      <div className="animatie-keuzes spel-keuzes" role="radiogroup" aria-label={t(language, 'oo.titel')}>
         {keuzes.map((keuze) => (
           <button
             key={keuze.id}
@@ -419,11 +426,27 @@ function SpelmotorKaart({ language }: { language: Language }): JSX.Element | nul
             data-motor={keuze.id}
             onClick={() => kies(keuze.id)}
           >
-            <b>{t(language, keuze.naam)}</b>
-            {keuze.uitleg && <span>{t(language, keuze.uitleg)}</span>}
+            <b>
+              {t(language, keuze.naam)}
+              {stand.kiezen && stand.voorstel.motor === keuze.id && (
+                <em className="spelkeuze-voorstel">
+                  {' '}
+                  · {t(language, 'oo.voorgesteld')}, {t(language, reden[stand.voorstel.reden])}
+                </em>
+              )}
+            </b>
+            <span>{t(language, keuze.uitleg)}</span>
           </button>
         ))}
       </div>
+      {stand.kiezen && (
+        <p className="note" style={{ marginTop: 10 }}>
+          {t(language, 'oo.nogNiet', {
+            spel: t(language, stand.voorstel.motor === 'openomsi' ? 'oo.openomsi' : 'oo.omsi'),
+            reden: t(language, reden[stand.voorstel.reden])
+          })}
+        </p>
+      )}
       {oo ? (
         <p className="note" style={{ marginTop: 10 }}>
           {t(language, 'oo.gevonden', {

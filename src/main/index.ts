@@ -99,12 +99,18 @@ import {
   KAN,
   MOTOR_NAAM,
   kiesMotor,
+  knopKanIn,
+  knoppenZonderMotoracties,
+  panelenZonderMotoracties,
   spelDraaitIn,
+  stelSpelVoor,
   welkeDraait,
   type Herkenning as SpelHerkenning,
-  type MotorId
+  type MotorId,
+  type MotorKeuzeUitslag,
+  type Voorstel
 } from '../core/spelmotor'
-import { OMSI_EXE, leesOmsi, omsiDraait, sluitVastgelopenOmsi, startOmsi } from '../core/motoren/omsi'
+import { OMSI_EXE, laatstGespeeldOmsi, leesOmsi, omsiDraait, sluitVastgelopenOmsi, startOmsi } from '../core/motoren/omsi'
 import {
   KetenWacht,
   OPENOMSI_EXE,
@@ -113,6 +119,7 @@ import {
   bouwDuty,
   bouwSituatieDuty,
   keyboardCfgVoorOpenOmsi,
+  laatstGespeeldOpenOmsi,
   laststnVoorOpenOmsi,
   leesLauncherConfig,
   openOmsiThuis,
@@ -1089,28 +1096,76 @@ function openOmsiNu(h?: SpelHerkenning): OpenOmsiInstallatie | undefined {
 }
 
 /**
- * Met welke motor START begint (ontwerp §7): de keuze in de instellingen, bij
- * "automatisch" wat er draait, anders de laatst gebruikte. Draait de andere al,
- * dan `anderSpel`: de app start nooit een tweede spel naast het eerste. Wie
- * meerijdt, rijdt in wat er draait.
+ * Met welk spel START begint (zie DE SPELKEUZE in core/spelmotor.ts): de keuze
+ * van de speler, en nooit stil een ander. Koos hij nog niet terwijl openOMSI er
+ * staat, dan `kiezen` met een voorstel; draait het andere spel al, dan
+ * `anderSpel`; koos hij openOMSI en is het er niet, dan `nietGevonden`. In al
+ * die gevallen start er niets.
+ *
+ * `herstart`: een dienst die al begon, gaat verder in het spel waarin hij
+ * begon -- dat staat bij de dienst, en is het spel dat het rijscherm noemt.
  */
-async function motorVoorStart(meerijden: boolean): Promise<{
-  motor: MotorId
-  anderSpel?: MotorId
-  h: SpelHerkenning
-  inst?: OpenOmsiInstallatie
-}> {
+async function motorVoorStart(herstart = false): Promise<
+  MotorKeuzeUitslag & {
+    voorstel: Voorstel
+    /** Het spel komt van de lopende dienst, niet van de instelling. */
+    vanDienst?: boolean
+    h: SpelHerkenning
+    inst?: OpenOmsiInstallatie
+  }
+> {
   const h = await herken(0)
   const inst = openOmsiNu(h)
-  const s = readSettings(userData())
   const draait = welkeDraait(h)
-  if (meerijden && draait) return { motor: draait, h, inst }
-  return { ...kiesMotor(s.spelmotor, draait, { openomsi: Boolean(inst) }, s.laatsteMotor), h, inst }
+  const gevonden = { openomsi: Boolean(inst) }
+  let pad: string | undefined
+  try {
+    pad = omsi()
+  } catch {
+    pad = undefined
+  }
+  const voorstel = stelSpelVoor(
+    draait,
+    { omsi: laatstGespeeldOmsi(pad), openomsi: inst ? laatstGespeeldOpenOmsi(openOmsiThuis()) : undefined },
+    gevonden
+  )
+  if (herstart && career?.activeDuty?.startedAt) {
+    return { ...kiesMotor(motorVanDienst(), draait, gevonden), voorstel, vanDienst: true, h, inst }
+  }
+  return { ...kiesMotor(readSettings(userData()).spelmotor, draait, gevonden, voorstel), voorstel, h, inst }
+}
+
+/** Waarom START niets begon, in één regel voor het logboek. */
+function geweigerdeStart(k: MotorKeuzeUitslag): string | undefined {
+  if (k.kiezen) return `nog geen spel gekozen (voorstel: ${MOTOR_NAAM[k.motor]})`
+  if (k.nietGevonden) return `${MOTOR_NAAM[k.motor]} gekozen, maar niet gevonden`
+  if (k.anderSpel) return `${MOTOR_NAAM[k.anderSpel]} draait al (gekozen: ${MOTOR_NAAM[k.motor]})`
+  return undefined
+}
+
+/** De fout voor het venster als START niets begon. */
+function weigerStart(k: MotorKeuzeUitslag): 'kiesSpel' | 'spelNietGevonden' | 'anderSpel' | undefined {
+  if (k.kiezen) return 'kiesSpel'
+  if (k.nietGevonden) return 'spelNietGevonden'
+  if (k.anderSpel) return 'anderSpel'
+  return undefined
 }
 
 /** De motor van de dienst die loopt; een dienst zonder `spel` is er een van OMSI 2. */
 function motorVanDienst(): MotorId {
   return career?.activeDuty?.spel?.motor === 'openomsi' ? 'openomsi' : 'omsi'
+}
+
+/**
+ * In welk spel er nu gereden wordt (ontwerp §4, `actieveMotor`): dat van de
+ * dienst die loopt, anders dat van de vrije rit, anders wat er draait; zonder
+ * dat alles OMSI 2. Bepaalt wat de telefoon, de overlay en de knoppen mogen
+ * (`KAN`). Kost niets: de herkenning is die van de laatste keer kijken.
+ */
+function actieveMotor(): MotorId {
+  if (career?.activeDuty?.startedAt) return motorVanDienst()
+  if (vrijeRit) return vrijeRit.motor ?? 'omsi'
+  return welkeDraait(laatsteHerkenning) ?? 'omsi'
 }
 
 /*
@@ -2339,7 +2394,6 @@ async function beginInOpenOmsi(
       }
     })
   }
-  writeSettings(userData(), { laatsteMotor: 'openomsi' })
   ketenWacht = undefined
   ketenStand = 'loopt'
   // Het startscherm van OMSI 2 blijft van OMSI: niets om later terug te zetten.
@@ -3197,12 +3251,23 @@ let opdrachtNr = 0
 
 function omsiToets(actie: string): boolean {
   /*
-   * openOMSI: onze plugin laadt daar niet, dus een toets via opdracht.txt komt
-   * nergens aan (ontwerp §3.5). Kaartje en wisselgeld blijven daar grijs; de
-   * scripttriggers komen met de Lua-brug (0.8.0).
+   * openOMSI (ontwerp §3.5): onze plugin laadt daar niet, dus een toets via
+   * opdracht.txt komt nergens aan. De motoracties (kaartje, wisselgeld,
+   * knipperlicht, handrem, koplampen) kunnen daar nooit via de app -- ze staan
+   * er ook niet (keuze van Luc); de scripttriggers (IBIS, AFR, LAWO) komen met
+   * de Lua-brug (0.8.0, `KAN.openomsi.knopOpNaam`).
    */
-  if (laatsteHerkenning && laatsteHerkenning.omsi.length === 0 && laatsteHerkenning.openomsi.length > 0) {
-    log(`toets ${actie}: openOMSI draait, en knoppen via de app kunnen daar nog niet; niet ingedrukt`)
+  const draaitAlleenOpenOmsi = Boolean(
+    laatsteHerkenning && laatsteHerkenning.omsi.length === 0 && laatsteHerkenning.openomsi.length > 0
+  )
+  const motor: MotorId = draaitAlleenOpenOmsi ? 'openomsi' : actieveMotor()
+  const naamNu = (OMSI_TOETSEN as Record<string, string>)[actie] ?? actie
+  if (!knopKanIn(KAN[motor], naamNu)) {
+    log(`toets ${naamNu}: een motoractie, en die staat niet in openOMSI; niet ingedrukt`)
+    return false
+  }
+  if (motor === 'openomsi' && !KAN.openomsi.knopOpNaam) {
+    log(`toets ${naamNu}: openOMSI, en knoppen via de app kunnen daar nog niet; niet ingedrukt`)
     return false
   }
   /*
@@ -4268,6 +4333,7 @@ function pushFrame(): void {
   const duty = currentDuty()
   const status = live ? describeLive(live, duty, nulmeting(), busApparaten(live)) : undefined
   const vehicle = vehicleOnMap(live, duty)
+  const motorNu = actieveMotor()
   const frame = {
     connected: Boolean(live?.alive),
     laadt: laadtOmsi(Boolean(live?.alive)),
@@ -4288,8 +4354,14 @@ function pushFrame(): void {
      * een handvol regels.
      */
     kaartjes: kaartsetVoorOverlay(duty?.mapFolder ?? vrijeRit?.mapFolder),
-    knoppen: busknoppen(),
-    panelen: busPanelen(live),
+    knoppen: knoppenZonderMotoracties(busknoppen(), KAN[motorNu]),
+    panelen: panelenZonderMotoracties(busPanelen(live), KAN[motorNu]),
+    /*
+     * In welk spel er gereden wordt; alleen bij openOMSI, zodat het beeld voor
+     * OMSI 2 teken voor teken blijft wat het was. De telefoon laat dan de
+     * motoracties weg (kaartje, wisselgeld; zie MOTOR_ACTIES).
+     */
+    motor: motorNu === 'openomsi' ? motorNu : undefined,
     busmodules: busmoduleLijst(live),
     /*
      * Wie er rijdt, met zijn personeelsnummer en pincode. Die gaan mee zodat de
@@ -4341,6 +4413,7 @@ function frameVoorApparaat(frame: {
   panelen?: unknown
   busmodules?: unknown
   vrij?: unknown
+  motor?: MotorId
   telefoon: TelefoonStand
   bedrijf?: BedrijfRit
   onderweg?: OnderwegBeeld
@@ -4365,6 +4438,8 @@ function frameVoorApparaat(frame: {
     knoppen: frame.knoppen,
     panelen: frame.panelen,
     busmodules: frame.busmodules,
+    // Het spel, zodat de tablet net als de overlay de motoracties weglaat in openOMSI.
+    motor: frame.motor,
     telefoon: frame.telefoon,
     // Het bedrijf mag mee: een lijn en een telling uit een spel, niets van de chauffeur zelf.
     bedrijf: frame.bedrijf,
@@ -6088,13 +6163,23 @@ function registerHandlers(): void {
       return { running: false, launched: false, klaargezet: 'niets', fout: 'bekijken' }
     }
     /*
-     * In welk spel (ontwerp openomsi-koppeling §7). Draait het andere spel al,
-     * dan start er niets: nooit een tweede spel naast het eerste.
+     * In welk spel (core/spelmotor.ts, DE SPELKEUZE). Nog niet gekozen, het
+     * andere spel draait al, of het gekozen spel is er niet: dan start er
+     * niets -- nooit een tweede spel naast het eerste, en nooit stil een ander.
      */
     const keuze = await motorVoorStart(false)
-    if (keuze.anderSpel) {
-      log(`vrij rijden geweigerd: ${MOTOR_NAAM[keuze.anderSpel]} draait al (gekozen: ${MOTOR_NAAM[keuze.motor]})`)
-      return { running: true, launched: false, klaargezet: 'niets', fout: 'anderSpel', foutTekst: MOTOR_NAAM[keuze.anderSpel] }
+    const fout = weigerStart(keuze)
+    if (fout) {
+      log(`vrij rijden geweigerd: ${geweigerdeStart(keuze)}`)
+      return {
+        running: Boolean(keuze.anderSpel),
+        launched: false,
+        klaargezet: 'niets',
+        fout,
+        foutTekst: keuze.anderSpel ? MOTOR_NAAM[keuze.anderSpel] : MOTOR_NAAM[keuze.motor],
+        motor: keuze.motor,
+        voorstel: keuze.kiezen ? keuze.voorstel : undefined
+      }
     }
     const inOpenOmsi = keuze.motor === 'openomsi'
     const instellingen = readSettings(userData())
@@ -6180,7 +6265,6 @@ function registerHandlers(): void {
       datum: iso,
       motor: keuze.motor
     }
-    if (uitkomst.launched || running) writeSettings(userData(), { laatsteMotor: keuze.motor })
 
     const plek = uitkomst.plek
     const weerVan = uitkomst.situatie?.weerVan
@@ -6325,20 +6409,24 @@ function registerHandlers(): void {
       return { connected: false, launched: false, running: false, fout: 'bekijken' }
     }
     /*
-     * In welk spel (ontwerp openomsi-koppeling §7). Opnieuw starten na een
-     * crash gebeurt in het spel waarin de dienst begon. Draait het andere spel
-     * al, dan begint er niets: nooit een tweede spel naast het eerste.
+     * In welk spel (core/spelmotor.ts, DE SPELKEUZE). Opnieuw starten na een
+     * crash gebeurt in het spel waarin de dienst begon. Nog niet gekozen, het
+     * andere spel draait al, of het gekozen spel is er niet: dan begint er
+     * niets, en het venster zegt waarom (of vraagt de keuze).
      */
-    const keuze = await motorVoorStart(request.meerijden === true)
-    if (request.herstart && career?.activeDuty?.startedAt && !keuze.anderSpel) {
-      keuze.motor = motorVanDienst() === 'openomsi' && keuze.inst ? 'openomsi' : keuze.motor
-    }
-    if (keuze.anderSpel) {
-      log(
-        `dienst niet begonnen: ${MOTOR_NAAM[keuze.anderSpel]} draait al (gekozen: ${MOTOR_NAAM[keuze.motor]}), ` +
-          `${duty?.mapFolder ?? '?'} omloop ${duty?.tourNumber ?? '?'}`
-      )
-      return { connected: false, launched: false, running: false, fout: 'anderSpel', motor: keuze.motor, anderSpel: keuze.anderSpel }
+    const keuze = await motorVoorStart(request.herstart === true)
+    const fout = weigerStart(keuze)
+    if (fout) {
+      log(`dienst niet begonnen: ${geweigerdeStart(keuze)}, ${duty?.mapFolder ?? '?'} omloop ${duty?.tourNumber ?? '?'}`)
+      return {
+        connected: false,
+        launched: false,
+        running: false,
+        fout,
+        motor: keuze.motor,
+        anderSpel: keuze.anderSpel,
+        voorstel: keuze.kiezen ? keuze.voorstel : undefined
+      }
     }
     if (keuze.motor === 'openomsi') return beginInOpenOmsi(request, keuze)
     if (career?.activeDuty && !career.activeDuty.startedAt) {
@@ -6469,7 +6557,6 @@ function registerHandlers(): void {
     omsiDraaide = running || launched
     spelDraaide = omsiDraaide
     bus3dVenster?.omsiGewijzigd(omsiDraaide)
-    if (running || launched) writeSettings(userData(), { laatsteMotor: 'omsi' })
     return {
       connected: Boolean(live?.alive),
       launched,
@@ -6496,13 +6583,15 @@ function registerHandlers(): void {
   })
 
   /**
-   * Welk spel START nu zou nemen, wat er gevonden is en wat er (nog) niet kan
-   * (ontwerp openomsi-koppeling §7). Voor de instellingen, de busstap en het
-   * rijscherm.
+   * Welk spel START nu zou nemen, wat de speler koos, wat de app voorstelt als
+   * hij nog niet koos, wat er gevonden is en wat er (nog) niet kan (ontwerp
+   * openomsi-koppeling §7; DE SPELKEUZE in core/spelmotor.ts). Voor de
+   * instellingen, de busstap en het rijscherm. Loopt er een dienst, dan is het
+   * spel dat van de dienst.
    */
   handle('spel:stand', async (): Promise<SpelStand> => {
     const s = readSettings(userData())
-    const k = await motorVoorStart(false)
+    const k = await motorVoorStart(Boolean(career?.activeDuty?.startedAt))
     const inst = k.inst
     const tempSpel = [...k.h.openomsi, ...k.h.launchers].some((p) => p.uitTemp)
     const waarschuwingen: SpelStand['waarschuwingen'] = []
@@ -6516,8 +6605,12 @@ function registerHandlers(): void {
       inOmsiMap = false
     }
     return {
-      keuze: s.spelmotor ?? 'automatisch',
+      keuze: s.spelmotor,
       motor: k.motor,
+      kiezen: k.kiezen === true,
+      voorstel: k.voorstel,
+      nietGevonden: k.nietGevonden === true,
+      vanDienst: k.vanDienst === true,
       draait: welkeDraait(k.h),
       anderSpel: k.anderSpel,
       openomsi: inst

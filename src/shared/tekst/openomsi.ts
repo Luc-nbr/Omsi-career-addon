@@ -1,26 +1,75 @@
 /*
  * Teksten van de koppeling met openOMSI (design/ontwerpen/openomsi-koppeling.md
- * §7): de keuze in welk spel START begint, wat er gevonden is, en eerlijk wat
- * er in openOMSI (nog) niet kan. In 0.7.0 is dat: geen overlay en geen live
- * gegevens (die komen met de Lua-brug in 0.8.0), en kaartje en wisselgeld
- * blijven grijs. De afrekening komt na afloop uit openOMSI zelf.
+ * §7) en van de spelkeuze van Luc (01-10): "Spel: OMSI 2 / openOMSI", door de
+ * speler zelf gekozen, bij de eerste START voorgesteld, altijd te wijzigen. In
+ * 0.7.0 geeft openOMSI de app geen live-gegevens (die komen met de Lua-brug in
+ * 0.8.0); de motoracties (kaartje, wisselgeld, knipperlicht, handrem,
+ * koplampen) staan in openOMSI niet. De afrekening komt na afloop uit
+ * openOMSI zelf.
  */
 export const TEKST_OPENOMSI = {
-  'oo.titel': { en: 'Drive in', de: 'Fahren in', fr: 'Conduire dans', nl: 'Rijden in' },
+  'oo.titel': { en: 'Game', de: 'Spiel', fr: 'Jeu', nl: 'Spel' },
   'oo.intro': {
-    en: 'Which game START opens. Automatic takes the game that is running, otherwise the one you used last. The app never starts a second game next to one that runs.',
-    de: 'Welches Spiel START öffnet. Automatisch nimmt das laufende Spiel, sonst das zuletzt benutzte. Die App startet nie ein zweites Spiel neben einem laufenden.',
-    fr: 'Le jeu qu’ouvre DÉPART. Automatique prend le jeu en cours, sinon le dernier utilisé. L’app ne lance jamais un second jeu à côté d’un jeu en cours.',
-    nl: 'Welk spel START opent. Automatisch neemt het spel dat draait, anders het laatst gebruikte. De app start nooit een tweede spel naast een spel dat draait.'
+    en: 'The game in which START begins your duties and free drives. You choose it yourself; the app never switches on its own. If the other game is already running, START says so and starts nothing.',
+    de: 'Das Spiel, in dem START deine Dienste und freien Fahrten beginnt. Du wählst es selbst; die App wechselt nie von sich aus. Läuft schon das andere Spiel, sagt START das und startet nichts.',
+    fr: 'Le jeu dans lequel DÉPART lance vos services et trajets libres. Vous le choisissez vous-même ; l’app ne change jamais d’elle-même. Si l’autre jeu tourne déjà, DÉPART le dit et ne lance rien.',
+    nl: 'Het spel waarin START je diensten en vrije ritten begint. Je kiest het zelf; de app wisselt nooit uit zichzelf. Draait het andere spel al, dan zegt START dat en start er niets.'
   },
   'oo.omsi': { en: 'OMSI 2', de: 'OMSI 2', fr: 'OMSI 2', nl: 'OMSI 2' },
   'oo.openomsi': { en: 'openOMSI', de: 'openOMSI', fr: 'openOMSI', nl: 'openOMSI' },
-  'oo.automatisch': { en: 'Automatic', de: 'Automatisch', fr: 'Automatique', nl: 'Automatisch' },
-  'oo.automatischUitleg': {
-    en: 'the game that runs, else the last one',
-    de: 'das laufende Spiel, sonst das letzte',
-    fr: 'le jeu en cours, sinon le dernier',
-    nl: 'het spel dat draait, anders het laatste'
+  'oo.voorgesteld': { en: 'suggested', de: 'vorgeschlagen', fr: 'suggéré', nl: 'voorgesteld' },
+  'oo.reden.draait': { en: 'running now', de: 'läuft gerade', fr: 'tourne en ce moment', nl: 'draait nu' },
+  'oo.reden.laatst': { en: 'played last', de: 'zuletzt gespielt', fr: 'joué en dernier', nl: 'laatst gespeeld' },
+  'oo.reden.alleen': { en: 'the only one here', de: 'das einzige hier', fr: 'le seul ici', nl: 'het enige hier' },
+  'oo.reden.standaard': { en: 'as before', de: 'wie bisher', fr: 'comme avant', nl: 'zoals altijd' },
+  'oo.nogNiet': {
+    en: 'Not chosen yet. START asks once; suggested: {spel} ({reden}).',
+    de: 'Noch nicht gewählt. START fragt einmal; vorgeschlagen: {spel} ({reden}).',
+    fr: 'Pas encore choisi. DÉPART demande une fois ; suggéré : {spel} ({reden}).',
+    nl: 'Nog niet gekozen. START vraagt het één keer; voorgesteld: {spel} ({reden}).'
+  },
+  'oo.kiesTitel': {
+    en: 'Which game do you drive in?',
+    de: 'In welchem Spiel fährst du?',
+    fr: 'Dans quel jeu conduisez-vous ?',
+    nl: 'In welk spel rijd je?'
+  },
+  'oo.kiesUitleg': {
+    en: 'OMSI 2 and openOMSI are both on this PC. Choose where the app starts your duties and free drives. You can change it any time: next to START and under Settings > App > Game.',
+    de: 'OMSI 2 und openOMSI sind beide auf diesem PC. Wähle, wo die App deine Dienste und freien Fahrten startet. Du kannst es jederzeit ändern: neben START und unter Einstellungen > App > Spiel.',
+    fr: 'OMSI 2 et openOMSI sont tous deux sur ce PC. Choisissez où l’app lance vos services et trajets libres. Vous pouvez le changer à tout moment : à côté de DÉPART et dans Réglages > App > Jeu.',
+    nl: 'OMSI 2 en openOMSI staan allebei op deze pc. Kies waarin de app je diensten en vrije ritten start. Je kunt het altijd wijzigen: naast START en onder Instellingen > App > Spel.'
+  },
+  'oo.kiesOmsi': {
+    en: 'The original. Everything the app can do, with the overlay while driving.',
+    de: 'Das Original. Alles, was die App kann, mit dem Overlay beim Fahren.',
+    fr: 'L’original. Tout ce que l’app sait faire, avec l’overlay en conduisant.',
+    nl: 'Het origineel. Alles wat de app kan, met de overlay tijdens het rijden.'
+  },
+  'oo.kiesOpenomsi': {
+    en: 'The new engine. Starting, stopping and the settlement afterwards; live data while driving comes in 0.8.0.',
+    de: 'Die neue Engine. Starten, Beenden und die Abrechnung danach; Live-Daten beim Fahren kommen in 0.8.0.',
+    fr: 'Le nouveau moteur. Démarrer, arrêter et le décompte après ; les données en direct arrivent en 0.8.0.',
+    nl: 'De nieuwe engine. Starten, stoppen en de afrekening achteraf; live-gegevens tijdens het rijden komen in 0.8.0.'
+  },
+  'oo.terug': { en: 'Back', de: 'Zurück', fr: 'Retour', nl: 'Terug' },
+  'oo.gekozen': {
+    en: 'Game: {spel}. Press START again.',
+    de: 'Spiel: {spel}. Drücke noch einmal START.',
+    fr: 'Jeu : {spel}. Appuyez à nouveau sur DÉPART.',
+    nl: 'Spel: {spel}. Druk nog eens op START.'
+  },
+  'oo.vanDienst': {
+    en: 'this duty runs in {spel}',
+    de: 'dieser Dienst läuft in {spel}',
+    fr: 'ce service roule dans {spel}',
+    nl: 'deze dienst rijdt in {spel}'
+  },
+  'oo.nietGevondenStart': {
+    en: 'openOMSI is chosen, but it was not found next to OMSI 2. Unpack openOMSI into the OMSI 2 folder, or choose OMSI 2 next to START.',
+    de: 'openOMSI ist gewählt, wurde aber neben OMSI 2 nicht gefunden. Entpacke openOMSI in den OMSI-2-Ordner oder wähle OMSI 2 neben START.',
+    fr: 'openOMSI est choisi, mais introuvable à côté d’OMSI 2. Décompressez openOMSI dans le dossier OMSI 2, ou choisissez OMSI 2 à côté de DÉPART.',
+    nl: 'openOMSI is gekozen, maar staat niet naast OMSI 2. Pak openOMSI uit in de OMSI 2-map, of kies OMSI 2 naast START.'
   },
   'oo.gevonden': {
     en: 'Found: openOMSI {versie} ({map})',
@@ -42,10 +91,10 @@ export const TEKST_OPENOMSI = {
     nl: 'openOMSI staat niet naast OMSI 2. Wie erin wil rijden, pakt openOMSI uit in de OMSI 2-map.'
   },
   'oo.zonderLive': {
-    en: 'openOMSI does not pass live data to the app yet: no overlay while driving, and ticket and change stay grey. Kilometres, stops, early and late, collisions and jolts come afterwards from openOMSI itself, when the game ends normally. Live data follows in version 0.8.0.',
-    de: 'openOMSI gibt der App noch keine Live-Daten: kein Overlay beim Fahren, Fahrschein und Wechselgeld bleiben grau. Kilometer, Haltestellen, zu früh und zu spät, Unfälle und Rucke kommen danach von openOMSI selbst, wenn das Spiel normal endet. Live-Daten folgen in Version 0.8.0.',
-    fr: 'openOMSI ne transmet pas encore de données en direct à l’app : pas d’overlay en conduisant, et billet et monnaie restent grisés. Kilomètres, arrêts, en avance et en retard, collisions et secousses viennent ensuite d’openOMSI lui-même, quand le jeu se termine normalement. Les données en direct arrivent avec la version 0.8.0.',
-    nl: 'openOMSI geeft de app nog geen live-gegevens: geen overlay tijdens het rijden, en kaartje en wisselgeld blijven grijs. Kilometers, haltes, te vroeg en te laat, aanrijdingen en schokken komen achteraf uit openOMSI zelf, als het spel netjes eindigt. Live-gegevens volgen in versie 0.8.0.'
+    en: 'openOMSI does not pass live data to the app yet: no overlay while driving. Kilometres, stops, early and late, collisions and jolts come afterwards from openOMSI itself, when the game ends normally. Live data follows in version 0.8.0. Ticket, change, indicators, handbrake and headlights are handled by openOMSI itself; the app has no buttons for them there.',
+    de: 'openOMSI gibt der App noch keine Live-Daten: kein Overlay beim Fahren. Kilometer, Haltestellen, zu früh und zu spät, Unfälle und Rucke kommen danach von openOMSI selbst, wenn das Spiel normal endet. Live-Daten folgen in Version 0.8.0. Fahrschein, Wechselgeld, Blinker, Handbremse und Scheinwerfer regelt openOMSI selbst; die App hat dort keine Knöpfe dafür.',
+    fr: 'openOMSI ne transmet pas encore de données en direct à l’app : pas d’overlay en conduisant. Kilomètres, arrêts, en avance et en retard, collisions et secousses viennent ensuite d’openOMSI lui-même, quand le jeu se termine normalement. Les données en direct arrivent avec la version 0.8.0. Billet, monnaie, clignotants, frein à main et phares sont gérés par openOMSI lui-même ; l’app n’a pas de boutons pour eux là-bas.',
+    nl: 'openOMSI geeft de app nog geen live-gegevens: geen overlay tijdens het rijden. Kilometers, haltes, te vroeg en te laat, aanrijdingen en schokken komen achteraf uit openOMSI zelf, als het spel netjes eindigt. Live-gegevens volgen in versie 0.8.0. Kaartje, wisselgeld, knipperlicht, handrem en koplampen regelt openOMSI zelf; daar heeft de app geen knoppen voor.'
   },
   'oo.koppelingNog': {
     en: 'Link with openOMSI (the omsihub plugin): comes in version 0.8.0.',
@@ -67,10 +116,10 @@ export const TEKST_OPENOMSI = {
   },
   'oo.startIn': { en: 'Start in openOMSI', de: 'In openOMSI starten', fr: 'Démarrer dans openOMSI', nl: 'Start in openOMSI' },
   'oo.anderSpel': {
-    en: '{spel} is already running, and the app never starts a second game. Close {spel} first, or choose it under Settings > App > Drive in.',
-    de: '{spel} läuft bereits, und die App startet nie ein zweites Spiel. Schließe {spel} zuerst oder wähle es unter Einstellungen > App > Fahren in.',
-    fr: '{spel} tourne déjà, et l’app ne lance jamais un second jeu. Fermez d’abord {spel}, ou choisissez-le dans Réglages > App > Conduire dans.',
-    nl: '{spel} draait al, en de app start nooit een tweede spel. Sluit {spel} eerst, of kies het onder Instellingen > App > Rijden in.'
+    en: '{spel} is already running, and the app never starts a second game. Close {spel} first, or choose {spel} next to START.',
+    de: '{spel} läuft bereits, und die App startet nie ein zweites Spiel. Schließe {spel} zuerst oder wähle {spel} neben START.',
+    fr: '{spel} tourne déjà, et l’app ne lance jamais un second jeu. Fermez d’abord {spel}, ou choisissez {spel} à côté de DÉPART.',
+    nl: '{spel} draait al, en de app start nooit een tweede spel. Sluit {spel} eerst, of kies {spel} naast START.'
   },
   'oo.gestart': {
     en: 'The duty starts in openOMSI. There is no overlay there yet (0.8.0); the settlement follows from openOMSI when you end the game.',
@@ -144,10 +193,10 @@ export const TEKST_OPENOMSI = {
     fr: 'Du/des trajet(s) openOMSI {pids} : {km} km, {haltes} arrêts, {vroeg} en avance, {laat} en retard, {kaartjes} billets, {aanrijdingen} collisions, {schokken} secousses.',
     nl: 'Uit openOMSI-rit(ten) {pids}: {km} km, {haltes} haltes, {vroeg} te vroeg, {laat} te laat, {kaartjes} kaartjes, {aanrijdingen} aanrijdingen, {schokken} schokken.'
   },
-  'oo.kaartjeGrijs': {
-    en: 'Ticket and change: not in openOMSI (openOMSI handles them itself)',
-    de: 'Fahrschein und Wechselgeld: nicht in openOMSI (openOMSI regelt sie selbst)',
-    fr: 'Billet et monnaie : pas dans openOMSI (openOMSI les gère lui-même)',
-    nl: 'Kaartje en wisselgeld: niet in openOMSI (openOMSI handelt die zelf af)'
+  'oo.motorknoppenWeg': {
+    en: 'Ticket, change, indicators, handbrake and headlights: not in openOMSI (openOMSI handles them itself)',
+    de: 'Fahrschein, Wechselgeld, Blinker, Handbremse und Scheinwerfer: nicht in openOMSI (openOMSI regelt sie selbst)',
+    fr: 'Billet, monnaie, clignotants, frein à main et phares : pas dans openOMSI (openOMSI les gère lui-même)',
+    nl: 'Kaartje, wisselgeld, knipperlicht, handrem en koplampen: niet in openOMSI (openOMSI regelt die zelf)'
   }
 } as const satisfies Record<string, { en: string; de: string; fr: string; nl: string }>
