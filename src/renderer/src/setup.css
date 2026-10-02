@@ -4435,3 +4435,109 @@
   border: 1px dashed var(--vel-rand);
   font-weight: 600;
 }
+
+/* ---------- de spelkeuze: OMSI 2 of openOMSI (SpelKeuze.tsx) ---------- */
+
+/*
+ * "Spel: OMSI 2 | openOMSI", naast START. Even hoog als de knoppen ernaast,
+ * zodat de rij één rij blijft; staat er alleen OMSI 2, dan is hij er niet.
+ */
+.spelschakelaar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 62px;
+  padding: 0 8px 0 14px;
+  border: 1px solid var(--vel-rand);
+  border-radius: 12px;
+  background: var(--vel);
+  color: var(--vel-ink);
+  box-shadow: var(--vel-schaduw);
+}
+
+.spelschakelaar-kop {
+  margin-right: 6px;
+  color: var(--vel-zacht);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.spelschakelaar button {
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--vel-ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.spelschakelaar button:hover:not(:disabled) {
+  border-color: var(--vel-zacht);
+}
+
+.spelschakelaar button[aria-checked='true'] {
+  border-color: var(--route);
+  background: rgba(42, 117, 247, 0.12);
+  box-shadow: 0 0 0 1px var(--route);
+}
+
+/* Nog niet gekozen: het voorstel draagt een stip. */
+.spelschakelaar button[data-voorstel='ja']::after {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 7px;
+  border-radius: 50%;
+  background: var(--route);
+  vertical-align: middle;
+}
+
+.spelschakelaar button:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.spelschakelaar button:focus-visible {
+  outline: 2px solid var(--route);
+  outline-offset: 2px;
+}
+
+.spelkeuze-keuzes {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 18px;
+}
+
+.spelkeuze-voorstel {
+  color: var(--route);
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 600;
+}
+
+/* Op een laag venster zijn de knoppen lager (zie hierboven); de schakelaar gaat mee. */
+@media (max-height: 640px) {
+  .spelschakelaar {
+    height: 52px;
+  }
+
+  .spelschakelaar button {
+    height: 38px;
+  }
+}
+
+/* Twee spellen, dus twee kolommen (de animaties hebben er drie). */
+.spel-keuzes {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 700px) {
+  .spel-keuzes {
+    grid-template-columns: 1fr;
+  }
+}

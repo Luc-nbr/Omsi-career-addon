@@ -169,6 +169,17 @@ export interface Settings {
    * vandaar uit.
    */
   meetstand?: boolean
+  /**
+   * In welk spel START een dienst of vrije rit begint: OMSI 2 of openOMSI. De
+   * speler kiest het zelf (keuze van Luc, 01-10); zonder keuze en met openOMSI
+   * gevonden stelt de app er een voor en vraagt het bij de eerste START. Zonder
+   * openOMSI is er niets te kiezen. Zie core/spelmotor.ts, DE SPELKEUZE.
+   */
+  spelmotor?: 'omsi' | 'openomsi'
+}
+
+function geldigeMotorKeuze(waarde: unknown): Settings['spelmotor'] {
+  return waarde === 'omsi' || waarde === 'openomsi' ? waarde : undefined
 }
 
 export interface Bus3dVensterPlek {
@@ -279,7 +290,8 @@ export function readSettings(userDataPath: string): Settings {
       busknoppenStraks: geldigeWachtrij(raw.busknoppenStraks),
       bus3d: raw.bus3d === true ? true : undefined,
       bus3dVenster: geldigeVensterPlek(raw.bus3dVenster),
-      meetstand: raw.meetstand === true ? true : undefined
+      meetstand: raw.meetstand === true ? true : undefined,
+      spelmotor: geldigeMotorKeuze(raw.spelmotor)
     }
   } catch {
     return {
@@ -377,7 +389,8 @@ export function writeSettings(userDataPath: string, settings: Partial<Settings>)
         : current.busknoppenStraks,
     bus3d: typeof settings.bus3d === 'boolean' ? settings.bus3d || undefined : current.bus3d,
     bus3dVenster: settings.bus3dVenster ? (geldigeVensterPlek(settings.bus3dVenster) ?? current.bus3dVenster) : current.bus3dVenster,
-    meetstand: typeof settings.meetstand === 'boolean' ? settings.meetstand || undefined : current.meetstand
+    meetstand: typeof settings.meetstand === 'boolean' ? settings.meetstand || undefined : current.meetstand,
+    spelmotor: geldigeMotorKeuze(settings.spelmotor) ?? current.spelmotor
   }
   const path = settingsPath(userDataPath)
   mkdirSync(dirname(path), { recursive: true })

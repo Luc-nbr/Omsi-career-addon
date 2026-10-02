@@ -14,6 +14,7 @@ import { formatTime } from "../../shared/format";
 import { punctuality } from "../../shared/status";
 import { t, type Language, type TextKey } from "../../shared/i18n";
 import {
+  isMotorActie,
   LEGE_TELEFOON,
   PLUGIN_VERSIE,
   type AanmeldUitslag,
@@ -256,6 +257,7 @@ export function Telefoon({
             />
           ) : app === "kaartjes" ? (
             <KaartjesApp
+              motoracties={frame.motor !== "openomsi"}
               set={frame.kaartjes}
               keuze={frame.status?.ticketKeuze}
               verkoop={frame.status?.verkoop}
@@ -1113,6 +1115,7 @@ const BRIEFJES = [2000, 1000, 500];
  * rekenen terwijl er iemand voor je staat.
  */
 function Verkoopscherm({
+  motoracties,
   verkoop,
   set,
   busKaartjes,
@@ -1120,6 +1123,8 @@ function Verkoopscherm({
   acties,
   language,
 }: {
+  /** Kaartje geven en wisselgeld teruggeven als toets van het spel; niet in openOMSI. */
+  motoracties: boolean;
   verkoop: Verkoop;
   set: Kaartset;
   busKaartjes?: string[];
@@ -1256,24 +1261,31 @@ function Verkoopscherm({
             binnen het spel draait. Staat OMSI niet vooraan, dan gebeurt er
             niets en zegt het volgende beeld dat.
           */}
-          <div className="verkoop-doen">
-            <button
-              type="button"
-              className="app-knop primair"
-              onClick={() => acties.toets("ticket_give")}
-            >
-              {t(language, "ovl.saleGiveTicket")}
-            </button>
-            {terug > 0 && (
+          {/*
+            In openOMSI niet: daar zet het spel kaartje en wisselgeld zelf, en
+            een plugin kan dat niet vragen (MOTOR_ACTIES in shared/telefoon.ts).
+            Weg, niet grijs -- keuze van Luc.
+          */}
+          {motoracties && (
+            <div className="verkoop-doen">
               <button
                 type="button"
-                className="app-knop"
-                onClick={() => acties.toets("change_give")}
+                className="app-knop primair"
+                onClick={() => acties.toets("ticket_give")}
               >
-                {t(language, "ovl.saleGiveChangeKey")}
+                {t(language, "ovl.saleGiveTicket")}
               </button>
-            )}
-          </div>
+              {terug > 0 && (
+                <button
+                  type="button"
+                  className="app-knop"
+                  onClick={() => acties.toets("change_give")}
+                >
+                  {t(language, "ovl.saleGiveChangeKey")}
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="verkoop-voet">
             {teruggegeven > 0 && (
@@ -1468,6 +1480,12 @@ function IbisApp({
    */
   const beschikbaar = frame.knoppen?.beschikbaar ?? [];
   const kan = (actie: string): boolean => beschikbaar.includes(actie);
+  /*
+   * In openOMSI staan de motoracties er niet (keuze van Luc): het hoofdproces
+   * haalt ze al uit de panelen, en een aanraakvlak op een nagebouwd scherm
+   * valt hier weg.
+   */
+  const verberg = (actie: string): boolean => frame.motor === "openomsi" && isMotorActie(actie);
   /*
    * De vorm van het nagebouwde scherm; die gaat niet met elk beeld mee maar
    * wordt één keer op id opgehaald.
@@ -1701,6 +1719,7 @@ function IbisApp({
               stand={paneel.scherm}
               textuurAdres={acties.textuurAdres}
               kan={kan}
+              verberg={verberg}
               toets={(actie) => acties.toets(actie)}
               fallback={vlakBeeld ?? undefined}
             />
@@ -1819,6 +1838,7 @@ function IbisApp({
             stand={paneel.scherm}
             textuurAdres={acties.textuurAdres}
             kan={kan}
+            verberg={verberg}
             toets={(actie) => acties.toets(actie)}
             fallback={vlakBeeld ?? undefined}
           />
@@ -1967,6 +1987,7 @@ function IbisApp({
 }
 
 function KaartjesApp({
+  motoracties = true,
   set,
   keuze,
   verkoop,
@@ -1976,6 +1997,8 @@ function KaartjesApp({
   acties,
   language,
 }: {
+  /** Mag de telefoon het spel om kaartje en wisselgeld vragen? Niet in openOMSI (keuze van Luc). */
+  motoracties?: boolean;
   set?: Kaartset;
   /** Wat er in de bus gekozen is (GivenTicket); dan hoeft het hier niet nog eens. */
   keuze?: number;
@@ -2074,6 +2097,7 @@ function KaartjesApp({
       */}
       {verkoop && (
         <Verkoopscherm
+          motoracties={motoracties}
           key={verkoopSleutel}
           verkoop={verkoop}
           set={set}

@@ -15,7 +15,8 @@ import type {
   OverlayKnoppen,
   OverlayKnopStand,
   OverlayReden,
-  Schakelbaar
+  Schakelbaar,
+  SpelStand
 } from '../../shared/api'
 import { MODIFIER_CODES, SCANCODES } from '../../shared/scancodes'
 import { ControllersTab } from './Controllers'
@@ -363,10 +364,108 @@ function redenTekst(language: Language, reden: OverlayReden | undefined): string
 function AppTab({ language }: { language: Language }): JSX.Element {
   return (
     <>
+      <SpelmotorKaart language={language} />
       <AnimatiesKaart language={language} />
       <Bus3dKaart language={language} />
       <MeetstandKaart language={language} />
     </>
+  )
+}
+
+/**
+ * SPEL: OMSI 2 OF openOMSI (keuze van Luc, 01-10; ontwerp openomsi-koppeling §7)
+ *
+ * Alleen als openomsi.exe gevonden is (of gekozen was); wie alleen OMSI 2
+ * heeft, ziet hier niets. De speler kiest zelf; er is geen "automatisch" en de
+ * app wisselt nooit uit zichzelf. Koos hij nog niet, dan staat het voorstel
+ * erbij (wat er draait, anders wat het laatst gespeeld is), en vraagt START het
+ * één keer. Daaronder wat er gevonden is, en eerlijk wat er in openOMSI (nog)
+ * niet kan.
+ */
+function SpelmotorKaart({ language }: { language: Language }): JSX.Element | null {
+  const [stand, setStand] = useState<SpelStand>()
+  const kijk = useCallback(() => {
+    void window.career
+      .spelStand()
+      .then(setStand)
+      .catch(() => undefined)
+  }, [])
+  useEffect(() => {
+    kijk()
+    const klok = setInterval(kijk, 5000)
+    return () => clearInterval(klok)
+  }, [kijk])
+  if (!stand || (!stand.openomsi && stand.keuze !== 'openomsi')) return null
+  const kies = (keuze: 'omsi' | 'openomsi'): void => {
+    setStand({ ...stand, keuze, kiezen: false })
+    void window.career.saveSettings({ spelmotor: keuze }).then(kijk)
+  }
+  const keuzes: Array<{ id: 'omsi' | 'openomsi'; naam: TextKey; uitleg: TextKey }> = [
+    { id: 'omsi', naam: 'oo.omsi', uitleg: 'oo.kiesOmsi' },
+    { id: 'openomsi', naam: 'oo.openomsi', uitleg: 'oo.kiesOpenomsi' }
+  ]
+  const reden: Record<SpelStand['voorstel']['reden'], TextKey> = {
+    draait: 'oo.reden.draait',
+    laatst: 'oo.reden.laatst',
+    alleen: 'oo.reden.alleen',
+    standaard: 'oo.reden.standaard'
+  }
+  const oo = stand.openomsi
+  return (
+    <section className="card" data-spelmotor={stand.keuze ?? ''}>
+      <h2 className="section-title">{t(language, 'oo.titel')}</h2>
+      <p className="note">{t(language, 'oo.intro')}</p>
+      <div className="animatie-keuzes spel-keuzes" role="radiogroup" aria-label={t(language, 'oo.titel')}>
+        {keuzes.map((keuze) => (
+          <button
+            key={keuze.id}
+            type="button"
+            role="radio"
+            aria-checked={stand.keuze === keuze.id}
+            className="animatie-keuze"
+            data-motor={keuze.id}
+            onClick={() => kies(keuze.id)}
+          >
+            <b>
+              {t(language, keuze.naam)}
+              {stand.kiezen && stand.voorstel.motor === keuze.id && (
+                <em className="spelkeuze-voorstel">
+                  {' '}
+                  · {t(language, 'oo.voorgesteld')}, {t(language, reden[stand.voorstel.reden])}
+                </em>
+              )}
+            </b>
+            <span>{t(language, keuze.uitleg)}</span>
+          </button>
+        ))}
+      </div>
+      {stand.kiezen && (
+        <p className="note" style={{ marginTop: 10 }}>
+          {t(language, 'oo.nogNiet', {
+            spel: t(language, stand.voorstel.motor === 'openomsi' ? 'oo.openomsi' : 'oo.omsi'),
+            reden: t(language, reden[stand.voorstel.reden])
+          })}
+        </p>
+      )}
+      {oo ? (
+        <p className="note" style={{ marginTop: 10 }}>
+          {/* De versie staat in de exe (ProductVersion); is die niet te lezen, dan zonder, niet "openOMSI ?". */}
+          {oo.versie
+            ? t(language, 'oo.gevonden', { versie: oo.versie, map: oo.inOmsiMap ? t(language, 'oo.mapOmsi') : oo.map })
+            : t(language, 'oo.gevondenZonderVersie', { map: oo.inOmsiMap ? t(language, 'oo.mapOmsi') : oo.map })}
+          {!oo.launcher && ` ${t(language, 'oo.zonderLauncher')}`}
+        </p>
+      ) : (
+        <p className="note warn" style={{ marginTop: 10 }}>
+          {t(language, 'oo.nietGevonden')}
+        </p>
+      )}
+      {stand.waarschuwingen.includes('uitTemp') && <p className="note warn">{t(language, 'oo.uitTemp')}</p>}
+      {stand.waarschuwingen.includes('tweeSpellen') && <p className="note warn">{t(language, 'oo.tweeSpellen')}</p>}
+      {stand.waarschuwingen.includes('onzeker') && <p className="note warn">{t(language, 'oo.onzeker')}</p>}
+      <p className="note">{t(language, 'oo.zonderLive')}</p>
+      <p className="note">{t(language, 'oo.koppelingNog')}</p>
+    </section>
   )
 }
 
@@ -761,6 +860,8 @@ function KeysTab({ language }: { language: Language }): JSX.Element {
   const [names, setNames] = useState<Map<number, string>>(new Map())
   const [labels, setLabels] = useState<Map<string, string>>(new Map())
   const [running, setRunning] = useState(false)
+  /** Het eigen keyboard.cfg van openOMSI (de speler koos openOMSI): dat zegt de pagina erbij. */
+  const [vanOpenomsi, setVanOpenomsi] = useState(false)
   const [search, setSearch] = useState('')
   const [capturing, setCapturing] = useState<string>()
   const [note, setNote] = useState<string>()
@@ -774,6 +875,7 @@ function KeysTab({ language }: { language: Language }): JSX.Element {
         setNames(new Map(payload.keyNames))
         setLabels(new Map(payload.labels))
         setRunning(payload.omsiRunning)
+        setVanOpenomsi(payload.bestand === 'openomsi')
       })
       .catch((cause: unknown) =>
         setError(
@@ -857,6 +959,7 @@ function KeysTab({ language }: { language: Language }): JSX.Element {
   return (
     <>
       {running && <p className="note warn">{t(language, 'cfg.running')}</p>}
+      {vanOpenomsi && <p className="note">{t(language, 'oo.invoerToetsen')}</p>}
       <p className="note">{t(language, 'keys.intro')}</p>
 
       <div className="actions">

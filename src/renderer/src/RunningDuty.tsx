@@ -92,6 +92,12 @@ export function RunningDuty({
    * dit scherm dat kleur krijgt -- rood te laat, groen op tijd, blauw te vroeg --
    * en het staat groot, want dat is waar een chauffeur op stuurt.
    */
+  /*
+   * Een dienst in openOMSI (ontwerp openomsi-koppeling §7): daar komt in 0.7.0
+   * tijdens het rijden niets binnen. Dan zegt dit scherm hoe het spel ervoor
+   * staat, en dat de overlay er nog niet is -- niet "wacht op OMSI".
+   */
+  const openomsi = session?.spel?.motor === "openomsi" ? session.spel : undefined;
   const delay = session?.delayMinutes;
   const stand = punctuality(delay === undefined ? undefined : delay * 60);
   const verschil =
@@ -183,11 +189,18 @@ export function RunningDuty({
           </>
         ) : (
           <span className="running-wait">
-            {tr(laadt ? "run.loading" : "run.waiting")}
+            {openomsi
+              ? tr(`oo.status.${openomsi.stand}` as "oo.status.loopt")
+              : tr(laadt ? "run.loading" : "run.waiting")}
           </span>
         )}
       </div>
 
+      {openomsi && (
+        <p className="note running-status" data-openomsi={openomsi.stand}>
+          {tr("oo.zonderLive")}
+        </p>
+      )}
       <p className="note running-status">
         {connected
           ? tr("run.driven", { km: (session?.drivenKm ?? 0).toFixed(1) })
@@ -225,6 +238,8 @@ export function RunningDuty({
           type="button"
           className="btn secondary"
           onClick={onToggleOverlay}
+          disabled={Boolean(openomsi) && !overlayOpen}
+          title={openomsi ? tr("oo.overlayNiet") : undefined}
         >
           {tr(overlayOpen ? "act.overlayHide" : "act.overlayShow")}
         </button>

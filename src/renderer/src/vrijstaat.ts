@@ -52,6 +52,8 @@ export function vrijeStaatTekst(
         map: kaart,
         trip: staat.trip,
       });
+    case "openomsi":
+      return t(taal, "oo.vrijZonderLive");
     case "onbekend":
       return t(taal, "free.lost", {
         line: staat.line,

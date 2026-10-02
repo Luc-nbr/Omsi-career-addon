@@ -33,6 +33,8 @@ import {
   type HofOffer,
   type OmsiState,
   type SessionResult,
+  type SpelStand,
+  type SpelVoorstel,
   type YardOption,
   type Busmapinfo,
   type Busanalyseinfo,
@@ -76,6 +78,13 @@ import { Icoon } from "./Icoon";
 import { Starthub } from "./Starthub";
 import { Dienstpas } from "./Dienstpas";
 import { DraaitDialog } from "./DraaitDialog";
+import {
+  SpelDialog,
+  SpelSchakelaar,
+  spelNaam,
+  spelTeKiezen,
+  spelWeigering,
+} from "./SpelKeuze";
 import { HervatDialog } from "./HervatDialog";
 import { ThemaKnop, type Thema } from "./ThemaKnop";
 import { wisselThema } from "./themaOvergang";
@@ -701,6 +710,19 @@ export function App(): JSX.Element {
   }, []);
   /** Draait OMSI op dit moment? Gepeild op de busstap, vóór je op START drukt. */
   const [omsiDraaitAl, setOmsiDraaitAl] = useState(false);
+  /**
+   * In welk spel START begint: OMSI 2 of openOMSI (ontwerp
+   * openomsi-koppeling §7). Gepeild samen met `omsiDraaitAl`.
+   */
+  const [spelStand, setSpelStand] = useState<SpelStand>();
+  /*
+   * De vraag bij de eerste START (Lucs spelkeuze): openOMSI staat er en de
+   * speler koos nog niet. `verder` gaat na de keuze door met wat START deed.
+   */
+  const [spelVraag, setSpelVraag] = useState<{
+    voorstel: SpelVoorstel;
+    verder?: (stand: SpelStand) => void;
+  }>();
 
   // De taalkeuze staat los van de chauffeur; hij hoort bij deze computer.
   useEffect(() => {
@@ -807,6 +829,12 @@ export function App(): JSX.Element {
       void window.career.omsiRunning().then((draait) => {
         if (geldig) setOmsiDraaitAl(draait);
       });
+      void window.career
+        .spelStand()
+        .then((stand) => {
+          if (geldig) setSpelStand(stand);
+        })
+        .catch(() => undefined);
     };
     peil();
     const klok = setInterval(peil, 5000);
@@ -1708,6 +1736,30 @@ export function App(): JSX.Element {
           return false;
         }
         /*
+         * Het andere spel draait al, het gekozen spel is er niet, of er is nog
+         * niet gekozen (Lucs spelkeuze): er is niets gestart, en de app zegt
+         * waarom -- of vraagt het. Nooit stil een ander spel.
+         */
+        if (result.fout === "kiesSpel" && result.voorstel) {
+          setNote(undefined);
+          setSpelVraag({ voorstel: result.voorstel });
+          return false;
+        }
+        if (result.fout === "anderSpel" || result.fout === "spelNietGevonden") {
+          setNote(
+            spelWeigering((key, vars) => t(language, key, vars), {
+              anderSpel: result.anderSpel,
+              nietGevonden: result.fout === "spelNietGevonden",
+            }),
+          );
+          return false;
+        }
+        /* openOMSI draait al en rijdt zichtbaar iets anders: daar rijdt de dienst niet in mee. */
+        if (result.fout === "andereRit") {
+          setNote(t(language, "oo.andereRit", { rit: result.foutTekst ?? "?" }));
+          return false;
+        }
+        /*
          * Ook een `duty:begin` die gewoon terugkomt kan betekenen dat er niets
          * draait. Main vangt het starten van het spel af: zegt de speler nee
          * tegen het UAC-venster, lukt PowerShell niet, of staat er geen
@@ -1772,7 +1824,12 @@ export function App(): JSX.Element {
          * Meerijden: er is met opzet niets klaargezet, dus "alles staat klaar"
          * zou hier gewoon niet waar zijn. Wat er wel geldt staat in de overlay.
          */
-        if (result.meegereden) {
+        if (result.motor === "openomsi") {
+          /* openOMSI: geen startscherm om klaar te zetten en (nog) geen overlay; zie §7. */
+          lines.push(
+            t(language, result.meegereden ? "oo.meegereden" : "oo.gestart"),
+          );
+        } else if (result.meegereden) {
           lines.push(t(language, "start.riding"));
         } else if (result.prepareError) {
           lines.push(
@@ -1795,7 +1852,7 @@ export function App(): JSX.Element {
             );
           }
         }
-        if (result.running && !result.meegereden)
+        if (result.running && !result.meegereden && result.motor !== "openomsi")
           lines.push(t(language, "start.alreadyRunning"));
         setNote(lines.join(" "));
         return true;
@@ -1862,6 +1919,11 @@ export function App(): JSX.Element {
             ? { year: dag.year, dayOfYear: dag.dayOfYear, minutes: moment.minutes }
             : undefined,
       });
+      if (result.fout === "kiesSpel" && result.voorstel) {
+        setNote(undefined);
+        setSpelVraag({ voorstel: result.voorstel });
+        return;
+      }
       if (result.fout) {
         setNote(undefined);
         setError(vrijeFout(result));
@@ -1881,7 +1943,9 @@ export function App(): JSX.Element {
               : "free.alreadyRunning",
             { map: kaart },
           )
-        : result.start === "geweigerd"
+        : result.motor === "openomsi" && result.start === "gestart"
+          ? t(language, "oo.vrijGestart", { map: kaart, plek: waar })
+          : result.start === "geweigerd"
           ? t(language, "free.launchRefused")
           : result.start === "mislukt"
             ? t(language, "free.launchFailed", {
@@ -1949,27 +2013,80 @@ export function App(): JSX.Element {
         });
       case "bekijken":
         return t(language, "vw.start");
+      case "anderSpel":
+        return t(language, "oo.anderSpel", {
+          spel: ("foutTekst" in uit ? uit.foutTekst : undefined) ?? "OMSI",
+        });
+      case "spelNietGevonden":
+        return t(language, "oo.nietGevondenStart");
       default:
         return t(language, "free.noPlace", { map: kaart });
     }
   };
 
+  /*
+   * Op START drukken, met de stand van het spel van dit moment (Lucs
+   * spelkeuze). Koos de speler nog niet terwijl openOMSI er staat, dan eerst
+   * die vraag; draait het andere spel al of is het gekozen spel er niet, dan
+   * zegt START dat en begint er niets -- nooit stil een ander spel.
+   */
+  const drukOpStartMet = useCallback(
+    (stand: SpelStand | undefined) => {
+      if (stand?.kiezen) {
+        setSpelVraag({ voorstel: stand.voorstel, verder: drukOpStartMet });
+        return;
+      }
+      const weigering = stand
+        ? spelWeigering((key, vars) => t(language, key, vars), stand)
+        : undefined;
+      if (weigering) {
+        setNote(weigering);
+        return;
+      }
+      /*
+       * Vrij rijden heeft geen dienst om aan te nemen of mee te rijden: START zet
+       * de bus neer en start OMSI. Draait het al, dan zet het hoofdproces niets
+       * klaar en gaat de overlay meteen open; zie free:start.
+       */
+      if (mode === "free") {
+        void startVrij();
+        return;
+      }
+      /*
+       * De vraag "meerijden of klaarzetten?" is voor OMSI 2: dat leest zijn
+       * startscherm alleen bij het opstarten. openOMSI heeft geen startscherm om
+       * klaar te zetten; draait het al, dan rijdt de dienst daarin mee.
+       */
+      if (omsiDraaitAl && !started && stand?.motor !== "openomsi") {
+        setDraaitVraag(true);
+        return;
+      }
+      void startAlles();
+    },
+    [mode, omsiDraaitAl, started, startAlles, startVrij, language],
+  );
+
   const drukOpStart = useCallback(() => {
-    /*
-     * Vrij rijden heeft geen dienst om aan te nemen of mee te rijden: START zet
-     * de bus neer en start OMSI. Draait het al, dan zet het hoofdproces niets
-     * klaar en gaat de overlay meteen open; zie free:start.
-     */
-    if (mode === "free") {
-      void startVrij();
-      return;
-    }
-    if (omsiDraaitAl && !started) {
-      setDraaitVraag(true);
-      return;
-    }
-    void startAlles();
-  }, [mode, omsiDraaitAl, started, startAlles, startVrij]);
+    void window.career
+      .spelStand()
+      .then((stand) => {
+        setSpelStand(stand);
+        return stand;
+      })
+      .catch(() => spelStand)
+      .then((stand) => drukOpStartMet(stand));
+  }, [drukOpStartMet, spelStand]);
+
+  /** De speler kiest zijn spel (naast START of in de vraag); bewaard, en de stand opnieuw gepeild. */
+  const kiesSpel = useCallback(
+    async (motor: "omsi" | "openomsi"): Promise<SpelStand | undefined> => {
+      await window.career.saveSettings({ spelmotor: motor });
+      const stand = await window.career.spelStand().catch(() => undefined);
+      if (stand) setSpelStand(stand);
+      return stand;
+    },
+    [],
+  );
 
   /**
    * Carriere: examen afleggen op de aangewezen lijn.
@@ -2232,7 +2349,31 @@ export function App(): JSX.Element {
     /* Wat er over de rit te zeggen valt; dat komt in het hoofdmenu te staan. */
     let uitkomst: string | undefined;
     try {
-      const result = await window.career.checkSession();
+      let result = await window.career.checkSession();
+      /*
+       * Een dienst in openOMSI: zolang het spel draait of de afrekening nog
+       * onderweg is, eerst het spel netjes stoppen (`--cli stop`) en op het
+       * ritverslag wachten -- anders is er niets te boeken (ontwerp §5.3, §6).
+       */
+      const afgerekend = (r: SessionResult): boolean =>
+        r.spel?.motor !== "openomsi" ||
+        r.spel.stand === "klaar" ||
+        r.spel.stand === "onvolledig" ||
+        r.spel.stand === "anders" ||
+        r.spel.stand === "geenSpel";
+      if (!afgerekend(result)) {
+        setNote(t(language, "oo.stoppen"));
+        result = await window.career.stopSpel();
+      }
+      /*
+       * Kon de app openOMSI niet stoppen, dan draait het spel nog en is er
+       * niets af te rekenen: niets boeken (dat werd "onvolledig" met het volle
+       * loon), de dienst loopt door, en de speler hoort waarom.
+       */
+      if (!afgerekend(result)) {
+        setNote(t(language, "oo.stopMislukt"));
+        return;
+      }
       /*
        * Hoeveel stevige stops er bij deze dienst horen voordat het opvalt. Een
        * op de tien haltes, en minstens twee: op een rit van veertien haltes is
@@ -2275,6 +2416,9 @@ export function App(): JSX.Element {
               tickets: result.tickets,
               collisions: result.collisions,
               fuelUsed: result.fuelUsed,
+              teVroeg: result.spel?.teVroeg,
+              teLaat: result.spel?.teLaat,
+              bron: result.spel ? "openomsi" : undefined,
             },
           ),
         );
@@ -2310,6 +2454,29 @@ export function App(): JSX.Element {
                   },
                 )
             : t(language, "done.nothing");
+        /*
+         * Uit openOMSI: de cijfers van openOMSI zelf, in plaats van "vloeiend
+         * gereden" -- hard remmen meet openOMSI niet (zijn schokken zijn een
+         * andere maat, die staan erbij). Of dat er niets kwam, of alleen een
+         * andere rit.
+         */
+        if (result.spel?.stand === "klaar") {
+          uitkomst = t(language, "oo.afrekening", {
+            pids: result.spel.pids.join(", "),
+            km: (result.drivenKm ?? 0).toFixed(3),
+            haltes: result.spel.haltes ?? 0,
+            vroeg: result.spel.teVroeg ?? 0,
+            laat: result.spel.teLaat ?? 0,
+            kaartjes: result.tickets ?? 0,
+            aanrijdingen: result.collisions ?? 0,
+            schokken: result.spel.schokken ?? 0,
+          });
+          if (result.spel.meegereden) uitkomst = `${uitkomst} ${t(language, "oo.heelSpel")}`;
+        } else if (result.spel?.stand === "onvolledig") {
+          uitkomst = t(language, "oo.status.onvolledig");
+        } else if (result.spel?.stand === "anders") {
+          uitkomst = t(language, "oo.status.anders");
+        }
       }
       setDuties([]);
       setSelected(undefined);
@@ -3317,7 +3484,7 @@ export function App(): JSX.Element {
       <div className="omsimelding">
         <p>
           {omsiMelding.soort === "crash"
-            ? t(language, "omsi.crash", { tijd: omsiTijd })
+            ? t(language, omsiMelding.motor === "openomsi" ? "oo.crash" : "omsi.crash", { tijd: omsiTijd })
             : omsiMelding.soort === "vast"
               ? t(language, "omsi.vast", { tijd: omsiTijd })
               : t(language, "omsi.overlays", { namen: overlayNamen })}
@@ -3327,7 +3494,7 @@ export function App(): JSX.Element {
         </p>
         {omsiMelding.soort === "crash" && (
           <p className="omsimelding-klein">
-            {t(language, "omsi.herstartUitleg")}
+            {t(language, omsiMelding.motor === "openomsi" ? "oo.herstartUitleg" : "omsi.herstartUitleg")}
           </p>
         )}
         {omsiMelding.afgesloten && (
@@ -3357,7 +3524,7 @@ export function App(): JSX.Element {
                 });
               }}
             >
-              {t(language, "omsi.herstart")}
+              {t(language, omsiMelding.motor === "openomsi" ? "oo.herstart" : "omsi.herstart")}
             </button>
           )}
           {omsiMelding.soort === "vast" && omsiMelding.pid !== undefined && omsiMelding.afgesloten !== "al-dicht" && (
@@ -3721,7 +3888,16 @@ export function App(): JSX.Element {
        * loopbaan, en gaat mee als je in OMSI een andere omloop kiest.
        */
       verder: drukOpStart,
-      knop: t(language, "setup.start"),
+      knop: t(
+        language,
+        /*
+         * "Start in openOMSI" pas als de speler openOMSI koos. Zolang hij nog
+         * niet koos is `motor` het voorstel, en START vraagt eerst welk spel.
+         */
+        !spelStand?.kiezen && spelStand?.motor === "openomsi"
+          ? "oo.startIn"
+          : "setup.start",
+      ),
     };
 
     const vel = ((): {
@@ -5080,6 +5256,19 @@ export function App(): JSX.Element {
           }}
           startTekst={vel.knop}
           bezig={busy}
+          spelkeuze={
+            opzetStap === "bus" && spelStand && spelTeKiezen(spelStand) ? (
+              <SpelSchakelaar
+                stand={spelStand}
+                bezig={busy}
+                onKies={(motor) => {
+                  void kiesSpel(motor).then(() =>
+                    setNote(t(language, "oo.gekozen", { spel: t(language, spelNaam(motor)) })),
+                  );
+                }}
+              />
+            ) : undefined
+          }
           stappen={
             mode === "career"
               ? STAPPEN_CARRIERE
@@ -5115,6 +5304,9 @@ export function App(): JSX.Element {
              */
             opzetStap === "bus" &&
             (omsiDraaitAl ||
+              spelStand?.anderSpel ||
+              spelStand?.nietGevonden ||
+              spelStand?.waarschuwingen.includes("uitTemp") ||
               schermmodus === "volledig" ||
               plugin?.error ||
               plugin?.changed ||
@@ -5127,7 +5319,17 @@ export function App(): JSX.Element {
                   START een vraag in plaats van een start. Dat hoort hier te
                   staan en niet pas in het venstertje zelf.
                 */}
-                {omsiDraaitAl && (
+                {/*
+                  Het andere spel draait, of het gekozen spel is er niet:
+                  START begint niets (Lucs spelkeuze; ontwerp openomsi-koppeling §7).
+                */}
+                {spelStand && (spelStand.anderSpel || spelStand.nietGevonden) && (
+                  <p>{spelWeigering((key, vars) => t(language, key, vars), spelStand)}</p>
+                )}
+                {spelStand?.waarschuwingen.includes("uitTemp") && (
+                  <p>{t(language, "oo.uitTemp")}</p>
+                )}
+                {omsiDraaitAl && !spelStand?.anderSpel && spelStand?.motor !== "openomsi" && (
                   <p>
                     {/*
                       Bij vrij rijden schrijft START dan alleen de situatie;
@@ -5184,7 +5386,21 @@ export function App(): JSX.Element {
              * een draaiend OMSI gaat voor allebei: die komt op het moment dat je
              * op START drukt, en dan zijn de andere twee al beantwoord.
              */
-            draaitVraag ? (
+            spelVraag ? (
+              <SpelDialog
+                voorstel={spelVraag.voorstel}
+                bezig={busy}
+                onTerug={() => setSpelVraag(undefined)}
+                onKies={(motor) => {
+                  const verder = spelVraag.verder;
+                  setSpelVraag(undefined);
+                  void kiesSpel(motor).then((stand) => {
+                    if (verder && stand) verder(stand);
+                    else setNote(t(language, "oo.gekozen", { spel: t(language, spelNaam(motor)) }));
+                  });
+                }}
+              />
+            ) : draaitVraag ? (
               <DraaitDialog
                 kaart={kaartDuty?.mapName ?? selectedMap?.name ?? ""}
                 bezig={busy}

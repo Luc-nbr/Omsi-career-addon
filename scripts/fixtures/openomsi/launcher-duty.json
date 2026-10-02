@@ -1,0 +1,23 @@
+{
+  "bus": "Vehicles/MAN_NewLionsCity/MAN_12C_2door_ZF.bus",
+  "paint": "",
+  "hof": "Thueringer Wald 2005",
+  "hof_manual": false,
+  "map": "maps/TH_Wald/global.cfg",
+  "entry": -1,
+  "line": "Omnibusverkehr Rennsteig",
+  "tour": "302 - 725302",
+  "free": false,
+  "time": 540,
+  "date": "1989-05-30",
+  "season": "auto",
+  "weather": "",
+  "traffic": 30.0,
+  "passengers": true,
+  "schedule": true,
+  "autostart": false,
+  "on_foot": false,
+  "lan_mode": "off",
+  "lan_addr": "",
+  "version": 2
+}

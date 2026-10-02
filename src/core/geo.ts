@@ -137,6 +137,59 @@ export interface TileGrid {
   at(x: number, y: number): { tx: number; ty: number; localX: number; localZ: number }
 }
 
+/*
+ * VAN DE WERELD VAN openOMSI NAAR EEN TEGEL
+ *
+ * openOMSI geeft de plek van de bus in meters op één raster (x oost, y noord).
+ * Een gewone kaart heeft tegels van 300 m; een kaart met [worldcoordinates]
+ * krijgt in openOMSI één tegelmaat, die van de middelste rij, en de inhoud van
+ * elke tegel wordt daarop geschaald. Overgenomen uit openOMSI,
+ * crates/omsi-map/src/lib.rs (`world_row_width`, `world_tile_size`,
+ * `world_tile_scale`, `world_to_tile_local`), MIT; zie THIRD_PARTY_NOTICES.md.
+ * De plek binnen de tegel is daarna die van OMSI zelf, dus wat `mem.x`/`mem.z`
+ * bij OMSI 2 is.
+ */
+function openOmsiRijbreedte(ty: number): number {
+  const lat = 2 * Math.atan(Math.exp((Math.PI * 2 * ty) / 65536)) - Math.PI / 2
+  return (40_075_016.69 * Math.cos(lat)) / 65536
+}
+
+export function wereldNaarTegel(
+  x: number,
+  y: number,
+  kaart: { wereld: boolean; rijen: readonly number[] }
+): { tx: number; ty: number; lx: number; ly: number } {
+  let maat = TILE_M
+  if (kaart.wereld) {
+    const rijen = [...kaart.rijen].sort((a, b) => a - b)
+    if (rijen.length === 0) maat = 371.9
+    else {
+      const r = rijen[Math.floor(rijen.length / 2)]
+      maat = (openOmsiRijbreedte(r) + openOmsiRijbreedte(r + 1)) / 2
+    }
+  }
+  const tx = Math.floor(x / maat)
+  const ty = Math.floor(y / maat)
+  let kx = 1
+  let ky = 1
+  if (kaart.wereld) {
+    const w0 = openOmsiRijbreedte(ty)
+    const w1 = openOmsiRijbreedte(ty + 1)
+    kx = maat / ((w0 + w1) / 2)
+    ky = maat / w1
+  }
+  return { tx, ty, lx: (x - tx * maat) / kx, ly: (y - ty * maat) / ky }
+}
+
+/** Heeft deze kaart `[worldcoordinates]` in global.cfg? */
+export function heeftWereldcoordinaten(mapPath: string): boolean {
+  try {
+    return readOmsiLines(join(mapPath, 'global.cfg')).some((line) => blockTag(line) === '[worldcoordinates]')
+  } catch {
+    return false
+  }
+}
+
 export function readTileGrid(mapPath: string): TileGrid | undefined {
   let tx0 = Infinity
   let ty0 = Infinity

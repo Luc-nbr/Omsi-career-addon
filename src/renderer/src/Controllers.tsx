@@ -61,6 +61,8 @@ export function ControllersTab({ language }: { language: Language }): JSX.Elemen
   const [controllers, setControllers] = useState<ControllerConfig[]>()
   const [labels, setLabels] = useState<Map<string, string>>(new Map())
   const [running, setRunning] = useState(false)
+  /** Het eigen bestand van openOMSI (de speler koos openOMSI): dat zegt de pagina erbij. */
+  const [vanOpenomsi, setVanOpenomsi] = useState(false)
   const [chosen, setChosen] = useState(0)
   const [search, setSearch] = useState('')
   const [picking, setPicking] = useState<number>()
@@ -75,6 +77,7 @@ export function ControllersTab({ language }: { language: Language }): JSX.Elemen
         setControllers(payload.controllers)
         setLabels(new Map(payload.labels))
         setRunning(payload.omsiRunning)
+        setVanOpenomsi(payload.bestand === 'openomsi')
         // Voorlopig het apparaat dat OMSI gebruikt; zodra bekend is wat er
         // werkelijk aan de computer hangt, springt de keuze daarheen.
         const first = payload.controllers.findIndex((item) => item.selected)
@@ -131,6 +134,7 @@ export function ControllersTab({ language }: { language: Language }): JSX.Elemen
   return (
     <>
       {running && <p className="note warn">{t(language, 'cfg.running')}</p>}
+      {vanOpenomsi && <p className="note">{t(language, 'oo.invoerControllers')}</p>}
       <p className="note">{t(language, 'ctrl.intro')}</p>
 
       <section className="card">

@@ -1,0 +1,208 @@
+[2026-09-30T20:15:44Z INFO  openomsi_game] openOMSI 0.1.307, build 7217091 2026-09-30 13:21
+[2026-09-30T20:15:44Z INFO  openomsi_game::settings] settings from C:\Users\speler\.openomsi\settings.cfg: msaa 4 af 8 ssao true shadows true (2048) navigator true graphics enhanced post aa fxaa vsync false render scale auto boarding pay min object size 0.013 max object distance 900 max fps 144
+[2026-09-30T20:15:44Z INFO  openomsi_game::settings] settings from C:\Users\speler\.openomsi\settings.cfg: msaa 4 af 8 ssao true shadows true (2048) navigator true graphics enhanced post aa fxaa vsync false render scale auto boarding pay min object size 0.013 max object distance 900 max fps 144
+[2026-09-30T20:15:44Z INFO  openomsi_game] script random seed 246811380 (OMSI_SEED=246811380 repeats it)
+[2026-09-30T20:15:44Z INFO  openomsi_game] content folder (mods): C:\Program Files (x86)\Steam\steamapps\common\OMSI 2\openOMSI
+[2026-09-30T20:15:44Z INFO  openomsi_game::scene] tile size 300.0 m (plain map)
+[2026-09-30T20:15:44Z INFO  openomsi_game::settings] settings from C:\Users\speler\.openomsi\settings.cfg: msaa 4 af 8 ssao true shadows true (2048) navigator true graphics enhanced post aa fxaa vsync false render scale auto boarding pay min object size 0.013 max object distance 900 max fps 144
+[2026-09-30T20:15:44Z INFO  openomsi_game::tiles] map index: 172 tiles read (0 unreadable), 16351 splines, 203915 objects, 3695 attachment rows (952 repeaters, 941 of the 941 on a known chain start where the map says), 1610 object and spline files in 0.36 s
+[2026-09-30T20:15:46Z INFO  openomsi_game::schedule] timetable: 6 lines, 136 trips, 135 tracks, 1102 departures today (weekday 1, holiday false, school holidays false; 60 tours not today), 4 depot groups
+[2026-09-30T20:15:46Z INFO  openomsi_game::schedule] timetable: 56 departures of line Montag - Freitag (Ferien) tour 07 - Solo left to the player
+[2026-09-30T20:15:46Z INFO  openomsi_game::schedule] player duty: line Montag - Freitag (Ferien) tour 07 - Solo: 56 trips from 06:00 (56 of them not driven by the AI); at 09:00 trip 9 853_HOB4b-ERN leaves at 09:02 (to Ernstroda, Ort), then 853_ERN-HOB4b at 09:15
+[2026-09-30T20:15:46Z INFO  openomsi_game::scene] navigation map: 426 roads without a path for cars
+[2026-09-30T20:15:46Z INFO  openomsi_game::scene] navigation map: 172 tiles, 15663 lanes, 202650 objects placed, 242 street name signs, 1338 object types, 0.4 s
+[2026-09-30T20:15:46Z INFO  omsi_sim::traffic] first neighbouring lane pair at (4762.1, 6504.1), heading -130
+[2026-09-30T20:15:46Z INFO  omsi_sim::traffic] lanes: 83 neighbouring lane pairs (lane changes)
+[2026-09-30T20:15:46Z INFO  omsi_sim::traffic] path network: 15663 lanes, 14942 links
+[2026-09-30T20:15:46Z INFO  omsi_sim::traffic] path network: 1221 conflicting lane pairs at crossings, 268 footpath crossings
+[2026-09-30T20:15:46Z INFO  omsi_sim::traffic] path network: 1848 street lanes lead into a dead end within 500 m
+[2026-09-30T20:15:46Z INFO  openomsi_game::duty_start] duty start: trip 9 (853_HOB4b-ERN at 09:02) from stop 0 'Hohenkirchen, Bahnhof B4b', the bus at entry point 28 '853 - Hohenkirchen, Bahnhof' (1 m by road) (automatic), 2.5 s
+[2026-09-30T20:15:46Z INFO  openomsi_game::settings] settings from C:\Users\speler\.openomsi\settings.cfg: msaa 4 af 8 ssao true shadows true (2048) navigator true graphics enhanced post aa fxaa vsync false render scale auto boarding pay min object size 0.013 max object distance 900 max fps 144
+[2026-09-30T20:15:47Z INFO  openomsi_game::applog] system: windows x86_64 (Microsoft Windows [Version 10.0.26200.9457]), 16 threads, 34259 MB memory
+[2026-09-30T20:15:47Z INFO  openomsi_game::applog] command line: C:\Program Files (x86)\Steam\steamapps\common\OMSI 2\openomsi.exe --root C:/Program Files (x86)/Steam\steamapps/common/OMSI 2 --no-menu --map maps/Hohenkirchen - Herrenhof/global.cfg --bus Vehicles/ABCoach_O560/O560_E6_AutomVoith.bus --time 09:00 --hof Hohenkirchen_V2.0 --auto-entry --date 1989-05-30 --traffic 30 --passengers --schedule --line Montag - Freitag (Ferien) --tour 07 - Solo --driver Drivers/OMSI-Fan.odr
+[2026-09-30T20:15:47Z INFO  openomsi_game::applog] working folder: C:\Program Files (x86)\Steam\steamapps\common\OMSI 2
+[2026-09-30T20:15:47Z INFO  openomsi_game::applog] environment: OMSI_INSTANCE=1790799344-13696-5
+[2026-09-30T20:15:47Z INFO  openomsi_game::applog] all settings: Settings { msaa: 4, anisotropy: 8, ssao: true, shadows: true, shadow_size: 2048, navigator: true, navigator_opacity: 1.0, navigator_corner: "bottom-left", boarding: "pay", detail_textures: true, exact_fare: true, enhanced: true, graphics: "enhanced", vr: false, vr_scale: 0.65, vr_head_smoothing_ms: 0.0, vr_mirror_rate: 16.0, vr_desktop_mirror: true, fullscreen: true, vsync: false, volume: 0.15, drive_keys: "simple", post_aa: "fxaa", maintenance: 0, ai_unsched_factor: 1.0, ai_max_scheduled: 14, ai_max_parked: 10, collision_vehicles: false, collision_objects: true, collision_pedestrians: true, head_movement: true, render_scale: 0.0, language: "ENG", pax_voices: "all", nav_arrows: false, get_up: false, texture_compression: true, texture_memory: 0, auto_clutch: true, min_obj_size: 0.013, max_obj_dist: -1.0, max_fps: 144, chat: true, tooltips: true, name_tags: true, driver: true, show_fps: true, clouds: true, pax_density: 1.0, vol_ai: 1.0, vol_scenery: 1.0, mirror_size: 256, doppler: false, time_speed: 1.0, machine_translation: false, shadow_casters: "all", ctrl_deadzone: 0.0, ctrl_off: "", steering_linear: false, old_steering: false, reflections: true, mouse_sens: 1.0, graphics_api: "dx12", ff_invert: true, ff_enabled: true, brake_hold: true, wheel_range: 900.0, wheel_lock: 0.0, fov: 0.0, camera_collision: true, pedal_throttle: 1.0, pedal_brake: 1.0, seat: [0.0, 0.0, 0.0], head_tracking: true, head_tracking_port: 4242, head_tracking_invert: "", discord_status: true, discord_app_id: "" }
+[2026-09-30T20:15:47Z INFO  openomsi_game::settings] settings from C:\Users\speler\.openomsi\settings.cfg: msaa 4 af 8 ssao true shadows true (2048) navigator true graphics enhanced post aa fxaa vsync false render scale auto boarding pay min object size 0.013 max object distance 900 max fps 144
+[2026-09-30T20:15:47Z INFO  openomsi_game::startup] graphics: Backends(DX12) (NVIDIA GeForce RTX 4070 SUPER, Microsoft Basic Render Driver)
+[2026-09-30T20:15:47Z INFO  openomsi_game::radio] radio: 9 stations
+[2026-09-30T20:15:47Z INFO  openomsi_game::settings] settings from C:\Users\speler\.openomsi\settings.cfg: msaa 4 af 8 ssao true shadows true (2048) navigator true graphics enhanced post aa fxaa vsync false render scale auto boarding pay min object size 0.013 max object distance 900 max fps 144
+[2026-09-30T20:15:48Z INFO  omsi_render] graphics adapter: NVIDIA GeForce RTX 4070 SUPER (DiscreteGpu, Dx12, 11999 MB of its own), texture memory taken for it: 1600 MB
+[2026-09-30T20:15:48Z INFO  omsi_render] opening graphics device: NVIDIA GeForce RTX 4070 SUPER (Dx12, vendor 0x10de, device 0x2783), features Features { features_wgpu: FeaturesWGPU(0x0), features_webgpu: FeaturesWebGPU(TEXTURE_COMPRESSION_BC) }, max buffer 2147 MB, max storage binding 2147 MB
+[2026-09-30T20:15:48Z INFO  omsi_render] graphics device opened; compiling renderer pipelines
+[2026-09-30T20:15:48Z INFO  omsi_render] renderer: NVIDIA GeForce RTX 4070 SUPER (Dx12), Bgra8UnormSrgb, 4x MSAA, anisotropy 8, shadow map 2048, SSAO true, render scale auto, textures DXT as blocks, others compressed where close
+[2026-09-30T20:15:48Z INFO  omsi_render] cloud noise made in 0.13 s
+[2026-09-30T20:15:50Z INFO  openomsi_game::app] window: 2560x1440 pixels (scale factor 1.00), 3D picture 2560x1440, present mode AutoNoVsync
+[2026-09-30T20:15:50Z INFO  openomsi_game::weather_setup] weather <Bestes Wetter>: fog range 50000 m, precip [0.0, 32.0, 0.0, 0.0, 0.0], temp (15.0, 5.0)
+[2026-09-30T20:15:50Z INFO  openomsi_game::weather_setup] clouds: Cumulus 1 (Cumulus_1.tga)
+[2026-09-30T20:15:50Z INFO  openomsi_game::weather_setup] weather <Bestes Wetter>: fog range 50000 m, precip [0.0, 32.0, 0.0, 0.0, 0.0], temp (15.0, 5.0)
+[2026-09-30T20:15:50Z INFO  openomsi_game::world_load] season: day 150 -> kind 1 (texture folder Some("spring"))
+[2026-09-30T20:15:50Z INFO  openomsi_game::app] texture budget: 1600 MB
+[2026-09-30T20:15:50Z INFO  openomsi_game::tiles] tile streaming: 172 tiles in the map, load radius 1200 m around 1 points (36 tiles now), first area 16 tiles
+[2026-09-30T20:15:50Z INFO  openomsi_game::applog] view: driver
+[2026-09-30T20:15:50Z INFO  openomsi_game::scene] tile layout: 29 times a tile takes a long spline from beyond its neighbours
+[2026-09-30T20:15:50Z INFO  openomsi_game::scene] parklist_p.txt: 7 parked car types
+[2026-09-30T20:16:11Z WARN  openomsi_game::scene] Did not find texture file "envmap.bmp"!
+[2026-09-30T20:16:12Z WARN  openomsi_game::scene] Did not find texture file "BHD_2020\gras1.dds"!
+[2026-09-30T20:16:12Z WARN  openomsi_game::scene] Did not find texture file "Gelaender01.tga"!
+[2026-09-30T20:16:12Z WARN  openomsi_game::scene] Did not find texture file "victorianLight_single_night.dds"!
+[2026-09-30T20:16:16Z WARN  openomsi_game::scene] Did not find texture file "Gelaender.tga"!
+[2026-09-30T20:16:16Z WARN  omsi_sim::scenery] C:/Program Files (x86)/Steam\steamapps/common/OMSI 2\Sceneryobjects\ADDON_Hohenkirchen\Details\Soundcubes\script\Natur3.osc:26: {if} outside block
+[2026-09-30T20:16:16Z WARN  omsi_sim::scenery] C:/Program Files (x86)/Steam\steamapps/common/OMSI 2\Sceneryobjects\ADDON_Hohenkirchen\Details\Soundcubes\script\Natur3.osc:28: {if} outside block
+[2026-09-30T20:16:19Z INFO  openomsi_game::tiles] tile streaming: first area of 16 tiles loaded in 29.52 s
+[2026-09-30T20:16:19Z INFO  openomsi_game::app] map ready after 32.17 s: 24 tiles loaded
+[2026-09-30T20:16:19Z WARN  openomsi_game::app] missing content: 0 objects, 0 splines, 5 textures (list: C:\Users\speler\.openomsi\missing_content.txt)
+[2026-09-30T20:16:20Z INFO  openomsi_game::spawn] vehicle Coach O560 Series Euro VI - Automatic: 496 meshes, 405 script blocks, 1086 variables
+[2026-09-30T20:16:20Z INFO  openomsi_game::spawn] door keys: Shift+1 = bus_doorfront0, Shift+2 = bus_doorfront1, Shift+3 = bus_dooraft
+[2026-09-30T20:16:20Z INFO  openomsi_game::settings] settings from C:\Users\speler\.openomsi\settings.cfg: msaa 4 af 8 ssao true shadows true (2048) navigator true graphics enhanced post aa fxaa vsync false render scale auto boarding pay min object size 0.013 max object distance 900 max fps 144
+[2026-09-30T20:16:20Z INFO  openomsi_game::situation] C:/Program Files (x86)/Steam\steamapps/common/OMSI 2\Vehicles\ABCoach_O560 has no depot file 'Hohenkirchen_V2.0'; using C:/Program Files (x86)/Steam\steamapps/common/OMSI 2\Vehicles\fOcUs04_Fahrzeug_Dummy\Hohenkirchen_V2.0.hof
+[2026-09-30T20:16:20Z INFO  openomsi_game::spawn] ticket pack C:/Program Files (x86)/Steam\steamapps/common/OMSI 2\TicketPacks\Hohenkirchen\Hohenkirchen.otp: 5 tickets
+[2026-09-30T20:16:20Z INFO  openomsi_game::spawn] depot file Hohenkirchen_V2.0: 45 termini, 87 bus stops, 36 IBIS trips
+[2026-09-30T20:16:20Z WARN  omsi_sim::anim] animation variable antrieb_shifter_posy not found
+[2026-09-30T20:16:20Z WARN  omsi_sim::anim] animation variable antrieb_shifter_posx not found
+[2026-09-30T20:16:20Z INFO  openomsi_game::spawn] spawned at entry point 775 "853 - Hohenkirchen, Bahnhof" (246.4, -161.0, 9.7) heading 270
+[2026-09-30T20:16:20Z INFO  openomsi_game::spawn] paint: the model's own textures
+[2026-09-30T20:16:21Z INFO  openomsi_game::scene] O560_E6_AutomVoith.bus: 1 skinned meshes (General\Dashboard_12_E6\560_d_gearm_stick.o3d)
+[2026-09-30T20:16:21Z INFO  openomsi_game::settings] settings from C:\Users\speler\.openomsi\settings.cfg: msaa 4 af 8 ssao true shadows true (2048) navigator true graphics enhanced post aa fxaa vsync false render scale auto boarding pay min object size 0.013 max object distance 900 max fps 144
+[2026-09-30T20:16:21Z INFO  openomsi_game::spawn] spawn: the bus stands at height 9.70
+[2026-09-30T20:16:21Z INFO  openomsi_game::spawn] rigid body: mass 12000 kg, inertia Vec3(360000.0, 360000.0, 100000.0), cog 1.17 m, 4 wheels, loads [24770.0, 24770.0, 34090.0, 34090.0]
+[2026-09-30T20:16:21Z INFO  openomsi_game::spawn] axle 0: tyre r 0.517 m, hub 0.520 m unloaded (model wheel centre 0.523, tyre 0.520), spring 214 kN/m x 1.00, rest load 24.8 kN, sag 0.116 m
+[2026-09-30T20:16:21Z INFO  openomsi_game::spawn] axle 1: tyre r 0.517 m, hub 0.520 m unloaded (model wheel centre 0.523, tyre 0.520), spring 240 kN/m x 1.00, rest load 34.1 kN, sag 0.142 m
+[2026-09-30T20:16:21Z INFO  openomsi_game::spawn] collision world: 577 obstacle boxes, 949 collision meshes of 132643 parts
+[2026-09-30T20:16:21Z INFO  omsi_audio::mixer] audio: playing on Speakers (Focusrite USB Audio) (48000 Hz, 2 channels)
+[2026-09-30T20:16:21Z INFO  openomsi_game::player] sound config C:/Program Files (x86)/Steam\steamapps/common/OMSI 2\Vehicles\ABCoach_O560\sound\sound_936.cfg: 169 sounds (169 of 169 for fleet number '1561')
+[2026-09-30T20:16:21Z INFO  openomsi_game::ambience] environment sounds: rain yes, 14 footstep samples in C:/Program Files (x86)/Steam\steamapps/common/OMSI 2\Sounds\Passengers
+[2026-09-30T20:16:21Z INFO  openomsi_game::career] driver OMSI-Fan: 290 bus stops (13 early, 13 late), 182 km, 11 crashes, 107 tickets
+[2026-09-30T20:16:21Z INFO  openomsi_game::humans] humans: 18 types
+[2026-09-30T20:16:21Z INFO  openomsi_game::humans] passenger cabin: 51 places (49 seats), 1 entries, 1 exits, 20 path points, desk Some(Vec3(0.194997, 5.304958, 0.963091))
+[2026-09-30T20:16:21Z INFO  openomsi_game::money] money system Euro: 11 coins, 4 bills
+[2026-09-30T20:16:21Z INFO  omsi_sim::traffic] lanes: 0 neighbouring lane pairs (lane changes)
+[2026-09-30T20:16:21Z INFO  omsi_sim::traffic] path network: 3606 lanes, 3477 links
+[2026-09-30T20:16:21Z INFO  omsi_sim::traffic] path network: 251 conflicting lane pairs at crossings, 4 footpath crossings
+[2026-09-30T20:16:21Z INFO  omsi_sim::traffic] path network: 285 street lanes lead into a dead end within 500 m
+[2026-09-30T20:16:21Z INFO  openomsi_game::traffic] random traffic groups (unsched_vehgroups.txt): [("normalcars", 1), ("trucks", 0), ("commercials", 1), ("ambulance", 1)]
+[2026-09-30T20:16:21Z INFO  openomsi_game::traffic] traffic: 3606 lanes (167 turning, 0 with a neighbour, 0 where a turn lane applies, 456 closed to cars of which 212 are junctions, 779 with less traffic by [rule], 639 with a [rule] priority), 9 AI vehicle types in 1 groups, 0 light programs, 0 lamps
+[2026-09-30T20:16:21Z INFO  openomsi_game::traffic] traffic: 0 lit paths inside crossings (a car already in the crossing is not held there again)
+[2026-09-30T20:16:21Z INFO  openomsi_game::settings] settings from C:\Users\speler\.openomsi\settings.cfg: msaa 4 af 8 ssao true shadows true (2048) navigator true graphics enhanced post aa fxaa vsync false render scale auto boarding pay min object size 0.013 max object distance 900 max fps 144
+[2026-09-30T20:16:21Z INFO  openomsi_game::settings] settings from C:\Users\speler\.openomsi\settings.cfg: msaa 4 af 8 ssao true shadows true (2048) navigator true graphics enhanced post aa fxaa vsync false render scale auto boarding pay min object size 0.013 max object distance 900 max fps 144
+[2026-09-30T20:16:22Z INFO  openomsi_game::schedule] timetable: 6 lines, 136 trips, 135 tracks, 1102 departures today (weekday 1, holiday false, school holidays false; 60 tours not today), 4 depot groups
+[2026-09-30T20:16:23Z INFO  openomsi_game::schedule] timetable fleet: 17 vehicle/paint sets of the first 25 minutes read and uploaded in 1.2 s (at most 76 MB read ahead at once), a first start of every type in 0.0 s
+[2026-09-30T20:16:23Z INFO  openomsi_game::schedule] timetable: 56 departures of line Montag - Freitag (Ferien) tour 07 - Solo left to the player
+[2026-09-30T20:16:23Z INFO  openomsi_game::schedule] player duty: line Montag - Freitag (Ferien) tour 07 - Solo: 56 trips from 06:00 (56 of them not driven by the AI); at 09:00 trip 9 853_HOB4b-ERN leaves at 09:02 (to Ernstroda, Ort), then 853_ERN-HOB4b at 09:15
+[2026-09-30T20:16:24Z INFO  openomsi_game::schedule] scheduled bus: line 1 tour 17 - Solo trip 1_JHH-ENG  #Some("2528 plate \"HER-V 28\" paint Some(\"Hohenkirchen - Sparbank Herrenhof\")") at 540.0 min, 8 stops, at (173.5, 121.9) heading 13, route 192 of 231 steps so far
+[2026-09-30T20:16:24Z INFO  openomsi_game::schedule] scheduled bus: line B tour 13 - Solo trip B_HOB4b-NEU  #Some("2876 plate \"HER-V 76\" paint Some(\"Hohenkirchen - Immobilien Gerstmann\")") at 540.0 min, 0 stops, at (108.9, 179.7) heading 270, route 97 of 138 steps so far
+[2026-09-30T20:16:24Z INFO  openomsi_game::schedule] train: VT_650-101 + VT_650-101 + VT_650-101
+[2026-09-30T20:16:24Z INFO  openomsi_game::schedule] scheduled bus: line RB50 tour KI-Zug_HOK2 trip KI-Zug_HOH2  #None at 540.0 min, 0 stops, at (204.1, -118.4) heading 270
+[2026-09-30T20:16:24Z WARN  omsi_sim::texttex] font "++" is in no Fonts folder of any content root
+[2026-09-30T20:16:24Z WARN  omsi_sim::texttex] font "++" not found
+[2026-09-30T20:16:24Z WARN  omsi_sim::host] STLoadTex: did not find texture file C:/Program Files (x86)/Steam\steamapps/common/OMSI 2\Vehicles\Anzeigen\Krueger\230x32\palettes\Bad Huegelsdorf 2020 VBBH.bmp: C:/Program Files (x86)/Steam\steamapps/common/OMSI 2\Vehicles\Anzeigen\Krueger\230x32\palettes\Bad Huegelsdorf 2020 VBBH.bmp: The system cannot find the path specified. (os error 3)
+[2026-09-30T20:16:24Z WARN  omsi_sim::host] STLoadTex: did not find texture file C:/Program Files (x86)/Steam\steamapps/common/OMSI 2\Vehicles\Anzeigen\Krueger\230x32\palettes\Bad Huegelsdorf 2020 VBBH.bmp: C:/Program Files (x86)/Steam\steamapps/common/OMSI 2\Vehicles\Anzeigen\Krueger\230x32\palettes\Bad Huegelsdorf 2020 VBBH.bmp: The system cannot find the path specified. (os error 3)
+[2026-09-30T20:16:24Z INFO  openomsi_game::dinput] game controllers (DirectInput): WINWING MCDU-32-CAPTAIN, WINWING PFP-3N-CO-PILOT, WINWING 3N PDC L, WINCTRL URSA MINOR 32 Throttle Metal L, MOZA R5 Base, Charlie Rudder Pedal, WINCTRL 3N PAP, Joystick - HOTAS Warthog, T500 RS Gear Shift
+[2026-09-30T20:16:24Z WARN  gilrs::gamepad] No mapping found for UUID 03000000-9840-0000-3dbb-000000000000
+    	Default mapping will be used.
+[2026-09-30T20:16:24Z INFO  openomsi_game::controllers] game controller connected: HID-compliant game controller
+[2026-09-30T20:16:24Z WARN  gilrs::gamepad] No mapping found for UUID 03000000-9840-0000-61bb-000000000000
+    	Default mapping will be used.
+[2026-09-30T20:16:24Z INFO  openomsi_game::controllers] game controller connected: HID-compliant game controller
+[2026-09-30T20:16:24Z WARN  gilrs::gamepad] No mapping found for UUID 03000000-9840-0000-36bb-000000000000
+    	Default mapping will be used.
+[2026-09-30T20:16:24Z INFO  openomsi_game::controllers] game controller connected: HID-compliant game controller
+[2026-09-30T20:16:24Z WARN  gilrs::gamepad] No mapping found for UUID 03000000-4f04-0000-60b6-000000000000
+    	Default mapping will be used.
+[2026-09-30T20:16:24Z INFO  openomsi_game::controllers] game controller connected: HID-compliant game controller
+[2026-09-30T20:16:24Z WARN  gilrs::gamepad] No mapping found for UUID 03000000-6e34-0000-0400-000000000000
+    	Default mapping will be used.
+[2026-09-30T20:16:24Z INFO  openomsi_game::controllers] game controller connected: MOZA Windows Driver
+[2026-09-30T20:16:24Z WARN  gilrs::gamepad] No mapping found for UUID 03000000-9840-0000-20b9-000000000000
+    	Default mapping will be used.
+[2026-09-30T20:16:24Z INFO  openomsi_game::controllers] game controller connected: HID-compliant game controller
+[2026-09-30T20:16:24Z WARN  gilrs::gamepad] No mapping found for UUID 03000000-9840-0000-0fbf-000000000000
+    	Default mapping will be used.
+[2026-09-30T20:16:24Z INFO  openomsi_game::controllers] game controller connected: HID-compliant game controller
+[2026-09-30T20:16:24Z WARN  gilrs::gamepad] No mapping found for UUID 03000000-4f04-0000-0204-000000000000
+    	Default mapping will be used.
+[2026-09-30T20:16:24Z INFO  openomsi_game::controllers] game controller connected: HID-compliant game controller
+[2026-09-30T20:16:24Z WARN  gilrs::gamepad] No mapping found for UUID 03000000-4b29-0000-0319-000000000000
+    	Default mapping will be used.
+[2026-09-30T20:16:24Z INFO  openomsi_game::controllers] game controller connected: HID-compliant game controller
+[2026-09-30T20:16:24Z INFO  openomsi_game::dinput] game controller (DirectInput): WINWING MCDU-32-CAPTAIN, 2 axes, 128 buttons
+[2026-09-30T20:16:24Z INFO  openomsi_game::dinput] game controller (DirectInput): WINWING PFP-3N-CO-PILOT, 2 axes, 128 buttons
+[2026-09-30T20:16:24Z INFO  openomsi_game::dinput] game controller (DirectInput): WINWING 3N PDC L, 2 axes, 64 buttons
+[2026-09-30T20:16:24Z INFO  openomsi_game::dinput] game controller (DirectInput): WINCTRL URSA MINOR 32 Throttle Metal L, 8 axes, 42 buttons
+[2026-09-30T20:16:24Z WARN  openomsi_game::dinput] MOZA R5 Base: force feedback effect could not start (An unexpected exception was raised (0x80040205))
+[2026-09-30T20:16:24Z INFO  openomsi_game::dinput] game controller (DirectInput): MOZA R5 Base, 8 axes, 128 buttons, force feedback
+[2026-09-30T20:16:24Z INFO  openomsi_game::dinput] game controller (DirectInput): Charlie Rudder Pedal, 3 axes, 0 buttons
+[2026-09-30T20:16:24Z INFO  openomsi_game::dinput] game controller (DirectInput): WINCTRL 3N PAP, 1 axes, 128 buttons
+[2026-09-30T20:16:24Z INFO  openomsi_game::dinput] game controller (DirectInput): Joystick - HOTAS Warthog, 2 axes, 19 buttons
+[2026-09-30T20:16:24Z INFO  openomsi_game::dinput] game controller (DirectInput): T500 RS Gear Shift, 2 axes, 10 buttons
+[2026-09-30T20:16:24Z INFO  openomsi_game::controllers] game controller WINWING MCDU-32-CAPTAIN is not set up: its X axis steers
+[2026-09-30T20:16:24Z INFO  openomsi_game::controllers] game controller WINWING PFP-3N-CO-PILOT is not set up: its X axis steers
+[2026-09-30T20:16:24Z INFO  openomsi_game::controllers] game controller WINWING 3N PDC L is not set up: its X axis steers
+[2026-09-30T20:16:24Z INFO  openomsi_game::controllers] game controller WINCTRL URSA MINOR 32 Throttle Metal L is not set up: its X axis steers
+[2026-09-30T20:16:24Z INFO  openomsi_game::controllers] game controller WINCTRL 3N PAP is not set up: its X axis steers
+[2026-09-30T20:16:24Z INFO  openomsi_game::controllers] game controller Joystick - HOTAS Warthog is not set up: its X axis steers
+[2026-09-30T20:16:24Z INFO  openomsi_game::headtrack] head tracking: listening for opentrack on UDP port 4242
+[2026-09-30T20:16:24Z INFO  openomsi_game::app_events] people: 228 bus stops with timetable targets
+[2026-09-30T20:16:24Z INFO  openomsi_game::humans] humans: 15 of 18 types from the map's humans.txt
+[2026-09-30T20:16:25Z INFO  openomsi_game::humans] pavement network: 2254 paths, 1244 junctions
+[2026-09-30T20:16:25Z INFO  openomsi_game::schedule] duty: trip 9 (853_HOB4b-ERN) leaves Hohenkirchen, Bahnhof B4b at 32520 s
+[2026-09-30T20:16:25Z WARN  omsi_plugin] Could not load plugin C:/Program Files (x86)/Steam\steamapps/common/OMSI 2\plugins\OmniNavigation.opl: LoadLibrary failed: LoadLibraryExW failed; a 32-bit Windows plugin needs omsi-plugin-host32.exe next to the game
+[2026-09-30T20:16:25Z WARN  omsi_plugin] Could not load plugin C:/Program Files (x86)/Steam\steamapps/common/OMSI 2\plugins\OMSICareer.opl: LoadLibrary failed: LoadLibraryExW failed; a 32-bit Windows plugin needs omsi-plugin-host32.exe next to the game
+[2026-09-30T20:16:25Z INFO  omsi_plugin::lua] [lua omsihubproef] MERK omsihub-proef v1 geladen: opgeslagen=1 chunk-argumenten=0 _VERSION=Lua 5.4 omsi.name=omsihubproef omsi.version=0.1.0
+[2026-09-30T20:16:25Z INFO  omsi_plugin::lua] [lua omsihubproef] OMGEVING globals=[_G,_VERSION,assert,collectgarbage,coroutine,error,getmetatable,ipairs,load,math,next,omsi,os,package,pairs,pcall,print,rawequal,rawget,rawlen,rawset,require,select,setmetatable,string,table,tonumber,tostring,type,utf8,warn,xpcall]
+[2026-09-30T20:16:25Z INFO  omsi_plugin::lua] [lua omsihubproef] OMGEVING omsi=[_keys,_read_data,_save,_tick,_write_data,after,cancel,clock,command,data,distance,emit,every,has_vehicle,info,log,message,name,off,on,position,press,release,save,set_str,set_var,speed,str,sys,time,trigger,var,vars,vehicle,version,warn,watch] data=table
+[2026-09-30T20:16:25Z INFO  omsi_plugin::lua] [lua omsihubproef] OMGEVING os=[clock,date,difftime,time] io=nil debug=nil dofile=nil loadfile=nil load=function require=function collectgarbage=function package.cpath="" searchers=2 loadlib=nil package.loaded=[_G,coroutine,math,os,package,string,table,utf8] package.loaded.os.execute=function os.date=2026-09-30 22:16:25 os.clock=41.529
+[2026-09-30T20:16:25Z INFO  omsi_plugin::lua] [lua omsihubproef] OPDRACHT-KANAAL package.path oud="C:/Program Files (x86)/Steam/steamapps/common/OMSI 2/plugins/omsihubproef/?.lua;C:/Program Files (x86)/Steam/steamapps/common/OMSI 2/plugins/omsihubproef/?/init.lua" nieuw="C:/Program Files (x86)/Steam/steamapps/common/OMSI 2/plugins/omsihubproef/?.save.lua"
+[2026-09-30T20:16:25Z INFO  omsi_plugin::lua] [lua omsihubproef] DATA-GELADEN sleutels=[info,json,merk,meting,staat] vorigeSessie=1790799305-77940 vorigEinde=true vorigePogingen=7 vorigeOpdrachtSeq=nil
+[2026-09-30T20:16:25Z INFO  omsi_plugin::lua] [lua omsihubproef] START ECHTE-START argumenten=0 sessie=1790799385-41529 herladen=0 opgeslagen=1 hasVehicle=false voertuig=nil plek=nil omsi.time=0.000
+[2026-09-30T20:16:25Z INFO  omsi_plugin::lua] [lua omsihubproef] START-INFO {}
+[2026-09-30T20:16:25Z INFO  omsi_plugin] Lua plugin omsihubproef loaded (C:/Program Files (x86)/Steam\steamapps/common/OMSI 2\plugins\omsihubproef\main.lua)
+[2026-09-30T20:16:25Z INFO  omsi_plugin::lua] [lua omsihubproef] VOERTUIG naam="Coach O560 Series Euro VI - Automatic" hasVehicle=true omsi.time=0.000
+[2026-09-30T20:16:25Z INFO  openomsi_game::describe] control names: 174 texts in ENG
+[2026-09-30T20:16:25Z INFO  openomsi_game::applog] on screen: Omsi-Hub proef actief
+[2026-09-30T20:16:26Z INFO  openomsi_game::scene] navigation map: 426 roads without a path for cars
+[2026-09-30T20:16:26Z INFO  openomsi_game::scene] navigation map: 172 tiles, 15663 lanes, 202650 objects placed, 242 street name signs, 1338 object types, 0.4 s
+[2026-09-30T20:16:26Z INFO  omsi_sim::traffic] first neighbouring lane pair at (5183.9, 5338.5), heading 73
+[2026-09-30T20:16:26Z INFO  omsi_sim::traffic] lanes: 83 neighbouring lane pairs (lane changes)
+[2026-09-30T20:16:26Z INFO  omsi_sim::traffic] path network: 15663 lanes, 14942 links
+[2026-09-30T20:16:26Z INFO  omsi_plugin::lua] [lua omsihubproef] OPDRACHT-KANAAL werkt: eerste lezing seq=0 uit "C:/Program Files (x86)/Steam/steamapps/common/OMSI 2/plugins/omsihubproef/opdracht.save.lua" voor=nil (dit is de basis, er wordt niets gedrukt)
+[2026-09-30T20:16:26Z INFO  omsi_sim::traffic] path network: 1221 conflicting lane pairs at crossings, 268 footpath crossings
+[2026-09-30T20:16:26Z INFO  omsi_sim::traffic] path network: 1848 street lanes lead into a dead end within 500 m
+[2026-09-30T20:16:26Z INFO  openomsi_game::navigator] navigator: 242 street name signs, 111 names, 1193 of 15663 lanes named, 83 labels, 5 ms
+[2026-09-30T20:16:26Z INFO  openomsi_game::navigator] navigator: the map's road network is there (15663 lanes, 111 streets named)
+[2026-09-30T20:16:26Z INFO  openomsi_game::navigator] navigator: no route of the trip here yet; 2 lanes to the next stop 'Hohenkirchen, Bahnhof B4b'
+[2026-09-30T20:16:27Z INFO  omsi_plugin::lua] [lua omsihubproef] HALTE volgende="Hohenkirchen, Bahnhof B4b" lijn="Montag - Freitag (Ferien)" omloop="07 - Solo" rit=9.0/56.0 eindpunt="Ernstroda, Ort" aankomst=32520.0 vertrek=32520.0 vertraging=-119.00749969482 klok=32400.992501702
+[2026-09-30T20:16:27Z INFO  omsi_plugin::lua] [lua omsihubproef] SCHRIJVEN werkt: data.save.lua (json 1880 bytes) in 1.00 ms
+[2026-09-30T20:16:28Z INFO  openomsi_game::schedule] scheduled bus: line 1 tour 11 - Solo trip 1_ENG-FLP-JHH  #Some("2452 plate \"HER-V 52\" paint Some(\"Hohenkirchen - tuerego.\")") at 540.0 min, 17 stops, at (1371.5, -463.0) heading 270
+[2026-09-30T20:16:28Z INFO  openomsi_game::schedule] train: VT_650-101
+[2026-09-30T20:16:28Z INFO  openomsi_game::schedule] scheduled bus: line RB50 tour KI-Zug_ENG trip KI-Zug_ENG2  #None at 540.0 min, 0 stops, at (1473.5, -306.9) heading 315, route 1 of 14 steps so far
+[2026-09-30T20:16:28Z WARN  omsi_sim::host] STLoadTex: did not find texture file C:/Program Files (x86)/Steam\steamapps/common/OMSI 2\Vehicles\Anzeigen\Krueger\230x32\palettes\Bad Huegelsdorf 2020 VBBH.bmp: C:/Program Files (x86)/Steam\steamapps/common/OMSI 2\Vehicles\Anzeigen\Krueger\230x32\palettes\Bad Huegelsdorf 2020 VBBH.bmp: The system cannot find the path specified. (os error 3)
+[2026-09-30T20:16:29Z INFO  omsi_plugin::lua] [lua omsihubproef] VARS aantal=1086 str=76 varsMs=1.00 strMs=0.00
+[2026-09-30T20:16:29Z INFO  omsi_plugin::lua] [lua omsihubproef] SCHERM-NAMEN str(22)=[display_aktugang,display_thermometer,display_thermometer_end,display_ac_cabtemp,CTI_Display_Onboard,display_fan_rpm,IBIS,IBIS_busstop_name,IBIS_terminus_name,IBIS_Complex_Line,IBIS_cabindisplay,IBIS_Delay_min,IBIS_Delay_sec,IBIS_Delay_state,Matrix_Linelist,Matrix_Nr,Matrix_TerminusL1,Matrix_TerminusL2,Matrix_Bitmapfilename,Matrix_SchildFrnt,Matrix_Seitenschild,Faremaster_Login]
+[2026-09-30T20:16:29Z INFO  omsi_plugin::lua] [lua omsihubproef] ONTBREEKT var=[electric_battery] str=[LAWO_display_line1,LAWO_display_line2,LAWO_display_line3,LAWO_display_line4,afr_display_1,afr_display_2] sys=[]
+[2026-09-30T20:16:29Z INFO  omsi_plugin::lua] [lua omsihubproef] ALLES-LEZEN 1086 namen, 1086 met waarde, samen 2.00 ms in 3 beelden (500 per beeld)
+[2026-09-30T20:16:29Z INFO  omsi_plugin::lua] [lua omsihubproef] SCHERM-VARS 47 (eerste 80)=[vis_matrix_side,vis_matrix_rear,elec_runtime_display,elec_runtime_display_pause,IBIS_energy_last,IBIS_mode,IBIS_input,IBIS_input_count,IBIS_busstop_index,IBIS_busstop,IBIS_busstop_offset,IBIS_busstop_entwerter_soll,IBIS_busstop_entwerter_ist,IBIS_LastMicro,IBIS_RouteIndex,IBIS_LinieKurs,IBIS_Linie_Complex,IBIS_Linie_Suffix,IBIS_Route,IBIS_TerminusIndex,IBIS_TerminusCode,IBIS_BlinkTimer,IBIS_BlinkOn,IBIS_BlinkInitial,IBIS_LCD-zeilentimer,IBIS_LCD-zeile,IBIS_modetimer,Matrix_TerminusIndex_Last,Matrix_TerminusAct,Matrix_Nr_Last,Matrix_Xpos,Matrix_Ypos,Matrix_RefreshCursor,Matrix_Testcolor,Matrix_Fehlerpixel,matrix_steckschild_index,matrix_steckschild_Termindex,matrix_steckschild_vis,matrix_seitenschildklemme,matrix_seitenschild_refresh,matrix_refresh_seitenschild,matrix_text_front,matrix_text_fenster,matrix_text_rear,matrix_refresh_timer,ticketprinter_ticket_selection,ticketprinter_ticket_pos]
+[2026-09-30T20:16:42Z INFO  openomsi_game::player] action: cp_batterietrennschalter_toggle
+[2026-09-30T20:16:42Z INFO  openomsi_game::player] action: cp_batterietrennschalter_toggle
+[2026-09-30T20:16:44Z INFO  openomsi_game::applog] view: outside
+[2026-09-30T20:16:47Z INFO  openomsi_game::applog] view: pax
+[2026-09-30T20:16:49Z INFO  openomsi_game::player] announcement: ev_IBIS_Ansagen -> ..\..\Announcements\Hohenkirchen\_#terminus.wav
+[2026-09-30T20:16:49Z WARN  omsi_audio::soundset] sound C:/Program Files (x86)/Steam\steamapps/common/OMSI 2\Vehicles\Announcements\Hohenkirchen\_#terminus.wav for (T.F.ev_IBIS_Ansagen) not found (further requests for it are not logged)
+[2026-09-30T20:16:49Z INFO  openomsi_game::player] mouse event cp_dachluke_2
+[2026-09-30T20:16:50Z INFO  openomsi_game::player] mouse event cp_dachluke_2
+[2026-09-30T20:16:51Z INFO  openomsi_game::player] mouse event cp_dachluke_2
+[2026-09-30T20:16:51Z INFO  openomsi_game::player] mouse event cp_dachluke_2
+[2026-09-30T20:16:51Z INFO  openomsi_game::player] mouse event cp_dachluke_2
+[2026-09-30T20:16:51Z INFO  openomsi_game::player] mouse event cp_dachluke_2
+[2026-09-30T20:16:53Z INFO  openomsi_game::applog] view: outside
+[2026-09-30T20:16:53Z INFO  openomsi_game::applog] view: driver
+[2026-09-30T20:16:54Z INFO  openomsi_game::applog] status: 334 fps (worst frame 0 fps), bus at (246.4, -161.0, 9.6) heading 270, 0 km/h, view driver, game time 09:00, 37 AI vehicles, GPU memory: textures 1068 MB, meshes 105 MB
+[2026-09-30T20:16:56Z INFO  omsi_plugin::lua] [lua omsihubproef] HARTSLAG t=30.0 s sessie=1790799385-41529 herladen=0 schrijf=30 (gem 0.60 ms, max 1.00 ms) bouw gem 0.40 ms json=1953 bytes | opdracht gelezen 150 keer (gem 0.25 ms, max 1.00 ms) seq=0 | fouten=0 leesfouten=0 schrijffouten=0 geheugen=222 KB
+[2026-09-30T20:16:56Z INFO  openomsi_game::player] action: cp_batterietrennschalter_toggle
+[2026-09-30T20:16:58Z INFO  openomsi_game::schedule] train: VT_650-101
+[2026-09-30T20:16:58Z INFO  openomsi_game::schedule] scheduled bus: line RB50 tour KI-Zug_ENG trip KI-Zug_ENG2  #None at 540.5 min, 0 stops, at (1473.5, -306.9) heading 315, route 1 of 14 steps so far
+[2026-09-30T20:17:01Z INFO  openomsi_game::player] action: bus_doorfront0
+[2026-09-30T20:17:14Z INFO  openomsi_game::player] action: bus_doorfront0
+[2026-09-30T20:17:26Z INFO  omsi_plugin::lua] [lua omsihubproef] HARTSLAG t=60.0 s sessie=1790799385-41529 herladen=0 schrijf=60 (gem 0.58 ms, max 1.00 ms) bouw gem 0.43 ms json=1954 bytes | opdracht gelezen 300 keer (gem 0.26 ms, max 1.00 ms) seq=0 | fouten=0 leesfouten=0 schrijffouten=0 geheugen=244 KB
+[2026-09-30T20:17:28Z INFO  openomsi_game::schedule] train: VT_650-101
+[2026-09-30T20:17:28Z INFO  openomsi_game::schedule] scheduled bus: line RB50 tour KI-Zug_ENG trip KI-Zug_ENG2  #None at 541.0 min, 0 stops, at (1473.5, -306.9) heading 315, route 1 of 14 steps so far

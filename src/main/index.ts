@@ -11,7 +11,7 @@ import {
   statSync,
   writeFileSync
 } from 'node:fs'
-import { basename, dirname, join, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Worker } from 'node:worker_threads'
 import { log, logboekPad, logFout, startLogboek, TRAAG_MS } from '../core/logboek'
@@ -59,7 +59,7 @@ import {
   type KeyBinding
 } from '../core/omsiKeys'
 import { pickVehicleForDuty, type FleetIndex } from '../core/fleet'
-import { readTileGrid, type MapGeometry } from '../core/geo'
+import { heeftWereldcoordinaten, readTileGrid, wereldNaarTegel, type MapGeometry } from '../core/geo'
 import { LaneNetwork, type TripRoute } from '../core/routing'
 import { VehicleTracker, type VehiclePosition } from '../core/vehicle'
 import { buildIbisPlan, type IbisPlan } from '../core/ibis'
@@ -87,13 +87,60 @@ import {
   schrijfGetallen,
   schrijfVragen,
   stelLiveMappenIn,
+  stelLiveBronIn,
+  bijNamenlijst,
   voertuiggetallenVan,
   type LiveData
 } from '../core/live'
+import { leesOmsihub, omsihubKnop, plaatsOmsihub, zetOmsihubLijst, type Plaatsing } from '../core/omsihub'
 import { MEET_EXTRA, Meetsessie, meetGetallenVoor, varlistVanBus } from '../core/meetstand'
 import { isMeetStap, type MetingBeeld } from '../shared/meetstand'
 import { findOmsiInstall, hasMaps, isOmsiInstall, resolveOmsiFolder } from '../core/install'
-import { isOmsiRunning, launchOmsi, type LaunchResult } from '../core/launch'
+import { type LaunchResult } from '../core/launch'
+import {
+  Herkenner,
+  KAN,
+  MOTOR_NAAM,
+  kiesMotor,
+  knopKanIn,
+  knoppenZonderMotoracties,
+  panelenZonderMotoracties,
+  spelDraaitIn,
+  stelSpelVoor,
+  welkeDraaien,
+  welkeDraait,
+  zekereSpellen,
+  type Herkenning as SpelHerkenning,
+  type MotorId,
+  type MotorKeuzeUitslag,
+  type Voorstel
+} from '../core/spelmotor'
+import { OMSI_EXE, laatstGespeeldOmsi, leesOmsi, omsiDraait, sluitVastgelopenOmsi, startOmsi } from '../core/motoren/omsi'
+import {
+  KetenWacht,
+  OPENOMSI_EXE,
+  OPENOMSI_LAUNCHER_EXE,
+  afrekeningNaEinde,
+  bouwDuty,
+  bouwSituatieDuty,
+  invoerMapVoorOpenOmsi,
+  ketenGestopt,
+  laatstGespeeldOpenOmsi,
+  laststnVoorOpenOmsi,
+  leesLauncherConfig,
+  openOmsiThuis,
+  pastBijDienst,
+  startOpenOmsi,
+  stopOpenOmsi,
+  vindOpenOmsi,
+  type KetenLid,
+  type KetenStand,
+  type OpenOmsiDuty,
+  type OpenOmsiInstallatie,
+  type StartUitkomst,
+  type StopUitkomst,
+  vrijeRitDepsVoorOpenOmsi
+} from '../core/motoren/openomsi'
 import { ensurePlugin, pluginSourceDir, type PluginStatus } from '../core/pluginInstall'
 import { readOverlayLayout, writeOverlayLayout } from '../core/overlayLayout'
 import { receiptHeightMicrons, RECEIPT_WIDTH_MICRONS } from '../core/receipt'
@@ -225,20 +272,14 @@ import { busfoto4Map, maakBusfoto4, type Busfoto4 } from './busfoto4'
 import { maakBus3dVenster, type Bus3dVenster } from './bus3dvenster'
 import type { BusTekeningMetPlaten } from '../core/busbeeld'
 import { kleurstellingenVanBus, zoekKleurstelling } from '../core/kleurstelling'
-import {
-  herkenOverlays,
-  leesLogfileStaart,
-  leesOmsiProces,
-  sluitOmsi,
-  type OverlayInOmsi
-} from '../core/omsiProces'
+import { herkenOverlays, leesLogfileStaart, type OverlayInOmsi } from '../core/omsiProces'
 import { kaartjesVoor, type Kaartset } from '../core/kaartjes'
 import { leesKnoppen, zetKnop, type Schakelbaar, type Uitkomst as OverlayUitkomst, type OverlayKnoppen } from '../core/overlayknop'
 import { writeSituation } from '../core/situation'
 import { leesInzetpunten, plekVanInzetpunt, type Beginplek, type VrijCheckVol } from '../core/beginplek'
 import { MIN_MONSTERS, neemMonster, type Herkenning, type Monster } from '../core/kaartherkenning'
 import { onbruikbaar, vouw, vouwNaam, type Koppeling, type OmsiKeuze } from '../core/omloopvolgen'
-import { startVrijeRit } from '../core/vrijstart'
+import { startVrijeRit, type VrijStartDeps } from '../core/vrijstart'
 import { readTileList } from '../core/track'
 import { t } from '../shared/i18n'
 import { presetStartup } from '../core/startup'
@@ -279,6 +320,7 @@ import {
   type OmsiState,
   type MapSummary,
   type SessionResult,
+  type SpelStand,
   type YardOption
 } from '../shared/api'
 import { defaultLayout, OVERLAY_RATES, type OverlayLayout } from '../shared/overlay'
@@ -487,8 +529,8 @@ function bus3d(): Bus3dDienst {
     sluitWerker: () => sluitAchtergrondwerker('bus3d'),
     log,
     logFout,
-    // Zolang OMSI draait geen heldenbeeld wegschrijven (§9); `omsiDraaide` wordt elke halve minuut bijgewerkt.
-    omsiDraait: () => omsiDraaide,
+    // Zolang er een spel draait geen heldenbeeld wegschrijven (§9); `spelDraaide` wordt elke halve minuut bijgewerkt.
+    omsiDraait: () => spelDraaide,
     // Tot F3 staat alles van het 3D-venster achter de schakelaar `bus3d` (standaard uit).
     aan: () => readSettings(userData()).bus3d === true,
     // Geen heldenbeeld: de foto die de tegel al heeft, zonder te tekenen (§9).
@@ -988,17 +1030,239 @@ async function maakAlleBusfotos(): Promise<void> {
  */
 let omsiMelding: OmsiMelding | undefined
 /*
- * Welk proces OMSI is. Altijd Omsi, behalve in een proef: die zet een eigen
- * programma neer dat vastloopt, zodat er nooit aan het echte spel van de
- * speler gekomen wordt.
- *
- * ELKE VRAAG "DRAAIT OMSI?" GEBRUIKT DIT. Tot 27-09 keek alleen de wacht
- * ernaar; de vraag op de busstap en de controle vlak voor het klaarzetten
- * zochten vast naar Omsi.exe. Een proef met een eigen "OMSI" kreeg dan geen
- * vraag "OMSI draait al", zette de situatie klaar in de echte spelmap en
- * startte het echte spel -- zo gebeurd bij scripts/probe-vrijrijden.cjs.
+ * Welk proces OMSI is, en of het draait, staat sinds 0.7.0 in
+ * core/motoren/omsi.ts: dat is de enige plek die nog naar Omsi.exe (of het
+ * proces van een proef) zoekt. ELKE VRAAG "DRAAIT OMSI?" GAAT DAARLANGS. Tot
+ * 27-09 zochten sommige vragen vast naar Omsi.exe; een proef met een eigen
+ * "OMSI" startte zo het echte spel (scripts/probe-vrijrijden.cjs).
  */
-const OMSI_PROCES = process.env.OMSI_ENHANCER_PROEFPROCES || 'Omsi'
+
+/*
+ * DE SPELMOTOR (ontwerp openomsi-koppeling §4, §5.1)
+ *
+ * Er zijn twee spellen: OMSI 2 en openOMSI. `herken` kijkt in één keer naar
+ * allebei (de instances van de launcher, één tasklist, en alleen voor een
+ * nieuw openomsi.exe-pid een CIM-vraag); het antwoord blijft twee tellen
+ * goed, zodat de vele vragen "draait er een spel?" niet elk een proces
+ * starten. Vragen die alleen over Omsi.exe gaan (options.cfg en keyboard.cfg
+ * die het spel bij het afsluiten terugschrijft, de plugin-DLL die het
+ * vasthoudt) gebruiken `omsiDraait` uit motoren/omsi.ts.
+ */
+const herkenner = new Herkenner({
+  namen: { omsi: OMSI_EXE, openomsi: OPENOMSI_EXE, launcher: OPENOMSI_LAUNCHER_EXE },
+  thuis: openOmsiThuis()
+})
+let laatsteHerkenning: SpelHerkenning | undefined
+let herkenningLoopt: Promise<SpelHerkenning> | undefined
+
+async function herken(maxLeeftijd = 2000): Promise<SpelHerkenning> {
+  if (laatsteHerkenning && Date.now() - laatsteHerkenning.tijd <= maxLeeftijd) return laatsteHerkenning
+  herkenningLoopt ??= herkenner
+    .kijk()
+    .then((h) => {
+      laatsteHerkenning = h
+      meldTweeSpellen(h)
+      return h
+    })
+    .finally(() => {
+      herkenningLoopt = undefined
+    })
+  return herkenningLoopt
+}
+
+/** Draait er een spel, OMSI 2 of openOMSI? Voor de Lakstudio, het 3D-venster, add-ons en de startknop. */
+async function spelDraait(): Promise<boolean> {
+  try {
+    return spelDraaitIn(await herken())
+  } catch (fout) {
+    logFout('kijken welk spel draait', fout)
+    return false
+  }
+}
+
+let tweeSpellenGemeld = 0
+/** Twee openOMSI-spellen tegelijk (instances.rs:1-3): één keer in het logboek per aantal. */
+function meldTweeSpellen(h: SpelHerkenning): void {
+  const n = h.openomsi.length
+  if (n > 1 && n !== tweeSpellenGemeld) log(`twee openOMSI-spellen tegelijk (pids ${h.openomsi.map((p) => p.pid).join(', ')})`)
+  tweeSpellenGemeld = n
+}
+
+/** Waar openOMSI staat, als het er is. Leest alleen; de versie wordt per exe onthouden. */
+function openOmsiNu(h?: SpelHerkenning): OpenOmsiInstallatie | undefined {
+  try {
+    let pad: string | undefined
+    try {
+      pad = omsi()
+    } catch {
+      pad = undefined
+    }
+    return vindOpenOmsi(pad, { draaiend: [...(h?.openomsi ?? []), ...(h?.launchers ?? [])] })
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Met welk spel START begint (zie DE SPELKEUZE in core/spelmotor.ts): de keuze
+ * van de speler, en nooit stil een ander. Koos hij nog niet terwijl openOMSI er
+ * staat, dan `kiezen` met een voorstel; draait het andere spel al, dan
+ * `anderSpel`; koos hij openOMSI en is het er niet, dan `nietGevonden`. In al
+ * die gevallen start er niets.
+ *
+ * `herstart`: een dienst die al begon, gaat verder in het spel waarin hij
+ * begon -- dat staat bij de dienst, en is het spel dat het rijscherm noemt.
+ *
+ * `maxLeeftijd`: hoe oud de herkenning mag zijn (ms). START kijkt vers (0);
+ * de stand voor de schermen mag die van de vorige keer kijken nemen (2 s), dan
+ * kost elke peiling geen eigen `tasklist` (proefdraaier 01-10: 400-1000 ms).
+ */
+async function motorVoorStart(herstart = false, maxLeeftijd = 0): Promise<
+  MotorKeuzeUitslag & {
+    voorstel: Voorstel
+    /** Het spel komt van de lopende dienst, niet van de instelling. */
+    vanDienst?: boolean
+    h: SpelHerkenning
+    inst?: OpenOmsiInstallatie
+  }
+> {
+  const h = await herken(maxLeeftijd)
+  const inst = openOmsiNu(h)
+  const draait = welkeDraait(h)
+  // Alles wat draait: draait het andere spel naast het gekozen, dan ook `anderSpel`.
+  const draaien = welkeDraaien(h)
+  const gevonden = { openomsi: Boolean(inst) }
+  let pad: string | undefined
+  try {
+    pad = omsi()
+  } catch {
+    pad = undefined
+  }
+  const voorstel = stelSpelVoor(
+    draait,
+    { omsi: laatstGespeeldOmsi(pad), openomsi: inst ? laatstGespeeldOpenOmsi(openOmsiThuis()) : undefined },
+    gevonden
+  )
+  if (herstart && career?.activeDuty?.startedAt) {
+    return { ...kiesMotor(motorVanDienst(), draaien, gevonden), voorstel, vanDienst: true, h, inst }
+  }
+  return { ...kiesMotor(readSettings(userData()).spelmotor, draaien, gevonden, voorstel), voorstel, h, inst }
+}
+
+/** Waarom START niets begon, in één regel voor het logboek. */
+function geweigerdeStart(k: MotorKeuzeUitslag): string | undefined {
+  if (k.kiezen) return `nog geen spel gekozen (voorstel: ${MOTOR_NAAM[k.motor]})`
+  if (k.nietGevonden) return `${MOTOR_NAAM[k.motor]} gekozen, maar niet gevonden`
+  if (k.anderSpel) return `${MOTOR_NAAM[k.anderSpel]} draait al (gekozen: ${MOTOR_NAAM[k.motor]})`
+  return undefined
+}
+
+/** De fout voor het venster als START niets begon. */
+function weigerStart(k: MotorKeuzeUitslag): 'kiesSpel' | 'spelNietGevonden' | 'anderSpel' | undefined {
+  if (k.kiezen) return 'kiesSpel'
+  if (k.nietGevonden) return 'spelNietGevonden'
+  if (k.anderSpel) return 'anderSpel'
+  return undefined
+}
+
+/** De motor van de dienst die loopt; een dienst zonder `spel` is er een van OMSI 2. */
+function motorVanDienst(): MotorId {
+  return career?.activeDuty?.spel?.motor === 'openomsi' ? 'openomsi' : 'omsi'
+}
+
+/**
+ * In welk spel er nu gereden wordt (ontwerp §4, `actieveMotor`): dat van de
+ * dienst die loopt, anders dat van de vrije rit, anders wat er draait; zonder
+ * dat alles OMSI 2. Bepaalt wat de telefoon, de overlay en de knoppen mogen
+ * (`KAN`). Kost niets: de herkenning is die van de laatste keer kijken.
+ */
+function actieveMotor(): MotorId {
+  if (career?.activeDuty?.startedAt) return motorVanDienst()
+  const draaien = welkeDraaien(laatsteHerkenning)
+  if (vrijeRit) {
+    /*
+     * Een vrije rit staat tot je hem stopt. Draait zijn spel niet meer en het
+     * andere wel, dan wordt er in dat andere gereden: een vergeten vrije rit in
+     * openOMSI hield anders de knoppen tegen terwijl je in OMSI 2 reed.
+     */
+    const m = vrijeRit.motor ?? 'omsi'
+    return draaien.length > 0 && !draaien.includes(m) ? draaien[0] : m
+  }
+  return draaien[0] ?? 'omsi'
+}
+
+/*
+ * DE WACHT OVER openOMSI (ontwerp §5.3)
+ *
+ * Een dienst in openOMSI loopt zolang de keten van processen leeft: snel
+ * laden en een verloren grafisch apparaat starten een nieuw proces, en dan
+ * loopt de dienst door. Is het laatste lid weg, dan zoekt de wacht 20 s naar
+ * een opvolger; daarna is de dienst gereden en volgt de afrekening uit
+ * ~/.openomsi/sessions (§6).
+ */
+let ketenWacht: KetenWacht | undefined
+let ketenStand: KetenStand | undefined
+let ketenVolgt: ReturnType<typeof setTimeout> | undefined
+/** Wanneer er voor het laatst een herstart in de keten kwam (ms); dan zegt het rijscherm "start opnieuw". */
+let herstartGezien = 0
+/** Het einde waarvoor de melding "geen ritverslag" al ging; één keer per einde. */
+let geenRitGemeld: string | undefined
+
+/** Hoe lang het rijscherm na een herstart "openOMSI start opnieuw…" zegt (ms). */
+const HERSTART_TEKST_MS = 15000
+
+async function bewaakOpenOmsi(): Promise<void> {
+  const actief = career?.activeDuty
+  const spel = actief?.spel
+  if (!career || !actief?.startedAt || spel?.motor !== 'openomsi' || spel.keten.length === 0) return
+  if (spel.einde) {
+    /*
+     * De keten is weg en openOMSI schreef geen ritverslag (gecrasht of hard
+     * afgesloten): dan dezelfde melding als na een crash van OMSI 2, met de
+     * knop om opnieuw te starten met deze dienst. Niet als de app zelf stopte
+     * (Afronden): dan boekt het venster meteen.
+     */
+    if (!spel.doorApp && geenRitGemeld !== spel.einde && openOmsiSessie().spel?.stand === 'onvolledig') {
+      geenRitGemeld = spel.einde
+      log(`openOMSI-dienst: geen ritverslag van ${spel.keten.map((lid) => lid.pid).join(' > ')}; opnieuw starten kan`)
+      meldOverOmsi({ soort: 'crash', motor: 'openomsi', tijd: spel.einde, overlays: [] })
+    }
+    return
+  }
+  if (!ketenWacht || ketenWacht.keten[0]?.pid !== spel.keten[0]?.pid || ketenWacht.keten.length < spel.keten.length) {
+    ketenWacht = new KetenWacht(spel.keten, { log })
+  }
+  const voor = ketenWacht.keten.length
+  const stand = ketenWacht.stap(await herken(0))
+  ketenStand = stand
+  if (stand === 'herstart') herstartGezien = Date.now()
+  const keten: KetenLid[] = ketenWacht.keten.map((lid) => ({ ...lid }))
+  const gewijzigd =
+    keten.length !== voor || keten.some((lid, i) => lid.gestart !== spel.keten[i]?.gestart) || stand === 'einde'
+  if (gewijzigd && career.activeDuty?.spel?.motor === 'openomsi') {
+    persist({
+      ...career,
+      activeDuty: {
+        ...career.activeDuty,
+        spel: {
+          ...career.activeDuty.spel,
+          keten,
+          einde: stand === 'einde' && ketenWacht.einde !== undefined ? new Date(ketenWacht.einde).toISOString() : undefined
+        }
+      }
+    })
+  }
+  if (stand === 'einde') log(`openOMSI-dienst: de keten (${keten.map((lid) => lid.pid).join(' > ')}) is weg; afrekenen`)
+  // Zoekt hij een opvolger, dan niet tien tellen wachten: een herstart is binnen een paar tellen te zien.
+  if (stand === 'zoekt' && !ketenVolgt) {
+    ketenVolgt = setTimeout(() => {
+      ketenVolgt = undefined
+      void bewaakOpenOmsi().catch((fout) => logFout('openOMSI bewaken', fout))
+    }, 2000)
+    ketenVolgt.unref?.()
+  }
+}
+
 const omsiWacht = {
   bezig: false,
   draaide: false,
@@ -1017,7 +1281,7 @@ const omsiWacht = {
 function meldOverOmsi(melding: OmsiMelding): void {
   omsiMelding = melding
   log(
-    `OMSI ${melding.soort === 'crash' ? 'gecrasht' : melding.soort === 'vast' ? 'vastgelopen' : 'overlays'}: ` +
+    `${melding.motor === 'openomsi' ? 'openOMSI' : 'OMSI'} ${melding.soort === 'crash' ? 'gecrasht' : melding.soort === 'vast' ? 'vastgelopen' : 'overlays'}: ` +
       (melding.overlays.map((item) => item.soort).join(', ') || 'geen overlays bekend')
   )
   for (const venster of BrowserWindow.getAllWindows()) {
@@ -1045,9 +1309,15 @@ async function bewaakOmsi(): Promise<void> {
     omsiWacht.draaide = false
     return
   }
+  // Een dienst in openOMSI heeft zijn eigen wacht: de keten van processen (ontwerp §5.3).
+  if (dienst.spel?.motor === 'openomsi') {
+    omsiWacht.draaide = false
+    await bewaakOpenOmsi().catch((fout) => logFout('openOMSI bewaken', fout))
+    return
+  }
   omsiWacht.bezig = true
   try {
-    const draait = await isOmsiRunning(`${OMSI_PROCES}.exe`)
+    const draait = await omsiDraait()
     if (!draait) {
       if (omsiWacht.draaide) {
         omsiWacht.draaide = false
@@ -1093,7 +1363,7 @@ async function bewaakOmsi(): Promise<void> {
       return
     }
 
-    const proces = await leesOmsiProces(OMSI_PROCES)
+    const proces = await leesOmsi()
     omsiWacht.laatsteScan = Date.now()
     if (!proces) return
     omsiWacht.overlays = herkenOverlays(proces.modules, omsi())
@@ -1268,6 +1538,8 @@ let vrijeRit:
       startTijd: number
       /** De datum van de situatie, voor als de plugin er (nog) geen geeft. */
       datum?: string
+      /** In welk spel; zonder is het OMSI 2. openOMSI geeft in 0.7.0 geen live-gegevens. */
+      motor?: MotorId
     }
   | undefined
 
@@ -1284,6 +1556,8 @@ const volg = {
   geenMemSinds: 0,
   /** Er loopt een vraag aan de werker; dan niet nog een. */
   bezig: false,
+  /** In welk spel de vrije rit de vorige keer gevolgd werd; voor één regel in het logboek als dat wisselt. */
+  motor: undefined as MotorId | undefined,
   suggesties: [] as VrijSuggestie[],
   halte: undefined as string | undefined,
   suggestiesOp: 0,
@@ -1340,7 +1614,8 @@ function vergeetVolgen(): void {
     omloop: undefined,
     gewisseldVan: undefined,
     gewisseldOp: 0,
-    aanrijBereikt: ''
+    aanrijBereikt: '',
+    motor: undefined
   })
   volg.onbekendGelogd.clear()
 }
@@ -1373,10 +1648,138 @@ function herkenningVoor(rit: NonNullable<typeof vrijeRit>): Herkenning | undefin
   return uit && uit.sinds === rit.sinds && uit.folder === rit.mapFolder ? uit : undefined
 }
 
+/* -------------------------------------------------------------------------- */
+/* openOMSI: de live gegevens uit de Lua-plugin omsihub (core/omsihub.ts)      */
+/* -------------------------------------------------------------------------- */
+
+/** De OMSI 2-map, of niets als die (nog) niet gevonden is. */
+function omsiOfNiets(): string | undefined {
+  try {
+    return omsi()
+  } catch {
+    return undefined
+  }
+}
+
+let spelkeuzeOnthouden: { motor: MotorId | undefined; op: number } | undefined
+
+/** De spelkeuze van Luc (Instellingen), eens per vijf tellen gelezen: readLive loopt vaak. */
+function spelkeuzeNu(): MotorId | undefined {
+  const nu = Date.now()
+  if (!spelkeuzeOnthouden || nu - spelkeuzeOnthouden.op > 5000) {
+    let motor: MotorId | undefined
+    try {
+      motor = readSettings(userData()).spelmotor
+    } catch {
+      motor = undefined
+    }
+    spelkeuzeOnthouden = { motor, op: nu }
+  }
+  return spelkeuzeOnthouden.motor
+}
+
+/**
+ * Uit welk spel de live gegevens komen. Een dienst of vrije rit zegt het zelf;
+ * daarbuiten wat er draait, en anders de spelkeuze. Alleen openOMSI leest
+ * omsihub: met OMSI 2 blijft het live.json.
+ */
+function liveBronMotor(): MotorId {
+  if (career?.activeDuty?.startedAt) return motorVanDienst()
+  if (vrijeRit) return actieveMotor()
+  const draaien = laatsteHerkenning ? welkeDraaien(laatsteHerkenning) : []
+  return draaien[0] ?? spelkeuzeNu() ?? 'omsi'
+}
+
+/** De kaartmap waarop de bus in openOMSI rijdt: die van de dienst of de vrije rit. */
+function kaartVoorOpenOmsi(): string | undefined {
+  return currentDuty()?.mapFolder ?? vrijeRit?.mapFolder
+}
+
+/** Het busbestand dat openOMSI rijdt (relatief aan de OMSI-map of volledig), voor de schermpjes. */
+function busVoorOpenOmsi(): string | undefined {
+  const draait = laatsteHerkenning?.openomsi.find((p) => p.dienst?.bus)?.dienst?.bus
+  if (draait) return draait
+  const lopend = career?.activeDuty
+  if (lopend?.startedAt) {
+    const bus = (lopend.assignment as Assignment | undefined)?.vehicle
+    return lopend.vehicleOverride || bus?.relativePath
+  }
+  return vrijeRit?.vehiclePath
+}
+
+const wereldPerKaart = new Map<string, boolean>()
+
+/**
+ * De tegel en de plek erin (`mem.tile`, `mem.x`, `mem.z`), zoals de DLL ze bij
+ * OMSI 2 geeft, uit de wereldmeters van openOMSI. Zonder kaart of buiten de
+ * tegels blijft `mem.ok` 0: dan geen plek, liever dan een verkeerde.
+ */
+function vulTegel(live: LiveData, folder: string | undefined): void {
+  const wereld = live.openomsi?.wereld
+  if (!live.mem || !wereld || !folder) return
+  const tegels = tegelsVan(folder)
+  if (tegels.lijst.length === 0) return
+  let wc = wereldPerKaart.get(folder)
+  if (wc === undefined) {
+    wc = heeftWereldcoordinaten(kaartPad(folder))
+    wereldPerKaart.set(folder, wc)
+  }
+  const plek = wereldNaarTegel(wereld.x, wereld.y, { wereld: wc, rijen: tegels.lijst.map((t) => t.ty) })
+  const index = tegels.lijst.findIndex((t) => t.tx === plek.tx && t.ty === plek.ty)
+  if (index < 0) return
+  live.mem = { ...live.mem, ok: 1, tile: index, x: plek.lx, z: plek.ly }
+}
+
+/**
+ * De bron voor `readLive` (core/live.ts, `stelLiveBronIn`): `undefined` is
+ * live.json (OMSI 2), anders wat omsihub schreef (`null`: nog niets).
+ */
+function liveUitOpenOmsi(): LiveData | null | undefined {
+  if (liveBronMotor() !== 'openomsi') return undefined
+  const pad = omsiOfNiets()
+  if (!pad) return null
+  const live = leesOmsihub(pad)
+  if (!live) return null
+  vulTegel(live, kaartVoorOpenOmsi())
+  const bus = busVoorOpenOmsi()
+  if (bus) {
+    live.bus = {
+      naam: live.openomsi?.voertuig ?? '',
+      model: '',
+      pad: isAbsolute(bus) ? dirname(bus) : join(omsiOfNiets() ?? '', dirname(bus)),
+      bestand: bus
+    }
+  }
+  return live
+}
+
+/** Waar de meegeleverde main.lua van omsihub staat. */
+function omsihubBron(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'plugin', 'omsihub', 'main.lua')
+    : join(process.cwd(), 'plugin', 'lua', 'omsihub', 'main.lua')
+}
+
+let omsihubStand: Plaatsing | undefined
+
+/**
+ * Zet de Lua-plugin in `<OMSI 2>\plugins\omsihub\` (plan §3.1 en §3.7),
+ * alleen als er in openOMSI gereden wordt of gaat worden. Niet midden in een
+ * dienst: openOMSI zou hem dan herladen.
+ */
+function zorgVoorOmsihub(reden: string): void {
+  const pad = omsiOfNiets()
+  if (!pad) return
+  const stand = plaatsOmsihub(pad, omsihubBron())
+  if (stand.veranderd || stand.fout !== omsihubStand?.fout) {
+    log(`omsihub (${reden}): ${stand.fout ? `niet geplaatst: ${stand.fout}` : stand.veranderd ? `geplaatst in ${stand.doel}` : 'staat er al'}`)
+  }
+  omsihubStand = stand
+}
+
 /** Waar de bus staat in kaartmeters, uit de tegel en de plek erbinnen; zonder rijstrokennet. */
 const tegelsVoorBus = new Map<string, { lijst: ReturnType<typeof readTileList>; grid: ReturnType<typeof readTileGrid> }>()
-function busOpKaart(folder: string, mem: LiveData['mem']): { x: number; y: number } | undefined {
-  if (!mem || mem.ok !== 1) return undefined
+function tegelsVan(folder: string): { lijst: ReturnType<typeof readTileList>; grid: ReturnType<typeof readTileGrid> } {
   let tegels = tegelsVoorBus.get(folder)
   if (!tegels) {
     let lijst: ReturnType<typeof readTileList> = []
@@ -1388,6 +1791,12 @@ function busOpKaart(folder: string, mem: LiveData['mem']): { x: number; y: numbe
     tegels = { lijst, grid: readTileGrid(kaartPad(folder)) }
     tegelsVoorBus.set(folder, tegels)
   }
+  return tegels
+}
+
+function busOpKaart(folder: string, mem: LiveData['mem']): { x: number; y: number } | undefined {
+  if (!mem || mem.ok !== 1) return undefined
+  const tegels = tegelsVan(folder)
   const tegel = tegels.lijst[mem.tile]
   if (!tegel || !tegels.grid) return undefined
   const [ox, oy] = tegels.grid.offset(tegel.tx, tegel.ty)
@@ -1602,6 +2011,20 @@ function pasKoppelingToe(
 async function volgOmloopInOmsi(live: LiveData | undefined): Promise<void> {
   const rit = vrijeRit
   if (!rit || career?.activeDuty || volg.bezig) return
+  /*
+   * Vrij rijden in openOMSI: daar komt in 0.7.0 niets binnen om te volgen (geen
+   * live.json). Dan zegt het rijscherm dat, in plaats van eindeloos "Wachten
+   * op OMSI…" en na een minuut "sluit OMSI zelf af" (tegenlezing 01-10).
+   * Via `actieveMotor`: rijdt de speler intussen in OMSI 2 (openOMSI is weg),
+   * dan volgt de app gewoon OMSI 2, zoals de knoppen dat dan ook doen.
+   */
+  const motor = actieveMotor()
+  if (rit.motor === 'openomsi' && volg.motor !== motor) {
+    log(motor === 'openomsi' ? 'vrij rijden in openOMSI: de app volgt omsihub' : 'vrij rijden in openOMSI, maar OMSI 2 draait en openOMSI niet: de app volgt OMSI 2')
+  }
+  volg.motor = motor
+  // De oude tekst "openOMSI geeft niets door" geldt niet meer: wachten op de gegevens.
+  if (vrijStaat?.soort === 'openomsi') zetVrijeStaat({ soort: 'wacht' })
   volg.bezig = true
   try {
     await volgStap(rit, live)
@@ -1701,7 +2124,8 @@ async function volgStap(rit: NonNullable<typeof vrijeRit>, live: LiveData | unde
     tour: mem.tour,
     tourEntry: mem.tourEntry,
     trip: mem.trip,
-    klok: live.time / 60
+    klok: live.time / 60,
+    vanOpenOmsi: live.motor === 'openomsi' || undefined
   }
 
   /* Eens per keuze, en na een halve minuut nog eens: een mislukte koppeling blijft niet stil. */
@@ -1954,6 +2378,12 @@ function stopVrijeRit(): void {
  * kilometers niet kwijt te zijn.
  */
 function sessieGegevens(): SessionResult {
+  if (motorVanDienst() === 'openomsi') return openOmsiSessie()
+  return liveSessie()
+}
+
+/** De cijfers uit de live gegevens (live.json, of omsihub in openOMSI). */
+function liveSessie(): SessionResult {
   captureBaseline()
   const live = readLive()
   const start = baseline()
@@ -2035,6 +2465,248 @@ function sessieGegevens(): SessionResult {
 }
 
 /**
+ * Wat er van een dienst in openOMSI gereden is (ontwerp §6).
+ *
+ * In 0.7.0 zegt openOMSI tijdens het rijden niets; pas als de keten van
+ * processen weg is, staat er per proces een sessiebestand in
+ * ~/.openomsi/sessions -- alleen bij een net einde. Tot dat bestand er is (of
+ * 30 s voorbij zijn) wacht de afrekening. Daarna:
+ *
+ * - `klaar`: de cijfers van openOMSI. Het loon volgt de haltes die openOMSI
+ *   telde, zoals bij OMSI 2 de gemeten haltes.
+ * - `anders`: openOMSI schreef alleen ritten van een andere dienst (andere
+ *   kaart, lijn of omloop). Dan is er gereden, maar niet deze dienst: nul
+ *   haltes, dus geen loon (tegenlezing 01-10: dat leverde het volle loon op).
+ * - `onvolledig`: openOMSI schreef niets (gecrasht of hard afgesloten). Dat is
+ *   niet te meten, en wat niet gemeten kon worden valt niet in het nadeel van
+ *   de chauffeur uit (`partialPay`, zoals bij OMSI 2 zonder metingen). De app
+ *   biedt dan aan opnieuw te starten (`bewaakOpenOmsi`) en boekt een
+ *   onvolledige dienst niet vanzelf bij het sluiten (`sluitLopendeDienstAf`).
+ *
+ * Schokken (`jolts`) zijn geen hard remmen: openOMSI telt versnelling langs
+ * boven 5 m/s² (remmen én optrekken) en dwars boven 3 m/s² (OO career.rs:19-20,
+ * 199-201), onze plugin alleen remmen vanaf 3,5 m/s² (plugin/omsicareer.c).
+ * Ze gaan apart mee (`spel.schokken`), niet als `harshBrakes`: het examen, de
+ * melding "stevig geremd" en het oordeel onderweg rekenen met die maat.
+ */
+function openOmsiSessie(): SessionResult {
+  const actief = career?.activeDuty
+  const spel = actief?.spel
+  const begon = actief?.startedAt ? Date.parse(actief.startedAt) : Date.now()
+  const minuten = Math.max(0, (Date.now() - begon) / 60000)
+  const pids = spel?.keten.map((lid) => lid.pid) ?? []
+  const meegereden = spel?.via === 'meerijden' ? true : undefined
+  const basis = { elapsedMinutes: minuten, dutyComplete: false }
+  if (!spel || pids.length === 0) return { ...basis, finished: false, spel: { motor: 'openomsi', stand: 'geenSpel', pids } }
+  if (!spel.einde) {
+    /*
+     * Het laatste lid is weg en de wacht zoekt nog een opvolger: dan is het
+     * spel dicht en wacht de app (op een herstart of het ritverslag). "Start
+     * opnieuw" alleen als er echt een herstart in de keten kwam.
+     */
+    const stand =
+      Date.now() - herstartGezien < HERSTART_TEKST_MS ? 'herstart' : ketenStand === 'zoekt' ? 'wacht' : 'loopt'
+    /*
+     * Tijdens het rijden de cijfers van de Lua-plugin omsihub (km, haltes,
+     * vertraging, rijstijl), zodat loon en rang live meelopen zoals bij OMSI 2.
+     * De afrekening na afloop komt nog steeds uit ~/.openomsi/sessions.
+     */
+    const live = liveSessie()
+    return {
+      ...live,
+      elapsedMinutes: live.elapsedMinutes > 0 ? live.elapsedMinutes : minuten,
+      dutyComplete: false,
+      finished: false,
+      spel: { motor: 'openomsi', stand, pids, meegereden }
+    }
+  }
+  const duty = currentDuty()
+  const na = afrekeningNaEinde(
+    spel.keten,
+    Date.parse(spel.einde),
+    Date.now(),
+    openOmsiThuis(),
+    duty ? { mapFolder: duty.mapFolder, line: duty.lineFile, tour: duty.tourNumber } : undefined,
+    actief?.startedAt
+  )
+  if (na.stand === 'wacht') return { ...basis, finished: false, spel: { motor: 'openomsi', stand: 'wacht', pids, meegereden } }
+  if (na.stand === 'onvolledig') {
+    return { ...basis, finished: true, spel: { motor: 'openomsi', stand: 'onvolledig', pids, ontbreekt: na.ontbreekt, meegereden } }
+  }
+  if (na.stand === 'anders') {
+    return {
+      ...basis,
+      stopsDone: 0,
+      finished: true,
+      spel: { motor: 'openomsi', stand: 'anders', pids, ontbreekt: na.ontbreekt, afwijkend: na.afwijkend, meegereden }
+    }
+  }
+  const a = na.afrekening
+  return {
+    drivenKm: a.km,
+    elapsedMinutes: a.seconden > 0 ? a.seconden / 60 : minuten,
+    // Wat openOMSI als gehaalde haltes telt; nooit meer dan de dienst heeft.
+    stopsDone: duty ? Math.min(a.haltes, duty.totalStops) : a.haltes,
+    tickets: a.kaartjes,
+    collisions: a.aanrijdingen,
+    dutyComplete: false,
+    finished: true,
+    spel: {
+      motor: 'openomsi',
+      stand: 'klaar',
+      pids: a.pids,
+      ontbreekt: a.ontbreekt,
+      haltes: a.haltes,
+      teVroeg: a.teVroeg,
+      teLaat: a.teLaat,
+      schokken: a.schokken,
+      gewonden: a.gewonden,
+      meegereden
+    }
+  }
+}
+
+/**
+ * Een dienst in openOMSI beginnen (ontwerp §5.2). Draait er al een
+ * openOMSI-spel, dan rijdt de dienst daarin mee: nooit een tweede. Anders via
+ * de launcher van openOMSI (`--cli launch`), met de Duty van deze dienst;
+ * opnieuw starten na een crash zet voort vanaf `laststn.osn` in de inhoudsmap
+ * van openOMSI, als die er is. In de OMSI 2-map wordt niets geschreven: geen
+ * situatie, geen startscherm, geen knoppen en geen lak.
+ */
+async function beginInOpenOmsi(
+  request: BeginRequest,
+  keuze: { h: SpelHerkenning; inst?: OpenOmsiInstallatie }
+): Promise<BeginResult> {
+  const { duty } = request
+  const actief = career?.activeDuty
+  // De Lua-plugin voor de live gegevens, voordat openOMSI start (plan §3.7).
+  zorgVoorOmsihub('dienst in openOMSI')
+  const oudeKeten = request.herstart && actief?.spel?.motor === 'openomsi' ? actief.spel.keten : []
+  /*
+   * Een spel dat al draait: alleen een zeker spel (nooit een proces waarvan CIM
+   * de opdrachtregel niet gaf, dat kan een launcher zijn), en alleen als het
+   * deze dienst rijdt. Rijdt het zichtbaar iets anders (andere kaart, lijn of
+   * omloop), dan rijdt de dienst er niet in mee: dat werd achteraf een
+   * afrekening van een andere rit. Zegt het spel niets over zijn rit (gestart
+   * met het menu of op een situatie), dan rijdt de dienst mee; de afrekening
+   * legt kaart, lijn en omloop van het ritverslag er later alsnog tegen.
+   */
+  const draaiend = zekereSpellen(keuze.h)[0]
+  let via: 'launcher' | 'terugval' | 'meerijden'
+  let lid: KetenLid
+  if (draaiend) {
+    const eigen = oudeKeten.some((oud) => oud.pid === draaiend.pid)
+    const past = eigen ? 'ja' : pastBijDienst(draaiend.dienst, { mapFolder: duty.mapFolder, line: duty.lineFile, tour: duty.tourNumber })
+    if (past === 'nee') {
+      const d = draaiend.dienst
+      const kaart = /maps[\\/]([^\\/]+)[\\/]/i.exec(d?.map ?? '')?.[1] ?? d?.map
+      const rit = [kaart, d?.line, d?.tour].filter(Boolean).join(', ')
+      log(`dienst niet begonnen: openOMSI (pid ${draaiend.pid}) rijdt al iets anders (${rit}), dienst ${duty.mapFolder} omloop ${duty.tourNumber}`)
+      return { connected: false, launched: false, running: true, fout: 'andereRit', foutTekst: rit, motor: 'openomsi' }
+    }
+    via = 'meerijden'
+    lid = { pid: draaiend.pid, gestart: draaiend.gestart }
+    log(
+      `dienst in openOMSI: er draait al een spel (pid ${draaiend.pid}${past === 'onbekend' ? ', rit onbekend' : ''}); ` +
+        'de dienst rijdt daarin mee en het ritverslag telt het hele spel'
+    )
+  } else {
+    const inst = keuze.inst
+    if (!inst) return { connected: false, launched: false, running: false, start: 'mislukt', startFout: 'openomsi.exe niet gevonden', motor: 'openomsi' }
+    if (inst.uitTemp) log(`let op: openOMSI staat in een tijdelijke map (${inst.map})`)
+    const bus = request.vehiclePath || (actief?.assignment as Assignment | undefined)?.vehicle?.relativePath
+    // Na een crash verder vanaf de laststn van openOMSI, als die van deze dienst is (niet ouder dan zijn begin).
+    const begon = actief?.startedAt ? Date.parse(actief.startedAt) : undefined
+    const laststn = request.herstart ? laststnVoorOpenOmsi(inst.inhoudsmap, duty.mapFolder, begon) : undefined
+    let oduty: OpenOmsiDuty
+    if (laststn) {
+      oduty = bouwSituatieDuty(laststn, duty.mapFolder, { profiel: leesLauncherConfig(openOmsiThuis()).profile })
+    } else {
+      if (!bus) {
+        return { connected: false, launched: false, running: false, start: 'mislukt', startFout: 'geen bus gekozen', motor: 'openomsi' }
+      }
+      oduty = bouwDuty({
+        mapFolder: duty.mapFolder,
+        bus,
+        hof: request.yard,
+        line: duty.lineFile,
+        tour: duty.tourNumber,
+        minuten: duty.signOn,
+        datum: (request.date ?? dutyDate(duty.mapFolder, duty.days | duty.period))?.iso,
+        lak: request.kleurstelling
+      })
+    }
+    const uit: StartUitkomst = await startOpenOmsi(inst, oduty, { logMap: liveMap(), omsiPad: omsi() })
+    log(
+      `dienst in openOMSI${inst.versie ? ` ${inst.versie}` : ''} (${uit.via}${laststn ? ', voortzetten' : ''}): ${uit.uitkomst}` +
+        (uit.pid ? `, pid ${uit.pid}` : '') +
+        (uit.fout ? `: ${uit.fout}` : '') +
+        (uit.opdracht ? ` -- ${uit.opdracht}` : '')
+    )
+    if (uit.uitkomst !== 'gestart' || !uit.pid) {
+      return { connected: false, launched: false, running: false, start: 'mislukt', startFout: uit.fout, motor: 'openomsi' }
+    }
+    via = uit.via
+    /*
+     * Het pid met zijn starttijd: dat is wie het spel is. Een pid wordt
+     * hergebruikt; zonder starttijd kon na het heropenen van de app een ander
+     * openOMSI onder hetzelfde nummer voor dit spel doorgaan. De instance van de
+     * launcher (of anders CIM) geeft hem.
+     */
+    const pid = uit.pid
+    const gezien = await herken(0)
+      .then((h) => h.openomsi.find((p) => p.pid === pid))
+      .catch(() => undefined)
+    lid = gezien?.gestart ? { pid, gestart: gezien.gestart } : { pid }
+  }
+  if (career?.activeDuty) {
+    persist({
+      ...career,
+      activeDuty: {
+        ...career.activeDuty,
+        startedAt: career.activeDuty.startedAt ?? new Date().toISOString(),
+        spel: { motor: 'openomsi', keten: [...oudeKeten.filter((oud) => oud.pid !== lid.pid), lid], via }
+      }
+    })
+  }
+  ketenWacht = undefined
+  ketenStand = 'loopt'
+  // Het startscherm van OMSI 2 blijft van OMSI: niets om later terug te zetten.
+  klaargezet = undefined
+  omsiMelding = undefined
+  return {
+    connected: false,
+    launched: via !== 'meerijden',
+    running: via === 'meerijden',
+    start: via === 'meerijden' ? undefined : 'gestart',
+    meegereden: via === 'meerijden',
+    motor: 'openomsi'
+  }
+}
+
+/**
+ * Een gereden dienst boeken: in het logboek, met de rittenstaat en wat er
+ * onderweg gebeurde, en -- rijdt hij op een lijn van je eigen busbedrijf --
+ * ook daar (core/bedrijf.ts, `boekEigenDienst`). Geeft de nieuwe stand; wie
+ * hem aanroept bewaart hem. Hetzelfde voor Afronden (`career:complete`) en
+ * voor een dienst in openOMSI die bij het sluiten van de app al klaar was:
+ * die sloeg het busbedrijf eerst over (tegenlezing 01-10).
+ */
+function boekAf(duty: Duty, vehicle: string, measured: Parameters<typeof completeDuty>[3]): CareerState {
+  if (!career) throw new Error('geen profiel')
+  const staat = rittenstaatVanDienst(duty)
+  // Een dienst op een lijn van je eigen bedrijf telt ook daar; zie core/bedrijf.ts.
+  const lopend = career.activeDuty
+  const busPad =
+    lopend?.vehicleOverride || (lopend?.assignment as Assignment | undefined)?.vehicle?.relativePath
+  const bedrijf = career.bedrijf
+    ? boekEigenDienst(career.bedrijf, duty, staat, busPad, measured?.stopsDone)
+    : undefined
+  return completeDuty({ ...career, bedrijf }, duty, vehicle, measured, staat, onderwegVanDienst(staat, measured))
+}
+
+/**
  * De lopende dienst afsluiten als de app dichtgaat.
  *
  * Een dienst die blijft hangen is verwarrend: je start de app weer op, er staat
@@ -2051,6 +2723,33 @@ function sluitLopendeDienstAf(): void {
   if (!career || !lopend) return
 
   const duty = currentDuty()
+  /*
+   * Een dienst in openOMSI: het spel blijft draaien als de app dichtgaat
+   * (ontwerp §5.3), en de dienst dus ook -- bij het openen volgt de app de
+   * keten weer. Is de keten al weg en de afrekening binnen (`klaar`), dan gaat
+   * hij naar het logboek zoals bij Afronden: met het busbedrijf erbij
+   * (`boekAf`). Schreef openOMSI geen ritverslag (`onvolledig`) of alleen dat
+   * van een andere rit (`anders`), dan boekt de app niets op eigen houtje: de
+   * dienst blijft staan, en bij het openen vraagt de app of je verder wilt --
+   * opnieuw starten of zelf afronden. Bij OMSI 2 vervalt een dienst zonder
+   * metingen hier ook zonder boeking.
+   */
+  if (lopend.spel?.motor === 'openomsi' && lopend.startedAt && duty && !lopend.exam) {
+    const g = openOmsiSessie()
+    if (g.spel?.stand !== 'klaar') return
+    const bus = (lopend.assignment as Assignment | undefined)?.vehicle
+    career = boekAf(duty, bus ? `${bus.manufacturer} ${bus.type}` : lopend.vehicleOverride, {
+      stopsDone: g.stopsDone,
+      drivenKm: g.drivenKm,
+      tickets: g.tickets,
+      collisions: g.collisions,
+      teVroeg: g.spel.teVroeg,
+      teLaat: g.spel.teLaat,
+      bron: 'openomsi'
+    })
+    writeProfile(userData(), career)
+    return
+  }
   if (!duty || !baseline() || lopend.exam) {
     career = { ...career, activeDuty: undefined }
     writeProfile(userData(), career)
@@ -2320,6 +3019,8 @@ let klaargezet: { mapFolder: string; file: string } | undefined
 
 /** Draaide OMSI de vorige keer dat we keken? */
 let omsiDraaide = false
+/** En draaide er een spel, OMSI 2 of openOMSI? Voor de Lakstudio en het 3D-venster. */
+let spelDraaide = false
 
 /**
  * Kijkt of OMSI net is afgesloten en zet dan de situatie opnieuw klaar.
@@ -2360,14 +3061,23 @@ async function herstelStartscherm(): Promise<void> {
   if (nu - laatsteProcesKijk < 30000) return
   laatsteProcesKijk = nu
 
-  const draait = await isOmsiRunning(`${OMSI_PROCES}.exe`)
+  const h = await herken(0)
+  const draait = h.omsi.length > 0
   const netAf = omsiDraaide && !draait
   omsiDraaide = draait
-  // Het 3D-venster gaat in de lichte stand zolang OMSI draait (bus3d-ontwerp §9).
-  bus3dVenster?.omsiGewijzigd(draait)
+  /*
+   * De Lakstudio en het 3D-venster kijken naar elk spel (ontwerp openomsi-
+   * koppeling §4): ook openOMSI leest de bussen uit de OMSI 2-map.
+   */
+  const spelNu = spelDraaitIn(h)
+  const spelNetAf = spelDraaide && !spelNu
+  spelDraaide = spelNu
+  // Het 3D-venster gaat in de lichte stand zolang er een spel draait (bus3d-ontwerp §9).
+  bus3dVenster?.omsiGewijzigd(spelNu)
   if (netAf) meldPluginLogboek('OMSI is net afgesloten')
   // Een lak die klaarstond, nu in OMSI (Lakstudio §5.7a).
-  if (netAf) void lakstudio?.omsiDicht('OMSI is net afgesloten')
+  if (spelNetAf) void lakstudio?.omsiDicht(netAf ? 'OMSI is net afgesloten' : 'openOMSI is net afgesloten')
+  // Het startscherm is van OMSI 2 (laststn.osn en [last_map]); openOMSI kent het niet.
   if (!netAf || !klaargezet) return
   try {
     const startup = presetStartup(omsi(), klaargezet.mapFolder, klaargezet.file)
@@ -2501,7 +3211,7 @@ function laadtOmsi(verbonden: boolean): boolean {
   const nu = Date.now()
   if (nu - omsiLaadtGekeken >= 5000) {
     omsiLaadtGekeken = nu
-    void isOmsiRunning(`${OMSI_PROCES}.exe`).then((draait) => {
+    void spelDraait().then((draait) => {
       omsiLaadt = draait
     })
   }
@@ -2842,6 +3552,26 @@ let opdrachtNr = 0
 
 function omsiToets(actie: string): boolean {
   /*
+   * openOMSI (ontwerp §3.5): onze plugin laadt daar niet, dus een toets via
+   * opdracht.txt komt nergens aan. De motoracties (kaartje, wisselgeld,
+   * knipperlicht, handrem, koplampen) kunnen daar nooit via de app -- ze staan
+   * er ook niet (keuze van Luc); de scripttriggers (IBIS, AFR, LAWO) komen met
+   * de Lua-brug (0.8.0, `KAN.openomsi.knopOpNaam`).
+   */
+  const draaitAlleenOpenOmsi = Boolean(
+    laatsteHerkenning && laatsteHerkenning.omsi.length === 0 && zekereSpellen(laatsteHerkenning).length > 0
+  )
+  const motor: MotorId = draaitAlleenOpenOmsi ? 'openomsi' : actieveMotor()
+  const naamNu = (OMSI_TOETSEN as Record<string, string>)[actie] ?? actie
+  if (!knopKanIn(KAN[motor], naamNu)) {
+    log(`toets ${naamNu}: een motoractie, en die staat niet in openOMSI; niet ingedrukt`)
+    return false
+  }
+  if (motor === 'openomsi' && !KAN.openomsi.knopOpNaam) {
+    log(`toets ${naamNu}: openOMSI, en knoppen via de app kunnen daar nog niet; niet ingedrukt`)
+    return false
+  }
+  /*
    * De naam waar het busscript op luistert. De telefoon stuurt hem zoals hij in
    * het model van de bus staat (`IBIS_7`, `ticketprinter_button_enter`); de
    * oude namen uit `OMSI_TOETSEN` blijven werken voor de vaste knoppen van de
@@ -2851,6 +3581,25 @@ function omsiToets(actie: string): boolean {
   if (!naam || (!toegestaneActies.has(naam.toLowerCase()) && !schermActies().has(naam))) {
     log(`toets ${naam || actie} hoort niet bij deze bus; niet ingedrukt`)
     return false
+  }
+  /*
+   * openOMSI: de Lua-plugin omsihub drukt de scripttrigger op naam in
+   * (omsi.press, na 0,1 s omsi.release), via opdracht.save.lua. Geen toets en
+   * geen keyboard.cfg: openOMSI kent de knop bij zijn naam.
+   */
+  if (motor === 'openomsi') {
+    const pad = omsiOfNiets()
+    if (!pad) return false
+    try {
+      if (omsihubKnop(pad, naam) === undefined) {
+        log(`toets ${naam}: geen naam die de plugin in openOMSI aanneemt; niet ingedrukt`)
+        return false
+      }
+      return true
+    } catch (fout) {
+      logFout('openOMSI-knop schrijven', fout)
+      return false
+    }
   }
   let scancode = 0
   let modifiers = 0
@@ -3472,6 +4221,16 @@ function schrijfBusknoppen(
       }
     }
     const uitslag = zetBustoetsen(omsi(), acties.length > 0 ? acties : undefined, { triggers })
+    /*
+     * Alleen in het keyboard.cfg van OMSI 2, niet ook in dat van openOMSI (tot
+     * 01-10 wel, in zijn inhoudsmap). Deze toetsen zijn er voor onze plugin,
+     * die ze in OMSI 2 indrukt; in openOMSI laadt die niet, drukt de app in
+     * 0.7.0 niets in, en vuurt de Lua-brug (0.8.0) een trigger op naam af --
+     * zonder toets. En wat in dat bestand afwijkt van OMSI's eigen indeling,
+     * neemt openOMSI voor de eigen toetsen van de speler (startup.rs `own_keys`).
+     * Zo schrijft de app niets in de mappen van openOMSI, ook niet bij wie
+     * alleen bussen klaarmaakt voor OMSI 2.
+     */
     knoppenStand = undefined
     return uitslag
   } catch (fout) {
@@ -3513,7 +4272,7 @@ async function zetBusknoppenAan(): Promise<
    * bewaard -- per bus, want bij het bijschrijven zijn de scripts van die bus
    * nodig -- en doet de app het zelf zodra het kan: zie `schrijfStraks`.
    */
-  const draait = await leesOmsiProces(OMSI_PROCES)
+  const draait = await leesOmsi()
   if (draait) {
     const wachtrij = { ...(readSettings(userData()).busknoppenStraks ?? {}) }
     wachtrij[modelcfg] = [...new Set([...(wachtrij[modelcfg] ?? []), ...acties])]
@@ -3539,7 +4298,7 @@ async function schrijfStraks(waarom: string): Promise<void> {
   const wachtrij = readSettings(userData()).busknoppenStraks ?? {}
   const verkeerd = aantalVerbodenToetsen(omsi())
   if (Object.keys(wachtrij).length === 0 && verkeerd === 0) return
-  if (await leesOmsiProces(OMSI_PROCES)) return
+  if (await leesOmsi()) return
   /*
    * Knoppen die een eerdere versie op F10 of Shift+` zette, eerst weg van die
    * toets: daar stond OMSI van stil. Zie verlegVerbodenToetsen.
@@ -3610,7 +4369,7 @@ async function busKlaarmaken(sleutel: string, ids: string[]): Promise<Busklaarui
   )
   const knoppen = new Set(Object.values(perVariant).flat().map((actie) => actie.toLowerCase())).size
 
-  if (await leesOmsiProces(OMSI_PROCES)) {
+  if (await leesOmsi()) {
     const wachtrij = { ...(readSettings(userData()).busknoppenStraks ?? {}) }
     for (const [modelcfg, acties] of Object.entries(perVariant)) {
       wachtrij[modelcfg] = [...new Set([...(wachtrij[modelcfg] ?? []), ...acties])]
@@ -3651,7 +4410,7 @@ function wachtOpOmsiDicht(): void {
         straksWacht = undefined
         return
       }
-      dicht = (await leesOmsiProces(OMSI_PROCES)) ? 0 : dicht + 1
+      dicht = (await leesOmsi()) ? 0 : dicht + 1
       if (dicht >= 2) await schrijfStraks('OMSI is dicht')
     })()
   }, 5000)
@@ -3886,6 +4645,7 @@ function pushFrame(): void {
   const duty = currentDuty()
   const status = live ? describeLive(live, duty, nulmeting(), busApparaten(live)) : undefined
   const vehicle = vehicleOnMap(live, duty)
+  const motorNu = actieveMotor()
   const frame = {
     connected: Boolean(live?.alive),
     laadt: laadtOmsi(Boolean(live?.alive)),
@@ -3906,8 +4666,14 @@ function pushFrame(): void {
      * een handvol regels.
      */
     kaartjes: kaartsetVoorOverlay(duty?.mapFolder ?? vrijeRit?.mapFolder),
-    knoppen: busknoppen(),
-    panelen: busPanelen(live),
+    knoppen: knoppenZonderMotoracties(busknoppen(), KAN[motorNu]),
+    panelen: panelenZonderMotoracties(busPanelen(live), KAN[motorNu]),
+    /*
+     * In welk spel er gereden wordt; alleen bij openOMSI, zodat het beeld voor
+     * OMSI 2 teken voor teken blijft wat het was. De telefoon laat dan de
+     * motoracties weg (kaartje, wisselgeld; zie MOTOR_ACTIES).
+     */
+    motor: motorNu === 'openomsi' ? motorNu : undefined,
     busmodules: busmoduleLijst(live),
     /*
      * Wie er rijdt, met zijn personeelsnummer en pincode. Die gaan mee zodat de
@@ -3959,6 +4725,7 @@ function frameVoorApparaat(frame: {
   panelen?: unknown
   busmodules?: unknown
   vrij?: unknown
+  motor?: MotorId
   telefoon: TelefoonStand
   bedrijf?: BedrijfRit
   onderweg?: OnderwegBeeld
@@ -3983,6 +4750,8 @@ function frameVoorApparaat(frame: {
     knoppen: frame.knoppen,
     panelen: frame.panelen,
     busmodules: frame.busmodules,
+    // Het spel, zodat de tablet net als de overlay de motoracties weglaat in openOMSI.
+    motor: frame.motor,
     telefoon: frame.telefoon,
     // Het bedrijf mag mee: een lijn en een telling uit een spel, niets van de chauffeur zelf.
     bedrijf: frame.bedrijf,
@@ -4874,7 +5643,7 @@ function registerHandlers(): void {
         logFout('plek van het 3D-venster bewaren', fout)
       }
     },
-    peilOmsi: () => isOmsiRunning(`${OMSI_PROCES}.exe`),
+    peilOmsi: () => spelDraait(),
     fotoAlsKlaar: (relatiefPad, kleurstelling) => bus3d().fotoAlsKlaar(relatiefPad, kleurstelling, 'breed'),
     kleurstellingen: (relatiefPad) => kleurstellingenVan(relatiefPad),
     kleurstalen: (relatiefPad, tussen) => bus3d().kleurstalen(relatiefPad, tussen),
@@ -4888,7 +5657,7 @@ function registerHandlers(): void {
     log,
     logFout,
     aan: () => readSettings(userData()).bus3d === true,
-    omsiDraait: () => isOmsiRunning(`${OMSI_PROCES}.exe`),
+    omsiDraait: () => spelDraait(),
     bus3d,
     venster: () => bus3dVenster,
     grendel: omsiGrendel,
@@ -4907,7 +5676,7 @@ function registerHandlers(): void {
     userData,
     preload: join(__dirname, '../preload/bus3d.js'),
     pagina: bus3dPagina(),
-    omsiDraait: () => omsiDraaide,
+    omsiDraait: () => spelDraaide,
     log,
     registratie: () => bus3d().registratieStempel()
   })
@@ -5220,7 +5989,7 @@ function registerHandlers(): void {
 
   /* Wat er nu in OMSI hangt; voor het tabblad Overlays in de instellingen. */
   handle('omsi:overlays', async (): Promise<OmsiOverlays> => {
-    const proces = await leesOmsiProces(OMSI_PROCES)
+    const proces = await leesOmsi()
     const extern = (await externeBeeldprogrammas()).filter(Boolean)
     if (!proces) return { draait: false, overlays: [], extern }
     return {
@@ -5243,7 +6012,7 @@ function registerHandlers(): void {
    */
   handle('omsi:sluiten', async (_event, pid: number): Promise<'gesloten' | 'al-dicht' | 'mislukt'> => {
     if (!omsiMelding || omsiMelding.soort !== 'vast' || omsiMelding.pid !== pid) return 'al-dicht'
-    const uit = await sluitOmsi(pid, omsiMelding.start, OMSI_PROCES)
+    const uit = await sluitVastgelopenOmsi(pid, omsiMelding.start)
     log(`vastgelopen OMSI (pid ${pid}) afsluiten op verzoek van de speler: ${uit}`)
     if (uit === 'gesloten') omsiWacht.doorOnsGesloten = true
     return uit
@@ -5251,7 +6020,7 @@ function registerHandlers(): void {
 
   handle('game:settings', async () => ({
     values: readGameSettings(omsi()),
-    omsiRunning: await isOmsiRunning(`${OMSI_PROCES}.exe`)
+    omsiRunning: await omsiDraait()
   }))
 
   handle('game:settings:save', (_event, changes: Record<string, string>) => {
@@ -5259,14 +6028,31 @@ function registerHandlers(): void {
     return readGameSettings(omsi())
   })
 
+  /*
+   * Welk toetsen- of controllerbestand de pagina's tonen en schrijven. Koos de
+   * speler openOMSI en bewaarde de launcher van openOMSI er een eigen in zijn
+   * inhoudsmap, dan dat: openOMSI leest dan alleen dat
+   * (OO/crates/omsi-app/src/controllers.rs:68-71, startup.rs:69-78), en een
+   * wijziging in dat van OMSI 2 deed in openOMSI niets (proefdraaier 01-10).
+   * Anders, zoals altijd, dat van OMSI 2 -- dat leest openOMSI dan ook.
+   */
+  const invoerMap = (bestand: 'keyboard.cfg' | 'gamectrler.cfg'): { map: string; bestand?: 'openomsi' } => {
+    const pad = omsi()
+    if (readSettings(userData()).spelmotor !== 'openomsi') return { map: pad }
+    const map = invoerMapVoorOpenOmsi(pad, openOmsiNu(laatsteHerkenning)?.inhoudsmap, bestand)
+    return map === pad ? { map } : { map, bestand: 'openomsi' }
+  }
+
   /** De taal van OMSI zelf bepaalt hoe de toetsen en handelingen heten. */
   handle('game:keys', async () => {
     const language = omsiLanguage()
+    const invoer = invoerMap('keyboard.cfg')
     return {
-      bindings: readKeyboard(omsi()),
+      bindings: readKeyboard(invoer.map),
       keyNames: [...readKeyNames(omsi(), language === 'DEU' ? 'DEU' : 'ENG')],
       labels: [...readActionLabels(omsi(), language)],
-      omsiRunning: await isOmsiRunning(`${OMSI_PROCES}.exe`)
+      omsiRunning: await omsiDraait(),
+      bestand: invoer.bestand
     }
   })
 
@@ -5275,27 +6061,34 @@ function registerHandlers(): void {
    * toetsenbord, dus die gaan mee: een knop op je stuur doet hetzelfde als een
    * toets.
    */
-  handle('game:controllers', async () => ({
-    controllers: readControllers(omsi()),
-    labels: [...readActionLabels(omsi(), omsiLanguage())],
-    omsiRunning: await isOmsiRunning(`${OMSI_PROCES}.exe`)
-  }))
+  handle('game:controllers', async () => {
+    const invoer = invoerMap('gamectrler.cfg')
+    return {
+      controllers: readControllers(invoer.map),
+      labels: [...readActionLabels(omsi(), omsiLanguage())],
+      omsiRunning: await omsiDraait(),
+      bestand: invoer.bestand
+    }
+  })
 
   handle('game:controllers:save', (_event, controllers: ControllerConfig[]) => {
-    writeControllers(omsi(), controllers)
-    return readControllers(omsi())
+    const { map } = invoerMap('gamectrler.cfg')
+    writeControllers(map, controllers)
+    return readControllers(map)
   })
 
   handle('game:keys:save', (_event, bindings: KeyBinding[]) => {
-    writeKeyboard(omsi(), bindings)
-    return readKeyboard(omsi())
+    const { map } = invoerMap('keyboard.cfg')
+    writeKeyboard(map, bindings)
+    return readKeyboard(map)
   })
 
-  /** Terug naar de indeling waarmee OMSI geleverd wordt. */
+  /** Terug naar de indeling waarmee OMSI geleverd wordt (`keyboard_reset.cfg` van OMSI 2). */
   handle('game:keys:reset', () => {
+    const { map } = invoerMap('keyboard.cfg')
     const defaults = readKeyboard(omsi(), true)
-    if (defaults.length > 0) writeKeyboard(omsi(), defaults)
-    return readKeyboard(omsi())
+    if (defaults.length > 0) writeKeyboard(map, defaults)
+    return readKeyboard(map)
   })
 
   /*
@@ -5306,8 +6099,11 @@ function registerHandlers(): void {
    */
   handle('omsi:live', () => Boolean(freshLive()?.alive))
 
-  /** Draait het spel al? Los van de plugin, die zich pas meldt met een bus. */
-  handle('omsi:running', () => isOmsiRunning(`${OMSI_PROCES}.exe`))
+  /**
+   * Draait het spel al? Los van de plugin, die zich pas meldt met een bus.
+   * Elk spel: ook met openOMSI open start START geen tweede (ontwerp §7).
+   */
+  handle('omsi:running', () => spelDraait())
 
   /*
    * Wat de bus op dit moment doorgeeft, voor het hoofdvenster.
@@ -5372,10 +6168,12 @@ function registerHandlers(): void {
         omsi(),
         pluginSourceDir(process.resourcesPath, app.isPackaged),
         app.isPackaged ? undefined : join(process.cwd(), 'plugin'),
-        await isOmsiRunning(`${OMSI_PROCES}.exe`).catch(() => undefined)
+        await omsiDraait().catch(() => undefined)
       )
       if (pluginStatus.error) log(`plugin installeren: ${pluginStatus.error}`)
     }
+    // Spelkeuze openOMSI: ook de Lua-plugin omsihub, maar niet midden in een dienst.
+    if (spelkeuzeNu() === 'openomsi' && !career?.activeDuty?.startedAt) zorgVoorOmsihub('spelkeuze openOMSI')
     return pluginStatus
   })
 
@@ -5702,6 +6500,26 @@ function registerHandlers(): void {
       log(`vrij rijden geweigerd: alleen bekijken (${folder})`)
       return { running: false, launched: false, klaargezet: 'niets', fout: 'bekijken' }
     }
+    /*
+     * In welk spel (core/spelmotor.ts, DE SPELKEUZE). Nog niet gekozen, het
+     * andere spel draait al, of het gekozen spel is er niet: dan start er
+     * niets -- nooit een tweede spel naast het eerste, en nooit stil een ander.
+     */
+    const keuze = await motorVoorStart(false)
+    const fout = weigerStart(keuze)
+    if (fout) {
+      log(`vrij rijden geweigerd: ${geweigerdeStart(keuze)}`)
+      return {
+        running: Boolean(keuze.anderSpel),
+        launched: false,
+        klaargezet: 'niets',
+        fout,
+        foutTekst: keuze.anderSpel ? MOTOR_NAAM[keuze.anderSpel] : MOTOR_NAAM[keuze.motor],
+        motor: keuze.motor,
+        voorstel: keuze.kiezen ? keuze.voorstel : undefined
+      }
+    }
+    const inOpenOmsi = keuze.motor === 'openomsi'
     const instellingen = readSettings(userData())
     const yard = request.vehiclePath ? await wagenparkVoorStart(folder, request.vehiclePath, request.yard) : undefined
     const vehicle = request.vehiclePath
@@ -5715,21 +6533,48 @@ function registerHandlers(): void {
           trailer: aanhangerVan(request.vehiclePath, request.kleurstelling)
         }
       : undefined
-    const uitkomst = await startVrijeRit(
-      {
-        isRunning: () => isOmsiRunning(`${OMSI_PROCES}.exe`),
-        check: (kaart, wanneer) => vrijeControle(kaart, wanneer),
-        inzetpunt: (kaart, nr) => inzetpuntVoorStart(kaart, nr),
-        writeSituation: (situatie) => writeSituation(omsi(), situatie),
-        presetStartup: (kaart, file) => presetStartup(omsi(), kaart, file),
-        schrijfStraks: async () => {
-          // Een klaargezette eigen lak eerst in OMSI, vóór de situatie (Lakstudio §5.7c): dan vindt kleurVars hem.
-          await lakstudio?.voorStart()
-          await schrijfStraks('voor het starten van OMSI')
-        },
-        launchOmsi: () => launchOmsi(omsi(), instellingen.windowedOmsi),
-        log
+    const gewoon: VrijStartDeps = {
+      /*
+       * Draait het gekozen spel al, dan volgt de rit dat spel (en start er geen
+       * tweede). Het andere spel is hierboven al geweigerd (`anderSpel`); een
+       * onzeker openomsi.exe (misschien een launcher) telt hier niet als spel,
+       * anders startte OMSI 2 niet en stond er alleen een situatie klaar.
+       */
+      isRunning: async () => {
+        const h = await herken()
+        return inOpenOmsi ? zekereSpellen(h).length > 0 : h.omsi.length > 0
       },
+      check: (kaart, wanneer) => vrijeControle(kaart, wanneer),
+      inzetpunt: (kaart, nr) => inzetpuntVoorStart(kaart, nr),
+      writeSituation: (situatie) => writeSituation(omsi(), situatie),
+      presetStartup: (kaart, file) => presetStartup(omsi(), kaart, file),
+      schrijfStraks: async () => {
+        // Een klaargezette eigen lak eerst in OMSI, vóór de situatie (Lakstudio §5.7c): dan vindt kleurVars hem.
+        await lakstudio?.voorStart()
+        await schrijfStraks('voor het starten van OMSI')
+      },
+      launchOmsi: () => startOmsi(omsi(), instellingen.windowedOmsi),
+      log
+    }
+    const inst = keuze.inst
+    if (inOpenOmsi) zorgVoorOmsihub('vrij rijden in openOMSI')
+    const deps = inOpenOmsi && inst
+      ? vrijeRitDepsVoorOpenOmsi(gewoon, async (situatie) => {
+          const uit = await startOpenOmsi(
+            inst,
+            bouwSituatieDuty(situatie, folder, { profiel: leesLauncherConfig(openOmsiThuis()).profile }),
+            { logMap: liveMap(), omsiPad: omsi() }
+          )
+          log(
+            `vrij rijden in openOMSI${inst.versie ? ` ${inst.versie}` : ''} (${uit.via}): ${uit.uitkomst}` +
+              (uit.pid ? `, pid ${uit.pid}` : '') +
+              (uit.fout ? `: ${uit.fout}` : '')
+          )
+          return uit
+        })
+      : gewoon
+    const uitkomst = await startVrijeRit(
+      deps,
       {
         mapFolder: folder,
         vehicle,
@@ -5764,7 +6609,8 @@ function registerHandlers(): void {
       klaargezet: uitkomst.klaargezet,
       startMet: running ? 'draaiend' : 'dicht',
       startTijd: Date.now(),
-      datum: iso
+      datum: iso,
+      motor: keuze.motor
     }
 
     const plek = uitkomst.plek
@@ -5798,9 +6644,10 @@ function registerHandlers(): void {
     }
     if (!running) {
       log(
-        `vrij rijden: OMSI starten ${uitkomst.start === 'mislukt' ? `mislukt: ${uitkomst.foutTekst ?? 'onbekend'}` : (uitkomst.start ?? '?')}`
+        `vrij rijden: ${MOTOR_NAAM[keuze.motor]} starten ${uitkomst.start === 'mislukt' ? `mislukt: ${uitkomst.foutTekst ?? 'onbekend'}` : (uitkomst.start ?? '?')}`
       )
     }
+    // In openOMSI komt de overlay met de live gegevens van omsihub, net als bij OMSI 2.
     if (running) openOverlay(undefined)
     /* De kaart alvast klaarzetten voor de navigatie, in de werker. */
     void zorgVoorKaart(folder).catch(() => undefined)
@@ -5810,7 +6657,8 @@ function registerHandlers(): void {
       start: uitkomst.start,
       klaargezet: uitkomst.klaargezet,
       plek: plek?.naam,
-      foutTekst: uitkomst.foutTekst
+      foutTekst: uitkomst.foutTekst,
+      motor: keuze.motor
     }
   })
 
@@ -5907,6 +6755,27 @@ function registerHandlers(): void {
       log(`dienst niet begonnen: alleen bekijken (${duty?.mapFolder ?? '?'}, omloop ${duty?.tourNumber ?? '?'})`)
       return { connected: false, launched: false, running: false, fout: 'bekijken' }
     }
+    /*
+     * In welk spel (core/spelmotor.ts, DE SPELKEUZE). Opnieuw starten na een
+     * crash gebeurt in het spel waarin de dienst begon. Nog niet gekozen, het
+     * andere spel draait al, of het gekozen spel is er niet: dan begint er
+     * niets, en het venster zegt waarom (of vraagt de keuze).
+     */
+    const keuze = await motorVoorStart(request.herstart === true)
+    const fout = weigerStart(keuze)
+    if (fout) {
+      log(`dienst niet begonnen: ${geweigerdeStart(keuze)}, ${duty?.mapFolder ?? '?'} omloop ${duty?.tourNumber ?? '?'}`)
+      return {
+        connected: false,
+        launched: false,
+        running: false,
+        fout,
+        motor: keuze.motor,
+        anderSpel: keuze.anderSpel,
+        voorstel: keuze.kiezen ? keuze.voorstel : undefined
+      }
+    }
+    if (keuze.motor === 'openomsi') return beginInOpenOmsi(request, keuze)
     if (career?.activeDuty && !career.activeDuty.startedAt) {
       persist({ ...career, activeDuty: { ...career.activeDuty, startedAt: new Date().toISOString() } })
     }
@@ -5956,7 +6825,7 @@ function registerHandlers(): void {
      * lost), dan startte de app het spel hieronder zonder dat er iets
      * klaarstond, op het startscherm van de vorige keer.
      */
-    const running = await isOmsiRunning(`${OMSI_PROCES}.exe`)
+    const running = await omsiDraait()
     const meerijden = request.meerijden === true && running
     if (meerijden) {
       log(`Meerijden in een draaiend OMSI: niets klaargezet voor ${duty.mapName}`)
@@ -6018,7 +6887,7 @@ function registerHandlers(): void {
         log(`dienst: knoppen bijschrijven mislukt (${fout instanceof Error ? fout.message : String(fout)}); OMSI start toch`)
       }
       try {
-        start = await launchOmsi(omsi(), readSettings(userData()).windowedOmsi)
+        start = await startOmsi(omsi(), readSettings(userData()).windowedOmsi)
       } catch (fout) {
         // Lukt starten niet, dan doet de speler het zelf; de overlay staat klaar.
         start = 'mislukt'
@@ -6033,6 +6902,7 @@ function registerHandlers(): void {
      * en zetten we de situatie opnieuw klaar.
      */
     omsiDraaide = running || launched
+    spelDraaide = omsiDraaide
     bus3dVenster?.omsiGewijzigd(omsiDraaide)
     return {
       connected: Boolean(live?.alive),
@@ -6056,6 +6926,99 @@ function registerHandlers(): void {
    */
   handle('duty:session', () => {
     void herstelStartscherm()
+    return sessieGegevens()
+  })
+
+  /**
+   * Welk spel START nu zou nemen, wat de speler koos, wat de app voorstelt als
+   * hij nog niet koos, wat er gevonden is en wat er (nog) niet kan (ontwerp
+   * openomsi-koppeling §7; DE SPELKEUZE in core/spelmotor.ts). Voor de
+   * instellingen, de busstap en het rijscherm. Loopt er een dienst, dan is het
+   * spel dat van de dienst.
+   */
+  handle('spel:stand', async (): Promise<SpelStand> => {
+    const s = readSettings(userData())
+    // De herkenning van hooguit 2 s geleden: de schermen peilen elke 5 s, en START kijkt zelf nog eens vers.
+    const k = await motorVoorStart(Boolean(career?.activeDuty?.startedAt), 2000)
+    const inst = k.inst
+    const tempSpel = [...k.h.openomsi, ...k.h.launchers].some((p) => p.uitTemp)
+    const waarschuwingen: SpelStand['waarschuwingen'] = []
+    if (inst?.uitTemp || tempSpel) waarschuwingen.push('uitTemp')
+    if (zekereSpellen(k.h).length > 1) waarschuwingen.push('tweeSpellen')
+    if (k.h.openomsi.some((p) => p.onzeker)) waarschuwingen.push('onzeker')
+    const kan = KAN[k.motor]
+    let inOmsiMap = false
+    try {
+      inOmsiMap = Boolean(inst && inst.map.toLowerCase() === omsi().toLowerCase())
+    } catch {
+      inOmsiMap = false
+    }
+    return {
+      keuze: s.spelmotor,
+      motor: k.motor,
+      kiezen: k.kiezen === true,
+      voorstel: k.voorstel,
+      nietGevonden: k.nietGevonden === true,
+      vanDienst: k.vanDienst === true,
+      draait: welkeDraait(k.h),
+      anderSpel: k.anderSpel,
+      openomsi: inst
+        ? { versie: inst.versie, map: inst.map, inOmsiMap, launcher: Boolean(inst.launcher), uitTemp: inst.uitTemp }
+        : undefined,
+      waarschuwingen,
+      kan: { overlay: kan.overlay, dienstLive: kan.dienstLive, motorKnoppen: kan.motorKnoppen, afrekeningAchteraf: kan.afrekeningAchteraf },
+      dienst: motorVanDienst()
+    }
+  })
+
+  /**
+   * Een dienst in openOMSI afronden: eerst het spel netjes stoppen (ontwerp
+   * §5.3: `--cli stop`, anders taskkill zonder /F, 8 s, dan /F), dan wachten
+   * op het sessiebestand -- hooguit 30 s -- en de afrekening teruggeven.
+   */
+  handle('spel:stop', async (): Promise<SessionResult> => {
+    const spel = career?.activeDuty?.spel
+    if (spel?.motor === 'openomsi' && !spel.einde && spel.keten.length > 0) {
+      const h = await herken(0)
+      const inst = openOmsiNu(h)
+      const uitkomsten: StopUitkomst[] = []
+      for (const lid of spel.keten) {
+        const p = h.openomsi.find((item) => item.pid === lid.pid)
+        if (!p) continue
+        // De starttijd uit de keten: alleen dít proces stoppen, niet wat er nu onder het pid zit.
+        const uit = await stopOpenOmsi({ ...p, gestart: lid.gestart ?? p.gestart }, { launcher: inst?.launcher, log })
+        uitkomsten.push(uit)
+        log(`openOMSI (pid ${p.pid}) stoppen bij het afronden: ${uit}`)
+      }
+      if (!ketenGestopt(uitkomsten)) {
+        /*
+         * Het spel kan nog draaien: dan is de dienst niet voorbij. Geen einde
+         * zetten (dan boekte het venster na 30 s "onvolledig" terwijl openOMSI
+         * doorreed); de wacht over de keten bepaalt het einde, en het venster
+         * boekt niets en zegt dat openOMSI niet stopte.
+         */
+        log(`openOMSI stopte niet (${uitkomsten.join(', ')}); de dienst loopt door`)
+        const nu = sessieGegevens()
+        return nu.spel ? { ...nu, spel: { ...nu.spel, stopMislukt: true } } : nu
+      }
+      // Gestopt op verzoek: geen opvolger om op te wachten, en geen melding over een crash.
+      if (career?.activeDuty?.spel?.motor === 'openomsi') {
+        persist({
+          ...career,
+          activeDuty: {
+            ...career.activeDuty,
+            spel: { ...career.activeDuty.spel, einde: new Date().toISOString(), doorApp: true }
+          }
+        })
+      }
+      ketenWacht = undefined
+      ketenStand = 'einde'
+    }
+    for (let poging = 0; poging < 70; poging++) {
+      const uitslag = sessieGegevens()
+      if (uitslag.spel?.stand !== 'wacht') return uitslag
+      await new Promise((klaar) => setTimeout(klaar, 500))
+    }
     return sessieGegevens()
   })
 
@@ -6284,15 +7247,7 @@ function registerHandlers(): void {
      * busbedrijf twee keer invaluren.
      */
     if (!career.activeDuty) return careerPayload()
-    const staat = rittenstaatVanDienst(duty)
-    // Een dienst op een lijn van je eigen bedrijf telt ook daar; zie core/bedrijf.ts.
-    const lopend = career.activeDuty
-    const busPad =
-      lopend?.vehicleOverride || (lopend?.assignment as Assignment | undefined)?.vehicle?.relativePath
-    const bedrijf = career.bedrijf
-      ? boekEigenDienst(career.bedrijf, duty, staat, busPad, measured?.stopsDone)
-      : undefined
-    return persist(completeDuty({ ...career, bedrijf }, duty, vehicle, measured, staat, onderwegVanDienst(staat, measured)))
+    return persist(boekAf(duty, vehicle, measured))
   })
 
   /*
@@ -6746,8 +7701,8 @@ function registerHandlers(): void {
   )
   handle('addon:installeer', (event, pad: string, naam?: string, metCode?: boolean) =>
     eenTegelijk(async () => {
-      // Bestanden overschrijven die OMSI open heeft, gaat mis of half.
-      if (await isOmsiRunning()) return { fout: 'omsi' }
+      // Bestanden overschrijven die een spel open heeft, gaat mis of half: OMSI 2 én openOMSI.
+      if (await spelDraait()) return { fout: 'omsi' }
       if (addonPlan?.pad !== String(pad)) return { fout: 'plan' }
       const plan = { ...addonPlan.plan, naam: String(naam ?? '').trim().slice(0, 80) || addonPlan.plan.naam }
       // Het venster zette de knop al uit; hier nog eens, want de schijf kan intussen voller zijn.
@@ -6799,7 +7754,7 @@ function registerHandlers(): void {
   handle('addon:lakAfhankelijk', (_event, id: string) => lakstudio?.leunenOp(String(id)) ?? [])
   handle('addon:verwijder', (event, id: string) =>
     eenTegelijk(async () => {
-      if (await isOmsiRunning()) return { fout: 'omsi' }
+      if (await spelDraait()) return { fout: 'omsi' }
       const register = leesRegister(userData())
       const addon = register.addons.find((a) => a.id === String(id) && a.soort !== 'lak')
       if (!addon) return { fout: 'weg' }
@@ -7145,6 +8100,19 @@ if (!app.requestSingleInstanceLock()) {
       join(app.getPath('home'), 'AppData', 'Local')
     ])
     liveMap()
+    /*
+     * openOMSI: de live gegevens komen dan uit de Lua-plugin omsihub
+     * (data.save.lua), en de gevraagde teksten en getallen gaan naar
+     * lijsten.save.lua. Met OMSI 2 verandert er niets: live.json.
+     */
+    stelLiveBronIn(liveUitOpenOmsi)
+    bijNamenlijst((soort, namen) => {
+      try {
+        zetOmsihubLijst(omsiOfNiets(), soort, namen)
+      } catch (fout) {
+        logFout('openOMSI-lijsten schrijven', fout)
+      }
+    })
 
     /*
      * Wat de app onderuit haalt hoort in het logboek te staan, niet alleen in

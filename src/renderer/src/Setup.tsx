@@ -286,6 +286,12 @@ interface Props {
   waarschuwing?: ReactNode;
   /** De voet toont een fout en krijgt daar de kleur van. */
   voetFout?: boolean;
+  /**
+   * De spelkeuze naast START: "Spel: OMSI 2 | openOMSI" (SpelKeuze.tsx). Waar
+   * een dienst of vrije rit begint, hoort te staan in welk spel -- de app
+   * wisselt nooit uit zichzelf. Alleen als er iets te kiezen is.
+   */
+  spelkeuze?: ReactNode;
   /** Een venstertje over het scherm heen; het vel blijft eronder staan. */
   dialoog?: ReactNode;
   /** Het vel over het hele venster, ook zonder tegels of vrije inhoud. */
@@ -511,6 +517,7 @@ export function Setup({
   onTerug,
   tweede,
   waarschuwing,
+  spelkeuze,
   voetFout,
   regelaars,
   metKaart,
@@ -1162,6 +1169,8 @@ export function Setup({
               </button>
             ),
           )}
+
+        {spelkeuze}
 
         <button
           type="button"

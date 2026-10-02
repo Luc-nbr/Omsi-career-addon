@@ -158,6 +158,38 @@ export const OMSI_TOETSEN = {
 export type OmsiToets = keyof typeof OMSI_TOETSEN
 
 /**
+ * MOTORACTIES: wat het spel zelf afhandelt, en niet het script van de bus.
+ *
+ * In openOMSI gaan deze namen door `Player::action` (OO/crates/omsi-app/src/player.rs:460-513
+ * en de aliassen op 145-166): het kaartje en het wisselgeld zet het spel zelf,
+ * het knipperlicht en de handrem zoekt het onder andere namen, de koplampen
+ * krijgen de standlichten erbij. Een plugin kan alleen een scripttrigger
+ * afvuren (`veh.trigger`), en die komt daar nooit langs. Keuze van Luc
+ * (01-10): in openOMSI staan deze knoppen er niet -- niet grijs, weg -- en er
+ * komt geen omweg met een toetsaanslag. In OMSI 2 verandert er niets.
+ */
+export const MOTOR_ACTIES: readonly string[] = [
+  'ticket_give',
+  'change_give',
+  'change_take',
+  'blinker_left_set',
+  'blinker_right_set',
+  'blinker_off',
+  'blinker_warn_toggle',
+  'parking_brake_toggle',
+  'kw_scheinwerfer_toggle'
+]
+
+const MOTOR_ACTIE = new Set(MOTOR_ACTIES.map((naam) => naam.toLowerCase()))
+
+/** Is dit een motoractie? Ook de oude namen uit `OMSI_TOETSEN` (`kaartje`, `wisselgeld`). */
+export function isMotorActie(naam: string | undefined): boolean {
+  if (!naam) return false
+  const echt = (OMSI_TOETSEN as Record<string, string>)[naam] ?? naam
+  return MOTOR_ACTIE.has(echt.trim().toLowerCase())
+}
+
+/**
  * Welke plugin de app verwacht in OMSI.
  *
  * Staat er een oudere in het spel, dan mist de app dingen zonder dat iemand het
