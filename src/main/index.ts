@@ -11,7 +11,7 @@ import {
   statSync,
   writeFileSync
 } from 'node:fs'
-import { basename, dirname, join, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Worker } from 'node:worker_threads'
 import { log, logboekPad, logFout, startLogboek, TRAAG_MS } from '../core/logboek'
@@ -59,7 +59,7 @@ import {
   type KeyBinding
 } from '../core/omsiKeys'
 import { pickVehicleForDuty, type FleetIndex } from '../core/fleet'
-import { readTileGrid, type MapGeometry } from '../core/geo'
+import { heeftWereldcoordinaten, readTileGrid, wereldNaarTegel, type MapGeometry } from '../core/geo'
 import { LaneNetwork, type TripRoute } from '../core/routing'
 import { VehicleTracker, type VehiclePosition } from '../core/vehicle'
 import { buildIbisPlan, type IbisPlan } from '../core/ibis'
@@ -87,9 +87,12 @@ import {
   schrijfGetallen,
   schrijfVragen,
   stelLiveMappenIn,
+  stelLiveBronIn,
+  bijNamenlijst,
   voertuiggetallenVan,
   type LiveData
 } from '../core/live'
+import { leesOmsihub, omsihubKnop, plaatsOmsihub, zetOmsihubLijst, type Plaatsing } from '../core/omsihub'
 import { MEET_EXTRA, Meetsessie, meetGetallenVoor, varlistVanBus } from '../core/meetstand'
 import { isMeetStap, type MetingBeeld } from '../shared/meetstand'
 import { findOmsiInstall, hasMaps, isOmsiInstall, resolveOmsiFolder } from '../core/install'
@@ -1645,10 +1648,138 @@ function herkenningVoor(rit: NonNullable<typeof vrijeRit>): Herkenning | undefin
   return uit && uit.sinds === rit.sinds && uit.folder === rit.mapFolder ? uit : undefined
 }
 
+/* -------------------------------------------------------------------------- */
+/* openOMSI: de live gegevens uit de Lua-plugin omsihub (core/omsihub.ts)      */
+/* -------------------------------------------------------------------------- */
+
+/** De OMSI 2-map, of niets als die (nog) niet gevonden is. */
+function omsiOfNiets(): string | undefined {
+  try {
+    return omsi()
+  } catch {
+    return undefined
+  }
+}
+
+let spelkeuzeOnthouden: { motor: MotorId | undefined; op: number } | undefined
+
+/** De spelkeuze van Luc (Instellingen), eens per vijf tellen gelezen: readLive loopt vaak. */
+function spelkeuzeNu(): MotorId | undefined {
+  const nu = Date.now()
+  if (!spelkeuzeOnthouden || nu - spelkeuzeOnthouden.op > 5000) {
+    let motor: MotorId | undefined
+    try {
+      motor = readSettings(userData()).spelmotor
+    } catch {
+      motor = undefined
+    }
+    spelkeuzeOnthouden = { motor, op: nu }
+  }
+  return spelkeuzeOnthouden.motor
+}
+
+/**
+ * Uit welk spel de live gegevens komen. Een dienst of vrije rit zegt het zelf;
+ * daarbuiten wat er draait, en anders de spelkeuze. Alleen openOMSI leest
+ * omsihub: met OMSI 2 blijft het live.json.
+ */
+function liveBronMotor(): MotorId {
+  if (career?.activeDuty?.startedAt) return motorVanDienst()
+  if (vrijeRit) return actieveMotor()
+  const draaien = laatsteHerkenning ? welkeDraaien(laatsteHerkenning) : []
+  return draaien[0] ?? spelkeuzeNu() ?? 'omsi'
+}
+
+/** De kaartmap waarop de bus in openOMSI rijdt: die van de dienst of de vrije rit. */
+function kaartVoorOpenOmsi(): string | undefined {
+  return currentDuty()?.mapFolder ?? vrijeRit?.mapFolder
+}
+
+/** Het busbestand dat openOMSI rijdt (relatief aan de OMSI-map of volledig), voor de schermpjes. */
+function busVoorOpenOmsi(): string | undefined {
+  const draait = laatsteHerkenning?.openomsi.find((p) => p.dienst?.bus)?.dienst?.bus
+  if (draait) return draait
+  const lopend = career?.activeDuty
+  if (lopend?.startedAt) {
+    const bus = (lopend.assignment as Assignment | undefined)?.vehicle
+    return lopend.vehicleOverride || bus?.relativePath
+  }
+  return vrijeRit?.vehiclePath
+}
+
+const wereldPerKaart = new Map<string, boolean>()
+
+/**
+ * De tegel en de plek erin (`mem.tile`, `mem.x`, `mem.z`), zoals de DLL ze bij
+ * OMSI 2 geeft, uit de wereldmeters van openOMSI. Zonder kaart of buiten de
+ * tegels blijft `mem.ok` 0: dan geen plek, liever dan een verkeerde.
+ */
+function vulTegel(live: LiveData, folder: string | undefined): void {
+  const wereld = live.openomsi?.wereld
+  if (!live.mem || !wereld || !folder) return
+  const tegels = tegelsVan(folder)
+  if (tegels.lijst.length === 0) return
+  let wc = wereldPerKaart.get(folder)
+  if (wc === undefined) {
+    wc = heeftWereldcoordinaten(kaartPad(folder))
+    wereldPerKaart.set(folder, wc)
+  }
+  const plek = wereldNaarTegel(wereld.x, wereld.y, { wereld: wc, rijen: tegels.lijst.map((t) => t.ty) })
+  const index = tegels.lijst.findIndex((t) => t.tx === plek.tx && t.ty === plek.ty)
+  if (index < 0) return
+  live.mem = { ...live.mem, ok: 1, tile: index, x: plek.lx, z: plek.ly }
+}
+
+/**
+ * De bron voor `readLive` (core/live.ts, `stelLiveBronIn`): `undefined` is
+ * live.json (OMSI 2), anders wat omsihub schreef (`null`: nog niets).
+ */
+function liveUitOpenOmsi(): LiveData | null | undefined {
+  if (liveBronMotor() !== 'openomsi') return undefined
+  const pad = omsiOfNiets()
+  if (!pad) return null
+  const live = leesOmsihub(pad)
+  if (!live) return null
+  vulTegel(live, kaartVoorOpenOmsi())
+  const bus = busVoorOpenOmsi()
+  if (bus) {
+    live.bus = {
+      naam: live.openomsi?.voertuig ?? '',
+      model: '',
+      pad: isAbsolute(bus) ? dirname(bus) : join(omsiOfNiets() ?? '', dirname(bus)),
+      bestand: bus
+    }
+  }
+  return live
+}
+
+/** Waar de meegeleverde main.lua van omsihub staat. */
+function omsihubBron(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'plugin', 'omsihub', 'main.lua')
+    : join(process.cwd(), 'plugin', 'lua', 'omsihub', 'main.lua')
+}
+
+let omsihubStand: Plaatsing | undefined
+
+/**
+ * Zet de Lua-plugin in `<OMSI 2>\plugins\omsihub\` (plan §3.1 en §3.7),
+ * alleen als er in openOMSI gereden wordt of gaat worden. Niet midden in een
+ * dienst: openOMSI zou hem dan herladen.
+ */
+function zorgVoorOmsihub(reden: string): void {
+  const pad = omsiOfNiets()
+  if (!pad) return
+  const stand = plaatsOmsihub(pad, omsihubBron())
+  if (stand.veranderd || stand.fout !== omsihubStand?.fout) {
+    log(`omsihub (${reden}): ${stand.fout ? `niet geplaatst: ${stand.fout}` : stand.veranderd ? `geplaatst in ${stand.doel}` : 'staat er al'}`)
+  }
+  omsihubStand = stand
+}
+
 /** Waar de bus staat in kaartmeters, uit de tegel en de plek erbinnen; zonder rijstrokennet. */
 const tegelsVoorBus = new Map<string, { lijst: ReturnType<typeof readTileList>; grid: ReturnType<typeof readTileGrid> }>()
-function busOpKaart(folder: string, mem: LiveData['mem']): { x: number; y: number } | undefined {
-  if (!mem || mem.ok !== 1) return undefined
+function tegelsVan(folder: string): { lijst: ReturnType<typeof readTileList>; grid: ReturnType<typeof readTileGrid> } {
   let tegels = tegelsVoorBus.get(folder)
   if (!tegels) {
     let lijst: ReturnType<typeof readTileList> = []
@@ -1660,6 +1791,12 @@ function busOpKaart(folder: string, mem: LiveData['mem']): { x: number; y: numbe
     tegels = { lijst, grid: readTileGrid(kaartPad(folder)) }
     tegelsVoorBus.set(folder, tegels)
   }
+  return tegels
+}
+
+function busOpKaart(folder: string, mem: LiveData['mem']): { x: number; y: number } | undefined {
+  if (!mem || mem.ok !== 1) return undefined
+  const tegels = tegelsVan(folder)
   const tegel = tegels.lijst[mem.tile]
   if (!tegel || !tegels.grid) return undefined
   const [ox, oy] = tegels.grid.offset(tegel.tx, tegel.ty)
@@ -1883,14 +2020,10 @@ async function volgOmloopInOmsi(live: LiveData | undefined): Promise<void> {
    */
   const motor = actieveMotor()
   if (rit.motor === 'openomsi' && volg.motor !== motor) {
-    log(motor === 'openomsi' ? 'vrij rijden in openOMSI: niets te volgen (geen live-gegevens)' : 'vrij rijden in openOMSI, maar OMSI 2 draait en openOMSI niet: de app volgt OMSI 2')
+    log(motor === 'openomsi' ? 'vrij rijden in openOMSI: de app volgt omsihub' : 'vrij rijden in openOMSI, maar OMSI 2 draait en openOMSI niet: de app volgt OMSI 2')
   }
   volg.motor = motor
-  if (motor === 'openomsi') {
-    zetVrijeStaat({ soort: 'openomsi' })
-    return
-  }
-  // Kwam de rit uit openOMSI, dan geldt die tekst niet meer: eerst weer wachten op OMSI 2.
+  // De oude tekst "openOMSI geeft niets door" geldt niet meer: wachten op de gegevens.
   if (vrijStaat?.soort === 'openomsi') zetVrijeStaat({ soort: 'wacht' })
   volg.bezig = true
   try {
@@ -1991,7 +2124,8 @@ async function volgStap(rit: NonNullable<typeof vrijeRit>, live: LiveData | unde
     tour: mem.tour,
     tourEntry: mem.tourEntry,
     trip: mem.trip,
-    klok: live.time / 60
+    klok: live.time / 60,
+    vanOpenOmsi: live.motor === 'openomsi' || undefined
   }
 
   /* Eens per keuze, en na een halve minuut nog eens: een mislukte koppeling blijft niet stil. */
@@ -2245,6 +2379,11 @@ function stopVrijeRit(): void {
  */
 function sessieGegevens(): SessionResult {
   if (motorVanDienst() === 'openomsi') return openOmsiSessie()
+  return liveSessie()
+}
+
+/** De cijfers uit de live gegevens (live.json, of omsihub in openOMSI). */
+function liveSessie(): SessionResult {
   captureBaseline()
   const live = readLive()
   const start = baseline()
@@ -2367,7 +2506,19 @@ function openOmsiSessie(): SessionResult {
      */
     const stand =
       Date.now() - herstartGezien < HERSTART_TEKST_MS ? 'herstart' : ketenStand === 'zoekt' ? 'wacht' : 'loopt'
-    return { ...basis, finished: false, spel: { motor: 'openomsi', stand, pids, meegereden } }
+    /*
+     * Tijdens het rijden de cijfers van de Lua-plugin omsihub (km, haltes,
+     * vertraging, rijstijl), zodat loon en rang live meelopen zoals bij OMSI 2.
+     * De afrekening na afloop komt nog steeds uit ~/.openomsi/sessions.
+     */
+    const live = liveSessie()
+    return {
+      ...live,
+      elapsedMinutes: live.elapsedMinutes > 0 ? live.elapsedMinutes : minuten,
+      dutyComplete: false,
+      finished: false,
+      spel: { motor: 'openomsi', stand, pids, meegereden }
+    }
   }
   const duty = currentDuty()
   const na = afrekeningNaEinde(
@@ -2429,6 +2580,8 @@ async function beginInOpenOmsi(
 ): Promise<BeginResult> {
   const { duty } = request
   const actief = career?.activeDuty
+  // De Lua-plugin voor de live gegevens, voordat openOMSI start (plan §3.7).
+  zorgVoorOmsihub('dienst in openOMSI')
   const oudeKeten = request.herstart && actief?.spel?.motor === 'openomsi' ? actief.spel.keten : []
   /*
    * Een spel dat al draait: alleen een zeker spel (nooit een proces waarvan CIM
@@ -3428,6 +3581,25 @@ function omsiToets(actie: string): boolean {
   if (!naam || (!toegestaneActies.has(naam.toLowerCase()) && !schermActies().has(naam))) {
     log(`toets ${naam || actie} hoort niet bij deze bus; niet ingedrukt`)
     return false
+  }
+  /*
+   * openOMSI: de Lua-plugin omsihub drukt de scripttrigger op naam in
+   * (omsi.press, na 0,1 s omsi.release), via opdracht.save.lua. Geen toets en
+   * geen keyboard.cfg: openOMSI kent de knop bij zijn naam.
+   */
+  if (motor === 'openomsi') {
+    const pad = omsiOfNiets()
+    if (!pad) return false
+    try {
+      if (omsihubKnop(pad, naam) === undefined) {
+        log(`toets ${naam}: geen naam die de plugin in openOMSI aanneemt; niet ingedrukt`)
+        return false
+      }
+      return true
+    } catch (fout) {
+      logFout('openOMSI-knop schrijven', fout)
+      return false
+    }
   }
   let scancode = 0
   let modifiers = 0
@@ -6000,6 +6172,8 @@ function registerHandlers(): void {
       )
       if (pluginStatus.error) log(`plugin installeren: ${pluginStatus.error}`)
     }
+    // Spelkeuze openOMSI: ook de Lua-plugin omsihub, maar niet midden in een dienst.
+    if (spelkeuzeNu() === 'openomsi' && !career?.activeDuty?.startedAt) zorgVoorOmsihub('spelkeuze openOMSI')
     return pluginStatus
   })
 
@@ -6383,6 +6557,7 @@ function registerHandlers(): void {
       log
     }
     const inst = keuze.inst
+    if (inOpenOmsi) zorgVoorOmsihub('vrij rijden in openOMSI')
     const deps = inOpenOmsi && inst
       ? vrijeRitDepsVoorOpenOmsi(gewoon, async (situatie) => {
           const uit = await startOpenOmsi(
@@ -6472,8 +6647,8 @@ function registerHandlers(): void {
         `vrij rijden: ${MOTOR_NAAM[keuze.motor]} starten ${uitkomst.start === 'mislukt' ? `mislukt: ${uitkomst.foutTekst ?? 'onbekend'}` : (uitkomst.start ?? '?')}`
       )
     }
-    // openOMSI geeft in 0.7.0 geen live-gegevens: dan geen overlay boven het spel (ontwerp §7).
-    if (running && !inOpenOmsi) openOverlay(undefined)
+    // In openOMSI komt de overlay met de live gegevens van omsihub, net als bij OMSI 2.
+    if (running) openOverlay(undefined)
     /* De kaart alvast klaarzetten voor de navigatie, in de werker. */
     void zorgVoorKaart(folder).catch(() => undefined)
     return {
@@ -6861,15 +7036,6 @@ function registerHandlers(): void {
      */
     if (open && inBekijkstand()) {
       log('overlay niet geopend: alleen bekijken')
-      return overlayIsOpen()
-    }
-    /*
-     * openOMSI geeft in 0.7.0 geen live-gegevens (ontwerp §1 en §7): een
-     * overlay zou "wacht op OMSI" boven een spel hangen dat allang rijdt. De
-     * overlay komt met de Lua-brug (0.8.0).
-     */
-    if (open && (motorVanDienst() === 'openomsi' || (!duty && vrijeRit?.motor === 'openomsi'))) {
-      log('overlay niet geopend: openOMSI geeft nog geen live-gegevens')
       return overlayIsOpen()
     }
     if (open && (duty || vrijeRit)) openOverlay(duty ?? undefined, ibis)
@@ -7934,6 +8100,19 @@ if (!app.requestSingleInstanceLock()) {
       join(app.getPath('home'), 'AppData', 'Local')
     ])
     liveMap()
+    /*
+     * openOMSI: de live gegevens komen dan uit de Lua-plugin omsihub
+     * (data.save.lua), en de gevraagde teksten en getallen gaan naar
+     * lijsten.save.lua. Met OMSI 2 verandert er niets: live.json.
+     */
+    stelLiveBronIn(liveUitOpenOmsi)
+    bijNamenlijst((soort, namen) => {
+      try {
+        zetOmsihubLijst(omsiOfNiets(), soort, namen)
+      } catch (fout) {
+        logFout('openOMSI-lijsten schrijven', fout)
+      }
+    })
 
     /*
      * Wat de app onderuit haalt hoort in het logboek te staan, niet alleen in

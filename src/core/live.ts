@@ -159,6 +159,25 @@ export interface LiveData {
   exeVersion?: string
   /** Rechtstreeks uit het geheugen van OMSI; alleen op 2.3.004, zie omsicareer.c. */
   mem?: MemoryData
+  /** Gezet als dit uit openOMSI komt (de Lua-plugin omsihub, core/omsihub.ts); bij OMSI 2 nooit. */
+  motor?: 'openomsi'
+  /** Wat alleen openOMSI geeft; zie `naarLiveData` in core/omsihub.ts. */
+  openomsi?: {
+    sessie?: string
+    herladen: number
+    einde: boolean
+    pauze: boolean
+    kaartNaam?: string
+    voertuig?: string
+    /** Meters van openOMSI: x oost, y noord, z omhoog. */
+    wereld?: { x: number; y: number; z: number }
+    /** Geplande aankomst bij de volgende halte, seconden na middernacht. */
+    aankomstS?: number
+    rit?: number
+    ritten?: number
+    eindpunt?: string
+    opdrachtSeq?: number
+  }
 }
 
 export interface MemoryData {
@@ -384,8 +403,37 @@ export function pluginLogboek(): { regels: string[]; tijd: number } | undefined 
   }
 }
 
+/*
+ * Een andere bron dan live.json: openOMSI (core/omsihub.ts). Het hoofdproces
+ * zet hem met `stelLiveBronIn`. Geeft hij `undefined`, dan geldt live.json
+ * zoals altijd (OMSI 2); `null` betekent "openOMSI, maar nog niets".
+ */
+let andereBron: (() => LiveData | null | undefined) | undefined
+
+export function stelLiveBronIn(bron: (() => LiveData | null | undefined) | undefined): void {
+  andereBron = bron
+}
+
+/*
+ * Wie wil weten welke teksten en getallen de app vraagt (de Lua-plugin van
+ * openOMSI krijgt ze in lijsten.save.lua, de DLL in vragen.txt en getallen.txt).
+ */
+let lijstLuisteraar: ((soort: 'vragen' | 'getallen', namen: string[]) => void) | undefined
+
+export function bijNamenlijst(luisteraar: ((soort: 'vragen' | 'getallen', namen: string[]) => void) | undefined): void {
+  lijstLuisteraar = luisteraar
+}
+
 /** Leest de laatste stand. Geeft `undefined` als OMSI niet draait. */
 export function readLive(): LiveData | undefined {
+  if (andereBron) {
+    try {
+      const uit = andereBron()
+      if (uit !== undefined) return uit ?? undefined
+    } catch {
+      return undefined
+    }
+  }
   const file = livePath()
   if (!existsSync(file)) return undefined
   try {
@@ -674,7 +722,9 @@ export function readSchedule(data: LiveData, duty: Duty | undefined, clockMinute
       legIndex: volgensOmsi
     }
   }
-  if (!mem.tripName.trim()) return undefined
+  if (!mem.tripName.trim()) {
+    return data.motor === 'openomsi' ? ritVolgensOpenOmsi(data, mem, duty) : undefined
+  }
   const key = tripKey(mem.tripName)
   let legIndex: number | undefined
   if (duty) {
@@ -701,6 +751,40 @@ export function readSchedule(data: LiveData, duty: Duty | undefined, clockMinute
     tripName: mem.tripName.trim(),
     matchesDuty: legIndex !== undefined && tourMatches,
     legIndex
+  }
+}
+
+/**
+ * openOMSI noemt geen ritbestand (`omsi.info()` heeft lijn, omloop, ritnummer
+ * en de volgende halte met haar geplande aankomst). De rit van de dienst is dan
+ * die waarin die halte op die tijd staat; binnen een half uur, anders geen.
+ */
+function ritVolgensOpenOmsi(data: LiveData, mem: MemoryData, duty: Duty | undefined): OmsiSchedule | undefined {
+  const halte = mem.nextStop.trim().toLowerCase()
+  const aankomst = data.openomsi?.aankomstS
+  if (!duty || !halte || aankomst === undefined) return undefined
+  const doel = aankomst / 60
+  let beste: number | undefined
+  let kleinste = 30
+  duty.legs.forEach((leg, index) => {
+    leg.stops.forEach((stop, i) => {
+      if (stop.trim().toLowerCase() !== halte) return
+      const tijd = leg.stopTimes[i] ?? leg.departure
+      const verschil = Math.min(Math.abs(tijd - doel), Math.abs(tijd - doel - 1440), Math.abs(tijd + 1440 - doel))
+      if (verschil < kleinste) {
+        kleinste = verschil
+        beste = index
+      }
+    })
+  })
+  if (beste === undefined) return undefined
+  const leg = duty.legs[beste]
+  return {
+    lineName: mem.lineName.trim(),
+    tourName: mem.tourName.trim(),
+    tripName: leg.tripFile,
+    matchesDuty: true,
+    legIndex: beste
   }
 }
 
@@ -999,6 +1083,11 @@ function schrijfNamenlijst(bestand: string, namen: string[], max: number, wat: s
  */
 export function schrijfVragen(namen: string[]): void {
   schrijfNamenlijst('vragen.txt', namen, VRAGEN_MAX, 'vragen')
+  try {
+    lijstLuisteraar?.('vragen', namen.slice(0, VRAGEN_MAX))
+  } catch {
+    // openOMSI is een bijzaak hier; vragen.txt staat er al.
+  }
 }
 
 /**
@@ -1020,6 +1109,11 @@ export const GETALLEN_MAX = 512
  */
 export function schrijfGetallen(namen: string[]): void {
   schrijfNamenlijst('getallen.txt', namen, GETALLEN_MAX, 'getallen')
+  try {
+    lijstLuisteraar?.('getallen', namen.slice(0, GETALLEN_MAX))
+  } catch {
+    // idem
+  }
 }
 
 /*

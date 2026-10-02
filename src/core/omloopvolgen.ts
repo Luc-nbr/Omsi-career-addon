@@ -99,6 +99,12 @@ export interface OmsiKeuze {
   lines?: number
   /** De klok van het spel, in minuten na middernacht. */
   klok: number
+  /**
+   * Uit openOMSI (de Lua-plugin omsihub): dan is er geen omloopnummer en geen
+   * ritbestand, alleen de naam van de omloop en het ritnummer (`tourEntry`, in
+   * de volgorde van het bestand). Die worden hier eerst opgezocht.
+   */
+  vanOpenOmsi?: boolean
 }
 
 export interface Koppeling {
@@ -236,6 +242,17 @@ export function koppelOmsiKeuze(map: OmsiMap, keuze: OmsiKeuze, opties: KoppelOp
   if (!lineFile && keuze.line >= 0 && plekTelt) {
     const opPlek = opties.ttlNamen[keuze.line]
     if (opPlek) lineFile = lijnen.find((lijn) => vouw(lijn) === vouw(opPlek))
+  }
+
+  if (keuze.vanOpenOmsi && keuze.tour < 0 && lineFile && !onbruikbaar(keuze.tourName)) {
+    const opLijn = map.tours.filter((item) => item.lineFile === lineFile)
+    const gevonden =
+      opLijn.find((item) => vouwNaam(item.number) === vouwNaam(keuze.tourName)) ??
+      opLijn.find((item) => naamGelijk(keuze.tourName, item.number))
+    if (gevonden) {
+      const rit = gevonden.trips.find((entry) => entry.entry === keuze.tourEntry)
+      keuze = { ...keuze, tour: gevonden.index, tripName: keuze.tripName || rit?.tripFile || '' }
+    }
   }
 
   const opNaam = (): Koppeling | undefined => zoekOpNaam(map, keuze, opties, lineFile)

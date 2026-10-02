@@ -161,23 +161,27 @@ export const KAN: Record<MotorId, MotorKan> = {
     overlay: true
   },
   /*
-   * 0.7.0 "openOMSI zonder live". De motoracties (kaartje, wisselgeld,
-   * knipperlicht, handrem, koplampen; zie MOTOR_ACTIES) staan er in openOMSI
-   * niet (keuze van Luc); de rest komt met de Lua-plugin `omsihub` in 0.8.0.
+   * Met de Lua-plugin `omsihub` (core/omsihub.ts, plugin/lua/omsihub/main.lua):
+   * live gegevens, de plek op de kaart en de scripttriggers op naam. De
+   * motoracties (kaartje, wisselgeld, knipperlicht, handrem, koplampen; zie
+   * MOTOR_ACTIES) staan er in openOMSI niet (keuze van Luc). De kaartverkoop aan
+   * de deur en welke meshes zichtbaar zijn, geeft openOMSI een plugin niet.
+   * Aanrijdingen: coll_energy, maar tien keer per seconde gemeten in plaats
+   * van elk beeld.
    */
   openomsi: {
-    dienstLive: false,
-    positie: false,
+    dienstLive: true,
+    positie: true,
     kaartverkoop: false,
     meshZichtbaar: false,
-    aanrijdingLive: false,
-    knopOpNaam: false,
+    aanrijdingLive: true,
+    knopOpNaam: true,
     motorKnoppen: 'nee',
     vensterVlag: false,
     steamOverlay: false,
     overlayModules: false,
     afrekeningAchteraf: true,
-    overlay: false
+    overlay: true
   }
 }
 

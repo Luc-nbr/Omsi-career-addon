@@ -694,6 +694,44 @@ hoort niet onder je handen opnieuw op te komen (`probe-beweging.cjs`,
 
 ## 5. Openstaand werk
 
+### 5.0000000000 openOMSI live: de Lua-plugin omsihub en de leesbron (02-10-2026)
+
+Snel gebouwd op verzoek van Luc ("zo snel mogelijk een werkende versie", zonder
+controleurs, met weinig proeven). Bugs volgen later.
+
+- **plugin/lua/omsihub/main.lua** (in de installer als `resources\plugin\omsihub\main.lua`),
+  gebouwd op de proefplugin van stap 0. Schrijft elke 0,25 s (met bus; anders 1 s)
+  `data.save.lua` met één `%q`-string `json`: dienst (lijn, omloop, rit, volgende
+  halte met geplande tijden, vertraging), plek (wereldmeters), de 24 getallen, 14
+  teksten en 8 systeemgetallen van de .opl, de gevraagde teksten/getallen, en de
+  rijstijl (hard remmen/optrekken, aanrijdingen) met de grenzen van de DLL, 10 keer
+  per seconde gemeten. Leest elke 0,2 s `opdracht.save.lua` (knoppen: volgnummer =
+  Date.now, alleen als `t` binnen 5 s van os.time ligt; press, na 0,1 s release;
+  motoracties geweigerd) en elke 2 s `lijsten.save.lua` (vragen/getallen). Alles in
+  pcall, niets per beeld. NIET in een echte Lua getoetst (geen Lua op deze machine).
+- **src/core/omsihub.ts**: `%q` uitpakken, `naarLiveData` (zelfde `LiveData` als
+  live.json, met `motor: 'openomsi'` en `openomsi.*`), schrijven van opdracht/lijsten,
+  `plaatsOmsihub` (overschrijft geen vreemde main.lua; omsihubproef blijft staan).
+- **live.ts**: `stelLiveBronIn` (main: `liveUitOpenOmsi`, alleen als de bronmotor
+  openOMSI is: dienst > vrije rit > wat draait > spelkeuze) en `bijNamenlijst`.
+  `readSchedule` vindt in openOMSI de rit via de volgende halte en haar geplande
+  aankomst (`ritVolgensOpenOmsi`); OMSI 2 loopt daar nooit langs.
+- **geo.ts** `wereldNaarTegel`: `world_to_tile_local` van openOMSI (MIT, vermeld).
+  main `vulTegel` maakt er `mem.tile/x/z` van met de tegellijst van de dienstkaart;
+  zonder kaart blijft `mem.ok` 0.
+- **main**: overlay ook in openOMSI; knoppen via `omsihubKnop`; vrij rijden volgt
+  omsihub (koppelen op omloopnaam + ritnummer, `vanOpenOmsi` in omloopvolgen);
+  tijdens de dienst live km/loon uit `liveSessie`, de afrekening blijft achteraf uit
+  ~/.openomsi; `zorgVoorOmsihub` bij een dienst/vrije rit in openOMSI en bij
+  plugin:status met spelkeuze openOMSI. `KAN.openomsi`: dienstLive, positie,
+  knopOpNaam, aanrijdingLive en overlay aan; kaartverkoop en meshes uit.
+- Proef: `npx tsx scripts/probe-omsihub.ts` (echte data.save.lua van 30-09 naar
+  LiveData en LiveStatus, %q, opdracht/lijsten in een tijdelijke map, tegel).
+  probe-vrijrijden.cjs (OMSI 2) slaagt ongewijzigd.
+- Open: pauze laat het bestand verouderen (na 15 s "wacht op OMSI"); een herstart
+  van openOMSI zet kmcounter terug (de nulmeting niet); schermen.json en de
+  kaartverkoop zijn er niet; ritnummer ≠ omloopplek als openOMSI ritten oversloeg.
+
 ### 5.000000000 openOMSI, 0.7.0 "zonder live": spelmotor, spelkeuze, starten en stoppen, afrekening achteraf (30-09 en 01-10-2026)
 
 Tak `claude/openomsi-vervolg` (op de WIP-commit 3beb1b4, bovenop 0.6.0). Het

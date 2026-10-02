@@ -91,16 +91,16 @@ export const TEKST_OPENOMSI = {
     nl: 'openOMSI staat niet naast OMSI 2. Wie erin wil rijden, pakt openOMSI uit in de OMSI 2-map.'
   },
   'oo.zonderLive': {
-    en: 'openOMSI does not pass live data to the app yet: no overlay while driving. Kilometres, stops, early and late, collisions and jolts come afterwards from openOMSI itself, when the game ends normally. Live data follows in version 0.8.0. Ticket, change, indicators, handbrake and headlights are handled by openOMSI itself; the app has no buttons for them there.',
-    de: 'openOMSI gibt der App noch keine Live-Daten: kein Overlay beim Fahren. Kilometer, Haltestellen, zu früh und zu spät, Unfälle und Rucke kommen danach von openOMSI selbst, wenn das Spiel normal endet. Live-Daten folgen in Version 0.8.0. Fahrschein, Wechselgeld, Blinker, Handbremse und Scheinwerfer regelt openOMSI selbst; die App hat dort keine Knöpfe dafür.',
-    fr: 'openOMSI ne transmet pas encore de données en direct à l’app : pas d’overlay en conduisant. Kilomètres, arrêts, en avance et en retard, collisions et secousses viennent ensuite d’openOMSI lui-même, quand le jeu se termine normalement. Les données en direct arrivent avec la version 0.8.0. Billet, monnaie, clignotants, frein à main et phares sont gérés par openOMSI lui-même ; l’app n’a pas de boutons pour eux là-bas.',
-    nl: 'openOMSI geeft de app nog geen live-gegevens: geen overlay tijdens het rijden. Kilometers, haltes, te vroeg en te laat, aanrijdingen en schokken komen achteraf uit openOMSI zelf, als het spel netjes eindigt. Live-gegevens volgen in versie 0.8.0. Kaartje, wisselgeld, knipperlicht, handrem en koplampen regelt openOMSI zelf; daar heeft de app geen knoppen voor.'
+    en: 'In openOMSI the live data (overlay, phone, navigation, pay and kilometres while driving) come from the omsihub plugin. The final settlement comes afterwards from openOMSI itself, when the game ends normally. Ticket, change, indicators, handbrake and headlights are handled by openOMSI itself; the app has no buttons for them there.',
+    de: 'In openOMSI kommen die Live-Daten (Overlay, Telefon, Navigation, Lohn und Kilometer beim Fahren) vom Plugin omsihub. Die Abrechnung kommt danach von openOMSI selbst, wenn das Spiel normal endet. Fahrschein, Wechselgeld, Blinker, Handbremse und Scheinwerfer regelt openOMSI selbst; die App hat dort keine Knöpfe dafür.',
+    fr: 'Dans openOMSI, les données en direct (overlay, téléphone, navigation, salaire et kilomètres en conduisant) viennent du plugin omsihub. Le décompte vient ensuite d’openOMSI lui-même, quand le jeu se termine normalement. Billet, monnaie, clignotants, frein à main et phares sont gérés par openOMSI lui-même ; l’app n’a pas de boutons pour eux là-bas.',
+    nl: 'In openOMSI komen de live-gegevens (overlay, telefoon, navigatie, loon en kilometers tijdens het rijden) uit de plugin omsihub. De afrekening komt achteraf uit openOMSI zelf, als het spel netjes eindigt. Kaartje, wisselgeld, knipperlicht, handrem en koplampen regelt openOMSI zelf; daar heeft de app geen knoppen voor.'
   },
   'oo.koppelingNog': {
-    en: 'Link with openOMSI (the omsihub plugin): comes in version 0.8.0.',
-    de: 'Verbindung mit openOMSI (das Plugin omsihub): kommt in Version 0.8.0.',
-    fr: 'Liaison avec openOMSI (le plugin omsihub) : arrive avec la version 0.8.0.',
-    nl: 'Koppeling met openOMSI (de plugin omsihub): komt in versie 0.8.0.'
+    en: 'The app puts the omsihub plugin in OMSI 2\\plugins\\omsihub as soon as you drive in openOMSI.',
+    de: 'Die App legt das Plugin omsihub in OMSI 2\\plugins\\omsihub, sobald du in openOMSI fährst.',
+    fr: 'L’app place le plugin omsihub dans OMSI 2\\plugins\\omsihub dès que vous conduisez dans openOMSI.',
+    nl: 'De app zet de plugin omsihub in OMSI 2\\plugins\\omsihub zodra je in openOMSI rijdt.'
   },
   'oo.uitTemp': {
     en: 'openOMSI is running from a temporary folder (Rar). The last situation, keys and mods there disappear; unpack openOMSI into the OMSI 2 folder.',

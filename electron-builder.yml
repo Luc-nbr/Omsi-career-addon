@@ -23,6 +23,9 @@ extraResources:
     to: plugin/OMSICareerPlugin.dll
   - from: plugin/OMSICareer.opl
     to: plugin/OMSICareer.opl
+  # De Lua-plugin voor openOMSI; de app zet hem in OMSI 2\plugins\omsihub.
+  - from: plugin/lua/omsihub/main.lua
+    to: plugin/omsihub/main.lua
   # De licenties van onderdelen van anderen (MIT vraagt de tekst mee te leveren).
   - from: THIRD_PARTY_NOTICES.md
     to: THIRD_PARTY_NOTICES.md
