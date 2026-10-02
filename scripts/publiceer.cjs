@@ -51,6 +51,11 @@ if (sha !== echt) stop('de sha512 in latest.yml hoort niet bij OMSI-Enhancer-Set
 
 const tag = `v${versie}`
 const gh = ['release', 'create', tag, ...bestanden, '--repo', REPO, '--title', `OMSI Enhancer ${versie}`]
+// De tag op de commit van deze bouw zetten, niet op origin/master: die tak wordt niet
+// gepusht, en anders wees v0.7.1 eerst naar de broncode van 0.4.1. De commit moet wel
+// op GitHub staan (push de tak eerst).
+const commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+gh.push('--target', commit)
 if (versie.includes('-')) gh.push('--prerelease')
 if (notities) gh.push('--notes-file', notities)
 else
