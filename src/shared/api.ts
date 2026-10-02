@@ -1,4 +1,5 @@
 import type { BedrijfPlanApi } from './bedrijfApi'
+import type { BijwerkStand } from '../core/bijwerken'
 import type { Controle } from '../core/addoncheck'
 import type { LakOverzicht } from './lak'
 import type { Schermvorm } from './scherm'
@@ -1121,6 +1122,12 @@ export interface CareerApi extends BedrijfPlanApi {
    * core/versiewacht.ts).
    */
   bouw(): Promise<{ stempel: string; alleenBekijken?: { versie: string; bouw?: string } }>
+  /** De automatische updater (main/bijwerken.ts): wat de melding in de balk laat zien. */
+  bijwerkStand(): Promise<BijwerkStand | undefined>
+  opBijwerkStand(luisteraar: (stand: BijwerkStand) => void): () => void
+  vergeetBijwerkStand(): Promise<void>
+  /** De draagbare exe: de releasepagina op GitHub openen. */
+  bijwerkPagina(): Promise<void>
   bedrijfWerkplaats(
     nummer: number,
     wat: 'onderhoud' | 'reparatie'

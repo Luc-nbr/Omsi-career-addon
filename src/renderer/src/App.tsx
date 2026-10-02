@@ -92,6 +92,7 @@ import { Rondleiding } from "./Rondleiding";
 import { ApparaatDialoog } from "./ApparaatDialoog";
 import { zetAnimaties } from "./animaties";
 import { Versie } from "./Versie";
+import { Bijwerkmelding } from "./Bijwerkmelding";
 import {
   DEFAULT_LANGUAGE,
   LANGUAGES,
@@ -2619,6 +2620,7 @@ export function App(): JSX.Element {
         </button>
       )}
       <Versie />
+      <Bijwerkmelding language={language} />
       <ThemaKnop language={language} thema={thema} onThema={kiesThema} />
       {LANGUAGES.map((taal) => (
         <button

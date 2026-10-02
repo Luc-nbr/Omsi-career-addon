@@ -37,14 +37,28 @@ win:
     - target: portable
       arch: [x64]
   icon: build/icon.ico
-  artifactName: ${productName} ${version} Setup.${ext}
+  # Namen zonder spaties en zonder versienummer: GitHub maakt van een spatie in
+  # een bijlage een punt, en dan klopt de naam in latest.yml niet meer met de
+  # bijlage (de automatische updater vindt hem niet). Zonder versienummer blijft
+  # ook de vaste downloadlink .../releases/latest/download/OMSI-Enhancer-Setup.exe
+  # goed. Het versienummer staat in latest.yml, in de release en in de app.
+  artifactName: OMSI-Enhancer-Setup.${ext}
+
+# Waar de automatische updater kijkt (main/bijwerken.ts). Hierdoor schrijft
+# electron-builder ook latest.yml en de blockmap; publiceren doet het niet
+# vanzelf (dat gaat met scripts/publiceer.cjs, zie CLAUDE.md).
+publish:
+  provider: github
+  owner: Luc-nbr
+  repo: Omsi-career-addon
 
 portable:
-  artifactName: ${productName} ${version} draagbaar.${ext}
+  artifactName: OMSI-Enhancer-draagbaar.${ext}
 
 nsis:
   # Zet ook de overlay-plugin in de OMSI-map; zie build/installer.nsh.
   include: build/installer.nsh
+  artifactName: OMSI-Enhancer-Setup.${ext}
   # Geen eenkliksinstallatie: de speler mag zien waar het heen gaat en kiezen.
   oneClick: false
   perMachine: false

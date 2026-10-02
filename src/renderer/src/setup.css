@@ -3055,6 +3055,36 @@
   letter-spacing: 0.02em;
 }
 
+/* De melding van de automatische updater, naast het versienummer (Bijwerkmelding.tsx). */
+.bijwerkmelding {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 6px;
+  padding: 2px 4px 2px 10px;
+  border-radius: 999px;
+  background: var(--vel);
+  border: 1px solid var(--vel-rand);
+  color: var(--vel-ink);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.bijwerkmelding button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+
+.bijwerkmelding .bijwerkmelding-knop {
+  font-weight: 600;
+  text-decoration: underline;
+}
+
 .welkom-versie {
   display: block;
   margin: -4px 0 12px;

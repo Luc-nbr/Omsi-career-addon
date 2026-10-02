@@ -225,6 +225,7 @@ import { controleerBus, controleerKaart, type Controle } from '../core/addonchec
 import { ZipFout } from '../core/zip'
 import type { AddonOverzicht, AddonPlan } from '../shared/api'
 import { alleenBekijken, bewaakVersie, meldStartFout, stempel } from './versiewacht'
+import { startBijwerken } from './bijwerken'
 import {
   FLITS,
   controleAanBoord,
@@ -8184,6 +8185,18 @@ if (!app.requestSingleInstanceLock()) {
     career = resolveActive(userData())
     registerHandlers()
     createWindow()
+    /*
+     * De automatische updater (main/bijwerken.ts): alleen de geinstalleerde
+     * versie werkt zichzelf bij, en nooit tijdens een dienst, een vrije rit of
+     * terwijl OMSI of openOMSI draait. De draagbare exe meldt het alleen.
+     */
+    startBijwerken({
+      venster: () => mainWindow ?? undefined,
+      dienstLoopt: () => Boolean(career?.activeDuty?.startedAt),
+      vrijeRit: () => Boolean(vrijeRit),
+      spelDraait: () => spelDraait(),
+      bekijken: inBekijkstand()
+    })
     // Een eigen lak die klaarstond toen de app dichtging: nu plaatsen als OMSI niet draait (Lakstudio §5.7b).
     setTimeout(() => void lakstudio?.omsiDicht('bij het starten van de app'), 4000)
 

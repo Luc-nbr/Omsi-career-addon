@@ -215,6 +215,14 @@ const api: CareerApi = {
     return () => ipcRenderer.removeListener('bus:kleurstellingenVeranderd', heen)
   },
   bouw: () => ipcRenderer.invoke('app:bouw'),
+  bijwerkStand: () => ipcRenderer.invoke('bijwerken:stand'),
+  opBijwerkStand: (luisteraar) => {
+    const heen = (_gebeurtenis: unknown, stand: Parameters<typeof luisteraar>[0]): void => luisteraar(stand)
+    ipcRenderer.on('bijwerken:stand', heen)
+    return () => ipcRenderer.removeListener('bijwerken:stand', heen)
+  },
+  vergeetBijwerkStand: () => ipcRenderer.invoke('bijwerken:weg'),
+  bijwerkPagina: () => ipcRenderer.invoke('bijwerken:pagina'),
   omsiState: () => ipcRenderer.invoke('omsi:state'),
   confirmOmsi: (path) => ipcRenderer.invoke('omsi:confirm', path),
   browseOmsi: () => ipcRenderer.invoke('omsi:browse'),
