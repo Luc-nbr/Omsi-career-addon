@@ -1754,6 +1754,11 @@ export function App(): JSX.Element {
           );
           return false;
         }
+        /* openOMSI draait al en rijdt zichtbaar iets anders: daar rijdt de dienst niet in mee. */
+        if (result.fout === "andereRit") {
+          setNote(t(language, "oo.andereRit", { rit: result.foutTekst ?? "?" }));
+          return false;
+        }
         /*
          * Ook een `duty:begin` die gewoon terugkomt kan betekenen dat er niets
          * draait. Main vangt het starten van het spel af: zegt de speler nee
@@ -2350,14 +2355,24 @@ export function App(): JSX.Element {
        * onderweg is, eerst het spel netjes stoppen (`--cli stop`) en op het
        * ritverslag wachten -- anders is er niets te boeken (ontwerp §5.3, §6).
        */
-      if (
-        result.spel?.motor === "openomsi" &&
-        result.spel.stand !== "klaar" &&
-        result.spel.stand !== "onvolledig" &&
-        result.spel.stand !== "geenSpel"
-      ) {
+      const afgerekend = (r: SessionResult): boolean =>
+        r.spel?.motor !== "openomsi" ||
+        r.spel.stand === "klaar" ||
+        r.spel.stand === "onvolledig" ||
+        r.spel.stand === "anders" ||
+        r.spel.stand === "geenSpel";
+      if (!afgerekend(result)) {
         setNote(t(language, "oo.stoppen"));
         result = await window.career.stopSpel();
+      }
+      /*
+       * Kon de app openOMSI niet stoppen, dan draait het spel nog en is er
+       * niets af te rekenen: niets boeken (dat werd "onvolledig" met het volle
+       * loon), de dienst loopt door, en de speler hoort waarom.
+       */
+      if (!afgerekend(result)) {
+        setNote(t(language, "oo.stopMislukt"));
+        return;
       }
       /*
        * Hoeveel stevige stops er bij deze dienst horen voordat het opvalt. Een
@@ -2439,9 +2454,14 @@ export function App(): JSX.Element {
                   },
                 )
             : t(language, "done.nothing");
-        /* Uit openOMSI: waar de cijfers vandaan komen, of dat er niets kwam. */
+        /*
+         * Uit openOMSI: de cijfers van openOMSI zelf, in plaats van "vloeiend
+         * gereden" -- hard remmen meet openOMSI niet (zijn schokken zijn een
+         * andere maat, die staan erbij). Of dat er niets kwam, of alleen een
+         * andere rit.
+         */
         if (result.spel?.stand === "klaar") {
-          uitkomst = `${uitkomst} ${t(language, "oo.afrekening", {
+          uitkomst = t(language, "oo.afrekening", {
             pids: result.spel.pids.join(", "),
             km: (result.drivenKm ?? 0).toFixed(3),
             haltes: result.spel.haltes ?? 0,
@@ -2450,9 +2470,12 @@ export function App(): JSX.Element {
             kaartjes: result.tickets ?? 0,
             aanrijdingen: result.collisions ?? 0,
             schokken: result.spel.schokken ?? 0,
-          })}`;
+          });
+          if (result.spel.meegereden) uitkomst = `${uitkomst} ${t(language, "oo.heelSpel")}`;
         } else if (result.spel?.stand === "onvolledig") {
           uitkomst = t(language, "oo.status.onvolledig");
+        } else if (result.spel?.stand === "anders") {
+          uitkomst = t(language, "oo.status.anders");
         }
       }
       setDuties([]);
@@ -3461,7 +3484,7 @@ export function App(): JSX.Element {
       <div className="omsimelding">
         <p>
           {omsiMelding.soort === "crash"
-            ? t(language, "omsi.crash", { tijd: omsiTijd })
+            ? t(language, omsiMelding.motor === "openomsi" ? "oo.crash" : "omsi.crash", { tijd: omsiTijd })
             : omsiMelding.soort === "vast"
               ? t(language, "omsi.vast", { tijd: omsiTijd })
               : t(language, "omsi.overlays", { namen: overlayNamen })}
@@ -3471,7 +3494,7 @@ export function App(): JSX.Element {
         </p>
         {omsiMelding.soort === "crash" && (
           <p className="omsimelding-klein">
-            {t(language, "omsi.herstartUitleg")}
+            {t(language, omsiMelding.motor === "openomsi" ? "oo.herstartUitleg" : "omsi.herstartUitleg")}
           </p>
         )}
         {omsiMelding.afgesloten && (
@@ -3501,7 +3524,7 @@ export function App(): JSX.Element {
                 });
               }}
             >
-              {t(language, "omsi.herstart")}
+              {t(language, omsiMelding.motor === "openomsi" ? "oo.herstart" : "omsi.herstart")}
             </button>
           )}
           {omsiMelding.soort === "vast" && omsiMelding.pid !== undefined && omsiMelding.afgesloten !== "al-dicht" && (
@@ -3867,7 +3890,13 @@ export function App(): JSX.Element {
       verder: drukOpStart,
       knop: t(
         language,
-        spelStand?.motor === "openomsi" ? "oo.startIn" : "setup.start",
+        /*
+         * "Start in openOMSI" pas als de speler openOMSI koos. Zolang hij nog
+         * niet koos is `motor` het voorstel, en START vraagt eerst welk spel.
+         */
+        !spelStand?.kiezen && spelStand?.motor === "openomsi"
+          ? "oo.startIn"
+          : "setup.start",
       ),
     };
 

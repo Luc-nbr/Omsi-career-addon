@@ -63,6 +63,12 @@ export interface KaartenStand {
  */
 export interface OmsiMelding {
   soort: 'crash' | 'vast' | 'overlays'
+  /**
+   * Over openOMSI: dan is `crash` "de keten is weg en er kwam geen
+   * ritverslag" (gecrasht of hard afgesloten), met de knop om opnieuw te
+   * starten in openOMSI. Zonder: OMSI 2.
+   */
+  motor?: 'openomsi'
   /** ISO-tijd van het moment dat de app het zag. */
   tijd: string
   pid?: number
@@ -293,6 +299,8 @@ export type VrijStaat =
   | { soort: 'gevolgd'; koppeling: Koppelsoort; line: string; tour: string }
   | { soort: 'alleenRit'; line: string; tour: string; trip: string }
   | { soort: 'onbekend'; line: string; tour: string; trip: string }
+  /** Vrij rijden in openOMSI: daar komt in 0.7.0 niets binnen om te volgen. */
+  | { soort: 'openomsi' }
 
 /** Wat een beeld van de overlay over vrij rijden meekrijgt. */
 export interface VrijBeeld {
@@ -441,7 +449,12 @@ export interface BeginResult {
    * `spelNietGevonden`: openOMSI gekozen, maar niet gevonden; er begint niets
    * (niet stilletjes OMSI 2).
    */
-  fout?: 'bekijken' | 'anderSpel' | 'kiesSpel' | 'spelNietGevonden'
+  fout?: 'bekijken' | 'anderSpel' | 'kiesSpel' | 'spelNietGevonden' | 'andereRit'
+  /**
+   * Bij `andereRit`: openOMSI draait al en rijdt zichtbaar iets anders (kaart,
+   * lijn, omloop); de dienst rijdt daar niet in mee. Wat het rijdt staat hier.
+   */
+  foutTekst?: string
   /** In welk spel de dienst begon of zou beginnen. */
   motor?: 'omsi' | 'openomsi'
   anderSpel?: 'omsi' | 'openomsi'
@@ -542,15 +555,22 @@ export interface SessionResult {
    * achteraf uit ~/.openomsi/sessions. `loopt`/`herstart`: het spel draait nog;
    * `wacht`: het is weg en de app wacht (hooguit 30 s) op het sessiebestand;
    * `klaar`: de afrekening staat hierboven; `onvolledig`: openOMSI schreef geen
-   * rit (gecrasht of hard afgesloten).
+   * rit (gecrasht of hard afgesloten); `anders`: openOMSI schreef alleen ritten
+   * van een andere dienst (andere kaart, lijn of omloop) -- nul haltes van deze.
    */
   spel?: {
     motor: 'openomsi'
-    stand: 'geenSpel' | 'loopt' | 'herstart' | 'wacht' | 'klaar' | 'onvolledig'
+    stand: 'geenSpel' | 'loopt' | 'herstart' | 'wacht' | 'klaar' | 'onvolledig' | 'anders'
     /** De processen van de keten (met een sessiebestand, als `klaar`). */
     pids: number[]
     /** Processen zonder sessiebestand. */
     ontbreekt?: number[]
+    /** Sessiebestanden van een andere dienst (bij `anders`). */
+    afwijkend?: string[]
+    /** De dienst reed mee in een spel dat al draaide: het ritverslag telt het hele spel. */
+    meegereden?: boolean
+    /** Afronden kon openOMSI niet stoppen: de dienst loopt door en er is niets geboekt. */
+    stopMislukt?: boolean
     haltes?: number
     teVroeg?: number
     teLaat?: number
@@ -590,7 +610,12 @@ export interface SpelStand {
   /** Draait het andere spel, dan begint START niets. */
   anderSpel?: 'omsi' | 'openomsi'
   openomsi?: { versie?: string; map: string; inOmsiMap: boolean; launcher: boolean; uitTemp: boolean }
-  waarschuwingen: Array<'uitTemp' | 'tweeSpellen'>
+  /**
+   * `onzeker`: er draait een openomsi.exe waarvan de app niet kan zien of het
+   * een spel is (CIM gaf geen opdrachtregel; draait het als beheerder?). Het
+   * houdt OMSI 2 niet tegen en de dienst rijdt er niet in mee.
+   */
+  waarschuwingen: Array<'uitTemp' | 'tweeSpellen' | 'onzeker'>
   kan: { overlay: boolean; dienstLive: boolean; motorKnoppen: 'altijd' | 'nee'; afrekeningAchteraf: boolean }
   /** De motor van de dienst die loopt. */
   dienst: 'omsi' | 'openomsi'
@@ -639,6 +664,8 @@ export interface GameKeysPayload {
   /** Handeling -> leesbare naam, uit de taalbestanden van OMSI. */
   labels: Array<[string, string]>
   omsiRunning: boolean
+  /** `openomsi`: dit is het eigen keyboard.cfg van openOMSI (de speler koos openOMSI). */
+  bestand?: 'openomsi'
 }
 
 /** De gamecontrollers zoals OMSI ze kent, met de namen van de handelingen. */
@@ -647,6 +674,8 @@ export interface GameControllersPayload {
   /** Handeling -> leesbare naam, dezelfde lijst als bij het toetsenbord. */
   labels: Array<[string, string]>
   omsiRunning: boolean
+  /** `openomsi`: dit is het eigen gamectrler.cfg van openOMSI (de speler koos openOMSI). */
+  bestand?: 'openomsi'
 }
 
 /** Wat de renderer via `window.career` kan aanroepen. */

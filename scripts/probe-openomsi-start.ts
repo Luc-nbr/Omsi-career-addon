@@ -24,20 +24,24 @@
  *  5. Stoppen: via `--cli stop` netjes; een spel dat de launcher niet kent:
  *     taskkill zonder /F, 8 s, dan /F.
  *  6. Het spel blijft draaien als de app dichtgaat (beide wegen).
- *  7. Voortzetten kiest laststn.osn uit de inhoudsmap van openOMSI, en het
- *     keyboard.cfg dat openOMSI echt volgt.
+ *  7. Voortzetten kiest laststn.osn uit de inhoudsmap van openOMSI, alleen
+ *     als hij van deze dienst is (niet ouder dan zijn begin), en nooit die van
+ *     de OMSI 2-map; het keyboard.cfg en gamectrler.cfg dat openOMSI echt
+ *     volgt; afronden is pas een einde als elk lid echt dicht is.
  *  8. Hash-momentopname: een dienst en een vrije rit in openOMSI veranderen
  *     in de OMSI 2-map buiten openOMSI\ en plugins\omsihub\ alleen
  *     Situations\OMSI Enhancer.*.
  */
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import {
   bouwDuty,
   bouwSituatieDuty,
   dutyArgs,
+  invoerMapVoorOpenOmsi,
+  ketenGestopt,
   keyboardCfgVoorOpenOmsi,
   laststnVoorOpenOmsi,
   startOpenOmsi,
@@ -315,11 +319,25 @@ async function main(): Promise<void> {
   }
 
   /* ------------------------------------------------------------ 7. voortzetten en keyboard.cfg */
-  klopt('voortzetten zonder laststn in de inhoudsmap: die van OMSI 2', laststnVoorOpenOmsi(o2, inst.inhoudsmap, 'TH_Wald') === join(o2, 'maps', 'TH_Wald', 'laststn.osn'))
+  /*
+   * Tegenlezing 01-10: de laststn van de OMSI 2-map is wat de app voor OMSI 2
+   * klaarzette (of de laatste rit van OMSI 2) -- een andere dienst. En een
+   * laststn van openOMSI van vóór het begin van de dienst is van een vorige rit.
+   */
+  const dienstBegon = Date.now() - 60000
+  klopt(
+    'voortzetten zonder laststn in de inhoudsmap: niets, ook al staat er een in de OMSI 2-map (die is van een andere rit)',
+    statSync(join(o2, 'maps', 'TH_Wald', 'laststn.osn')).isFile() && laststnVoorOpenOmsi(inst.inhoudsmap, 'TH_Wald', dienstBegon) === undefined
+  )
   schrijf(inst.inhoudsmap, 'maps/TH_Wald/laststn.osn', 'openOMSI\r\n')
-  const laststn = laststnVoorOpenOmsi(o2, inst.inhoudsmap, 'TH_Wald')
-  klopt('voortzetten kiest laststn.osn uit de inhoudsmap van openOMSI', laststn === join(inst.inhoudsmap, 'maps', 'TH_Wald', 'laststn.osn'))
-  klopt('een kaart zonder laststn: niets', laststnVoorOpenOmsi(o2, inst.inhoudsmap, 'Grundorf') === undefined)
+  const laststn = laststnVoorOpenOmsi(inst.inhoudsmap, 'TH_Wald', dienstBegon)
+  klopt('voortzetten kiest laststn.osn uit de inhoudsmap van openOMSI (geschreven tijdens de dienst)', laststn === join(inst.inhoudsmap, 'maps', 'TH_Wald', 'laststn.osn'))
+  const uurGeleden = new Date(Date.now() - 3600000)
+  utimesSync(laststn!, uurGeleden, uurGeleden)
+  klopt('een laststn van vóór het begin van de dienst: niet (die is van een vorige rit)', laststnVoorOpenOmsi(inst.inhoudsmap, 'TH_Wald', dienstBegon) === undefined)
+  const nuTijd = new Date()
+  utimesSync(laststn!, nuTijd, nuTijd)
+  klopt('een kaart zonder laststn: niets', laststnVoorOpenOmsi(inst.inhoudsmap, 'Grundorf', dienstBegon) === undefined)
   const voort = bouwSituatieDuty(laststn!, 'TH_Wald', { profiel: 'OMSI-Fan' })
   klopt(
     'voortzetten wordt --situation met bestuurder, verkeer en reizigers (duty_args #136)',
@@ -337,6 +355,21 @@ async function main(): Promise<void> {
   klopt('keyboard.cfg: zonder eigen bestand volgt openOMSI dat van OMSI 2', keyboardCfgVoorOpenOmsi(o2, inst.inhoudsmap) === join(o2, 'Inputs', 'keyboard.cfg'))
   schrijf(inst.inhoudsmap, 'Inputs/keyboard.cfg', '[vehicles]\r\n')
   klopt('keyboard.cfg: met een eigen bestand in de inhoudsmap dat', keyboardCfgVoorOpenOmsi(o2, inst.inhoudsmap) === join(inst.inhoudsmap, 'Inputs', 'keyboard.cfg'))
+  /*
+   * De pagina's Toetsen en Controllers (proefdraaier 01-10): koos de speler
+   * openOMSI, dan het bestand dat openOMSI leest -- dat van de inhoudsmap als
+   * het er staat (controllers.rs:68-71), anders dat van OMSI 2.
+   */
+  klopt('controllers: zonder eigen gamectrler.cfg van openOMSI de map van OMSI 2', invoerMapVoorOpenOmsi(o2, inst.inhoudsmap, 'gamectrler.cfg') === o2)
+  klopt('toetsen: met een eigen keyboard.cfg van openOMSI de inhoudsmap', invoerMapVoorOpenOmsi(o2, inst.inhoudsmap, 'keyboard.cfg') === inst.inhoudsmap)
+  schrijf(inst.inhoudsmap, 'Inputs/gamectrler.cfg', '\r\n[ctrl]\r\nNep-stuur\r\n1\r\n\r\n')
+  klopt('controllers: met een eigen gamectrler.cfg van openOMSI de inhoudsmap', invoerMapVoorOpenOmsi(o2, inst.inhoudsmap, 'gamectrler.cfg') === inst.inhoudsmap)
+  klopt('zonder inhoudsmap: altijd OMSI 2', invoerMapVoorOpenOmsi(o2, undefined, 'gamectrler.cfg') === o2)
+  /* Afronden: alleen een einde als elk lid echt dicht is (tegenlezing 01-10). */
+  klopt(
+    'stoppen: netjes, geforceerd en al dicht zijn een einde; mislukt niet',
+    ketenGestopt(['netjes', 'geforceerd', 'al-dicht']) && ketenGestopt([]) && !ketenGestopt(['netjes', 'mislukt'])
+  )
   rmSync(join(inst.inhoudsmap, 'Inputs'), { recursive: true, force: true })
   rmSync(join(inst.inhoudsmap, 'maps', 'TH_Wald'), { recursive: true, force: true })
 

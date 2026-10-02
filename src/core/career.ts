@@ -153,6 +153,8 @@ export interface ActiveDuty {
     keten: Array<{ pid: number; gestart?: string }>
     /** Wanneer het laatste proces van de keten wegging (ISO). */
     einde?: string
+    /** De app stopte het spel zelf (Afronden): geen melding over een crash. */
+    doorApp?: boolean
     via?: 'launcher' | 'terugval' | 'meerijden'
   }
   /**

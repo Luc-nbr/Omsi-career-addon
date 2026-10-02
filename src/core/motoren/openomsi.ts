@@ -403,24 +403,65 @@ export function bouwSituatieDuty(
 }
 
 /**
- * Waar voortzetten begint: `laststn.osn` van de kaart, eerst in de inhoudsmap
- * van openOMSI en dan in de OMSI 2-map -- zoals `last_situation`
- * (OO/crates/omsi-launcher-core/src/lib.rs:1964-1973). openOMSI schrijft hem
- * alleen in zijn inhoudsmap (input_script.rs:2259-2270); onze eigen lezer in
- * situation.ts kijkt alleen in de OMSI 2-map en geldt hier dus niet.
+ * Waar een dienst na een crash in openOMSI verder kan: `laststn.osn` van de
+ * kaart in de inhoudsmap van openOMSI -- daar schrijft het spel hem, elke
+ * 300 s (input_script.rs:2259-2270) -- en alleen als hij niet ouder is dan de
+ * dienst (`sinds`, ms). Een oudere is van een vorige rit.
+ *
+ * Bewust NIET die van de OMSI 2-map, al neemt `last_situation` van de launcher
+ * (OO/crates/omsi-launcher-core/src/lib.rs:1964-1973) hem als terugval: daar
+ * staat wat de app voor OMSI 2 klaarzette (core/startup.ts), of de laatste rit
+ * van OMSI 2 -- een andere dienst, bus of tijd. Zonder verse laststn begint de
+ * dienst opnieuw, met zijn eigen Duty.
  */
-export function laststnVoorOpenOmsi(omsiPad: string, inhoudsmap: string | undefined, mapFolder: string): string | undefined {
-  const kandidaten = [
-    inhoudsmap ? join(inhoudsmap, 'maps', mapFolder, 'laststn.osn') : undefined,
-    join(omsiPad, 'maps', mapFolder, 'laststn.osn')
-  ].filter((p): p is string => Boolean(p))
-  return kandidaten.find((p) => {
-    try {
-      return statSync(p).isFile()
-    } catch {
-      return false
-    }
-  })
+export function laststnVoorOpenOmsi(inhoudsmap: string | undefined, mapFolder: string, sinds?: number): string | undefined {
+  if (!inhoudsmap) return undefined
+  const pad = join(inhoudsmap, 'maps', mapFolder, 'laststn.osn')
+  try {
+    const info = statSync(pad)
+    if (!info.isFile()) return undefined
+    // Een seconde speling: de klok van het bestandssysteem rondt af.
+    if (sinds !== undefined && Number.isFinite(sinds) && info.mtimeMs < sinds - 1000) return undefined
+    return pad
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * De map waarvan openOMSI `Inputs\<bestand>` volgt: die van de inhoudsmap als
+ * het bestand daar staat (de launcher van openOMSI bewaart toetsen en
+ * controllers daar), anders de OMSI 2-map (OO/crates/omsi-app/src/controllers.rs:68-71,
+ * startup.rs:69-78). Voor de pagina's Toetsen en Controllers als de speler
+ * openOMSI koos: dan horen die het bestand te tonen en te schrijven dat
+ * openOMSI echt leest. Het formaat is dat van OMSI 2 (controllers.rs `cfg_text`).
+ */
+export function invoerMapVoorOpenOmsi(omsiPad: string, inhoudsmap: string | undefined, bestand: 'keyboard.cfg' | 'gamectrler.cfg'): string {
+  if (inhoudsmap && existsSync(join(inhoudsmap, 'Inputs', bestand))) return inhoudsmap
+  return omsiPad
+}
+
+/** Wat een draaiend spel over zijn rit zegt, tegen een dienst gelegd. */
+export type Overeenkomst = 'ja' | 'nee' | 'onbekend'
+
+const gelijk = (a: string, b: string): boolean => a.trim().toLowerCase() === b.trim().toLowerCase()
+
+/**
+ * Rijdt dit spel deze dienst? Uit de instance of de opdrachtregel: kaart, lijn
+ * en omloop. `nee` zodra één ervan anders is; `onbekend` als het spel er niets
+ * over zegt (gestart met `--menu`, of op een situatie); `ja` als de kaart
+ * klopt en lijn en omloop niet anders zijn. Voor meerijden in een spel dat al
+ * draait: rijdt het iets anders, dan rijdt de dienst er niet in mee.
+ */
+export function pastBijDienst(
+  rit: SpelProces['dienst'] | undefined,
+  dienst: { mapFolder: string; line?: string; tour?: string }
+): Overeenkomst {
+  const kaart = kaartVan(rit?.map)
+  if (kaart && kaart !== `maps/${dienst.mapFolder.replace(/\\/g, '/')}/global.cfg`.toLowerCase()) return 'nee'
+  if (rit?.line && dienst.line && !gelijk(rit.line, dienst.line)) return 'nee'
+  if (rit?.tour && dienst.tour && !gelijk(rit.tour, dienst.tour)) return 'nee'
+  return kaart ? 'ja' : 'onbekend'
 }
 
 /**
@@ -688,6 +729,17 @@ export async function startOpenOmsi(inst: OpenOmsiInstallatie, duty: OpenOmsiDut
 
 export type StopUitkomst = 'netjes' | 'geforceerd' | 'al-dicht' | 'mislukt'
 
+/**
+ * Is de keten gestopt? Alleen als elk lid netjes, geforceerd of al dicht is.
+ * Na `mislukt` (PowerShell wist het niet, of /F lukte niet) kan het spel nog
+ * draaien: dan is de dienst niet voorbij, en bepaalt de wacht over de keten
+ * het einde -- anders ging een rit die nog liep als "onvolledig" het logboek in
+ * en raakte zijn latere sessiebestand zoek.
+ */
+export function ketenGestopt(uitkomsten: readonly StopUitkomst[]): boolean {
+  return uitkomsten.every((u) => u === 'netjes' || u === 'geforceerd' || u === 'al-dicht')
+}
+
 export interface StopOpties {
   launcher?: string
   uitvoeren?: (exe: string, args: string[]) => Promise<Uitvoer>
@@ -897,7 +949,13 @@ export interface Afrekening {
   bediend: number
 }
 
-export type AfrekeningUitslag = Afrekening | { onvolledig: 'geenRit'; ontbreekt: number[]; afwijkend: string[] }
+/**
+ * Geen afrekening: `geenRit` als openOMSI niets schreef (gecrasht of hard
+ * afgesloten), `anders` als het alleen ritten van een andere dienst schreef
+ * (andere kaart, lijn of omloop). Dat tweede is geen onbekende: er is gereden,
+ * maar niet deze dienst.
+ */
+export type AfrekeningUitslag = Afrekening | { onvolledig: 'geenRit' | 'anders'; ontbreekt: number[]; afwijkend: string[] }
 
 function getal(x: unknown): number {
   return typeof x === 'number' && Number.isFinite(x) ? x : 0
@@ -989,7 +1047,9 @@ export function leesAfrekening(
     if (gevonden) uit.pids.push(lid.pid)
     else uit.ontbreekt.push(lid.pid)
   }
-  if (uit.pids.length === 0) return { onvolledig: 'geenRit', ontbreekt: uit.ontbreekt, afwijkend: uit.afwijkend }
+  if (uit.pids.length === 0) {
+    return { onvolledig: uit.afwijkend.length > 0 ? 'anders' : 'geenRit', ontbreekt: uit.ontbreekt, afwijkend: uit.afwijkend }
+  }
   uit.km = Math.round(uit.meters) / 1000
   return uit
 }
@@ -999,8 +1059,9 @@ export const AFREKENING_WACHT_MS = 30000
 
 /**
  * De afrekening na het einde van de keten: klaar, nog even wachten (openOMSI
- * schrijft bij het afsluiten), of onvolledig. Onvolledig is geen fout: het
- * spel crashte of werd hard afgesloten, en dan schreef het niets.
+ * schrijft bij het afsluiten), anders (alleen ritten van een andere dienst) of
+ * onvolledig. Onvolledig is geen fout: het spel crashte of werd hard
+ * afgesloten, en dan schreef het niets.
  */
 export function afrekeningNaEinde(
   keten: KetenLid[],
@@ -1009,14 +1070,17 @@ export function afrekeningNaEinde(
   thuis: string,
   dienst?: { mapFolder?: string; line?: string; tour?: string },
   sinds?: string
-): { stand: 'klaar'; afrekening: Afrekening } | { stand: 'wacht' } | { stand: 'onvolledig'; ontbreekt: number[] } {
+):
+  | { stand: 'klaar'; afrekening: Afrekening }
+  | { stand: 'wacht' }
+  | { stand: 'onvolledig'; ontbreekt: number[] }
+  | { stand: 'anders'; afwijkend: string[]; ontbreekt: number[] } {
   const uitslag = leesAfrekening(keten, thuis, dienst, sinds)
-  if (!('onvolledig' in uitslag)) {
-    // Een lid zonder bestand kan nog schrijven: binnen de wachttijd nog even geduld.
-    if (uitslag.ontbreekt.length > 0 && nu - einde < AFREKENING_WACHT_MS) return { stand: 'wacht' }
-    return { stand: 'klaar', afrekening: uitslag }
-  }
-  if (nu - einde < AFREKENING_WACHT_MS) return { stand: 'wacht' }
+  // Een lid zonder bestand kan nog schrijven: binnen de wachttijd nog even geduld.
+  const magWachten = uitslag.ontbreekt.length > 0 && nu - einde < AFREKENING_WACHT_MS
+  if (!('onvolledig' in uitslag)) return magWachten ? { stand: 'wacht' } : { stand: 'klaar', afrekening: uitslag }
+  if (magWachten) return { stand: 'wacht' }
+  if (uitslag.onvolledig === 'anders') return { stand: 'anders', afwijkend: uitslag.afwijkend, ontbreekt: uitslag.ontbreekt }
   return { stand: 'onvolledig', ontbreekt: uitslag.ontbreekt }
 }
 

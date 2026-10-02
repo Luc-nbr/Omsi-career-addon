@@ -1,5 +1,6 @@
 import { execFile, spawn } from 'node:child_process'
 import { readdirSync, readFileSync } from 'node:fs'
+import { uptime } from 'node:os'
 import { join, resolve, sep } from 'node:path'
 import { isMotorActie, MOTOR_ACTIES } from '../shared/telefoon'
 import type { Paneel } from './busprofiel'
@@ -49,7 +50,14 @@ export interface SpelProces {
   /** Wat de launcher (instance) of de opdrachtregel over de rit zegt. */
   dienst?: { map?: string; bus?: string; line?: string; tour?: string; log?: string }
   bron: 'instance' | 'cim' | 'tasklist'
-  /** De CIM-vraag lukte niet: de app weet niet of dit een spel is, en rekent het er voorzichtig toe. */
+  /**
+   * CIM gaf geen opdrachtregel (de vraag mislukte, of het proces draait als
+   * beheerder en de app niet): de app weet niet of dit een spel is. Het telt
+   * mee als "er draait iets" (de Lakstudio, add-ons: bestanden kunnen open
+   * staan), maar nooit als het spel van een dienst: niet om in mee te rijden,
+   * niet als reden om OMSI 2 te weigeren (`welkeDraait`). Alleen een kind van
+   * een lid van de keten (CIM gaf de ouder wel) is een herstart.
+   */
   onzeker?: boolean
 }
 
@@ -425,6 +433,12 @@ export interface HerkenOpties {
   /** Hoe lang een mislukte CIM-vraag niet herhaald wordt (ms). */
   cimRust?: number
   nu?: () => number
+  /**
+   * Wanneer de computer opstartte (ms). Een instance met een proces van daarvoor
+   * is van een vorige keer, wat er nu ook onder zijn pid draait. Standaard uit
+   * `os.uptime()`.
+   */
+  opgestart?: number
 }
 
 interface Gekend {
@@ -443,6 +457,14 @@ interface Gekend {
  */
 export class Herkenner {
   private gekend = new Map<number, Gekend>()
+  /**
+   * Instances die `running:true` zeggen terwijl hun pid al eens uit `tasklist`
+   * verdwenen was. Een spel dat via `--cli launch` startte, ruimt niemand op
+   * (`reap` draait alleen in een launchervenster, instances.rs); komt het pid
+   * later terug, dan is het een ander proces -- misschien een kale launcher --
+   * en geen spel. Die instance telt dan niet meer: de opdrachtregel beslist.
+   */
+  private instancesWeg = new Set<string>()
   /** Hoe vaak er per pid een CIM-vraag ging; voor de proef (§9.2: hooguit één). */
   readonly cimVragen = new Map<number, number>()
   /** Hoeveel PowerShell-starts er in totaal waren. */
@@ -452,6 +474,7 @@ export class Herkenner {
 
   async kijk(): Promise<Herkenning> {
     const nu = this.opties.nu?.() ?? Date.now()
+    const opgestart = this.opties.opgestart ?? Date.now() - uptime() * 1000
     const temp = this.opties.tempMappen ?? tempMappenNu()
     const lijst = leesTasklist(await (this.opties.tasklist ?? tasklistNu)())
     const is = (naam: string, doel: string): boolean => naam.toLowerCase() === doel.toLowerCase()
@@ -471,7 +494,29 @@ export class Herkenner {
 
     const instances = new Map<number, OpenOmsiInstance>()
     for (const inst of leesInstances(this.opties.thuis)) {
-      if (inst.running === true && (inst.ended === null || inst.ended === undefined)) instances.set(inst.pid, inst)
+      if (inst.running !== true || (inst.ended !== null && inst.ended !== undefined)) continue
+      const sleutel = inst.id || `${inst.pid}|${inst.process_started ?? inst.started ?? ''}`
+      /*
+       * Het spel van deze instance is weg; wat er straks onder dit pid draait, is
+       * iets anders. Niet voor een instance van de laatste 15 s: die kan net na
+       * onze `tasklist` geschreven zijn, voor een spel dat er toen nog niet in stond.
+       */
+      const jong = typeof inst.started === 'number' && nu / 1000 - inst.started < 15
+      /*
+       * Een spel van voor het opstarten van de computer draait niet meer, wat er
+       * nu ook onder zijn pid zit: na een herstart van Windows komen pids snel
+       * terug, en dan zag de app het spel nooit weggaan (tegenlezing 01-10).
+       * Zit de opstarttijd ernaast, dan beslist de opdrachtregel (CIM): een echt
+       * spel blijft zo een spel.
+       */
+      const begon = filetimeNaarIso(inst.process_started ?? undefined)
+      if (begon && Date.parse(begon) < opgestart - 5000) {
+        this.instancesWeg.add(sleutel)
+        continue
+      }
+      if (!levend.has(inst.pid)) {
+        if (!jong) this.instancesWeg.add(sleutel)
+      } else if (!this.instancesWeg.has(sleutel)) instances.set(inst.pid, inst)
     }
 
     // 1. De launcher kent hem: dan is het een spel, met de dienst erbij.
@@ -487,14 +532,22 @@ export class Herkenner {
       this.cimRondes++
       for (const pid of vragen) this.cimVragen.set(pid, (this.cimVragen.get(pid) ?? 0) + 1)
       const antwoord = await (this.opties.cim ?? cimVraag)(vragen)
+      const rust = nu + (this.opties.cimRust ?? 60000)
       for (const pid of vragen) {
         const c = antwoord?.find((item) => item.pid === pid)
-        if (c) {
-          const args = c.regel ? splitsOpdrachtregel(c.regel).slice(1) : undefined
-          this.gekend.set(pid, { gestart: c.start, ouder: c.ouder, pad: c.pad, args })
+        if (c?.regel) {
+          this.gekend.set(pid, { gestart: c.start, ouder: c.ouder, pad: c.pad, args: splitsOpdrachtregel(c.regel).slice(1) })
+        } else if (c) {
+          /*
+           * Wel het proces, geen opdrachtregel: zo antwoordt CIM voor een proces
+           * dat als beheerder draait (of een vraag die half lukte). Ouder en
+           * starttijd zijn er meestal wel. Over een minuut opnieuw vragen, in
+           * plaats van het voor altijd "onzeker" te laten.
+           */
+          this.gekend.set(pid, { gestart: c.start, ouder: c.ouder, pad: c.pad, opnieuwNa: rust })
         } else {
           // Geen antwoord (PowerShell weigerde, of het proces is net weg): een minuut niet opnieuw.
-          this.gekend.set(pid, { opnieuwNa: nu + (this.opties.cimRust ?? 60000) })
+          this.gekend.set(pid, { opnieuwNa: rust })
         }
       }
     }
@@ -523,8 +576,21 @@ export class Herkenner {
       }
       const g = this.gekend.get(p.pid)
       if (!g || !g.args) {
-        // Niet te zien wat het is: voorzichtig als spel tellen, dan start er geen tweede naast.
-        openomsi.push({ motor: 'openomsi', pid: p.pid, uitTemp: false, bron: 'tasklist', onzeker: true })
+        /*
+         * Niet te zien wat het is. Het staat in de lijst (er draait iets), maar
+         * als onzeker: zie `SpelProces.onzeker`. Ouder en starttijd gaan mee als
+         * CIM ze gaf, zodat een herstart van een spel als beheerder in de keten komt.
+         */
+        openomsi.push({
+          motor: 'openomsi',
+          pid: p.pid,
+          gestart: g?.gestart,
+          ouder: g?.ouder,
+          pad: g?.pad,
+          uitTemp: inTemp(g?.pad, temp),
+          bron: 'tasklist',
+          onzeker: true
+        })
         continue
       }
       const proces: SpelProces = {
@@ -554,12 +620,22 @@ export class Herkenner {
 /* Welke motor                                                                  */
 /* -------------------------------------------------------------------------- */
 
+/** De openOMSI-spellen waarvan zeker is dat het spellen zijn (zie `SpelProces.onzeker`). */
+export function zekereSpellen(h: Herkenning | undefined): SpelProces[] {
+  return (h?.openomsi ?? []).filter((p) => !p.onzeker)
+}
+
+/** Welke spellen draaien er (OMSI 2 eerst)? Een onzeker proces telt niet. */
+export function welkeDraaien(h: Herkenning | undefined): MotorId[] {
+  const uit: MotorId[] = []
+  if (h && h.omsi.length > 0) uit.push('omsi')
+  if (zekereSpellen(h).length > 0) uit.push('openomsi')
+  return uit
+}
+
 /** Draait er een spel, en welk? OMSI gaat voor als het er allebei zijn (dat hoort niet). */
 export function welkeDraait(h: Herkenning | undefined): MotorId | undefined {
-  if (!h) return undefined
-  if (h.omsi.length > 0) return 'omsi'
-  if (h.openomsi.length > 0) return 'openomsi'
-  return undefined
+  return welkeDraaien(h)[0]
 }
 
 export function spelDraaitIn(h: Herkenning | undefined): boolean {
@@ -625,10 +701,15 @@ export interface MotorKeuzeUitslag {
  * Met welk spel een dienst of vrije rit start (zie DE SPELKEUZE hierboven).
  * `voorstel` is wat de app voorstelt als er nog niet gekozen is; dat wordt dan
  * `motor`, met `kiezen`.
+ *
+ * `draait` is wat er draait: één spel, of de lijst (`welkeDraaien`). Draait
+ * het andere spel, dan is dat `anderSpel` -- ook als het gekozen spel er
+ * naast draait. Twee spellen tegelijk schrijven in dezelfde profielen en
+ * dezelfde spelmap; dan begint START niets en zegt het waarom.
  */
 export function kiesMotor(
   keuze: MotorId | undefined,
-  draait: MotorId | undefined,
+  draait: MotorId | readonly MotorId[] | undefined,
   gevonden: { openomsi: boolean },
   voorstel?: Voorstel
 ): MotorKeuzeUitslag {
@@ -640,6 +721,8 @@ export function kiesMotor(
     uit.motor = voorstel?.motor ?? 'omsi'
     uit.kiezen = true
   }
-  if (draait && draait !== uit.motor) uit.anderSpel = draait
+  const lijst: readonly MotorId[] = draait === undefined ? [] : typeof draait === 'string' ? [draait] : draait
+  const ander = lijst.find((m) => m !== uit.motor)
+  if (ander) uit.anderSpel = ander
   return uit
 }

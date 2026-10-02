@@ -449,10 +449,10 @@ function SpelmotorKaart({ language }: { language: Language }): JSX.Element | nul
       )}
       {oo ? (
         <p className="note" style={{ marginTop: 10 }}>
-          {t(language, 'oo.gevonden', {
-            versie: oo.versie ?? '?',
-            map: oo.inOmsiMap ? t(language, 'oo.mapOmsi') : oo.map
-          })}
+          {/* De versie staat in de exe (ProductVersion); is die niet te lezen, dan zonder, niet "openOMSI ?". */}
+          {oo.versie
+            ? t(language, 'oo.gevonden', { versie: oo.versie, map: oo.inOmsiMap ? t(language, 'oo.mapOmsi') : oo.map })
+            : t(language, 'oo.gevondenZonderVersie', { map: oo.inOmsiMap ? t(language, 'oo.mapOmsi') : oo.map })}
           {!oo.launcher && ` ${t(language, 'oo.zonderLauncher')}`}
         </p>
       ) : (
@@ -462,6 +462,7 @@ function SpelmotorKaart({ language }: { language: Language }): JSX.Element | nul
       )}
       {stand.waarschuwingen.includes('uitTemp') && <p className="note warn">{t(language, 'oo.uitTemp')}</p>}
       {stand.waarschuwingen.includes('tweeSpellen') && <p className="note warn">{t(language, 'oo.tweeSpellen')}</p>}
+      {stand.waarschuwingen.includes('onzeker') && <p className="note warn">{t(language, 'oo.onzeker')}</p>}
       <p className="note">{t(language, 'oo.zonderLive')}</p>
       <p className="note">{t(language, 'oo.koppelingNog')}</p>
     </section>
@@ -859,6 +860,8 @@ function KeysTab({ language }: { language: Language }): JSX.Element {
   const [names, setNames] = useState<Map<number, string>>(new Map())
   const [labels, setLabels] = useState<Map<string, string>>(new Map())
   const [running, setRunning] = useState(false)
+  /** Het eigen keyboard.cfg van openOMSI (de speler koos openOMSI): dat zegt de pagina erbij. */
+  const [vanOpenomsi, setVanOpenomsi] = useState(false)
   const [search, setSearch] = useState('')
   const [capturing, setCapturing] = useState<string>()
   const [note, setNote] = useState<string>()
@@ -872,6 +875,7 @@ function KeysTab({ language }: { language: Language }): JSX.Element {
         setNames(new Map(payload.keyNames))
         setLabels(new Map(payload.labels))
         setRunning(payload.omsiRunning)
+        setVanOpenomsi(payload.bestand === 'openomsi')
       })
       .catch((cause: unknown) =>
         setError(
@@ -955,6 +959,7 @@ function KeysTab({ language }: { language: Language }): JSX.Element {
   return (
     <>
       {running && <p className="note warn">{t(language, 'cfg.running')}</p>}
+      {vanOpenomsi && <p className="note">{t(language, 'oo.invoerToetsen')}</p>}
       <p className="note">{t(language, 'keys.intro')}</p>
 
       <div className="actions">

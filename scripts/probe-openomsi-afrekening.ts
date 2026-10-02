@@ -11,7 +11,9 @@
  *     launcher.log:568): 0,567 km, 1 halte, 1 te vroeg, 0 te laat,
  *     0 aanrijdingen, 8 schokken.
  *  2. Een keten van twee processen (Krefrath, Wagen 3: 18452 en 21488) telt op.
- *  3. Een bestand van een andere omloop of kaart telt niet mee.
+ *  3. Een bestand van een andere omloop of kaart telt niet mee; is er alleen
+ *     zo'n bestand, dan is de stand "anders" (niet "onvolledig"). Meerijden in
+ *     een draaiend spel: past het bij de dienst (`pastBijDienst`)?
  *  4. Ontbreekt het bestand: eerst wachten, na 30 s "onvolledig" -- geen fout.
  *     Ook zonder sessions-map, met een kapot bestand en bij een hergebruikt pid.
  *  5. Een keten waarvan één proces niets schreef (gecrasht): wat er is, telt,
@@ -23,7 +25,7 @@
  */
 import { copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afrekeningNaEinde, AFREKENING_WACHT_MS, leesAfrekening, type Afrekening } from '../src/core/motoren/openomsi'
+import { afrekeningNaEinde, AFREKENING_WACHT_MS, leesAfrekening, pastBijDienst, type Afrekening } from '../src/core/motoren/openomsi'
 import { filetimeNaarIso } from '../src/core/spelmotor'
 import { einde, klopt, proefMap } from './proefhulp'
 
@@ -78,11 +80,27 @@ function main(): void {
 
   /* 3. een andere omloop telt niet */
   const ander = leesAfrekening([{ pid: 3728, gestart: iso(1790788879) }], thuis, dienst302)
-  klopt('een bestand van omloop 304 bij een dienst op 302: niet meegeteld, onvolledig', !isAfrekening(ander) && ander.afwijkend.includes('1790788954-3728.json'))
+  klopt('een bestand van omloop 304 bij een dienst op 302: niet meegeteld', !isAfrekening(ander) && ander.afwijkend.includes('1790788954-3728.json'))
   const andereKaart = leesAfrekening([{ pid: 23516 }], thuis, { mapFolder: 'Krefrath' })
   klopt('een bestand van een andere kaart: niet meegeteld', !isAfrekening(andereKaart))
   const zonderLijn = leesAfrekening([{ pid: 23516 }], thuis, { mapFolder: 'TH_Wald' })
   klopt('een dienst zonder lijn of omloop (vrij rijden): alleen de kaart telt', isAfrekening(zonderLijn))
+  /*
+   * Tegenlezing 01-10: alleen een rit van een andere dienst is geen onbekende
+   * ("onvolledig", met het volle loon), maar "anders": er is gereden, niet deze
+   * dienst. Na de wachttijd (het lid zou nog kunnen schrijven) is dat de stand.
+   */
+  klopt('alleen een rit van een andere omloop: "anders", niet "geen rit"', !isAfrekening(ander) && ander.onvolledig === 'anders')
+  const andersNa = afrekeningNaEinde([{ pid: 3728, gestart: iso(1790788879) }], Date.now() - AFREKENING_WACHT_MS - 1000, Date.now(), thuis, dienst302)
+  klopt(`na de wachttijd: stand ${andersNa.stand}, met het bestand erbij`, andersNa.stand === 'anders' && andersNa.afwijkend.includes('1790788954-3728.json'))
+  klopt(
+    'meerijden: een spel op 302 past bij de dienst op 302',
+    pastBijDienst({ map: 'maps/TH_Wald/global.cfg', line: 'Omnibusverkehr Rennsteig', tour: '302 - 725302' }, dienst302) === 'ja'
+  )
+  klopt('meerijden: een spel op omloop 304 niet', pastBijDienst({ map: 'maps/TH_Wald/global.cfg', line: 'Omnibusverkehr Rennsteig', tour: '304 - 725304' }, dienst302) === 'nee')
+  klopt('meerijden: een spel op een andere kaart niet (ook met backslashes)', pastBijDienst({ map: 'maps\\Krefrath\\global.cfg' }, dienst302) === 'nee')
+  klopt('meerijden: kaart goed, lijn en omloop niet bekend: ja', pastBijDienst({ map: 'MAPS/th_wald/global.cfg' }, dienst302) === 'ja')
+  klopt('meerijden: een spel dat niets zegt (menu, situatie): onbekend', pastBijDienst({}, dienst302) === 'onbekend' && pastBijDienst(undefined, dienst302) === 'onbekend')
 
   /* 4. geen bestand */
   const nu = Date.now()

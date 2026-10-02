@@ -35,6 +35,12 @@
  *  8. De echte instances van Lucs proefrit (30-09, launcher 0.1.307, met de
  *     nieuwe velden en een LAN-spel): afgelopen spellen tellen niet, ook niet
  *     als het pid nu van een ander openomsi.exe is.
+ *  9. (Tegenlezing en proefdraaier 01-10) Beide spellen tegelijk: het andere
+ *     is er ook als het gekozen spel draait. Een openomsi.exe zonder
+ *     opdrachtregel in CIM is onzeker: geen spel voor de keuze, wel "er draait
+ *     iets", over een minuut opnieuw gevraagd; als kind van de keten een
+ *     herstart. Een instance die `running:true` blijft zeggen nadat zijn pid
+ *     weg was, telt niet meer als dat pid terugkomt.
  */
 import { spawn, type ChildProcess } from 'node:child_process'
 import { copyFileSync, mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
@@ -53,12 +59,15 @@ import {
   MOTOR_ACTIES,
   panelenZonderMotoracties,
   splitsOpdrachtregel,
+  spelDraaitIn,
   stelSpelVoor,
+  welkeDraaien,
   welkeDraait,
+  zekereSpellen,
   type Herkenning
 } from '../src/core/spelmotor'
 import type { Paneel } from '../src/core/busprofiel'
-import { KetenWacht, laatstGespeeldOpenOmsi } from '../src/core/motoren/openomsi'
+import { isOpvolger, KetenWacht, laatstGespeeldOpenOmsi } from '../src/core/motoren/openomsi'
 import { laatstGespeeldOmsi } from '../src/core/motoren/omsi'
 import { einde, klopt, proefMap } from './proefhulp'
 import { leeft, NEPSPEL, nodeKopie, wacht } from './nepexe/hulp'
@@ -232,6 +241,16 @@ async function main(): Promise<void> {
   klopt('nep-openOMSI draait, keuze openOMSI -> openOMSI (meerijden), niets geweigerd', k3.motor === 'openomsi' && !k3.anderSpel && !k3.kiezen)
   const k4 = kiesMotor('omsi', welkeDraait(zonderOpen), { openomsi: true })
   klopt('nep-OMSI draait, keuze OMSI 2 -> OMSI 2, niets geweigerd', k4.motor === 'omsi' && !k4.anderSpel)
+  /*
+   * Proefdraaier 01-10: draaien ze allebei, dan is het andere spel er ook als
+   * het gekozen spel draait. `welkeDraait` gaf alleen OMSI (dat gaat voor), dus
+   * met OMSI 2 gekozen kwam er geen melding en ging START door.
+   */
+  klopt('beide draaien (eigen nep-processen): welkeDraaien geeft ze allebei', welkeDraaien(metBeide).join() === 'omsi,openomsi')
+  const k5 = kiesMotor('omsi', welkeDraaien(metBeide), { openomsi: true })
+  klopt('beide draaien, keuze OMSI 2 -> geweigerd (anderSpel openomsi)', k5.motor === 'omsi' && k5.anderSpel === 'openomsi')
+  const k5b = kiesMotor('openomsi', welkeDraaien(metBeide), { openomsi: true })
+  klopt('beide draaien, keuze openOMSI -> geweigerd (anderSpel omsi)', k5b.motor === 'openomsi' && k5b.anderSpel === 'omsi')
 
   /* ------------------------------------------------------------ 6. de spelkeuze van Luc */
   const k6 = kiesMotor(undefined, undefined, { openomsi: false })
@@ -344,6 +363,99 @@ async function main(): Promise<void> {
   klopt(
     'een afgelopen spel uit de instances (running:false, ended) telt niet: het pid is nu de kale launcher',
     !hp.openomsi.some((p) => p.pid === pid.kaal) && hp.launchers.some((p) => p.pid === pid.kaal && p.bron === 'cim')
+  )
+
+  /* ------------------------------------------------------------ 9. onzeker en een oude instance (tegenlezing 01-10) */
+  /*
+   * Met een nagebootste tasklist en CIM (geen processen): een openomsi.exe
+   * waarvan CIM wel het proces maar geen opdrachtregel geeft (als beheerder
+   * gestart), en een instance die `running:true` blijft zeggen nadat zijn spel
+   * weg is (via `--cli launch` gestart: niemand ruimt hem op).
+   */
+  const nepThuis = join(werk, 'nep-thuis')
+  mkdirSync(join(nepThuis, 'instances'), { recursive: true })
+  let lijst: number[] = []
+  let klok = 1_000_000
+  const cimAntwoord = new Map<number, { ouder?: number; regel?: string; start?: string }>()
+  const nepHerkenner = new Herkenner({
+    namen: { omsi: 'Omsi.exe', openomsi: 'openomsi.exe', launcher: 'openomsi-launcher.exe' },
+    thuis: nepThuis,
+    tempMappen: [join(werk, 'Temp')],
+    tasklist: async () => lijst.map((p) => `"openomsi.exe","${p}","Console","1","10.000 K"`).join('\r\n'),
+    cim: async (pids) => pids.filter((p) => cimAntwoord.has(p)).map((p) => ({ pid: p, ...cimAntwoord.get(p) })),
+    cimRust: 60000,
+    nu: () => klok
+  })
+  lijst = [7001]
+  cimAntwoord.set(7001, { ouder: 50, start: '2026-10-01T10:00:00.000Z' })
+  const o1 = await nepHerkenner.kijk()
+  const onz = o1.openomsi.find((p) => p.pid === 7001)
+  klopt('CIM zonder opdrachtregel: onzeker, met ouder en starttijd', onz?.onzeker === true && onz.ouder === 50 && onz.gestart === '2026-10-01T10:00:00.000Z')
+  klopt('een onzeker proces is geen spel voor de keuze: welkeDraait niets', welkeDraait(o1) === undefined && welkeDraaien(o1).length === 0 && zekereSpellen(o1).length === 0)
+  klopt('... en houdt OMSI 2 niet tegen', !kiesMotor('omsi', welkeDraaien(o1), { openomsi: true }).anderSpel)
+  klopt('... maar "draait er iets" zegt ja (Lakstudio, add-ons)', spelDraaitIn(o1))
+  klopt('een onzeker kind van een lid van de keten is een herstart', isOpvolger(onz!, [{ pid: 50 }]))
+  klopt('een onzeker proces zonder ouder in de keten niet', !isOpvolger(onz!, [{ pid: 51 }]))
+  await nepHerkenner.kijk()
+  klopt('binnen de minuut niet opnieuw gevraagd', nepHerkenner.cimVragen.get(7001) === 1)
+  klok += 61000
+  cimAntwoord.set(7001, { ouder: 50, start: '2026-10-01T10:00:00.000Z', regel: 'openomsi.exe --no-menu --map maps/TH_Wald/global.cfg' })
+  const o2 = await nepHerkenner.kijk()
+  klopt(
+    'na een minuut opnieuw gevraagd (was: voor altijd onzeker); nu met opdrachtregel een spel',
+    nepHerkenner.cimVragen.get(7001) === 2 && o2.openomsi.some((p) => p.pid === 7001 && !p.onzeker && p.bron === 'cim')
+  )
+  // De oude instance.
+  writeFileSync(
+    join(nepThuis, 'instances', 'oud-spel.json'),
+    JSON.stringify({ id: 'oud-spel', pid: 7100, running: true, ended: null, map: 'maps/TH_Wald/global.cfg', args: ['--no-menu', '--map', 'maps/TH_Wald/global.cfg'] })
+  )
+  cimAntwoord.set(7100, { regel: 'openomsi.exe', start: '2026-10-01T12:00:00.000Z' })
+  lijst = [7100]
+  const i1 = await nepHerkenner.kijk()
+  klopt('de instance met een levend pid: een spel uit de instance', i1.openomsi.some((p) => p.pid === 7100 && p.bron === 'instance'))
+  lijst = []
+  await nepHerkenner.kijk()
+  lijst = [7100]
+  const i3 = await nepHerkenner.kijk()
+  klopt(
+    'het pid was weg en is terug: de instance telt niet meer, de opdrachtregel beslist (kale launcher)',
+    !i3.openomsi.some((p) => p.pid === 7100) && i3.launchers.some((p) => p.pid === 7100 && p.bron === 'cim')
+  )
+  /*
+   * Een oude instance van voor het opstarten van de computer, waarvan het pid
+   * nu een kale launcher is -- zonder dat de app het spel ooit zag weggaan (de
+   * app startte na de herstart van Windows). De instance telt niet; de
+   * opdrachtregel beslist. Een instance van na het opstarten wel.
+   */
+  const filetime = (iso: string): number => (Date.parse(iso) + 11644473600000) * 10000
+  const opstartThuis = join(werk, 'opstart-thuis')
+  mkdirSync(join(opstartThuis, 'instances'), { recursive: true })
+  writeFileSync(
+    join(opstartThuis, 'instances', 'voor-opstart.json'),
+    JSON.stringify({ id: 'voor-opstart', pid: 7200, process_started: filetime('2026-10-01T20:00:00.000Z'), running: true, ended: null, map: 'maps/TH_Wald/global.cfg', args: ['--no-menu'] })
+  )
+  writeFileSync(
+    join(opstartThuis, 'instances', 'na-opstart.json'),
+    JSON.stringify({ id: 'na-opstart', pid: 7201, process_started: filetime('2026-10-02T09:00:00.000Z'), running: true, ended: null, map: 'maps/Grundorf/global.cfg', args: ['--no-menu'] })
+  )
+  cimAntwoord.set(7200, { regel: 'openomsi.exe', start: '2026-10-02T08:30:00.000Z' })
+  const opstartHerkenner = new Herkenner({
+    namen: { omsi: 'Omsi.exe', openomsi: 'openomsi.exe', launcher: 'openomsi-launcher.exe' },
+    thuis: opstartThuis,
+    tempMappen: [join(werk, 'Temp')],
+    tasklist: async () => [7200, 7201].map((p) => `"openomsi.exe","${p}","Console","1","10.000 K"`).join('\r\n'),
+    cim: async (pids) => pids.filter((p) => cimAntwoord.has(p)).map((p) => ({ pid: p, ...cimAntwoord.get(p) })),
+    opgestart: Date.parse('2026-10-02T08:00:00.000Z')
+  })
+  const ho = await opstartHerkenner.kijk()
+  klopt(
+    'een instance van voor het opstarten van de computer telt niet: het pid is nu de kale launcher (CIM)',
+    !ho.openomsi.some((p) => p.pid === 7200) && ho.launchers.some((p) => p.pid === 7200 && p.bron === 'cim')
+  )
+  klopt(
+    '... een instance van na het opstarten is een spel uit de instance, zonder CIM-vraag',
+    ho.openomsi.some((p) => p.pid === 7201 && p.bron === 'instance') && (opstartHerkenner.cimVragen.get(7201) ?? 0) === 0
   )
 
   /* ------------------------------------------------------------ 4. de herstart als keten */

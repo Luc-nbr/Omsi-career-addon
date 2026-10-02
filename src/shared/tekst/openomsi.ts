@@ -193,6 +193,78 @@ export const TEKST_OPENOMSI = {
     fr: 'Du/des trajet(s) openOMSI {pids} : {km} km, {haltes} arrêts, {vroeg} en avance, {laat} en retard, {kaartjes} billets, {aanrijdingen} collisions, {schokken} secousses.',
     nl: 'Uit openOMSI-rit(ten) {pids}: {km} km, {haltes} haltes, {vroeg} te vroeg, {laat} te laat, {kaartjes} kaartjes, {aanrijdingen} aanrijdingen, {schokken} schokken.'
   },
+  'oo.gevondenZonderVersie': {
+    en: 'Found: openOMSI ({map})',
+    de: 'Gefunden: openOMSI ({map})',
+    fr: 'Trouvé : openOMSI ({map})',
+    nl: 'Gevonden: openOMSI ({map})'
+  },
+  'oo.onzeker': {
+    en: 'An openomsi.exe is running that the app cannot look into (running as administrator?). The app does not take it for a game: it does not hold OMSI 2 back, and a duty does not join it.',
+    de: 'Es läuft eine openomsi.exe, in die die App nicht hineinsehen kann (als Administrator gestartet?). Die App hält sie nicht für ein Spiel: sie hält OMSI 2 nicht auf, und ein Dienst fährt nicht darin mit.',
+    fr: 'Un openomsi.exe tourne dans lequel l’app ne peut pas regarder (lancé en administrateur ?). L’app ne le prend pas pour un jeu : il ne bloque pas OMSI 2, et un service ne s’y joint pas.',
+    nl: 'Er draait een openomsi.exe waar de app niet in kan kijken (als beheerder gestart?). De app houdt het niet voor een spel: het houdt OMSI 2 niet tegen, en een dienst rijdt er niet in mee.'
+  },
+  'oo.invoerToetsen': {
+    en: 'You chose openOMSI: these are openOMSI’s own keys (openOMSI\\Inputs\\keyboard.cfg). OMSI 2 keeps its own.',
+    de: 'Du hast openOMSI gewählt: das sind die eigenen Tasten von openOMSI (openOMSI\\Inputs\\keyboard.cfg). OMSI 2 behält seine eigenen.',
+    fr: 'Vous avez choisi openOMSI : ce sont les touches propres d’openOMSI (openOMSI\\Inputs\\keyboard.cfg). OMSI 2 garde les siennes.',
+    nl: 'Je koos openOMSI: dit zijn de eigen toetsen van openOMSI (openOMSI\\Inputs\\keyboard.cfg). OMSI 2 houdt de zijne.'
+  },
+  'oo.invoerControllers': {
+    en: 'You chose openOMSI: these are openOMSI’s own controller settings (openOMSI\\Inputs\\gamectrler.cfg). OMSI 2 keeps its own.',
+    de: 'Du hast openOMSI gewählt: das sind die eigenen Controller-Einstellungen von openOMSI (openOMSI\\Inputs\\gamectrler.cfg). OMSI 2 behält seine eigenen.',
+    fr: 'Vous avez choisi openOMSI : ce sont les réglages de manettes propres d’openOMSI (openOMSI\\Inputs\\gamectrler.cfg). OMSI 2 garde les siens.',
+    nl: 'Je koos openOMSI: dit zijn de eigen controllerinstellingen van openOMSI (openOMSI\\Inputs\\gamectrler.cfg). OMSI 2 houdt de zijne.'
+  },
+  'oo.vrijZonderLive': {
+    en: 'Driving freely in openOMSI. openOMSI does not pass live data to the app yet (0.8.0), so the app cannot follow the tour you pick there.',
+    de: 'Freies Fahren in openOMSI. openOMSI gibt der App noch keine Live-Daten (0.8.0), daher kann die App dem Umlauf, den du dort wählst, nicht folgen.',
+    fr: 'Conduite libre dans openOMSI. openOMSI ne transmet pas encore de données en direct à l’app (0.8.0) : l’app ne peut pas suivre le service que vous y choisissez.',
+    nl: 'Vrij rijden in openOMSI. openOMSI geeft de app nog geen live-gegevens (0.8.0), dus de app kan de omloop die je daar kiest niet volgen.'
+  },
+  'oo.andereRit': {
+    en: 'openOMSI is already running with another trip ({rit}). The duty does not join it: close openOMSI first and press START again.',
+    de: 'openOMSI läuft bereits mit einer anderen Fahrt ({rit}). Der Dienst fährt darin nicht mit: schließe openOMSI zuerst und drücke noch einmal START.',
+    fr: 'openOMSI tourne déjà avec un autre trajet ({rit}). Le service ne s’y joint pas : fermez d’abord openOMSI et appuyez à nouveau sur DÉPART.',
+    nl: 'openOMSI draait al met een andere rit ({rit}). De dienst rijdt daar niet in mee: sluit openOMSI eerst en druk opnieuw op START.'
+  },
+  'oo.status.anders': {
+    en: 'openOMSI recorded only another trip (different map, line or tour) than this duty: nothing of it counts for this duty.',
+    de: 'openOMSI hat nur eine andere Fahrt (andere Karte, Linie oder Umlauf) als diesen Dienst aufgezeichnet: davon zählt nichts für diesen Dienst.',
+    fr: 'openOMSI n’a enregistré qu’un autre trajet (autre carte, ligne ou service) que ce service : rien n’en compte pour ce service.',
+    nl: 'openOMSI legde alleen een andere rit vast (andere kaart, lijn of omloop) dan deze dienst: daarvan telt niets voor deze dienst.'
+  },
+  'oo.stopMislukt': {
+    en: 'openOMSI did not close, so nothing was booked and the duty continues. Close openOMSI yourself, then finish the duty.',
+    de: 'openOMSI wurde nicht beendet, daher wurde nichts gebucht und der Dienst läuft weiter. Schließe openOMSI selbst und beende dann den Dienst.',
+    fr: 'openOMSI ne s’est pas fermé : rien n’a été enregistré et le service continue. Fermez openOMSI vous-même, puis terminez le service.',
+    nl: 'openOMSI sloot niet af, dus er is niets geboekt en de dienst loopt door. Sluit openOMSI zelf af en rond daarna de dienst af.'
+  },
+  'oo.heelSpel': {
+    en: 'The duty joined an openOMSI game that was already running: these figures cover that whole game.',
+    de: 'Der Dienst fuhr in einem openOMSI-Spiel mit, das schon lief: diese Zahlen gelten für das ganze Spiel.',
+    fr: 'Le service s’est joint à une partie openOMSI déjà en cours : ces chiffres valent pour toute la partie.',
+    nl: 'De dienst reed mee in een openOMSI-spel dat al draaide: deze cijfers gelden voor dat hele spel.'
+  },
+  'oo.crash': {
+    en: 'openOMSI stopped at {tijd} without a trip record (crashed or closed hard).',
+    de: 'openOMSI wurde um {tijd} ohne Fahrtbericht beendet (abgestürzt oder hart beendet).',
+    fr: 'openOMSI s’est arrêté à {tijd} sans relevé de trajet (planté ou fermé de force).',
+    nl: 'openOMSI is om {tijd} gestopt zonder ritverslag (gecrasht of hard afgesloten).'
+  },
+  'oo.herstartUitleg': {
+    en: 'openOMSI continues from the last situation it saved during this duty (it saves every five minutes), otherwise from the start of the duty. What it drove before the crash it could not pass on.',
+    de: 'openOMSI macht mit der letzten Situation weiter, die es während dieses Dienstes gespeichert hat (alle fünf Minuten), sonst ab dem Anfang des Dienstes. Was es vor dem Absturz gefahren ist, konnte es nicht weitergeben.',
+    fr: 'openOMSI reprend à la dernière situation enregistrée pendant ce service (toutes les cinq minutes), sinon au début du service. Ce qu’il a conduit avant le plantage, il n’a pas pu le transmettre.',
+    nl: 'openOMSI gaat verder vanaf de laatste stand die het tijdens deze dienst bewaarde (elke vijf minuten), anders vanaf het begin van de dienst. Wat het vóór de crash reed, kon het niet doorgeven.'
+  },
+  'oo.herstart': {
+    en: 'Restart openOMSI with this duty',
+    de: 'openOMSI mit diesem Dienst neu starten',
+    fr: 'Relancer openOMSI avec ce service',
+    nl: 'openOMSI opnieuw starten met deze dienst'
+  },
   'oo.motorknoppenWeg': {
     en: 'Ticket, change, indicators, handbrake and headlights: not in openOMSI (openOMSI handles them itself)',
     de: 'Fahrschein, Wechselgeld, Blinker, Handbremse und Scheinwerfer: nicht in openOMSI (openOMSI regelt sie selbst)',
