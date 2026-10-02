@@ -94,7 +94,30 @@ export function leesSchrijvers(userData: string): Schrijvers | undefined {
  * had bijgewerkt. Nu beslist dan de bouwtijd; de setup en de draagbare van
  * één bouw hebben dezelfde tijd en blijven gelijk.
  */
+/**
+ * De interne nummers 0.4.2 tot en met 0.7.1. Op 02-10-2026 koos Luc ervoor de
+ * openbare versie 0.5.0 te noemen; de builds die daarvóór lokaal (en één keer kort
+ * op GitHub, v0.7.1) als 0.4.2-0.7.1 uitkwamen, zijn dus niet "nieuwer" dan de
+ * openbare 0.5.0 en verder. Zo'n interne build herken je aan het nummer plus een
+ * bouwtijd van vóór de omnummering (of geen bouwtijd). Tussen een interne en een
+ * openbare build beslist de bouwtijd, niet het nummer.
+ */
+const OMNUMMERING = '2026-10-02T20:00:00.000Z'
+
+function isIntern(w: Wie): boolean {
+  if (vergelijkVersies(w.versie, '0.4.2') < 0 || vergelijkVersies(w.versie, '0.7.1') > 0) return false
+  return typeof w.gebouwd !== 'string' || w.gebouwd < OMNUMMERING
+}
+
+/** Een openbare build van na de omnummering: 0.5.0 of hoger, gebouwd na OMNUMMERING. */
+function isOpenbaar(w: Wie): boolean {
+  return vergelijkVersies(w.versie, '0.5.0') >= 0 && typeof w.gebouwd === 'string' && w.gebouwd >= OMNUMMERING
+}
+
 export function isNieuwer(a: Wie, b: Wie): boolean {
+  // Een interne build is altijd ouder dan een openbare van na de omnummering.
+  if (isIntern(a) && isOpenbaar(b)) return false
+  if (isOpenbaar(a) && isIntern(b)) return true
   const versies = vergelijkVersies(a.versie, b.versie)
   if (versies !== 0) return versies > 0
   if (a.variant === 'dev' || b.variant === 'dev') return false
