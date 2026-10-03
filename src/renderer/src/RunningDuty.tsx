@@ -1,5 +1,6 @@
 import { useState, type JSX, type ReactNode } from "react";
 import type { IbisPlan } from "../../core/ibis";
+import type { LopendeRit } from "../../core/planTypen";
 import type { Duty } from "../../core/types";
 import type { SessionResult } from "../../shared/api";
 import { formatTime } from "../../shared/format";
@@ -51,6 +52,12 @@ interface Props {
   onFinish(): void;
   /** De hele dienstkaart, die achter "Bekijk volledige dienst" schuilgaat. */
   full: ReactNode;
+  /**
+   * Een bedrijfsrit: een dienst van je eigen bedrijf (ontwerp
+   * busbedrijf-planning §7.1 punt 8). Dan staat er een chip bij met de
+   * omloop en het deel, zodat je weet waarvoor deze rit telt.
+   */
+  bedrijfsrit?: LopendeRit;
 }
 
 /**
@@ -78,6 +85,7 @@ export function RunningDuty({
   onCancel,
   onFinish,
   full,
+  bedrijfsrit,
 }: Props): JSX.Element {
   const [showFull, setShowFull] = useState(false);
   const [showRoute, setShowRoute] = useState(false);
@@ -116,6 +124,15 @@ export function RunningDuty({
           <div className="duty-sub">
             {tr("run.sub", { map: duty.mapName, trips: duty.legs.length })}
           </div>
+          {bedrijfsrit && (
+            <span className="zr-chip">
+              {tr("bd.rit.chip", {
+                omloop: bedrijfsrit.omloopNr,
+                deel: bedrijfsrit.deel,
+                delen: bedrijfsrit.delen,
+              })}
+            </span>
+          )}
         </div>
         <div className="duty-times">
           <b>

@@ -55,6 +55,13 @@ import { busTellerVan, verwijderBus } from '../src/core/bedrijf'
 import type { Vehicle } from '../src/core/vehicles'
 import type { Rittenstaat } from '../src/core/rittenstaat'
 import type { Duty } from '../src/core/types'
+// Deel D: zelf rijden vanuit het bedrijf.
+import type { DagPlan, LopendeRit } from '../src/core/planTypen'
+import { kaartDag } from '../src/core/bedrijfsplan'
+import { dagplan } from '../src/core/rooster'
+import { besparingVanRit, geredenVan, rijvenster, voorstellen } from '../src/core/bedrijfsrit'
+import { boete, chauffeurKosten, vergoeding } from '../src/core/plantarief'
+import { ANKER, LIJN, MAP, fixtureKaart, fixtureKalender } from './fixtures/planfixture'
 
 let fouten = 0
 function klopt(wat: string, ja: boolean): void {
@@ -472,6 +479,130 @@ console.log('')
   klopt('en uit het rooster', !Object.values(zonder.rooster!.bussen).includes(101) && zonder.rooster!.bussen.b === 102)
   klopt('en uit de invulling van vandaag', Object.keys(zonder.vandaag!.busInvulling).length === 0)
   klopt('en legt de teller vast', (zonder.busTeller ?? 0) >= 103)
+}
+
+/* Deel D: zelf rijden vanuit het bedrijf (ontwerp busbedrijf-planning §7.7). */
+{
+  const fb = fixtureBedrijf()
+  // Twee bussen van hetzelfde model: 104 is net als 101 een SG292.
+  const b: Bedrijf = { ...fb, bussen: [...fb.bussen!, { ...fb.bussen![0], nummer: 104 }] }
+  const pad104 = b.bussen!.find((x) => x.nummer === 104)!.relativePath
+  const ritDuty = {
+    mapFolder: MAP,
+    totalStops: 20,
+    legs: [
+      { lineFile: LIJN, lineNumber: '1', minutes: 60 },
+      { lineFile: LIJN, lineNumber: '1', minutes: 30 }
+    ]
+  } as unknown as Duty
+  const rit: LopendeRit = {
+    dienst: `${MAP}|${LIJN}|799|A|1`,
+    dag: b.dag,
+    van: 300,
+    tot: 480,
+    ritten: [],
+    omloopNr: 'A',
+    deel: 1,
+    delen: 2,
+    lijn: '1',
+    busnummer: 104
+  }
+  const klapStaat = { ritten: [{ haltes: [{ oordeel: 'goed', klappen: 2 }, { oordeel: 'goed' }] }] } as unknown as Rittenstaat
+
+  const na = boekEigenDienst(b, ritDuty, klapStaat, pad104.toUpperCase(), 20, rit)
+  const g = na.vandaag?.gereden[rit.dienst]
+  klopt('bedrijfsrit: vult gereden (1,5 rituur, 180 werkminuten, deel 1)', g?.rituren === 1.5 && g.werkMinuten === 180 && g.deel === 1)
+  klopt('bedrijfsrit: zelfUren blijft onaangeroerd', (na.zelfUren ?? 0) === (b.zelfUren ?? 0))
+  klopt(
+    'twee bussen van hetzelfde model: de schade gaat naar 104, niet naar 101',
+    na.bussen!.find((x) => x.nummer === 104)!.schade > 0 && na.bussen!.find((x) => x.nummer === 101)!.schade === 0
+  )
+  klopt('gereden draagt het busnummer van de rit', g?.busnummer === 104)
+  const ander = boekEigenDienst(b, ritDuty, klapStaat, 'Vehicles\\Ander\\ander.bus', 20, rit)
+  klopt('een ander pad: geen schade, bij geen enkele bus', ander.bussen!.every((x) => x.schade === 0))
+  klopt('en dan geen busnummer in gereden', ander.vandaag?.gereden[rit.dienst]?.busnummer === undefined)
+  klopt('de tijdhaltes tellen nog: reputatie en xp zoals altijd', na.reputatie > b.reputatie && (na.xp ?? 0) > (b.xp ?? 0))
+
+  const half = geredenVan(ritDuty, rit, 10, () => true)
+  klopt('geredenVan met de helft van de haltes: deel 0,5', half.deel === 0.5 && half.rituren === 0.75 && half.werkMinuten === 90)
+  klopt('zonder telling telt hij voor vol', geredenVan(ritDuty, rit, undefined, () => true).deel === 1)
+  const kleiner = boekEigenDienst(na, ritDuty, undefined, pad104, 4, rit)
+  klopt('een kleinere tweede poging vervangt de eerste niet', kleiner.vandaag?.gereden[rit.dienst]?.rituren === 1.5)
+  const groter = boekEigenDienst(boekEigenDienst(b, ritDuty, undefined, pad104, 4, rit), ritDuty, undefined, pad104, 20, rit)
+  klopt('een grotere wel', groter.vandaag?.gereden[rit.dienst]?.rituren === 1.5)
+  const gisteren = boekEigenDienst({ ...b, dag: 2 }, ritDuty, undefined, pad104, 20, rit)
+  klopt('een rit van een andere bedrijfsdag: het oude pad (invaluren)', gisteren.zelfUren === 1.5 && !gisteren.vandaag?.gereden[rit.dienst])
+
+  const beeld = ritVoorBedrijf(b, ritDuty, pad104, undefined, rit)
+  klopt('telefoon: omloop, tot en de bus van de rit', beeld?.dienst?.omloop === 'A' && beeld.dienst.tot === 480 && beeld.bus?.nummer === 104)
+
+  // Voorstellen en besparing op de kunstmatige kaart; de stub van het plan besteedt alles uit.
+  const dagen = [{ dag: 1, kaarten: [kaartDag(fixtureKaart(), fixtureKalender(), [LIJN], ANKER, 1)] }]
+  const plan = dagplan(fb, dagen, 1)
+  const f = { vergoeding: 1, inhuur: 1 }
+  const lijst = voorstellen(fb, plan, 20)
+  klopt('voorstellen: elke uitbestede dienst, elk met besparing', lijst.length === plan.telling.diensten && lijst.every((v) => v.reden === 'uitbesteed' && v.bespaart > 0))
+  klopt('voorstellen: hoogstens drie als je niets zegt', voorstellen(fb, plan).length === Math.min(3, plan.telling.diensten))
+  klopt('voorstellen: de grootste besparing eerst', lijst.every((v, i) => i === 0 || lijst[i - 1].bespaart >= v.bespaart))
+  const eerste = plan.kaarten[0].omlopen[0].diensten[0]
+  const heel = rijvenster(eerste.dienst)!
+  const bHeel = besparingVanRit(fb, plan, eerste.dienst.sleutel, heel)
+  klopt('de hele dienst rijden bespaart de onderaannemer helemaal', bHeel.bespaart === eerste.stand.kosten && bHeel.restKosten === 0 && !bHeel.rest)
+  const tellend = eerste.dienst.ritten.filter((r) => r.telt)
+  const stuk = rijvenster(eerste.dienst, tellend[0].sleutel, tellend[1].sleutel)!
+  const bStuk = besparingVanRit(fb, plan, eerste.dienst.sleutel, stuk)
+  klopt(
+    'een stuk rijden bespaart minder; de rest rijdt de onderaannemer voor het verschil',
+    bStuk.bespaart > 0 && bStuk.bespaart < bHeel.bespaart && bStuk.rest?.wie.soort === 'onderaannemer' && bStuk.bespaart + bStuk.restKosten === eerste.stand.kosten
+  )
+  klopt('alle bedragen in hele centen', [bHeel.bespaart, bStuk.bespaart, bStuk.restKosten, ...lijst.map((v) => v.bespaart)].every(Number.isInteger))
+
+  const metStand = (wat: (pd: DagPlan['kaarten'][0]['omlopen'][0]['diensten'][0]) => DagPlan['kaarten'][0]['omlopen'][0]['diensten'][0]): DagPlan => ({
+    ...plan,
+    kaarten: plan.kaarten.map((k) => ({ ...k, omlopen: k.omlopen.map((po) => ({ ...po, diensten: po.diensten.map(wat) })) }))
+  })
+  const eigen = metStand((pd) => ({ ...pd, stand: { wie: { soort: 'eigen', id: 1 }, bron: 'rooster', kosten: 0 } }))
+  klopt(
+    'rijdt er al een eigen chauffeur, dan bespaart het niets en is er geen voorstel',
+    besparingVanRit(fb, eigen, eerste.dienst.sleutel, heel).bespaart === 0 && voorstellen(fb, eigen, 20).length === 0
+  )
+  const metGereden: Bedrijf = {
+    ...fb,
+    vandaag: { ...legeVandaag(fb.dag), gereden: { [eerste.dienst.sleutel]: { van: 0, tot: 1, werkMinuten: 1, rituren: 1, deel: 1 } } }
+  }
+  klopt('wat je vandaag al reed, komt niet terug in de voorstellen', !voorstellen(metGereden, plan, 20).some((v) => v.dienst === eerste.dienst.sleutel))
+  const jij = metStand((pd) => (pd.dienst.sleutel === eerste.dienst.sleutel ? { ...pd, jij: { van: 0, tot: 1, nu: true } } : pd))
+  klopt('wat je nu rijdt ook niet', !voorstellen(fb, jij, 20).some((v) => v.dienst === eerste.dienst.sleutel))
+
+  // Een plots gat dat blijft liggen, en een te-laat-stuk dat de uitzendkracht rijdt.
+  const tweede = plan.kaarten[0].omlopen[0].diensten[1] ?? plan.kaarten[0].omlopen[1].diensten[0]
+  const laatTot = tweede.dienst.ritten.filter((r) => r.telt)[1].vertrek
+  const gaten = metStand((pd) =>
+    pd.dienst.sleutel === eerste.dienst.sleutel
+      ? { ...pd, plots: true, stand: { wie: { soort: 'liggen' }, bron: 'centrale', reden: 'ziek', kosten: 0 } }
+      : pd.dienst.sleutel === tweede.dienst.sleutel
+        ? {
+            ...pd,
+            stuk: {
+              van: pd.dienst.van,
+              tot: laatTot,
+              minuten: laatTot - pd.dienst.van,
+              rituren: 0.5,
+              stand: { wie: { soort: 'uitzend' }, bron: 'centrale', toeslag: true, kosten: chauffeurKosten('uitzend', laatTot - pd.dienst.van, f, true) }
+            }
+          }
+        : pd
+  )
+  const gatLijst = voorstellen(fb, gaten, 20)
+  klopt('plots open eerst, dan het korte klusje, dan uitbesteed', gatLijst[0]?.reden === 'open' && gatLijst[1]?.reden === 'stuk' && gatLijst.slice(2).every((v) => v.reden === 'uitbesteed'))
+  klopt(
+    'een gat dat blijft liggen: rijden bespaart de gemiste vergoeding en de boete',
+    gatLijst[0]?.bespaart === vergoeding(eerste.dienst.rituren, fb.reputatie, f) + boete(eerste.dienst.rituren) && gatLijst[0]?.waarom === 'ziek'
+  )
+  klopt('het korte klusje is alleen het te-laat-stuk', gatLijst[1]?.dienst === tweede.dienst.sleutel && gatLijst[1].tot <= laatTot + 120 && gatLijst[1].van === tweede.dienst.ritten.find((r) => r.telt)!.vertrek)
+  const bus = metStand((pd) => pd)
+  bus.kaarten[0].omlopen[0] = { ...bus.kaarten[0].omlopen[0], bus: { wie: { soort: 'liggen' }, bron: 'hand', kosten: 0 } }
+  klopt('een omloop zonder bus geeft geen voorstel', !voorstellen(fb, bus, 20).some((v) => v.omloop === bus.kaarten[0].omlopen[0].omloop.tourNumber))
 }
 
 console.log(fouten ? `\n${fouten} fout(en)` : '\nalles klopt')

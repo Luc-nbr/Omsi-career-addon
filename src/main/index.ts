@@ -183,22 +183,26 @@ import {
   type BedrijfRit,
   type MarktBus
 } from '../core/bedrijf'
-import { ankerVoor } from '../core/bedrijfsplan'
+import { ankerVoor, bedrijfsdatum, ontleedDienst, ontleedOmloop, zoekDienst } from '../core/bedrijfsplan'
+import { rijvenster } from '../core/bedrijfsrit'
 import { beginDag, migreer } from '../core/bedrijfsdag'
 import { zetInvulling } from '../core/invulling'
 import { afrekening, dagplan, pasRoosterToe, PLAN_ACTIEF } from '../core/rooster'
 import type {
   BusKeuze,
   Dagrooster,
+  DienstSleutel,
   InvulDoel,
   InvulFout,
   InvulKeuze,
   LijnPlan,
   LijnWeek,
+  LopendeRit,
+  RitFout,
   RoosterActie,
   RoosterFout
 } from '../core/planTypen'
-import type { BedrijfKlokStand } from '../shared/bedrijfApi'
+import type { BedrijfKlokStand, RitOpties } from '../shared/bedrijfApi'
 import { bedrijfsklok } from '../core/bedrijfsklok'
 import {
   bouwRittenstaat,
@@ -2702,7 +2706,7 @@ function boekAf(duty: Duty, vehicle: string, measured: Parameters<typeof complet
   const busPad =
     lopend?.vehicleOverride || (lopend?.assignment as Assignment | undefined)?.vehicle?.relativePath
   const bedrijf = career.bedrijf
-    ? boekEigenDienst(career.bedrijf, duty, staat, busPad, measured?.stopsDone)
+    ? boekEigenDienst(career.bedrijf, duty, staat, busPad, measured?.stopsDone, lopend?.bedrijf)
     : undefined
   return completeDuty({ ...career, bedrijf }, duty, vehicle, measured, staat, onderwegVanDienst(staat, measured))
 }
@@ -2763,7 +2767,7 @@ function sluitLopendeDienstAf(): void {
   const staat = rittenstaatVanDienst(duty)
   const busPad = lopend.vehicleOverride || bus?.relativePath
   const bedrijf = career.bedrijf
-    ? boekEigenDienst(career.bedrijf, duty, staat, busPad, gemeten.stopsDone)
+    ? boekEigenDienst(career.bedrijf, duty, staat, busPad, gemeten.stopsDone, lopend.bedrijf)
     : undefined
   career = completeDuty({ ...career, bedrijf }, duty, naam, {
     stopsDone: gemeten.stopsDone,
@@ -3372,7 +3376,12 @@ const WISSEL_AANTAL = 6
  */
 function wisselbareDienst(): Assignment | undefined {
   const actief = career?.activeDuty
-  if (!actief || actief.exam) return undefined
+  /*
+   * Ook niet bij een bedrijfsrit: die hoort bij één dienst van het eigen
+   * bedrijf, en ruilen gooide het veld `bedrijf` weg -- dan telde de rit niet
+   * meer in het rooster (ontwerp busbedrijf-planning §7.1 punt 8).
+   */
+  if (!actief || actief.exam || actief.bedrijf) return undefined
   const aangenomen = actief.assignment as Assignment | undefined
   if (!aangenomen?.duty) return undefined
   const lopend = currentDuty()
@@ -4788,7 +4797,7 @@ function bedrijfVoorTelefoon(): BedrijfRit | undefined {
   const staat = lopendeStaat && lopendeStaat.sleutel === sleutel ? lopendeStaat.staat : undefined
   if (ritBeeldVan?.bron !== bedrijf || ritBeeldVan.duty !== duty || ritBeeldVan.staat !== staat) {
     const busPad = lopend.vehicleOverride || assignment?.vehicle?.relativePath
-    ritBeeldVan = { bron: bedrijf, duty, staat, beeld: ritVoorBedrijf(bedrijf, duty, busPad, staat) }
+    ritBeeldVan = { bron: bedrijf, duty, staat, beeld: ritVoorBedrijf(bedrijf, duty, busPad, staat, lopend.bedrijf) }
   }
   return ritBeeldVan.beeld
 }
@@ -7558,9 +7567,158 @@ function registerHandlers(): void {
       return { payload: persist({ ...career, bedrijf: uit.bedrijf }) }
     })
   )
-  // Zelf een dienst rijden komt in deel C; tot dan gebeurt er niets (en geen fout).
-  handle('bedrijf:rit', () => ({ payload: careerPayload() }))
-  handle('bedrijf:ritBus', () => ({ payload: careerPayload() }))
+  /*
+   * ZELF RIJDEN VANUIT HET BEDRIJF (ontwerp busbedrijf-planning §7.1 punt 3).
+   *
+   * Een dienst uit het plan van vandaag aannemen als bedrijfsrit: de dienst
+   * voor OMSI wordt gemaakt uit precies de ritten van het gekozen venster, de
+   * bus is die van de omloop (een eigen bus ligt vast, anders kiest de app er
+   * een zoals bij een gewone dienst), en de datum is de bedrijfsdatum. Er
+   * wordt niets in de invulling geschreven: wat je rijdt komt bij het
+   * afronden in `vandaag.gereden`; annuleren laat dus niets achter.
+   *
+   * Eerst alles ophalen (de kaartdagen, de dienst uit de werker, de bussen),
+   * dan het profiel opnieuw bekijken en zonder await wegschrijven: tussen het
+   * lezen en het schrijven kan er een andere dienst aangenomen zijn.
+   */
+  handle('bedrijf:rit', (_event, dienst: DienstSleutel, opties?: RitOpties) =>
+    inSlot(async (): Promise<{ payload: ReturnType<typeof careerPayload>; fout?: RitFout; bus?: { nummer: number; naam: string } }> => {
+      const weiger = (fout: RitFout): { payload: ReturnType<typeof careerPayload>; fout: RitFout } => ({
+        payload: careerPayload(),
+        fout
+      })
+      if (!career?.bedrijf) return weiger('geen')
+      if (career.activeDuty) return weiger('ritBezig')
+      const sleutel = String(dienst ?? '')
+      const o: RitOpties = opties && typeof opties === 'object' ? opties : {}
+      const d0 = career.bedrijf.dag
+      const { dagen, ankers } = await dagroostersVoor(career.bedrijf, d0 - 1, d0 + 1)
+      const rooster = dagen.find((d) => d.dag === d0)
+      const z = rooster ? zoekDienst(rooster, sleutel) : undefined
+      if (!z) {
+        // Een kaart die niet te lezen is, heeft geen omlopen: zeg dan dat het aan de kaart ligt.
+        const om = ontleedOmloop(ontleedDienst(sleutel)?.omloop ?? '')
+        const kapot = Boolean(om && rooster?.kaarten.some((k) => k.mapFolder === om.mapFolder && k.fout))
+        return weiger(kapot ? 'kaart' : 'dienst')
+      }
+      if (z.kaart.fout) return weiger('kaart')
+      const venster = rijvenster(
+        z.dienst,
+        o.vanRit ? String(o.vanRit) : undefined,
+        o.totRit ? String(o.totRit) : undefined
+      )
+      if (!venster) return weiger('venster')
+      const folder = z.kaart.mapFolder
+      const deel = { lineFile: z.omloop.lineFile, tourNumber: z.omloop.tourNumber, days: z.omloop.days, ritten: venster.telt }
+      let duty: Duty | undefined
+      try {
+        duty = await werkerVraag<Duty | undefined>({ soort: 'dienstduty', folder, deel })
+      } catch {
+        duty = undefined
+      }
+      if (!duty) {
+        try {
+          duty = laag().dienstDuty(folder, deel)
+        } catch (fout) {
+          logFout(`bedrijfsrit ${sleutel}`, fout)
+        }
+      }
+      if (!duty || duty.legs.length === 0) return weiger('dienst')
+      const voertuigen = await alleVoertuigen()
+
+      // ---- vanaf hier geen await meer ----
+      if (!career?.bedrijf) return weiger('geen')
+      if (career.activeDuty) return weiger('ritBezig')
+      if (career.bedrijf.dag !== d0) return weiger('dienst')
+      const b = metAnkersEnWeken(career.bedrijf, ankers, {})
+      if (b.vandaag?.dag === b.dag && b.vandaag.gereden[sleutel]) return weiger('gereden')
+      const po = dagplan(b, dagen, b.dag)
+        .kaarten.flatMap((k) => k.omlopen)
+        .find((x) => x.omloop.sleutel === z.omloop.sleutel)
+      if (!po) return weiger('dienst')
+      if (po.bus.wie.soort === 'liggen') return weiger('busLigt')
+
+      /*
+       * De bus. Een eigen bus van de omloop ligt vast; staat hij niet in OMSI,
+       * dan eerst de vraag of je met een voorgestelde bus wilt rijden (dan
+       * gaat de schade naar niemand). Anders, of zonder eigen bus, kiest de app
+       * zoals bij elke dienst; dat is dan een bus van de onderaannemer.
+       */
+      const busWie = po.bus.wie
+      const eigen = busWie.soort === 'eigen' ? (b.bussen ?? []).find((x) => x.nummer === busWie.nummer) : undefined
+      const v = eigen ? voertuigen.find((x) => x.relativePath.toLowerCase() === eigen.relativePath.toLowerCase()) : undefined
+      if (eigen && !v && !o.voorgesteldeBus) {
+        return { payload: careerPayload(), fout: 'bus', bus: { nummer: eigen.nummer, naam: eigen.naam } }
+      }
+      const choice = v
+        ? undefined
+        : pickVehicleForDuty(fleet(), duty, era(folder).year, fleetOf(folder), undefined, depotOf(folder))
+      const vehicle = v ?? choice?.vehicle ?? null
+
+      // De datum is de bedrijfsdatum: daarop rijdt deze omloop in het menu van OMSI.
+      const anker = b.ankers?.[folder] ?? ankers[folder] ?? ankerVoor(era(folder))
+      const datum = bedrijfsdatum(anker, b.dag)
+      const jaar = datum.getUTCFullYear()
+      const date: DutyDate = {
+        year: jaar,
+        dayOfYear: Math.round((datum.getTime() - Date.UTC(jaar, 0, 1)) / 86_400_000) + 1,
+        iso: datum.toISOString().slice(0, 10),
+        kind: z.kaart.soort
+      }
+      const rit: LopendeRit = {
+        dienst: sleutel,
+        dag: b.dag,
+        van: venster.van,
+        tot: venster.tot,
+        ritten: venster.telt,
+        omloopNr: z.omloop.tourNumber,
+        deel: z.dienst.deel,
+        delen: z.dienst.delen,
+        lijn: z.omloop.lijn,
+        ...(v && eigen ? { busnummer: eigen.nummer } : {})
+      }
+      const assignment: Assignment = {
+        duty,
+        date,
+        vehicle,
+        yard: choice?.yard,
+        fit: choice?.fit,
+        fromMapFleet: choice?.fromMapFleet,
+        alternatives: choice?.alternatives
+      }
+      stopVrijeRit()
+      log(`Bedrijfsrit aangenomen: ${sleutel} (${venster.telt.length} ritten, bus ${rit.busnummer ?? 'onderaannemer'})`)
+      return {
+        payload: persist({
+          ...career,
+          bedrijf: b,
+          activeDuty: {
+            assignment,
+            vehicleOverride: vehicle?.relativePath ?? '',
+            confirmedAt: new Date().toISOString(),
+            mode: 'service',
+            bedrijf: rit
+          }
+        })
+      }
+    })
+  )
+  /*
+   * Een andere bus voor de bedrijfsrit, gekozen op de busstap. Alleen bij een
+   * bus van de onderaannemer (een eigen bus ligt vast) en alleen zolang de rit
+   * niet gestart is: main moet weten waarin je rijdt, voor de telefoon en
+   * voor de schade.
+   */
+  handle('bedrijf:ritBus', (_event, pad: string) => {
+    const a = career?.activeDuty
+    if (!career || !a?.bedrijf) return { payload: careerPayload(), fout: 'geen' as const }
+    if (a.startedAt) return { payload: careerPayload(), fout: 'gestart' as const }
+    if (a.bedrijf.busnummer !== undefined) return { payload: careerPayload(), fout: 'eigen' as const }
+    const p = String(pad ?? '').slice(0, 400)
+    if (!p) return { payload: careerPayload(), fout: 'geen' as const }
+    if (a.vehicleOverride === p) return { payload: careerPayload() }
+    return { payload: persist({ ...career, activeDuty: { ...a, vehicleOverride: p } }) }
+  })
   handle('bedrijf:kaart', async (_event, mapFolder: string, dag?: number) => {
     const b = career?.bedrijf
     if (!b) return { fout: 'geen' as const }
