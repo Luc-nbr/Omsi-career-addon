@@ -1,0 +1,186 @@
+/*
+ * Het paneel "Open diensten" (deel C van de planning). Eigen klassen met
+ * `od-`; de kleuren komen van `.hub` en `.bd-app` (bedrijf.css), dus licht en
+ * donker gaan vanzelf mee. Rood is plots, grijs is wat de centrale deed.
+ */
+
+.od {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.od-compact h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.od-leeg {
+  margin: 0;
+  color: var(--vel-zacht);
+}
+
+.od-lijst {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.od-rij {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--vel-lijn);
+  border-left: 3px solid var(--bd-let, #d98a00);
+  border-radius: 10px;
+}
+
+.od-rij.plots {
+  border-left-color: var(--laat);
+  background: color-mix(in srgb, var(--laat) 6%, transparent);
+}
+
+.od-rij.gekozen {
+  border-left-color: var(--route);
+}
+
+.od-kop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.od-kop b {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.od-plots {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--laat);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.od-stand {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.od-stand.zacht {
+  color: var(--vel-zacht);
+}
+
+.od-knoppen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.od-knoppen .bd-knop {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  white-space: normal;
+  text-align: left;
+}
+
+.od-knoppen .bd-knop small {
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+.od-knoppen .od-liggen {
+  color: var(--laat);
+}
+
+.od-kies select {
+  padding: 7px 12px;
+  border: 1px solid var(--vel-lijn);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  max-width: 100%;
+}
+
+.od-kies select option {
+  background: var(--vel);
+  color: var(--vel-ink);
+}
+
+.od-metfout {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 260px;
+}
+
+.od-fout {
+  color: var(--laat);
+  font-size: 11px;
+}
+
+.od-structureel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--vel-lijn);
+}
+
+.od-structureelkop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--vel-zacht);
+  font-size: 13px;
+}
+
+.od-uitbesteed {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.od-uitbesteed li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.od-uitbesteed li > span:first-child {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.od-bedrag {
+  font-variant-numeric: tabular-nums;
+  color: var(--vel-zacht);
+}
