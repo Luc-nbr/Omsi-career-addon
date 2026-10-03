@@ -2,6 +2,7 @@ import { useEffect, useState, type JSX } from 'react'
 import {
   REGELS,
   aanHetWerk,
+  bedrijfsfactoren,
   opleidingKlaar,
   isInzetbaar,
   onderhoudskosten,
@@ -10,12 +11,16 @@ import {
   type Aanbod,
   type Bedrijf as BedrijfStaat,
   type EigenBus,
+  type Busvorm,
   type MarktBus
 } from '../../core/bedrijf'
+import { besparingBus } from '../../core/plantarief'
+import { PLAN_ACTIEF } from '../../core/rooster'
 import { loose } from '../../shared/i18n'
 import { useLanguage, useT } from './language'
 import { WerkplaatsSpel } from './BedrijfOpleiding'
-import { type Handel, useGeld, Paneel, Staatbalk } from './BedrijfDelen'
+import { type Focus, type Handel, useGeld, Paneel, Staatbalk } from './BedrijfDelen'
+import { eenDecimaal, gemiddelden, pechkans } from './Planning'
 
 /* ------------------------------------------------------------------ */
 /* Wagenpark en werkplaats                                            */
@@ -106,6 +111,9 @@ function BusRij({
         <small>
           {loose(taal, `bd.shape.${bus.vorm}`, bus.vorm)} · {Math.round(bus.km / 1000)}k km ·{' '}
           {tr('bd.value', { money: geld(waardeVan(bus)) })}
+          {PLAN_ACTIEF && inzet
+            ? ` · ${tr('bd.plan.busStaat', { staat: Math.round(bus.staat), kans: eenDecimaal(pechkans(bus, monteurs) * 100, taal) })}`
+            : ''}
         </small>
       </span>
       <Staatbalk staat={bus.staat} schade={bus.schade} />
@@ -171,13 +179,40 @@ function BusRij({
 /* Busmarkt                                                           */
 /* ------------------------------------------------------------------ */
 
-export function Markt({ bedrijf, handel }: { bedrijf: BedrijfStaat; handel: Handel }): JSX.Element {
+export function Markt({
+  bedrijf,
+  handel,
+  focus
+}: {
+  bedrijf: BedrijfStaat
+  handel: Handel
+  /** Uit de planning: alleen bussen van deze vorm (het lege busvak van een gelede omloop). */
+  focus?: Focus
+}): JSX.Element {
   const tr = useT()
   const geld = useGeld()
   const taal = useLanguage()
   const [markt, setMarkt] = useState<{ nieuw: MarktBus[]; tweedehands: Aanbod[] }>()
   const [zoek, setZoek] = useState('')
   const [bezig, setBezig] = useState(false)
+  const [vorm, setVorm] = useState<Busvorm | undefined>(focus?.vorm)
+  useEffect(() => setVorm(focus?.vorm), [focus])
+  /*
+   * Wat een bus op een gemiddelde omloop bespaart, en in hoeveel dagen hij
+   * zich terugverdient (ontwerp §4.1). Pas als de concessies een week hebben.
+   */
+  const gemOmloop = gemiddelden(bedrijf).omloopRituren
+  const bespaart = gemOmloop !== undefined ? besparingBus(gemOmloop, bedrijfsfactoren(bedrijf)) : 0
+  const loont = (prijs: number): JSX.Element | null =>
+    PLAN_ACTIEF && gemOmloop !== undefined && bespaart > 0 ? (
+      <small className="bd-rustig">
+        {tr('bd.plan.busLoont', {
+          uren: eenDecimaal(gemOmloop, taal),
+          bespaart: geld(bespaart),
+          dagen: Math.ceil(prijs / bespaart)
+        })}
+      </small>
+    ) : null
 
   useEffect(() => {
     void window.career.bedrijfMarkt().then(setMarkt)
@@ -188,7 +223,9 @@ export function Markt({ bedrijf, handel }: { bedrijf: BedrijfStaat; handel: Hand
     void handel(window.career.bedrijfKoop(soort, wat)).finally(() => setBezig(false))
   }
 
-  const nieuw = (markt?.nieuw ?? []).filter((b) => b.naam.toLowerCase().includes(zoek.trim().toLowerCase()))
+  const nieuw = (markt?.nieuw ?? []).filter(
+    (b) => b.naam.toLowerCase().includes(zoek.trim().toLowerCase()) && (!vorm || b.vorm === vorm)
+  )
 
   return (
     <div className="bd-kolom">
@@ -199,13 +236,14 @@ export function Markt({ bedrijf, handel }: { bedrijf: BedrijfStaat; handel: Hand
           <p className="bd-rustig">{tr('bd.usedSoldOut')}</p>
         ) : (
           <div className="bd-aanbod">
-            {markt.tweedehands.map((a) => (
+            {markt.tweedehands.filter((a) => !vorm || a.bus.vorm === vorm).map((a) => (
               <article key={a.nr} className="bd-kaart">
                 <span className="bd-vorm">{loose(taal, `bd.shape.${a.bus.vorm}`, a.bus.vorm)}</span>
                 <b>{a.bus.naam}</b>
                 <small>{Math.round(a.km / 1000)}k km</small>
                 <Staatbalk staat={a.staat} schade={0} />
                 <span className="bd-prijs">{geld(a.prijs)}</span>
+                {loont(a.prijs)}
                 <button
                   type="button"
                   className="bd-knop hoofd"
@@ -222,6 +260,11 @@ export function Markt({ bedrijf, handel }: { bedrijf: BedrijfStaat; handel: Hand
       <section className="bd-paneel">
         <div className="bd-paneelkop">
           <h2>{tr('bd.newBuses')}</h2>
+          {vorm && (
+            <button type="button" className="bd-knop" onClick={() => setVorm(undefined)} title={tr('bd.plan.toonAlles')}>
+              {loose(taal, `bd.shape.${vorm}`, vorm)} ✕
+            </button>
+          )}
           <input
             className="bd-zoek"
             value={zoek}
@@ -238,6 +281,7 @@ export function Markt({ bedrijf, handel }: { bedrijf: BedrijfStaat; handel: Hand
                 <span className="bd-wat">
                   <b>{b.naam}</b>
                   <small>{b.relativePath}</small>
+                  {loont(prijs)}
                 </span>
                 <span className="bd-bedrag">{geld(prijs)}</span>
                 <button
