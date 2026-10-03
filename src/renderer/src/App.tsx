@@ -7,7 +7,9 @@ import {
   type ReactNode,
   type JSX,
 } from "react";
-import type { GameMode } from "../../core/career";
+import type { ActiveDuty, GameMode } from "../../core/career";
+import { dienstNaam } from "../../core/bedrijfsrit";
+import { PLAN_ACTIEF } from "../../core/rooster";
 import type { Duty } from "../../core/types";
 import type { LiveStatus } from "../../core/live";
 import type { VehiclePosition } from "../../core/vehicle";
@@ -54,6 +56,8 @@ import { BedrijfApp } from "./Bedrijf";
 import type { Tab as BedrijfTab } from "./BedrijfDelen";
 import { AddonsApp } from "./Addons";
 import { RunningDuty } from "./RunningDuty";
+// De chip van een bedrijfsrit op het rijscherm; de rest van Zelf rijden zit in Mijn bedrijf.
+import "./zelfrijden.css";
 import {
   Setup,
   STAPPEN,
@@ -204,6 +208,15 @@ const STAPPEN_VRIJ: readonly Stap[] = STAPPEN.filter(
     naam !== "duty" &&
     naam !== "rijden",
 );
+/*
+ * Een bedrijfsrit (ontwerp busbedrijf-planning §7.1 punt 6): de dienst komt
+ * uit Mijn bedrijf, dus kaart, lijn en dienst zijn al gekozen. Alleen de bus
+ * blijft over -- en terug gaat naar Mijn bedrijf, niet naar de kaart.
+ */
+const STAPPEN_BEDRIJF: readonly Stap[] = ["bus"];
+
+/** Waar Mijn bedrijf opent na een bedrijfsrit: de Planning, zodra die er is. */
+const BEDRIJF_NA_RIT = PLAN_ACTIEF ? "planning" : "dashboard";
 
 /**
  * Welk scherm er staat. De app begint altijd bij de chauffeur en gaat dan naar
@@ -960,6 +973,90 @@ export function App(): JSX.Element {
   }, [activeKey]);
 
   /*
+   * ZELF RIJDEN VANUIT HET BEDRIJF (ontwerp busbedrijf-planning §7.1 punt 5).
+   *
+   * Een dienst die in Mijn bedrijf is aangenomen: meteen naar de busstap. Rijdt
+   * de omloop met een eigen bus, dan ligt die vast -- je kiest alleen de
+   * kleurstelling (als hij die heeft) en de remise. Rijdt hij met een bus van
+   * de onderaannemer, dan kies je vrij, en hoort main welke (`bedrijfRitBus`).
+   * Loopt de rit al, dan naar het rijscherm.
+   */
+  const vasteBus = active?.bedrijf?.busnummer !== undefined;
+  const naarBedrijfsrit = useCallback(
+    (a: ActiveDuty) => {
+      setError(undefined);
+      setMode(a.mode ?? "service");
+      setScreen("drive");
+      if (a.startedAt) return;
+      setStap("bus");
+      setBusMerk(undefined);
+      setBusType(undefined);
+      setBusKleur(undefined);
+      setKleurBus(undefined);
+      // Bij een eigen bus maakt het effect hieronder er de kleurstelling of de remise van.
+      setBusScherm("bus");
+    },
+    [],
+  );
+  /* Aangenomen in Mijn bedrijf: `later` blijft daar (de banner), anders naar de bus. */
+  const onRijden = useCallback(
+    (payload: CareerPayload, later?: boolean) => {
+      setCareer(payload);
+      setBedrijfMelding(undefined);
+      const a = payload.state?.activeDuty;
+      if (later || !a) return;
+      naarBedrijfsrit(a);
+    },
+    [naarBedrijfsrit],
+  );
+  /*
+   * Het busniveau bestaat niet bij een eigen bus: dan begint de busstap bij de
+   * kleurstelling (als hij die heeft) of de remise. Ook na een herstart van de
+   * app, als de busstap weer op het eerste niveau staat.
+   */
+  useEffect(() => {
+    if (!vasteBus || (busScherm !== "bus" && busScherm !== "overzetten")) return;
+    setBusScherm("hof");
+    const pad =
+      active?.vehicleOverride ||
+      (active?.assignment as Assignment | undefined)?.vehicle?.relativePath;
+    if (!pad) return;
+    void vraagKleurstellingen(pad).then((lijst) => {
+      if (lijst && lijst.lijst.length > 0) {
+        setKleurBus(pad);
+        setBusScherm("kleur");
+      }
+    });
+  }, [vasteBus, busScherm]); // eslint-disable-line react-hooks/exhaustive-deps
+  /*
+   * Een bedrijfsrit die nog niet loopt, heeft maar één stap: de bus. Wie na een
+   * herstart via het hoofdmenu terugkomt, stond nog op de kaart.
+   */
+  useEffect(() => {
+    if (screen === "drive" && active?.bedrijf && !active.startedAt && stap !== "bus")
+      setStap("bus");
+  }, [screen, active, stap]);
+  /*
+   * Een andere bus voor een bedrijfsrit met een bus van de onderaannemer: main
+   * moet weten waarin je rijdt (telefoon, schade). Bij een eigen bus of een
+   * gewone dienst gebeurt hier niets.
+   */
+  const meldRitBus = useCallback(
+    (pad: string) => {
+      const a = career?.state?.activeDuty;
+      if (!a?.bedrijf || a.startedAt || a.bedrijf.busnummer !== undefined) return;
+      void window.career
+        .bedrijfRitBus(pad)
+        .then((uit) => {
+          setCareer(uit.payload);
+          if (uit.fout === "eigen") setNote(t(language, "bd.rit.busVast"));
+        })
+        .catch(() => undefined);
+    },
+    [career, language],
+  );
+
+  /*
    * In dienst en carriere wordt de lijn niet gekozen maar gelopen.
    *
    * Een dienst is een omloop, en een omloop gaat over lijnen heen: op een
@@ -991,6 +1088,12 @@ export function App(): JSX.Element {
     const vorige = vorigeModus.current;
     vorigeModus.current = mode;
     if (vorige === undefined || vorige === mode) return;
+    /*
+     * Een bedrijfsrit zet de modus op dienst en de stap op de bus, in één
+     * keer. Terug naar de kaart zou hem van de busstap halen, en die stap is
+     * daar de enige (STAPPEN_BEDRIJF).
+     */
+    if (career?.state?.activeDuty?.bedrijf) return;
     setStap("map");
     setExamenScherm(false);
     /*
@@ -1320,10 +1423,13 @@ export function App(): JSX.Element {
     const bus = vehicles.find((v) => v.relativePath === k.relatiefPad);
     if (!bus) return;
     const pad = bus.relativePath;
+    // De bus van een eigen omloop ligt vast; zie `naarBedrijfsrit`.
+    if (vasteBus) return;
     const delen = ontleedBus(bus);
     setBusMerk(delen.merk);
     setBusType(delen.type);
     setVehicleOverride(pad);
+    meldRitBus(pad);
     const lijst = kleurLijsten[pad];
     if (k.kleurstelling || (lijst && lijst.lijst.length > 0)) {
       setKleurBus(pad);
@@ -1637,27 +1743,44 @@ export function App(): JSX.Element {
    * hoofdmenu wordt gestuurd". Eerst bleef de busstap op het laatste niveau
    * staan, de remise, en die was leeg omdat de dienst er niet meer was.
    */
-  const naarBegin = useCallback((melding?: string) => {
-    setBusScherm("bus");
-    setBusMerk(undefined);
-    setBusType(undefined);
-    setKleurBus(undefined);
-    setBusKleur(undefined);
-    setStap("map");
-    setNote(undefined);
-    setHubMelding(melding);
-    setScreen("modes");
-  }, []);
+  const naarBegin = useCallback(
+    (melding?: string, terug: "modes" | "bedrijf" = "modes") => {
+      setBusScherm("bus");
+      setBusMerk(undefined);
+      setBusType(undefined);
+      setKleurBus(undefined);
+      setBusKleur(undefined);
+      setStap("map");
+      setNote(undefined);
+      /*
+       * Een bedrijfsrit kwam uit Mijn bedrijf, en daar hoort hij ook te
+       * eindigen: op de Planning, met wat er geboekt is (ontwerp
+       * busbedrijf-planning §7.1 punt 9).
+       */
+      if (terug === "bedrijf") {
+        setHubMelding(undefined);
+        setBedrijfTab(BEDRIJF_NA_RIT);
+        setBedrijfMelding(melding);
+        setScreen("bedrijf");
+        return;
+      }
+      setHubMelding(melding);
+      setScreen("modes");
+    },
+    [],
+  );
 
   const cancelDuty = useCallback(async () => {
     if (!confirmed || !window.confirm(t(language, "act.cancelAsk"))) return;
+    // Vóór de IPC: daarna is de dienst (en dus `bedrijf`) weg.
+    const terug = active?.bedrijf ? "bedrijf" : "modes";
     setCareer(await window.career.cancelDuty());
     setDuties([]);
     setSelected(undefined);
     setStarted(false);
     setStarting(false);
-    naarBegin(t(language, "done.cancelled"));
-  }, [confirmed, language, naarBegin]);
+    naarBegin(t(language, "done.cancelled"), terug);
+  }, [confirmed, language, naarBegin, active]);
 
   /*
    * De dienst die openstond verwijderen, vanuit de vraag bij het openen. Net als
@@ -1665,14 +1788,15 @@ export function App(): JSX.Element {
    */
   const verwijderOpenDienst = useCallback(
     async (lijn: string) => {
+      const terug = active?.bedrijf ? "bedrijf" : "modes";
       setCareer(await window.career.cancelDuty());
       setDuties([]);
       setSelected(undefined);
       setStarted(false);
       setStarting(false);
-      naarBegin(t(language, "hervat.deleted", { line: lijn }));
+      naarBegin(t(language, "hervat.deleted", { line: lijn }), terug);
     },
-    [language, naarBegin],
+    [language, naarBegin, active],
   );
 
   /**
@@ -2349,6 +2473,14 @@ export function App(): JSX.Element {
     setBusy(true);
     /* Wat er over de rit te zeggen valt; dat komt in het hoofdmenu te staan. */
     let uitkomst: string | undefined;
+    /*
+     * Een bedrijfsrit eindigt in Mijn bedrijf, met wat hij opleverde. Hier
+     * bepaald, vóór de IPC: na het afronden staat de dienst niet meer in het
+     * profiel.
+     */
+    const rit = active?.bedrijf;
+    const terug = rit ? "bedrijf" : "modes";
+    let geboekt: string | undefined;
     try {
       let result = await window.career.checkSession();
       /*
@@ -2404,8 +2536,7 @@ export function App(): JSX.Element {
             })
           : t(language, "exam.again");
       } else {
-        setCareer(
-          await window.career.completeDuty(
+        const na = await window.career.completeDuty(
             duty,
             `${vehicle.manufacturer} ${vehicle.type}`,
             {
@@ -2421,8 +2552,25 @@ export function App(): JSX.Element {
               teLaat: result.spel?.teLaat,
               bron: result.spel ? "openomsi" : undefined,
             },
-          ),
-        );
+          );
+        setCareer(na);
+        /* "Dienst 55103-1 gereden: 3,1 van 3,2 dienstregelingsuren telt voor je bedrijf." */
+        const gereden = rit
+          ? na.state?.bedrijf?.vandaag?.gereden?.[rit.dienst]
+          : undefined;
+        if (rit && gereden) {
+          const getal = (x: number): string =>
+            x.toLocaleString(
+              { en: "en-GB", de: "de-DE", fr: "fr-FR", nl: "nl-NL" }[language] ?? "en-GB",
+              { minimumFractionDigits: 1, maximumFractionDigits: 1 },
+            );
+          const totaal = duty.legs.reduce((s, l) => s + l.minutes / 60, 0);
+          geboekt = t(language, "bd.rit.geboekt", {
+            dienst: dienstNaam(rit.omloopNr, rit.deel),
+            rituren: getal(gereden.rituren),
+            totaal: getal(Math.max(totaal, gereden.rituren)),
+          });
+        }
         uitkomst =
           /*
            * Zonder gemeten kilometers valt er niets over de rit te zeggen. Dat
@@ -2483,12 +2631,15 @@ export function App(): JSX.Element {
       setSelected(undefined);
       setStarted(false);
       setOverlayOpen(false);
-      // De uitkomst gaat mee naar het hoofdmenu; zie `naarBegin`.
-      naarBegin(uitkomst);
+      // De uitkomst gaat mee naar het hoofdmenu (of Mijn bedrijf); zie `naarBegin`.
+      naarBegin(
+        [geboekt, uitkomst].filter(Boolean).join(" ") || undefined,
+        terug,
+      );
     } finally {
       setBusy(false);
     }
-  }, [duty, vehicle, exam, language, naarBegin]);
+  }, [duty, vehicle, exam, language, naarBegin, active]);
 
   useEffect(() => {
     finishRef.current = finish;
@@ -2875,6 +3026,11 @@ export function App(): JSX.Element {
           onTerug={() => {
             setBedrijfMelding(undefined);
             setScreen("modes");
+          }}
+          onRijden={onRijden}
+          onNaarRit={() => {
+            const a = career.state?.activeDuty;
+            if (a) naarBedrijfsrit(a);
           }}
         />
       </LanguageProvider>
@@ -3583,13 +3739,18 @@ export function App(): JSX.Element {
            */
           stap="rijden"
           stappen={[
-            ...(mode === "career"
-              ? STAPPEN_CARRIERE
-              : mode === "free"
-                ? STAPPEN_VRIJ
-                : STAPPEN_DIENST),
+            ...(active?.bedrijf
+              ? STAPPEN_BEDRIJF
+              : mode === "career"
+                ? STAPPEN_CARRIERE
+                : mode === "free"
+                  ? STAPPEN_VRIJ
+                  : STAPPEN_DIENST),
             "rijden",
           ]}
+          stapnamen={
+            active?.bedrijf ? { bus: t(language, "bd.rit.stap") } : undefined
+          }
           rechtsInBalk={balkRechts}
           waarschuwing={omsiBanner}
           lijn={duty.lineNumbers[0] ?? duty.legs[0]?.lineNumber}
@@ -3688,6 +3849,7 @@ export function App(): JSX.Element {
                 onCancel={cancelDuty}
                 onFinish={finish}
                 full={volledig}
+                bedrijfsrit={active?.bedrijf}
               />
               {/*
                 De QR-code hoort ook hier te kunnen: wie zijn iPad pakt terwijl
@@ -4544,7 +4706,7 @@ export function App(): JSX.Element {
                 },
               },
               { label: kleurItem.uitvoering },
-            ],
+            ].filter((_k, i, alle) => !vasteBus || i === alle.length - 1),
             tegels: [
               {
                 id: "__standaard",
@@ -4666,7 +4828,14 @@ export function App(): JSX.Element {
                   ]
                 : []),
               { label: t(language, "setup.yardTitle") },
-            ],
+            ].filter(
+              // Bij een eigen bus alleen de kleurstelling en de remise: merk en type liggen vast.
+              (k) =>
+                !vasteBus ||
+                k.label === t(language, "setup.yardTitle") ||
+                k.label === t(language, "setup.paintDefault") ||
+                k.label === busKleur?.naam,
+            ),
             tegels: [
               ...yards.map((optie) => ({
                 id: optie.name,
@@ -4938,6 +5107,7 @@ export function App(): JSX.Element {
                */
               const pad = item.bus.relativePath;
               setVehicleOverride(pad);
+              meldRitBus(pad);
               setBusKleur((oud) => (oud?.pad === pad ? oud : undefined));
               void vraagKleurstellingen(pad).then((lijst) => {
                 if (lijst && lijst.lijst.length > 0) {
@@ -5118,6 +5288,32 @@ export function App(): JSX.Element {
          */
         regelaars: (
           <>
+            {/*
+              Op een kaart van je eigen bedrijf: een dienst die je hier kiest,
+              telt als invallen en niet in je rooster. Wie voor zijn bedrijf
+              wil rijden, kiest de dienst in Mijn bedrijf (ontwerp
+              busbedrijf-planning §7.1 punt 12).
+            */}
+            {PLAN_ACTIEF &&
+              mode === "service" &&
+              !active?.bedrijf &&
+              career?.state?.bedrijf?.concessies.some(
+                (c) => c.mapFolder === mapFolder,
+              ) && (
+                <div className="regelaar zr-hint">
+                  <span>{t(language, "bd.rit.hintDienst")}</span>
+                  <button
+                    type="button"
+                    className="bd-knop"
+                    onClick={() => {
+                      setBedrijfTab(BEDRIJF_NA_RIT);
+                      setScreen("bedrijf");
+                    }}
+                  >
+                    {t(language, "bd.rit.naarBedrijf")}
+                  </button>
+                </div>
+              )}
             <div className="regelaar">
               <div className="regelaar-kop">
                 <label htmlFor="dienstlengte">
@@ -5272,11 +5468,16 @@ export function App(): JSX.Element {
             ) : undefined
           }
           stappen={
-            mode === "career"
-              ? STAPPEN_CARRIERE
-              : mode === "free"
-                ? STAPPEN_VRIJ
-                : STAPPEN_DIENST
+            active?.bedrijf
+              ? STAPPEN_BEDRIJF
+              : mode === "career"
+                ? STAPPEN_CARRIERE
+                : mode === "free"
+                  ? STAPPEN_VRIJ
+                  : STAPPEN_DIENST
+          }
+          stapnamen={
+            active?.bedrijf ? { bus: t(language, "bd.rit.stap") } : undefined
           }
           tegels={vel.tegels}
           kruimels={vel.kruimels}
@@ -5563,6 +5764,35 @@ export function App(): JSX.Element {
                 : mode === "free"
                   ? STAPPEN_VRIJ
                   : STAPPEN_DIENST;
+
+            /*
+             * Een bedrijfsrit (ontwerp busbedrijf-planning §7.1 punt 6): van
+             * het bovenste niveau terug naar Mijn bedrijf. Bij een eigen bus
+             * is dat de kleurstelling of, zonder, de remise; bij een bus van
+             * de onderaannemer de merken.
+             */
+            if (opzetStap === "bus" && active?.bedrijf) {
+              const naarBedrijf = (): void => {
+                setNote(undefined);
+                setBedrijfTab(BEDRIJF_NA_RIT);
+                setScreen("bedrijf");
+              };
+              const viaKleur =
+                kleurBus &&
+                kleurBus === vehicle?.relativePath &&
+                kleurLijsten[kleurBus];
+              if (vasteBus) {
+                if (busScherm === "hof" && viaKleur)
+                  return () => setBusScherm("kleur");
+                return naarBedrijf;
+              }
+              if (busScherm === "hof")
+                return () => setBusScherm(viaKleur ? "kleur" : "bus");
+              if (busScherm === "kleur") return () => setBusScherm("bus");
+              if (busType) return () => setBusType(undefined);
+              if (busMerk) return () => setBusMerk(undefined);
+              return naarBedrijf;
+            }
 
             if (opzetStap === "bus") {
               if (busScherm === "hof") {

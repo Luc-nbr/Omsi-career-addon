@@ -1,7 +1,7 @@
 import type { LineSummary } from './duty'
 import type { Rittenstaat } from './rittenstaat'
 import type { Duty } from './types'
-import type { LijnWeek, PlanCijfers, Vandaag, VastRooster } from './planTypen'
+import type { Gereden, LijnWeek, LopendeRit, PlanCijfers, Vandaag, VastRooster } from './planTypen'
 
 /*
  * Het busbedrijf: je eigen vervoerder bovenop de loopbaan.
@@ -1255,6 +1255,12 @@ export function lijnnaam(c: Pick<Concessie, 'lineNumbers' | 'lineFile'>): string
  *
  * De reputatie beweegt met het aandeel tijdhaltes op tijd: helemaal goed geeft
  * +2, helemaal fout −4. Klein per dienst, want één rit maakt geen naam.
+ *
+ * Een bedrijfsrit (`rit`, ontwerp busbedrijf-planning §7.1 punt 9): wat je
+ * reed gaat naar `vandaag.gereden` van die dienst, niet naar de invaluren --
+ * de rest van de dienst rijdt wie hem zonder jou had. De schade gaat alleen
+ * naar het busnummer van de rit, en alleen als je echt in die bus reed. Is
+ * de bedrijfsdag intussen verder, dan geldt het oude pad.
  */
 export function boekEigenDienst(
   bedrijf: Bedrijf,
@@ -1263,26 +1269,34 @@ export function boekEigenDienst(
   /** De bus waarmee gereden is; is dat een eigen bus, dan krijgt die de schade. */
   busPad?: string,
   /** Hoeveel haltes er gehaald zijn, zoals het loon het telt (`partialPay`). */
-  stopsDone?: number
+  stopsDone?: number,
+  /** De bedrijfsrit, als de dienst in Mijn bedrijf aangenomen is. */
+  rit?: LopendeRit
 ): Bedrijf {
-  /*
-   * Invallen: wat je zelf op een concessielijn reed, dekt vandaag een open
-   * dienst -- ook zonder rittenstaat, want gereden is gereden. Alleen het
-   * oordeel over stiptheid vraagt een meting.
-   *
-   * Naar rato van de gehaalde haltes, net als het loon: een dienst starten en
-   * meteen afronden dekte eerst acht uur, en zo waren alle open diensten
-   * gratis te vullen. Zonder telling (oudere plugin) telt hij voor vol.
-   */
-  const deel =
-    stopsDone === undefined || !(duty.totalStops > 0) ? 1 : Math.min(1, Math.max(0, stopsDone / duty.totalStops))
-  const zelf =
-    duty.legs
-      .filter((leg) => heeftConcessie(bedrijf, duty.mapFolder, leg.lineFile))
-      .reduce((som, leg) => som + leg.minutes / 60, 0) * deel
-  if (zelf > 0) bedrijf = { ...bedrijf, zelfUren: Math.round(((bedrijf.zelfUren ?? 0) + zelf) * 10) / 10 }
-  if (!staat) return bedrijf
-  bedrijf = schadeVanDienst(bedrijf, staat, busPad)
+  if (rit && rit.dag === bedrijf.dag) {
+    bedrijf = boekGereden(bedrijf, duty, rit, busPad, stopsDone)
+    if (!staat) return bedrijf
+    bedrijf = schadeVanBedrijfsrit(bedrijf, staat, rit, busPad)
+  } else {
+    /*
+     * Invallen: wat je zelf op een concessielijn reed, dekt vandaag een open
+     * dienst -- ook zonder rittenstaat, want gereden is gereden. Alleen het
+     * oordeel over stiptheid vraagt een meting.
+     *
+     * Naar rato van de gehaalde haltes, net als het loon: een dienst starten en
+     * meteen afronden dekte eerst acht uur, en zo waren alle open diensten
+     * gratis te vullen. Zonder telling (oudere plugin) telt hij voor vol.
+     */
+    const deel =
+      stopsDone === undefined || !(duty.totalStops > 0) ? 1 : Math.min(1, Math.max(0, stopsDone / duty.totalStops))
+    const zelf =
+      duty.legs
+        .filter((leg) => heeftConcessie(bedrijf, duty.mapFolder, leg.lineFile))
+        .reduce((som, leg) => som + leg.minutes / 60, 0) * deel
+    if (zelf > 0) bedrijf = { ...bedrijf, zelfUren: Math.round(((bedrijf.zelfUren ?? 0) + zelf) * 10) / 10 }
+    if (!staat) return bedrijf
+    bedrijf = schadeVanDienst(bedrijf, staat, busPad)
+  }
   const telling = eigenDienstTelling(bedrijf, duty, staat)
   if (!telling) return bedrijf
   const { opTijd, vroeg, laat, bedrag } = telling
@@ -1361,12 +1375,84 @@ function schadeVanDienst(bedrijf: Bedrijf, staat: Rittenstaat, busPad?: string):
   if (klappen === 0) return bedrijf
   const bus = eigenBusMetPad(bedrijf, busPad)
   if (!bus) return bedrijf
+  return metSchade(bedrijf, bus.nummer, klappen)
+}
+
+function metSchade(bedrijf: Bedrijf, nummer: number, klappen: number): Bedrijf {
   return {
     ...bedrijf,
-    bussen: bedrijf.bussen.map((b) =>
-      b.nummer === bus.nummer ? { ...b, schade: Math.min(100, b.schade + klappen * REGELS.schadePerKlap) } : b
+    bussen: (bedrijf.bussen ?? []).map((b) =>
+      b.nummer === nummer ? { ...b, schade: Math.min(100, b.schade + klappen * REGELS.schadePerKlap) } : b
     )
   }
+}
+
+/**
+ * Wat je van een bedrijfsrit gereden hebt, naar rato van de gehaalde haltes
+ * (zoals het loon): zonder telling telt hij voor vol. De rituren komen alleen
+ * uit de ritten op lijnen van het bedrijf (`telt`).
+ *
+ * Hier en niet in bedrijfsrit.ts (die roept dit aan als `geredenVan`): dit
+ * bestand mag geen planmodule laden, want plantarief.ts leest REGELS al bij
+ * het laden, en dan zou een kring de app bij het opstarten breken.
+ */
+export function geredenVanRit(
+  duty: Duty,
+  rit: LopendeRit,
+  stopsDone: number | undefined,
+  telt: (lineFile: string) => boolean
+): Gereden {
+  const deel =
+    stopsDone === undefined || !(duty.totalStops > 0) ? 1 : Math.min(1, Math.max(0, stopsDone / duty.totalStops))
+  const rituren = duty.legs.filter((l) => telt(l.lineFile)).reduce((s, l) => s + l.minutes / 60, 0) * deel
+  return {
+    van: rit.van,
+    tot: rit.tot,
+    werkMinuten: deel * (rit.tot - rit.van),
+    rituren,
+    deel,
+    ...(rit.busnummer !== undefined ? { busnummer: rit.busnummer } : {})
+  }
+}
+
+/** Reed je echt in de eigen bus van deze rit? Hoofdletterongevoelig op het pad. */
+function inBusVanRit(bedrijf: Bedrijf, rit: LopendeRit, busPad?: string): EigenBus | undefined {
+  if (rit.busnummer === undefined || !busPad) return undefined
+  const bus = bedrijf.bussen?.find((b) => b.nummer === rit.busnummer)
+  return bus && bus.relativePath.toLowerCase() === busPad.toLowerCase() ? bus : undefined
+}
+
+/**
+ * Een bedrijfsrit in `vandaag.gereden`. Een bestaande waarde wordt alleen
+ * vervangen door een grotere: wie een dienst twee keer rijdt (na een herstart
+ * opnieuw begonnen), telt niet dubbel, en een afgebroken tweede poging maakt
+ * de eerste niet kleiner. `zelfUren` blijft onaangeroerd.
+ */
+function boekGereden(bedrijf: Bedrijf, duty: Duty, rit: LopendeRit, busPad: string | undefined, stopsDone?: number): Bedrijf {
+  const g = geredenVanRit(duty, rit, stopsDone, (lf) => heeftConcessie(bedrijf, duty.mapFolder, lf))
+  // In een andere bus dan die van de omloop gereden: dan draaide die bus vandaag niet onder jou.
+  const gereden: Gereden = { ...g }
+  if (!inBusVanRit(bedrijf, rit, busPad)) delete gereden.busnummer
+  const vandaag: Vandaag =
+    bedrijf.vandaag?.dag === bedrijf.dag
+      ? bedrijf.vandaag
+      : { dag: bedrijf.dag, uitval: [], invulling: {}, stukInvulling: {}, busInvulling: {}, gereden: {} }
+  const was = vandaag.gereden[rit.dienst]
+  const groter = !was || gereden.rituren > was.rituren || (gereden.rituren === was.rituren && gereden.werkMinuten > was.werkMinuten)
+  if (!groter) return bedrijf.vandaag === vandaag ? bedrijf : { ...bedrijf, vandaag }
+  return { ...bedrijf, vandaag: { ...vandaag, gereden: { ...vandaag.gereden, [rit.dienst]: gereden } } }
+}
+
+/**
+ * Aanrijdingen in een bedrijfsrit: naar het busnummer van de rit als je in
+ * die bus reed (ook als er meer bussen van hetzelfde model staan), anders
+ * naar niemand -- een bus van de onderaannemer is niet de jouwe.
+ */
+function schadeVanBedrijfsrit(bedrijf: Bedrijf, staat: Rittenstaat, rit: LopendeRit, busPad?: string): Bedrijf {
+  const bus = inBusVanRit(bedrijf, rit, busPad)
+  if (!bus) return bedrijf
+  const klappen = staat.ritten.reduce((som, r) => som + r.haltes.reduce((s, h) => s + (h.klappen ?? 0), 0), 0)
+  return klappen === 0 ? bedrijf : metSchade(bedrijf, bus.nummer, klappen)
 }
 
 /**
@@ -1630,19 +1716,28 @@ export interface BedrijfRit {
   telling?: { opTijd: number; vroeg: number; laat: number; bedrag: number }
   /** De eigen bus waarin je rijdt, als het er een is. */
   bus?: { nummer: number; staat: number; schade: number }
+  /**
+   * Een bedrijfsrit (dienst uit Mijn bedrijf): welke omloop en welk deel, en
+   * tot wanneer (minuten van de bedrijfsdatum). De telefoon zegt dan
+   * "Bedrijfsrit · omloop 55103 · tot 14:30".
+   */
+  dienst?: { omloop: string; deel: number; delen: number; tot: number }
 }
 
 export function ritVoorBedrijf(
   bedrijf: Bedrijf,
   duty: Duty,
   busPad?: string,
-  staat?: Rittenstaat
+  staat?: Rittenstaat,
+  /** De bedrijfsrit, als de dienst in Mijn bedrijf aangenomen is. */
+  rit?: LopendeRit
 ): BedrijfRit | undefined {
   const lijnen = bedrijf.concessies
     .filter((c) => c.mapFolder === duty.mapFolder && duty.legs.some((leg) => leg.lineFile.toLowerCase() === c.lineFile.toLowerCase()))
     .map((c) => ({ lineFile: c.lineFile, lijn: lijnnaam(c), dagenOver: c.tot - bedrijf.dag }))
   if (lijnen.length === 0) return undefined
-  const bus = eigenBusMetPad(bedrijf, busPad)
+  // Bij een bedrijfsrit de bus van de omloop als je daarin rijdt; anders zoals altijd op het pad.
+  const bus = (rit ? inBusVanRit(bedrijf, rit, busPad) : undefined) ?? eigenBusMetPad(bedrijf, busPad)
   return {
     naam: bedrijf.naam,
     reputatie: bedrijf.reputatie,
@@ -1650,7 +1745,8 @@ export function ritVoorBedrijf(
     lijnen,
     tarief: { opTijd: REGELS.bonusOpTijd, teVroeg: REGELS.malusTeVroeg, teLaat: REGELS.malusTeLaat },
     telling: staat ? eigenDienstTelling(bedrijf, duty, staat) : undefined,
-    bus: bus ? { nummer: bus.nummer, staat: Math.round(bus.staat), schade: Math.round(bus.schade) } : undefined
+    bus: bus ? { nummer: bus.nummer, staat: Math.round(bus.staat), schade: Math.round(bus.schade) } : undefined,
+    ...(rit ? { dienst: { omloop: rit.omloopNr, deel: rit.deel, delen: rit.delen, tot: rit.tot } } : {})
   }
 }
 

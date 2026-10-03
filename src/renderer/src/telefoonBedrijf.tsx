@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 import type { BedrijfRit } from "../../core/bedrijf";
-import { formatMoney } from "../../shared/format";
+import { formatMoney, formatTime } from "../../shared/format";
 import { t, type Language } from "../../shared/i18n";
 
 /*
@@ -42,6 +42,20 @@ export function BedrijfKaart({
 
   return (
     <section className="tb-kaart">
+      {/*
+        Een bedrijfsrit (een dienst uit Mijn bedrijf): welke omloop, en tot
+        wanneer je rijdt -- daarna neemt de rest van de dienst het over.
+      */}
+      {rit.dienst && (
+        <div className="tb-kaartkop">
+          <span>
+            {t(language, "bd.rit.telefoon", {
+              omloop: rit.dienst.omloop,
+              tot: formatTime(((rit.dienst.tot % 1440) + 1440) % 1440),
+            })}
+          </span>
+        </div>
+      )}
       <div className="tb-kaartkop">
         <span>{t(language, "tb.ownLine", { lijn: lijn.lijn })}</span>
         <span className={lijn.dagenOver <= 3 ? "min" : undefined}>
