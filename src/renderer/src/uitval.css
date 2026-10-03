@@ -1,0 +1,169 @@
+/*
+ * Uitval, dag afsluiten en het ochtendvenster (deel B van de planning).
+ * Eigen klassen met `bd-uitval-` en `bd-ochtend`; de kleuren komen van de
+ * bedrijfsapp (bedrijf.css): --laat, --bd-let, --optijd en het vel.
+ */
+
+.bd-uitval {
+  border-color: color-mix(in srgb, var(--bd-let) 45%, var(--vel-lijn));
+}
+
+.bd-uitval-lijst {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bd-uitval-regel {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 6px;
+  border-radius: 8px;
+}
+
+.bd-uitval-regel + .bd-uitval-regel {
+  border-top: 1px solid var(--vel-lijn);
+}
+
+.bd-uitval-regel > i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vel-zacht);
+}
+
+.bd-uitval-regel.laat > i {
+  background: var(--laat);
+}
+
+.bd-uitval-regel.let > i {
+  background: var(--bd-let);
+}
+
+.bd-uitval-regel.goed > i {
+  background: var(--optijd);
+}
+
+.bd-uitval-tekst {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 13.5px;
+}
+
+.bd-uitval-tekst small {
+  color: var(--vel-zacht);
+  font-size: 12.5px;
+}
+
+.bd-uitval-tekst small.goed {
+  color: var(--optijd);
+}
+
+.bd-uitval-tekst small.laat {
+  color: var(--laat);
+}
+
+.bd-uitval-knoppen {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* Onder de knop in de zijbalk: waarom hij niet kan. */
+.bd-uitval-noot {
+  display: block;
+  margin-top: 6px;
+  color: var(--vel-zacht);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+/* ---- de vraag bij het afsluiten en het ochtendvenster ---- */
+
+.bd-uitval-venster {
+  width: min(640px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+
+.bd-uitval-venster p {
+  margin: 0 0 10px;
+  line-height: 1.45;
+}
+
+.bd-uitval-zacht {
+  color: var(--vel-zacht);
+}
+
+.bd-uitval-slecht {
+  color: var(--laat);
+  font-weight: 600;
+}
+
+.bd-uitval-goed {
+  color: var(--optijd);
+  font-weight: 600;
+}
+
+.bd-uitval-onder {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.bd-uitval-vul {
+  flex: 1 1 auto;
+}
+
+.bd-ochtend {
+  width: min(720px, 100%);
+}
+
+.bd-ochtend-rapport {
+  margin: -16px -18px 14px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--vel-lijn);
+  border-radius: 14px 14px 0 0;
+  background: var(--vel-hover);
+}
+
+.bd-ochtend-rapport h2 {
+  margin: 0 0 4px;
+}
+
+.bd-ochtend-rapport p {
+  margin: 0;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.bd-ochtend h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.bd-uitval-stil {
+  margin-top: 10px;
+  padding: 0;
+}
+
+@media (max-width: 640px) {
+  .bd-uitval-regel {
+    grid-template-columns: 8px minmax(0, 1fr);
+  }
+
+  .bd-uitval-knoppen {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+}
