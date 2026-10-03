@@ -142,8 +142,11 @@ klopt('migratie: bus 102 heeft een aanhanger, dus geleed, met een bericht', m.be
 klopt('migratie: een rooster en een bericht', Boolean(m.bedrijf.rooster) && m.bedrijf.post![0].soort === 'rooster')
 const plan = dagplan(m.bedrijf, week, 1)
 const cijfers = afrekening(m.bedrijf, plan)
-klopt('de stub zet alles op uitbesteed', plan.telling.uitbesteed === plan.telling.diensten && plan.telling.diensten === maandag.reduce((s, o) => s + o.diensten.length, 0))
-klopt('de afrekening van de stub in hele centen', [cijfers.vergoeding, cijfers.onderaannemer, cijfers.kosten, cijfers.lonen].every(Number.isInteger))
+// Sinds deel A vult de migratie het rooster: eigen bussen en chauffeurs rijden mee, de rest is uitbesteed.
+const t = plan.telling
+klopt('het plan telt elke dienst één keer', t.diensten === maandag.reduce((s, o) => s + o.diensten.length, 0) && t.eigen + t.collega + t.uitzend + t.uitbesteed + t.uitgevallen === t.diensten)
+klopt('na de migratie rijden eigen bussen en chauffeurs mee', t.eigen > 0 && t.eigenBus > 0)
+klopt('de afrekening van het plan in hele centen', [cijfers.vergoeding, cijfers.onderaannemer, cijfers.kosten, cijfers.lonen].every(Number.isInteger))
 
 console.log(fouten ? `\n${fouten} fout(en)` : '\nalles klopt')
 process.exit(fouten ? 1 : 0)

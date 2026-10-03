@@ -2,15 +2,19 @@ import { useState, type JSX } from 'react'
 import {
   REGELS,
   aanHetWerk,
+  bedrijfsfactoren,
   dagprognose,
   marktloon,
   sollicitanten,
   type Bedrijf as BedrijfStaat,
   type Medewerker
 } from '../../core/bedrijf'
+import type { DagPlan } from '../../core/planTypen'
+import { besparingChauffeur } from '../../core/plantarief'
 import type { CareerPayload } from '../../shared/api'
-import { useT } from './language'
-import { type Handel, useGeld, Paneel, Meter } from './BedrijfDelen'
+import { useLanguage, useT } from './language'
+import { type Handel, type Naar, useGeld, Paneel, Meter } from './BedrijfDelen'
+import { eenDecimaal, gemiddelden } from './Planning'
 
 /* ------------------------------------------------------------------ */
 /* Personeel                                                          */
@@ -21,9 +25,25 @@ import { type Handel, useGeld, Paneel, Meter } from './BedrijfDelen'
  * maakt de app zelf (zie `dagprognose`): hier zie je hoe het uitvalt, en wat je
  * eraan doet is mensen aannemen -- of zelf invallen.
  */
-export function Personeel({ bedrijf, handel }: { bedrijf: BedrijfStaat; handel: Handel }): JSX.Element {
+export function Personeel({
+  bedrijf,
+  handel,
+  plan,
+  naar
+}: {
+  bedrijf: BedrijfStaat
+  handel: Handel
+  /** Het plan van vandaag (deel A); dan staat hier de samenvatting en verwijst het naar de planning. */
+  plan?: DagPlan
+  naar?: Naar
+}): JSX.Element {
   const tr = useT()
+  const taal = useLanguage()
   const geld = useGeld()
+  // Een gemiddelde dienst: uit de weken van de concessies, anders uit het plan van vandaag.
+  const gemDienst =
+    gemiddelden(bedrijf).dienstUren ?? (plan && plan.telling.diensten > 0 ? plan.telling.werkuren / plan.telling.diensten : undefined)
+  const f = bedrijfsfactoren(bedrijf)
   const prognose = dagprognose(bedrijf)
   const mensen = bedrijf.personeel ?? []
   const vandaag = sollicitanten(bedrijf)
@@ -40,8 +60,18 @@ export function Personeel({ bedrijf, handel }: { bedrijf: BedrijfStaat; handel: 
   const u = (uren: number): string => `${Math.round(uren * 10) / 10}`
   return (
     <div className="bd-kolom">
-      <Paneel titel={tr('bd.rosterToday', { day: bedrijf.dag })}>
-        {prognose.diensten === 0 ? (
+      <Paneel
+        titel={tr('bd.rosterToday', { day: bedrijf.dag })}
+        actie={plan && naar ? { tekst: tr('bd.plan.naarPlanning'), doen: () => naar('planning') } : undefined}
+      >
+        {plan ? (
+          <p>
+            {tr('bd.plan.personeelSamenvatting', {
+              eigen: plan.telling.eigen + plan.telling.collega,
+              uitbesteed: plan.telling.uitbesteed
+            })}
+          </p>
+        ) : prognose.diensten === 0 ? (
           <p className="bd-rustig">{tr('bd.rosterEmpty')}</p>
         ) : (
           <>
@@ -116,6 +146,16 @@ export function Personeel({ bedrijf, handel }: { bedrijf: BedrijfStaat; handel: 
                   <small className={s.loon > markt ? 'let' : ''}>
                     {tr(s.loon > markt ? 'bd.aboveMarket' : 'bd.atMarket', { money: geld(markt) })}
                   </small>
+                  {s.rol === 'chauffeur' && gemDienst !== undefined && (
+                    <small className={besparingChauffeur(gemDienst * 60, f) >= s.loon ? 'optijd' : 'laat'}>
+                      {tr('bd.plan.sollicitantLoont', {
+                        uren: eenDecimaal(gemDienst, taal),
+                        naam: s.naam.split(' ')[0],
+                        bespaart: geld(besparingChauffeur(gemDienst * 60, f)),
+                        loon: geld(s.loon)
+                      })}
+                    </small>
+                  )}
                   <button
                     type="button"
                     className="bd-knop hoofd"

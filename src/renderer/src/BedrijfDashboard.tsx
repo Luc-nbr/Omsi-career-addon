@@ -7,15 +7,31 @@ import {
   waardeVan,
   type Bedrijf as BedrijfStaat
 } from '../../core/bedrijf'
+import type { DagPlan, PlanCijfers } from '../../core/planTypen'
 import { useLanguage, useT } from './language'
 import { Grafiek } from './BedrijfGrafiek'
-import { type Tab, useGeld, Tegel, Paneel, Staatbalk, Boeken } from './BedrijfDelen'
+import { type Focus, type Naar, type Tab, useGeld, Tegel, Paneel, Staatbalk, Boeken } from './BedrijfDelen'
 
 /* ------------------------------------------------------------------ */
 /* Dashboard                                                          */
 /* ------------------------------------------------------------------ */
 
-export function Dashboard({ bedrijf, naar }: { bedrijf: BedrijfStaat; naar: (tab: Tab) => void }): JSX.Element {
+/**
+ * Met de planning (deel A) komen de tegels uit het plan van vandaag
+ * (`cijfers`, zoals de afsluiting het boekt); zonder plan uit de oude
+ * `dagprognose`.
+ */
+export function Dashboard({
+  bedrijf,
+  plan,
+  cijfers,
+  naar
+}: {
+  bedrijf: BedrijfStaat
+  plan?: DagPlan
+  cijfers?: PlanCijfers
+  naar: Naar
+}): JSX.Element {
   const tr = useT()
   const geld = useGeld()
   const taal = useLanguage()
@@ -32,12 +48,19 @@ export function Dashboard({ bedrijf, naar }: { bedrijf: BedrijfStaat; naar: (tab
   const gisteren = historie[historie.length - 1]
   const eergisteren = historie[historie.length - 2]
   const bussen = bedrijf.bussen ?? []
-  const resultaat = prognose.vergoeding - prognose.kosten
+  const inkomsten = cijfers ? cijfers.vergoeding + cijfers.legacyZelf : prognose.vergoeding
+  const uitgaven = cijfers ? cijfers.kosten : prognose.kosten
+  const resultaat = inkomsten - uitgaven
+  // Dekking en bezetting: uit het plan als dat er is.
+  const dekking = plan && cijfers ? (cijfers.omlopen ? cijfers.eigenOmlopen / cijfers.omlopen : 0) : prognose.dekking
+  const eigenDiensten = plan && cijfers ? cijfers.eigenDiensten + cijfers.jijDiensten : prognose.eigenDiensten + prognose.zelfDiensten
+  const diensten = plan && cijfers ? cijfers.diensten : prognose.diensten
+  const openDiensten = plan && cijfers ? cijfers.openDiensten : prognose.openDiensten
   const vlootwaarde = bussen.reduce((som, b) => som + waardeVan(b), 0)
   const inzetbaar = bussen.filter((b) => isInzetbaar(b, bedrijf.dag)).length
 
   const aandacht = useMemo(() => {
-    const lijst: Array<{ soort: 'laat' | 'let'; tekst: string; tab: Tab }> = []
+    const lijst: Array<{ soort: 'laat' | 'let'; tekst: string; tab: Tab; focus?: Focus }> = []
     if (bedrijf.kas < 0) lijst.push({ soort: 'laat', tekst: tr('bd.alert.cash'), tab: 'boeken' })
     for (const b of bussen) {
       if (b.schade >= REGELS.inzetbaarTotSchade)
@@ -59,18 +82,41 @@ export function Dashboard({ bedrijf, naar }: { bedrijf: BedrijfStaat; naar: (tab
           tab: 'concessies'
         })
     }
-    if (prognose.benodigd > 0 && prognose.dekking < 1)
-      lijst.push({
-        soort: 'let',
-        tekst: tr('bd.alert.coverage', { need: prognose.benodigd - prognose.inzetbaar }),
-        tab: 'markt'
-      })
-    if (prognose.openDiensten > 0)
-      lijst.push({
-        soort: 'let',
-        tekst: tr('bd.alert.openShifts', { n: prognose.openDiensten }),
-        tab: 'personeel'
-      })
+    if (plan) {
+      // Open gaten en conflicten: naar de planning, met de eerste in beeld.
+      const diensten = plan.kaarten.flatMap((k) => k.omlopen.flatMap((po) => po.diensten))
+      const lastig = diensten.filter(
+        (pd) => pd.plots || pd.uitgevallen > 0 || pd.conflicten.some((c) => c.ernst === 'fout')
+      )
+      if (lastig.length > 0)
+        lijst.push({
+          soort: lastig.some((pd) => pd.uitgevallen > 0) ? 'laat' : 'let',
+          tekst: tr('bd.plan.conflictOpen', { n: lastig.length }),
+          tab: 'planning',
+          focus: { dag: plan.dag, dienst: lastig[0].dienst.sleutel }
+        })
+      // Stilstand: een bus of chauffeur die vandaag niets doet.
+      for (const nr of plan.vrij.bussen)
+        lijst.push({ soort: 'let', tekst: tr('bd.plan.stilBus', { bus: nr }), tab: 'planning', focus: { dag: plan.dag, bus: nr } })
+      for (const id of plan.vrij.chauffeurs) {
+        const m = (bedrijf.personeel ?? []).find((x) => x.id === id)
+        if (m) lijst.push({ soort: 'let', tekst: tr('bd.plan.stilChauffeur', { naam: m.naam }), tab: 'planning', focus: { dag: plan.dag, medewerker: id } })
+      }
+      // SLOT deel B: ...aandachtUitval(bedrijf, plan) komt hier bij de integratie.
+    } else {
+      if (prognose.benodigd > 0 && prognose.dekking < 1)
+        lijst.push({
+          soort: 'let',
+          tekst: tr('bd.alert.coverage', { need: prognose.benodigd - prognose.inzetbaar }),
+          tab: 'markt'
+        })
+      if (prognose.openDiensten > 0)
+        lijst.push({
+          soort: 'let',
+          tekst: tr('bd.alert.openShifts', { n: prognose.openDiensten }),
+          tab: 'personeel'
+        })
+    }
     for (const m of bedrijf.personeel ?? []) {
       if (m.ziekTot !== undefined && m.ziekTot >= bedrijf.dag)
         lijst.push({ soort: 'let', tekst: tr('bd.alert.sick', { name: m.naam, day: m.ziekTot }), tab: 'personeel' })
@@ -78,10 +124,11 @@ export function Dashboard({ bedrijf, naar }: { bedrijf: BedrijfStaat; naar: (tab
         lijst.push({ soort: 'laat', tekst: tr('bd.alert.unhappy', { name: m.naam }), tab: 'personeel' })
     }
     return lijst
-  }, [bedrijf])
+  }, [bedrijf, plan])
 
   return (
     <div className="bd-dashboard">
+      {/* SLOT deel B: <UitvalMeldingen bedrijf plan naar /> bovenaan; SLOT deel D: <ZelfRijdenTegel /> bij de tegels. */}
       <div className="bd-tegels">
         <Tegel
           titel={tr('bd.cash')}
@@ -96,7 +143,7 @@ export function Dashboard({ bedrijf, naar }: { bedrijf: BedrijfStaat; naar: (tab
         <Tegel
           titel={tr('bd.today')}
           waarde={geld(resultaat, true)}
-          sub={tr('bd.todaySub', { in: geld(prognose.vergoeding), out: geld(prognose.kosten) })}
+          sub={tr('bd.todaySub', { in: geld(inkomsten), out: geld(uitgaven) })}
           toon={resultaat < 0 ? 'laat' : resultaat > 0 ? 'goed' : undefined}
         />
         <Tegel titel={tr('bd.reputation')} waarde={`${bedrijf.reputatie}`} sub="/ 100">
@@ -108,33 +155,37 @@ export function Dashboard({ bedrijf, naar }: { bedrijf: BedrijfStaat; naar: (tab
         <Tegel
           titel={tr('bd.concessions')}
           waarde={`${bedrijf.concessies.length}`}
-          sub={tr('bd.toursHours', { tours: prognose.benodigd, hours: Math.round(prognose.uren) })}
+          sub={
+            plan
+              ? tr('bd.plan.toursToday', { tours: plan.telling.omlopen, hours: Math.round(plan.telling.rituren) })
+              : tr('bd.toursHours', { tours: prognose.benodigd, hours: Math.round(prognose.uren) })
+          }
         />
         <Tegel
           titel={tr('bd.nav.fleet')}
           waarde={`${inzetbaar} / ${bussen.length}`}
           sub={tr('bd.fleetSub', {
-            share: prognose.benodigd ? Math.round(prognose.dekking * 100) : 0,
+            share: Math.round(dekking * 100),
             money: geld(vlootwaarde)
           })}
         >
           <span className="bd-meter">
-            <i style={{ width: `${Math.round(prognose.dekking * 100)}%` }} />
+            <i style={{ width: `${Math.round(dekking * 100)}%` }} />
           </span>
         </Tegel>
         <Tegel
           titel={tr('bd.nav.staff')}
-          waarde={`${prognose.eigenDiensten + prognose.zelfDiensten} / ${prognose.diensten}`}
+          waarde={`${eigenDiensten} / ${diensten}`}
           sub={tr('bd.staffSub', {
-            open: prognose.openDiensten,
+            open: openDiensten,
             people: (bedrijf.personeel ?? []).length
           })}
-          toon={prognose.diensten > 0 && prognose.openDiensten === 0 ? 'goed' : undefined}
+          toon={diensten > 0 && openDiensten === 0 ? 'goed' : undefined}
         >
           <span className="bd-meter">
             <i
               style={{
-                width: `${prognose.diensten ? Math.round(((prognose.eigenDiensten + prognose.zelfDiensten) / prognose.diensten) * 100) : 0}%`
+                width: `${diensten ? Math.round((eigenDiensten / diensten) * 100) : 0}%`
               }}
             />
           </span>
@@ -159,7 +210,7 @@ export function Dashboard({ bedrijf, naar }: { bedrijf: BedrijfStaat; naar: (tab
             <ul className="bd-aandacht">
               {aandacht.slice(0, 7).map((a, i) => (
                 <li key={i}>
-                  <button type="button" onClick={() => naar(a.tab)}>
+                  <button type="button" onClick={() => naar(a.tab, a.focus)}>
                     <i className={a.soort} aria-hidden="true" />
                     {a.tekst}
                   </button>
