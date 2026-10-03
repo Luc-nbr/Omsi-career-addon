@@ -1,0 +1,424 @@
+/*
+ * De vlootkaart (tab "Kaart" van het busbedrijf; ontwerp busbedrijf-planning
+ * §8.2). De kleur van een bus zegt wie er rijdt: het blauw van de app voor je
+ * eigen bus en chauffeur, geel voor jou, paars voor een uitzendkracht of
+ * huurbus, grijs voor uitbesteed en rood voor wat uitvalt. Dezelfde kleuren in
+ * de lijst, op de kaart en in de legenda.
+ */
+
+.vk {
+  --vk-eigen: var(--route, #2a75f7);
+  --vk-jij: var(--lijn, #ffd23f);
+  --vk-uitzend: #9b6bf2;
+  --vk-onder: #8a93a6;
+  --vk-uit: var(--laat, #d93a30);
+  --vloot-lijn: color-mix(in srgb, var(--route, #2a75f7) 70%, transparent);
+  --vloot-lijn-rand: rgba(8, 12, 20, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.vk .toon-eigen {
+  --vk-toon: var(--vk-eigen);
+}
+.vk .toon-jij {
+  --vk-toon: var(--vk-jij);
+}
+.vk .toon-uitzend {
+  --vk-toon: var(--vk-uitzend);
+}
+.vk .toon-onder {
+  --vk-toon: var(--vk-onder);
+}
+.vk .toon-uit {
+  --vk-toon: var(--vk-uit);
+}
+
+/* ---- bovenbalk ---- */
+
+.vk-balk {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vk-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.vk .bd-knop.actief {
+  border-color: var(--route);
+  background: color-mix(in srgb, var(--route) 18%, transparent);
+}
+
+.vk-klok {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.vk-tijd {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 170px;
+  margin-right: 6px;
+  font-size: 17px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.vk-live {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--optijd);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--optijd) 25%, transparent);
+}
+
+.vk-snel {
+  min-width: 46px;
+}
+
+.vk-schuif {
+  flex: 1 1 200px;
+  min-width: 140px;
+  accent-color: var(--route);
+}
+
+.vk-regel {
+  margin: 0;
+  color: var(--op-grond-zacht, var(--vel-zacht));
+  font-size: 12px;
+}
+
+.vk-melding {
+  margin: 0;
+  padding: 7px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bd-let, #d98a00) 16%, transparent);
+  color: inherit;
+  font-size: 13px;
+}
+
+/* ---- kaart en paneel ---- */
+
+.vk-werk {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  min-width: 0;
+}
+
+.vk-kaart {
+  position: relative;
+  min-width: 0;
+  height: max(440px, calc(100vh - 250px));
+}
+
+.vk-staat {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  margin: 0;
+  border: 1px solid var(--vel-lijn);
+  border-radius: 10px;
+  background: var(--vel);
+  color: var(--vel-zacht);
+  font-size: 14px;
+}
+
+.vk-noot {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  margin: 0;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--kaartknop-grond, rgba(18, 26, 38, 0.86));
+  color: var(--kaartknop-ink, #f2f5f8);
+  font-size: 12px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.vk-paneel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  max-height: max(440px, calc(100vh - 250px));
+  overflow-y: auto;
+}
+
+.vk-lijst {
+  padding: 12px 14px;
+  border: 1px solid var(--vel-lijn);
+  border-radius: 14px;
+  background: var(--vel);
+  color: var(--vel-ink);
+}
+
+.vk-lijst h2 {
+  margin: 0 0 8px;
+  color: var(--vel-zacht);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.vk-lijst ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vk-rij {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vk-rij:hover,
+.vk-rij.actief {
+  background: var(--vel-hover, rgba(255, 255, 255, 0.06));
+}
+
+.vk-rij.actief {
+  box-shadow: inset 0 0 0 1px var(--route);
+}
+
+.vk-nummer {
+  flex: none;
+  min-width: 38px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--vk-toon);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.vk-nummer.toon-jij {
+  color: #1a1400;
+}
+
+.vk-legenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin: 0;
+  padding: 4px 4px 0;
+  list-style: none;
+  color: var(--op-grond-zacht, var(--vel-zacht));
+  font-size: 12px;
+}
+
+.vk-legenda li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vk-stip {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--vk-toon);
+}
+
+.vk-stip.toon-uit {
+  background: repeating-linear-gradient(45deg, var(--vk-uit) 0 2px, transparent 2px 4px);
+  box-shadow: inset 0 0 0 1.5px var(--vk-uit);
+}
+
+/* ---- de bussen op de kaart (RouteMap, `vloot`) ---- */
+
+.vloot-bus {
+  --vk-toon: var(--vk-onder);
+}
+
+.vloot-pijl {
+  fill: var(--vk-toon);
+  stroke: rgba(8, 12, 20, 0.9);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.vloot-bus.spook .vloot-pijl {
+  fill: color-mix(in srgb, var(--vk-uit) 22%, transparent);
+  stroke: var(--vk-uit);
+  stroke-dasharray: 3 2.5;
+}
+
+.vloot-label {
+  fill: #eef2f8;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: rgba(16, 20, 26, 0.92);
+  stroke-width: 3;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.vloot-ring {
+  fill: color-mix(in srgb, var(--vk-toon) 22%, transparent);
+  stroke: var(--vk-toon);
+  stroke-width: 2;
+  pointer-events: none;
+}
+
+/* Waar je raak klikt: onzichtbaar, maar wel een doel. */
+.vloot-raak {
+  fill: transparent;
+  stroke: none;
+  cursor: pointer;
+  pointer-events: all;
+}
+
+/* ---- het zwevende kaartje ---- */
+
+.vloot-zweef {
+  position: absolute;
+  z-index: 3;
+  transform: translate(-50%, calc(-100% - 24px));
+  pointer-events: auto;
+}
+
+.vk-kaartje {
+  position: relative;
+  width: 290px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--vel-lijn);
+  border-top: 3px solid var(--vk-toon);
+  border-radius: 12px;
+  background: var(--vel);
+  color: var(--vel-ink);
+  box-shadow: var(--vel-schaduw);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+/* Het puntje naar de bus. */
+.vk-kaartje::after {
+  content: '';
+  position: absolute;
+  bottom: -7px;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  border-right: 1px solid var(--vel-lijn);
+  border-bottom: 1px solid var(--vel-lijn);
+  background: var(--vel);
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.vk-kaartje p {
+  margin: 2px 0 0;
+}
+
+.vk-kaartje .vk-zacht {
+  color: var(--vel-zacht);
+}
+
+.vk-kaartje .vk-jij {
+  font-weight: 700;
+}
+
+.vk-kaartje-kop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+  font-size: 13.5px;
+}
+
+.vk-sluit {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin: -4px -6px 0 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--vel-zacht);
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.vk-sluit:hover {
+  background: var(--vel-hover, rgba(255, 255, 255, 0.06));
+  color: var(--vel-ink);
+}
+
+.vk-knoppen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.vk-knoppen .bd-knop {
+  padding: 5px 11px;
+  font-size: 12px;
+}
+
+/* ---- smal scherm: het paneel onder de kaart, het kaartje compact ---- */
+
+@media (max-width: 900px) {
+  .vk-werk {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vk-kaart {
+    height: max(360px, 62vh);
+  }
+
+  .vk-paneel {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .vk-tijd {
+    min-width: 0;
+  }
+
+  .vk-kaartje {
+    width: 220px;
+    padding: 8px 10px 10px;
+    font-size: 11.5px;
+  }
+
+  .vk-knoppen .bd-knop {
+    padding: 4px 9px;
+    font-size: 11px;
+  }
+}

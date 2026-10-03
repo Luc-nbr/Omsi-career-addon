@@ -8,12 +8,15 @@ import {
   useState,
   useSyncExternalStore,
   type JSX,
-  type PointerEvent as ReactPointerEvent
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode
 } from 'react'
 import type { MapGeometry, StopPoint } from '../../core/geo'
 import type { TripRoute } from '../../core/routing'
 import type { Duty } from '../../core/types'
+import { nearestAlong, pointAlong, trackAlong, type Track } from '../../shared/spoor'
 import { ritSleutel } from '../../shared/traject'
+import { LijnLaag } from './lijnLaag'
 import { useT } from './language'
 import { RoadLayer } from './roadLayer'
 import {
@@ -141,6 +144,42 @@ interface Props {
    * route berekend, dus hij mag niet lezen als een weg (kaartmeters).
    */
   aanrij?: { punten: [number, number, number, number] }
+  /**
+   * De vlootkaart van het busbedrijf (ontwerp busbedrijf-planning §8.3): alle
+   * bussen van de dag op hun plek, de lijnen van de concessies eronder, en een
+   * zwevend kaartje boven de bus die je aanklikt. Erbij, niet in plaats van:
+   * zonder `vloot` is de kaart precies wat hij was.
+   */
+  vloot?: VlootLaag
+}
+
+/** Een bus op de vlootkaart. */
+export interface VlootBus {
+  id: string
+  /** In kaartmeters. */
+  x: number
+  y: number
+  /** Koers in graden, noord nul, met de klok mee. */
+  koers: number
+  /** Wie er rijdt: dat is de kleur. */
+  toon: 'eigen' | 'jij' | 'uitzend' | 'onder' | 'uit'
+  label: string
+  /** Valt uit: een gestreepte bus op de plek waar hij had moeten zijn. */
+  spook?: boolean
+}
+
+export interface VlootLaag {
+  bussen: VlootBus[]
+  gekozen?: string
+  onKies?(id: string | undefined): void
+  /** De kaart houdt de gekozen bus in het midden, met dezelfde rust na slepen als bij het meerijden. */
+  volg?: boolean
+  /** Hangt boven de gekozen bus en beweegt met hem mee. */
+  zweef?: ReactNode
+  /** De routes van de concessies, plat als x, y, x, y in kaartmeters. */
+  lijnen?: number[][]
+  /** De haltes van de concessies; die krijgen een bord. */
+  haltes?: string[]
 }
 
 /**
@@ -203,6 +242,10 @@ const STOP_PASSED_M = 12
 
 /** Wie de kaart zelf versleept of zoomt, krijgt zoveel rust voordat hij terugveert naar de bus. */
 const MANUAL_MS = 6000
+/** Zo ver ingezoomd (hoogstens) zet de vlootkaart een gekozen bus in beeld. */
+const VLOOT_VOLG_MPP = 2.5
+/** Minder beweging dan dit tussen neerdrukken en loslaten is een klik, geen sleep. */
+const KLIK_PX = 5
 
 /** Zoomstand als de kaart met de bus meerijdt: straten en zijstraten zijn nog te lezen. */
 const BUS_MPP = 0.9
@@ -266,7 +309,8 @@ export function RouteMap({
   bediening,
   zoom,
   bezet,
-  aanrij
+  aanrij,
+  vloot
 }: Props): JSX.Element {
   const tr = useT()
   const boxRef = useRef<HTMLDivElement>(null)
@@ -335,7 +379,15 @@ export function RouteMap({
   }, [duty, geometry, byId])
 
   /** Elke halte een keer, voor de borden. De eerste vermelding telt. */
+  const vlootHaltes = vloot?.haltes
   const routeStops = useMemo(() => {
+    // De vlootkaart heeft geen dienst; daar zijn het de haltes van de concessies.
+    if (!duty && vlootHaltes) {
+      return vlootHaltes
+        .map((id) => byId.get(id))
+        .filter((p): p is StopPoint => p !== undefined)
+        .map((p, i): RouteStop => ({ ...p, order: i, at: i, legIndex: 0, isStart: false, isEnd: false }))
+    }
     const seen = new Map<string, RouteStop>()
     for (const leg of legs) {
       for (const stop of leg) {
@@ -345,7 +397,7 @@ export function RouteMap({
       }
     }
     return [...seen.values()]
-  }, [legs])
+  }, [legs, duty, vlootHaltes, byId])
 
   /*
    * Elk bordje één keer. `routeStops` heeft al elke halte één keer, maar op
@@ -426,7 +478,24 @@ export function RouteMap({
   }, [vraagSleutel])
 
   /** Waar de route ligt, met wat lucht eromheen. */
+  const vlootLijnen = vloot?.lijnen
   const bounds = useMemo(() => {
+    // De vlootkaart past op de lijnen van de concessies.
+    if (vlootLijnen && vlootLijnen.some((l) => l.length >= 4)) {
+      let minX = Infinity
+      let minY = Infinity
+      let maxX = -Infinity
+      let maxY = -Infinity
+      for (const lijn of vlootLijnen) {
+        for (let i = 0; i + 1 < lijn.length; i += 2) {
+          if (lijn[i] < minX) minX = lijn[i]
+          if (lijn[i] > maxX) maxX = lijn[i]
+          if (lijn[i + 1] < minY) minY = lijn[i + 1]
+          if (lijn[i + 1] > maxY) maxY = lijn[i + 1]
+        }
+      }
+      return { minX, minY, maxX, maxY }
+    }
     const points = routeStops.length > 0 ? routeStops : geometry.stops
     if (points.length === 0) return { minX: 0, minY: 0, maxX: 1, maxY: 1 }
     return {
@@ -435,7 +504,7 @@ export function RouteMap({
       minY: Math.min(...points.map((p) => p.y)),
       maxY: Math.max(...points.map((p) => p.y))
     }
-  }, [routeStops, geometry])
+  }, [routeStops, geometry, vlootLijnen])
 
   useLayoutEffect(() => {
     const element = boxRef.current
@@ -450,7 +519,8 @@ export function RouteMap({
     return () => observer.disconnect()
   }, [])
 
-  const following = Boolean(follow?.toId) || Boolean(bus) || Boolean(vehicle)
+  const vlootVolgt = Boolean(vloot?.volg && vloot.gekozen)
+  const following = Boolean(follow?.toId) || Boolean(bus) || Boolean(vehicle) || vlootVolgt
 
   const fitted = useRef<string>('')
   useEffect(() => {
@@ -585,8 +655,38 @@ export function RouteMap({
     return () => window.clearInterval(timer)
   }, [hasBus, centreOnBus])
   const markManual = (): void => {
-    if (bus || vehicle) manualUntil.current = Date.now() + MANUAL_MS
+    if (bus || vehicle || vloot?.volg) manualUntil.current = Date.now() + MANUAL_MS
   }
+
+  /*
+   * De vlootkaart volgt de bus die je aanklikt, op dezelfde manier als het
+   * meerijden hierboven: het midden op de bus, noord boven, en na slepen of
+   * zoomen MANUAL_MS rust. Bij het kiezen zoomt hij in tot je de straat ziet,
+   * maar niet verder dan je zelf al stond.
+   */
+  const gekozenBus = vloot?.gekozen ? vloot.bussen.find((b) => b.id === vloot.gekozen) : undefined
+  const gekozenRef = useRef(gekozenBus)
+  gekozenRef.current = gekozenBus
+  const gekozenId = gekozenBus?.id
+  const volgVloot = useCallback((force: boolean) => {
+    const doel = gekozenRef.current
+    if (!doel || !Number.isFinite(doel.x) || !Number.isFinite(doel.y)) return
+    if (force) manualUntil.current = 0
+    if (!force && Date.now() < manualUntil.current) return
+    setView((old) => {
+      const mpp = force ? Math.min(old.mpp, VLOOT_VOLG_MPP) : old.mpp
+      if (Math.abs(old.cx - doel.x) < 0.05 && Math.abs(old.cy - doel.y) < 0.05 && mpp === old.mpp && old.rot === 0) return old
+      return { cx: doel.x, cy: doel.y, mpp, rot: 0 }
+    })
+  }, [])
+  // Een andere bus gekozen, of volgen aangezet: meteen erheen.
+  useEffect(() => {
+    if (vlootVolgt) volgVloot(true)
+  }, [gekozenId, vlootVolgt, volgVloot])
+  // En daarna mee, bij elke nieuwe plek van de bus.
+  useEffect(() => {
+    if (vlootVolgt) volgVloot(false)
+  }, [gekozenBus?.x, gekozenBus?.y, vlootVolgt, volgVloot])
 
   /*
    * Een vaste zoomstand volgt wat je zelf kiest. Wie met het wieltje, twee
@@ -840,6 +940,9 @@ export function RouteMap({
     return () => cancelAnimationFrame(frame)
   }, [hasVehicle])
 
+  const vlootVolgtRef = useRef(false)
+  vlootVolgtRef.current = Boolean(vloot?.volg)
+
   // React luistert standaard passief naar het wieltje, dus zelf aanhaken —
   // anders scrollt de pagina mee terwijl je inzoomt.
   useEffect(() => {
@@ -847,7 +950,7 @@ export function RouteMap({
     if (!svg) return
     const onWheel = (event: WheelEvent): void => {
       event.preventDefault()
-      if (bus || vehicle) manualUntil.current = Date.now() + MANUAL_MS
+      if (bus || vehicle || vlootVolgtRef.current) manualUntil.current = Date.now() + MANUAL_MS
       const rect = svg.getBoundingClientRect()
       const px = event.clientX - rect.left - size.w / 2
       const py = size.h / 2 - (event.clientY - rect.top)
@@ -928,7 +1031,21 @@ export function RouteMap({
     )
   }
 
+  /*
+   * Een klik op de vlootkaart: neerdrukken en loslaten op bijna dezelfde plek.
+   * Op een bus (`data-bus`, een onzichtbare cirkel ruim om de pijl) kiest hij
+   * die bus; ernaast laat hij hem los. Pointer-events, dus ook met een vinger.
+   */
+  const klik = useRef<{ x: number; y: number; bus?: string; id: number } | undefined>(undefined)
+
   const onPointerDown = (event: ReactPointerEvent<SVGSVGElement>): void => {
+    if (vloot) {
+      const raak = (event.target as Element).closest?.('[data-bus]')
+      klik.current =
+        vingers.current.size === 0
+          ? { x: event.clientX, y: event.clientY, bus: raak?.getAttribute('data-bus') ?? undefined, id: event.pointerId }
+          : undefined
+    }
     ;(event.target as Element).setPointerCapture?.(event.pointerId)
     markManual()
     vingers.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
@@ -994,6 +1111,19 @@ export function RouteMap({
   }
 
   const endDrag = (event?: ReactPointerEvent<SVGSVGElement>): void => {
+    const begin = klik.current
+    klik.current = undefined
+    if (
+      vloot &&
+      begin &&
+      event?.type === 'pointerup' &&
+      event.pointerId === begin.id &&
+      Math.hypot(event.clientX - begin.x, event.clientY - begin.y) < KLIK_PX
+    ) {
+      // Een klik is geen eigen bediening: de kaart mag de bus meteen volgen.
+      manualUntil.current = 0
+      vloot.onKies?.(begin.bus)
+    }
     if (event) vingers.current.delete(event.pointerId)
     else vingers.current.clear()
     if (vingers.current.size < 2) knijp.current = undefined
@@ -1031,6 +1161,8 @@ export function RouteMap({
 
   /* Het wegennet gaat op een canvas onder de SVG; zie roadLayer.ts waarom. */
   const roads = useMemo(() => new RoadLayer(geometry), [geometry])
+  /* De lijnen van de vlootkaart op hetzelfde canvas, erbovenop (lijnLaag.ts). */
+  const lijnLaag = useMemo(() => (vlootLijnen ? new LijnLaag(vlootLijnen) : undefined), [vlootLijnen])
   const drawnMpp = useRef(0)
   useEffect(() => {
     const canvas = canvasRef.current
@@ -1048,11 +1180,15 @@ export function RouteMap({
     // Tijdens het zoomen de oude tekening schalen, en pas als het wieltje stil
     // is scherp opnieuw tekenen: uitgezoomd kost dat een tiende seconde.
     const zooming = drawnMpp.current !== 0 && drawnMpp.current !== view.mpp
-    const frame = requestAnimationFrame(() => roads.draw(ctx, roadView, !zooming))
+    const teken = (exact: boolean): void => {
+      roads.draw(ctx, roadView, exact)
+      lijnLaag?.draw(ctx, roadView)
+    }
+    const frame = requestAnimationFrame(() => teken(!zooming))
     const settle = zooming
       ? window.setTimeout(() => {
           drawnMpp.current = view.mpp
-          roads.draw(ctx, roadView, true)
+          teken(true)
         }, 160)
       : undefined
     if (!zooming) drawnMpp.current = view.mpp
@@ -1060,7 +1196,7 @@ export function RouteMap({
       cancelAnimationFrame(frame)
       window.clearTimeout(settle)
     }
-  }, [roads, view, size, pixelScale])
+  }, [roads, lijnLaag, view, size, pixelScale])
 
   /** Hoever de dienst gevorderd is, als volgnummer van de eerstvolgende halte. */
   const passedBefore = useMemo(() => {
@@ -1448,7 +1584,7 @@ export function RouteMap({
               y={y}
               r={stop.isStart ? Math.max(signR, 6) + 2 : signR}
               dim={dim}
-              ahead={!dim}
+              ahead={!dim && !vloot}
               next={next}
               letter={showLetter}
               onEnter={() => setHovered(stop.id)}
@@ -1505,6 +1641,40 @@ export function RouteMap({
           </text>
         )}
 
+        {/*
+          * De bussen van de vlootkaart, boven alles behalve de schaal. De
+          * gekozen bus als laatste, dus bovenop. De onzichtbare cirkel met
+          * `data-bus` is waar je raak klikt: ruimer dan de pijl, zodat het ook
+          * met een vinger lukt.
+          */}
+        {vloot &&
+          [...vloot.bussen]
+            .sort((a, b) => Number(a.id === vloot.gekozen) - Number(b.id === vloot.gekozen))
+            .map((b) => {
+              if (!Number.isFinite(b.x) || !Number.isFinite(b.y)) return null
+              const [x, y] = toScreen(b.x, b.y)
+              if (x < -30 || y < -30 || x > size.w + 30 || y > size.h + 30) return null
+              const gekozen = b.id === vloot.gekozen
+              return (
+                <g
+                  key={b.id}
+                  className={`vloot-bus toon-${b.toon}${b.spook ? ' spook' : ''}${gekozen ? ' gekozen' : ''}`}
+                  transform={`translate(${x.toFixed(1)} ${y.toFixed(1)})`}
+                >
+                  {gekozen && <circle className="vloot-ring" r={17} />}
+                  <path
+                    className="vloot-pijl"
+                    d="M0 -11 L8 8 L0 4 L-8 8 Z"
+                    transform={`rotate(${(b.koers - view.rot).toFixed(1)})`}
+                  />
+                  <text className="vloot-label" x={12} y={4}>
+                    {b.label}
+                  </text>
+                  <circle className="vloot-raak" data-bus={b.id} r={16} />
+                </g>
+              )
+            })}
+
         <g className="map-scale" transform={`translate(12 ${size.h - 14})`}>
           <line x1={0} y1={0} x2={scaleBar.px} y2={0} />
           <line x1={0} y1={-4} x2={0} y2={4} />
@@ -1557,107 +1727,35 @@ export function RouteMap({
         )}
       </div>
 
+      {/*
+        Het kaartje boven de gekozen bus. Het rekent zijn plek met dezelfde
+        `toScreen` als de pijl, dus het blijft er precies boven, ook als de
+        bus rijdt of de kaart schuift. data-hit en geen pointerdown naar de
+        kaart: knoppen op het kaartje zijn geen sleep.
+      */}
+      {vloot?.zweef &&
+        gekozenBus &&
+        Number.isFinite(gekozenBus.x) &&
+        Number.isFinite(gekozenBus.y) &&
+        (() => {
+          const [x, y] = toScreen(gekozenBus.x, gekozenBus.y)
+          if (x < 0 || y < 0 || x > size.w || y > size.h) return null
+          return (
+            <div
+              className="vloot-zweef"
+              data-hit
+              style={{ left: `${x.toFixed(1)}px`, top: `${y.toFixed(1)}px` }}
+              onPointerDown={(event) => event.stopPropagation()}
+            >
+              {vloot.zweef}
+            </div>
+          )
+        })()}
+
       {routeMode === 'none' && texts?.waiting && <div className="map-note">{texts.waiting}</div>}
       {busPoint && !liveBus && texts?.busNote && <div className="map-note map-note-quiet">{texts.busNote}</div>}
     </div>
   )
-}
-
-/** Een route met de afstand langs de lijn bij elk punt, en bij elke halte. */
-interface Track {
-  points: number[]
-  cumulative: number[]
-  /** Afstand langs de route bij elke halte van de rit; leeg als die halte niet op de kaart staat. */
-  stops: Array<number | undefined>
-}
-
-/**
- * Legt de haltes op de route. Een rit komt vaak twee keer door dezelfde straat,
- * dus elke halte wordt pas gezocht voorbij de vorige; anders springt de bus
- * terug naar het eerste stuk.
- */
-function trackAlong(points: number[], stops: Array<StopPoint | undefined>): Track {
-  const cumulative = [0]
-  for (let i = 2; i < points.length; i += 2) {
-    cumulative.push(cumulative[cumulative.length - 1] + Math.hypot(points[i] - points[i - 2], points[i + 1] - points[i - 1]))
-  }
-  const found: Array<number | undefined> = []
-  let from = 0
-  for (const stop of stops) {
-    if (!stop) {
-      found.push(undefined)
-      continue
-    }
-    let best = Infinity
-    let bestAlong = from
-    for (let k = 1; k < cumulative.length; k++) {
-      if (cumulative[k] < from) continue
-      const ax = points[(k - 1) * 2]
-      const ay = points[(k - 1) * 2 + 1]
-      const vx = points[k * 2] - ax
-      const vy = points[k * 2 + 1] - ay
-      const len2 = vx * vx + vy * vy
-      const t = len2 > 0 ? clamp(((stop.x - ax) * vx + (stop.y - ay) * vy) / len2, 0, 1) : 0
-      const along = cumulative[k - 1] + Math.sqrt(len2) * t
-      if (along < from) continue
-      const distance = Math.hypot(stop.x - (ax + vx * t), stop.y - (ay + vy * t))
-      if (distance < best) {
-        best = distance
-        bestAlong = along
-      }
-    }
-    found.push(bestAlong)
-    from = bestAlong
-  }
-  return { points, cumulative, stops: found }
-}
-
-/**
- * Waar een punt in de wereld op de route valt, gezocht vanaf `from`. Die
- * ondergrens is er omdat een rit dezelfde straat vaak twee keer aandoet.
- */
-function nearestAlong(track: Track, x: number, y: number, from: number): number {
-  const { points, cumulative } = track
-  let best = Infinity
-  let bestAlong = from
-  for (let k = 1; k < cumulative.length; k++) {
-    if (cumulative[k] < from) continue
-    const ax = points[(k - 1) * 2]
-    const ay = points[(k - 1) * 2 + 1]
-    const vx = points[k * 2] - ax
-    const vy = points[k * 2 + 1] - ay
-    const len2 = vx * vx + vy * vy
-    const t = len2 > 0 ? clamp(((x - ax) * vx + (y - ay) * vy) / len2, 0, 1) : 0
-    const along = cumulative[k - 1] + Math.sqrt(len2) * t
-    if (along < from) continue
-    const distance = Math.hypot(x - (ax + vx * t), y - (ay + vy * t))
-    if (distance < best) {
-      best = distance
-      bestAlong = along
-    }
-  }
-  return bestAlong
-}
-
-/** Het punt op een afstand langs de route, met de rijrichting daar. */
-function pointAlong(track: Track, along: number): { x: number; y: number; dx: number; dy: number } {
-  const { points, cumulative } = track
-  const distance = clamp(along, 0, cumulative[cumulative.length - 1])
-  let low = 1
-  let high = cumulative.length - 1
-  while (low < high) {
-    const mid = (low + high) >> 1
-    if (cumulative[mid] < distance) low = mid + 1
-    else high = mid
-  }
-  const k = low
-  const span = cumulative[k] - cumulative[k - 1]
-  const t = span > 0 ? (distance - cumulative[k - 1]) / span : 0
-  const ax = points[(k - 1) * 2]
-  const ay = points[(k - 1) * 2 + 1]
-  const dx = points[k * 2] - ax
-  const dy = points[k * 2 + 1] - ay
-  return { x: ax + dx * t, y: ay + dy * t, dx, dy }
 }
 
 /**
