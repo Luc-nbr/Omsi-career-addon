@@ -108,15 +108,11 @@ klopt('maandag: omlopen A en B', maandag.omlopen.map((o) => o.tourNumber).sort()
 klopt('A begint met de LEE-rit (2 haltes, leeg)', A.ritten[0].route.startsWith('lee|') && A.ritten[0].leeg && A.ritten[0].stopIds.length === 2)
 klopt('A heeft lege ritten (LEE en Überliege) en ritten die tellen', A.ritten.some((r) => r.leeg) && A.ritten.some((r) => !r.leeg))
 klopt('de LEE-rit om 295 staat op "leeg"', plekOpKlok(A, sporen, stops, 295).staat === 'leeg')
-/*
- * De Überliege-ritten van de fixture: `heen && n % 4 === 1` komt nooit voor (heen
- * hoort bij even n), dus omloop A heeft er geen. Staat er een, dan moet hij op
- * 'leeg' staan.
- */
+// De Überliege-ritten van omloop A (na elke tweede heenrit) staan op 'leeg'.
 {
   const u = A.ritten.find((r) => r.route.startsWith('ueberliege'))
+  klopt('omloop A heeft Überliege-ritten', u !== undefined)
   if (u) klopt('een Überliege-rit staat op "leeg"', plekOpKlok(A, sporen, stops, u.vertrek + 2).staat === 'leeg')
-  else console.log('     (de fixture heeft geen Überliege-ritten in omloop A; zie de noot hierboven)')
 }
 klopt('de LEE-rit heeft geen route, maar wel een spoor (recht van D naar 1)', (maandag.routes['lee|D,1'] ?? []).length === 0 && sporen.has('lee|D,1'))
 klopt('de LEE-rit rijdt van de remise naar halte 1', (() => {

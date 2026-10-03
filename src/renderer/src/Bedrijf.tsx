@@ -1,4 +1,4 @@
-import { useState, type JSX } from 'react'
+import { useCallback, useState, type JSX } from 'react'
 import { REGELS, ongelezen, type Bedrijf as BedrijfStaat } from '../../core/bedrijf'
 import type { ActiveDuty } from '../../core/career'
 import { PLAN_ACTIEF } from '../../core/rooster'
@@ -8,13 +8,18 @@ import { loose, type TextKey } from '../../shared/i18n'
 import { Icoon, type Icoonnaam } from './Icoon'
 import { useLanguage, useT } from './language'
 import { Opleidingen, niveauVoortgang } from './BedrijfOpleiding'
-import { Boeken, KasChip, type Naar, type Tab } from './BedrijfDelen'
+import { Boeken, KasChip, type Focus, type Handel, type Naar, type Tab } from './BedrijfDelen'
 import { Dashboard } from './BedrijfDashboard'
 import { Concessies } from './BedrijfConcessies'
 import { Markt, Wagenpark } from './BedrijfWagenpark'
 import { Personeel } from './BedrijfPersoneel'
 import { useDagplan } from './useDagplan'
 import { Postvak } from './BedrijfPost'
+import { Planning } from './Planning'
+import { Vlootkaart } from './Vlootkaart'
+import { DagAfsluitKnop } from './DagAfsluiten'
+import { Ochtendvenster } from './Ochtendvenster'
+import { BedrijfsritBanner, ZelfRijdenKnop, ZelfRijdenProvider } from './ZelfRijden'
 import './bedrijf.css'
 
 /*
@@ -70,13 +75,37 @@ interface Props {
   onNaarRit?: () => void
 }
 
-export function BedrijfApp({ bedrijf, activeDuty, tab, onTab, melding, onMelding, onCareer, onTerug }: Props): JSX.Element {
+export function BedrijfApp({
+  bedrijf,
+  activeDuty,
+  tab,
+  onTab,
+  melding,
+  onMelding,
+  onCareer,
+  onTerug,
+  onRijden,
+  onNaarRit
+}: Props): JSX.Element {
   const tr = useT()
   const taal = useLanguage()
   const lopend = activeDuty?.bedrijf
   // Eén keer per scherm; de tabs krijgen het plan door (deel A en verder).
-  useDagplan(bedrijf, bedrijf?.dag, lopend, onCareer)
-  const setTab: Naar = (t) => onTab(t)
+  const { plan, cijfers } = useDagplan(bedrijf, bedrijf?.dag, lopend, onCareer)
+  /*
+   * Waar een tab op opent (een omloop, dienst, bus of vorm). Woont hier en niet
+   * in App: na een rit naar OMSI en terug opent de tab gewoon bovenaan.
+   */
+  const [focus, setFocus] = useState<Focus>()
+  // Het ochtendvenster na Dag afsluiten (deel B).
+  const [ochtend, setOchtend] = useState(false)
+  const setTab: Naar = useCallback(
+    (t, f) => {
+      setFocus(f)
+      onTab(t)
+    },
+    [onTab]
+  )
   const setMelding = onMelding
 
   if (!bedrijf) {
@@ -90,9 +119,7 @@ export function BedrijfApp({ bedrijf, activeDuty, tab, onTab, melding, onMelding
     )
   }
 
-  const handel = async (
-    doen: Promise<{ payload: CareerPayload; fout?: string } | CareerPayload>
-  ): Promise<void> => {
+  const handel: Handel = async (doen) => {
     const uit = await doen
     if ('payload' in uit) {
       onCareer(uit.payload)
@@ -110,74 +137,103 @@ export function BedrijfApp({ bedrijf, activeDuty, tab, onTab, melding, onMelding
   }
 
   return (
-    <div className="hub bd-app">
-      <aside className="bd-zij">
-        <div className="bd-merk">
-          <span className="bd-logo" aria-hidden="true">
-            {bedrijf.naam.slice(0, 1).toUpperCase()}
-          </span>
-          <span>
-            <b>{bedrijf.naam}</b>
-            <small>
-              {tr('bd.levelN', { n: niveauVoortgang(bedrijf).niveau })} · {tr('bd.dayN', { day: bedrijf.dag })}
-            </small>
-            <span className="bd-meter dun" title={tr('bd.nav.training')}>
-              <i style={{ width: `${Math.round(niveauVoortgang(bedrijf).deel * 100)}%` }} />
+    <ZelfRijdenProvider
+      bedrijf={bedrijf}
+      plan={plan}
+      lopend={lopend}
+      handel={handel}
+      onRijden={onRijden ?? (() => undefined)}
+    >
+      <div className="hub bd-app">
+        <aside className="bd-zij">
+          <div className="bd-merk">
+            <span className="bd-logo" aria-hidden="true">
+              {bedrijf.naam.slice(0, 1).toUpperCase()}
             </span>
-          </span>
-        </div>
-        <nav>
-          {ZICHTBAAR.map((t) => (
-            <button
-              key={t.tab}
-              type="button"
-              className={tab === t.tab ? 'actief' : ''}
-              aria-current={tab === t.tab ? 'page' : undefined}
-              onClick={() => setTab(t.tab)}
-            >
-              <Icoon naam={t.icoon} />
-              {tr(t.tekst)}
-              {t.tab === 'post' && ongelezen(bedrijf) > 0 && <i className="bd-teller">{ongelezen(bedrijf)}</i>}
+            <span>
+              <b>{bedrijf.naam}</b>
+              <small>
+                {tr('bd.levelN', { n: niveauVoortgang(bedrijf).niveau })} · {tr('bd.dayN', { day: bedrijf.dag })}
+              </small>
+              <span className="bd-meter dun" title={tr('bd.nav.training')}>
+                <i style={{ width: `${Math.round(niveauVoortgang(bedrijf).deel * 100)}%` }} />
+              </span>
+            </span>
+          </div>
+          <nav>
+            {ZICHTBAAR.map((t) => (
+              <button
+                key={t.tab}
+                type="button"
+                className={tab === t.tab ? 'actief' : ''}
+                aria-current={tab === t.tab ? 'page' : undefined}
+                onClick={() => setTab(t.tab)}
+              >
+                <Icoon naam={t.icoon} />
+                {tr(t.tekst)}
+                {t.tab === 'post' && ongelezen(bedrijf) > 0 && <i className="bd-teller">{ongelezen(bedrijf)}</i>}
+              </button>
+            ))}
+          </nav>
+          <div className="bd-zij-onder">
+            <DagAfsluitKnop
+              bedrijf={bedrijf}
+              plan={plan}
+              lopend={lopend}
+              handel={handel}
+              naar={setTab}
+              onGesloten={() => setOchtend(true)}
+            />
+            {PLAN_ACTIEF && onRijden && <ZelfRijdenKnop />}
+            <button type="button" className="bd-terug" onClick={onTerug}>
+              ← {tr('bd.toMenu')}
             </button>
-          ))}
-        </nav>
-        <div className="bd-zij-onder">
-          <button
-            type="button"
-            className="bd-knop hoofd breed"
-            onClick={() => void handel(window.career.bedrijfDagAf())}
-          >
-            {tr('bd.closeDay')}
-          </button>
-          <button type="button" className="bd-terug" onClick={onTerug}>
-            ← {tr('bd.toMenu')}
-          </button>
-        </div>
-      </aside>
+          </div>
+        </aside>
 
-      <main className="bd-hoofd">
-        <header className="bd-balk">
-          <h1>{tr(TABS.find((t) => t.tab === tab)!.tekst)}</h1>
-          <KasChip bedrijf={bedrijf} />
-        </header>
-        {melding && (
-          <p className="bd-melding" role="status">
-            {melding}
-          </p>
+        <main className="bd-hoofd">
+          <header className="bd-balk">
+            <h1>{tr(TABS.find((t) => t.tab === tab)!.tekst)}</h1>
+            <KasChip bedrijf={bedrijf} />
+          </header>
+          <BedrijfsritBanner
+            bedrijf={bedrijf}
+            lopend={lopend}
+            gestart={Boolean(activeDuty?.startedAt)}
+            onNaarRit={onNaarRit ?? (() => undefined)}
+          />
+          {melding && (
+            <p className="bd-melding" role="status">
+              {melding}
+            </p>
+          )}
+          {tab === 'dashboard' && <Dashboard bedrijf={bedrijf} plan={plan} cijfers={cijfers} naar={setTab} />}
+          {tab === 'post' && <Postvak bedrijf={bedrijf} onCareer={onCareer} />}
+          {tab === 'planning' && (
+            <Planning
+              bedrijf={bedrijf}
+              plan={plan}
+              cijfers={cijfers}
+              lopend={lopend}
+              handel={handel}
+              naar={setTab}
+              focus={focus}
+              onCareer={onCareer}
+            />
+          )}
+          {tab === 'kaart' && <Vlootkaart bedrijf={bedrijf} plan={plan} lopend={lopend} naar={setTab} />}
+          {tab === 'concessies' && <Concessies bedrijf={bedrijf} handel={handel} />}
+          {tab === 'wagenpark' && <Wagenpark bedrijf={bedrijf} handel={handel} />}
+          {tab === 'markt' && <Markt bedrijf={bedrijf} handel={handel} focus={focus} />}
+          {tab === 'personeel' && <Personeel bedrijf={bedrijf} handel={handel} plan={plan} naar={setTab} />}
+          {tab === 'opleidingen' && <Opleidingen bedrijf={bedrijf} handel={handel} />}
+          {tab === 'boeken' && <Boeken bedrijf={bedrijf} alle />}
+        </main>
+        {ochtend && (
+          <Ochtendvenster bedrijf={bedrijf} plan={plan} handel={handel} naar={setTab} onSluit={() => setOchtend(false)} />
         )}
-        {tab === 'dashboard' && <Dashboard bedrijf={bedrijf} naar={setTab} />}
-        {tab === 'post' && <Postvak bedrijf={bedrijf} onCareer={onCareer} />}
-        {/* Slots voor deel A (Planning) en deel E (Vlootkaart); leeg zolang die er niet zijn. */}
-        {tab === 'planning' && null}
-        {tab === 'kaart' && null}
-        {tab === 'concessies' && <Concessies bedrijf={bedrijf} handel={handel} />}
-        {tab === 'wagenpark' && <Wagenpark bedrijf={bedrijf} handel={handel} />}
-        {tab === 'markt' && <Markt bedrijf={bedrijf} handel={handel} />}
-        {tab === 'personeel' && <Personeel bedrijf={bedrijf} handel={handel} />}
-        {tab === 'opleidingen' && <Opleidingen bedrijf={bedrijf} handel={handel} />}
-        {tab === 'boeken' && <Boeken bedrijf={bedrijf} alle />}
-      </main>
-    </div>
+      </div>
+    </ZelfRijdenProvider>
   )
 }
 

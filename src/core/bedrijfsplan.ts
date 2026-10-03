@@ -3,16 +3,23 @@ import { dayKind, runsOn, type Calendar } from './calendar'
 import { MIN_STOPS_FOR_BUS_LINE } from './network'
 import { tripMinutes } from './timetable'
 import type { OmsiMap } from './types'
-import type {
-  DienstSleutel,
-  DienstVanDag,
-  Dagrooster,
-  KaartDag,
-  LijnWeek,
-  OmloopSleutel,
-  OmloopVanDag,
-  PlanRit
-} from './planTypen'
+import { bedrijfsdatum, dienstSleutel, omloopSleutel } from './planSleutel'
+
+/*
+ * De pure sleutelhulpjes wonen in planSleutel.ts (die kan ook in het venster);
+ * hier doorgegeven zodat main en de proeven ze op de oude plek blijven vinden.
+ */
+export {
+  bedrijfsdatum,
+  dienstSleutel,
+  maskerDagen,
+  omloopSleutel,
+  ontleedDienst,
+  ontleedOmloop,
+  zoekDienst,
+  zoekOmloop
+} from './planSleutel'
+import type { DienstVanDag, KaartDag, LijnWeek, OmloopVanDag, PlanRit } from './planTypen'
 
 /*
  * Het bedrijfsplan: welke omlopen en diensten er op een bedrijfsdag rijden.
@@ -48,44 +55,6 @@ export function ankerVoor(tijdvak: { year: number; dayOfYear: number }): string 
   const datum = new Date(Date.UTC(tijdvak.year, 0, tijdvak.dayOfYear))
   const maandag = new Date(datum.getTime() - ((datum.getUTCDay() + 6) % 7) * DAG_MS)
   return maandag.toISOString().slice(0, 10)
-}
-
-/** De datum van een bedrijfsdag op deze kaart, als UTC-middernacht. */
-export function bedrijfsdatum(anker: string, dag: number): Date {
-  const [j, m, d] = anker.split('-').map(Number)
-  return new Date(Date.UTC(j, m - 1, d) + (dag - 1) * DAG_MS)
-}
-
-/*
- * De sleutels. tourNumber staat achteraan omdat het vrije tekst is (er kan een
- * `|` in staan); ontleden gaat dus van links voor de omloop en van rechts voor
- * het deel.
- */
-export function omloopSleutel(mapFolder: string, lineFile: string, days: number, tourNumber: string): OmloopSleutel {
-  return `${mapFolder}|${lineFile}|${days}|${tourNumber}`
-}
-
-export function dienstSleutel(omloop: OmloopSleutel, deel: number): DienstSleutel {
-  return `${omloop}|${deel}`
-}
-
-export function ontleedOmloop(s: string): { mapFolder: string; lineFile: string; days: number; tourNumber: string } | undefined {
-  const a = s.indexOf('|')
-  const b = a < 0 ? -1 : s.indexOf('|', a + 1)
-  const c = b < 0 ? -1 : s.indexOf('|', b + 1)
-  if (c < 0) return undefined
-  const days = Number(s.slice(b + 1, c))
-  if (!Number.isInteger(days)) return undefined
-  return { mapFolder: s.slice(0, a), lineFile: s.slice(a + 1, b), days, tourNumber: s.slice(c + 1) }
-}
-
-export function ontleedDienst(s: string): { omloop: OmloopSleutel; deel: number } | undefined {
-  const at = s.lastIndexOf('|')
-  if (at < 0) return undefined
-  const deel = Number(s.slice(at + 1))
-  const omloop = s.slice(0, at)
-  if (!Number.isInteger(deel) || deel < 1 || !ontleedOmloop(omloop)) return undefined
-  return { omloop, deel }
 }
 
 /** De busvorm die de remisenaam van een omloop noemt, als hij dat doet. */
@@ -269,37 +238,3 @@ export function lijnWeek(map: OmsiMap, kalender: Calendar, anker: string, vanDag
   return uit
 }
 
-export function zoekOmloop(r: Dagrooster, s: OmloopSleutel): { kaart: KaartDag; omloop: OmloopVanDag } | undefined {
-  for (const kaart of r.kaarten) {
-    const omloop = kaart.omlopen.find((o) => o.sleutel === s)
-    if (omloop) return { kaart, omloop }
-  }
-  return undefined
-}
-
-export function zoekDienst(
-  r: Dagrooster,
-  s: DienstSleutel
-): { kaart: KaartDag; omloop: OmloopVanDag; dienst: DienstVanDag } | undefined {
-  const o = ontleedDienst(s)
-  const z = o && zoekOmloop(r, o.omloop)
-  const dienst = z?.omloop.diensten.find((d) => d.sleutel === s)
-  return z && dienst ? { ...z, dienst } : undefined
-}
-
-const DAGNAMEN = ['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'] as const
-
-/** Waarvoor een dagmasker geldt, om het rooster per masker te kunnen tonen ("geldt voor ma–vr"). */
-export function maskerDagen(days: number): {
-  dagen: Array<(typeof DAGNAMEN)[number]>
-  feestdag: boolean
-  periode?: 'school' | 'break'
-} {
-  const school = (days & (1 << 8)) !== 0
-  const vakantie = (days & (1 << 9)) !== 0
-  return {
-    dagen: DAGNAMEN.filter((_, i) => (days & (1 << i)) !== 0),
-    feestdag: (days & (1 << 7)) !== 0,
-    periode: school && !vakantie ? 'school' : vakantie && !school ? 'break' : undefined
-  }
-}

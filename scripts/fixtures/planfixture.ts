@@ -60,7 +60,7 @@ function omloopA(): Rit[] {
   while (t + 25 <= 1410) {
     uit.push({ tripFile: heen ? 'heen' : 'terug', profileIndex: 0, departure: t })
     t += 25
-    if (heen && n % 4 === 1) {
+    if (heen && n % 4 === 0) {
       uit.push({ tripFile: 'ueberliege', profileIndex: 0, departure: t + 1 })
       t += 6
     }

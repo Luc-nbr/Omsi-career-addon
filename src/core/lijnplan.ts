@@ -1,4 +1,4 @@
-import { bedrijfsdatum, omloopSleutel } from './bedrijfsplan'
+import { bedrijfsdatum, omloopSleutel } from './planSleutel'
 import { runsOn, type Calendar } from './calendar'
 import { MIN_STOPS_FOR_BUS_LINE } from './network'
 import type { KaartOmloop, KaartRit, LijnPlan } from './planTypen'

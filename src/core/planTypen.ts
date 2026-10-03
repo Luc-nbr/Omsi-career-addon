@@ -160,7 +160,7 @@ export type RoosterActie =
   | { soort: 'herstel'; rooster: VastRooster }
   | { soort: 'auto'; aan: boolean }
 export type RoosterFout = 'geen' | 'weg' | 'te-lang' | 'planner' | 'kaart' | 'dag' | 'geenPlek'
-export type InvulFout = 'geen' | 'weg' | 'bezet' | 'kort' | 'vol' | 'bezig' | 'gereden' | 'dag' | 'kaart'
+export type InvulFout = 'geen' | 'weg' | 'bezet' | 'te-lang' | 'kort' | 'vol' | 'bezig' | 'gereden' | 'dag' | 'kaart'
 export type RitFout = 'geen' | 'ritBezig' | 'dienst' | 'kaart' | 'bus' | 'busLigt' | 'gereden' | 'venster'
 
 export interface KaartRit { sleutel: string; route: string; lijn: string; naar: string; vertrek: number; tijden: number[]; stopIds: string[]; leeg: boolean }

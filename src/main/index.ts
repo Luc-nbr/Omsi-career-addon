@@ -7537,7 +7537,14 @@ function registerHandlers(): void {
     inSlot(async () => {
       if (!career?.bedrijf) return { payload: careerPayload(), fout: 'geen' as RoosterFout }
       const dag = actie.soort === 'vulAan' || actie.soort === 'busOpLijn' ? actie.dag : career.bedrijf.dag
-      const week = actie.soort === 'vulAan' && actie.bereik === 'week'
+      /*
+       * Een week vooruit voor 'vulAan' over de week, maar ook voor 'chauffeur'
+       * (te lang toetsen op elke dag waarop de dienst rijdt) en 'kopieer' (de
+       * omlopen van beide maskers moeten erin staan). De Planning haalt diezelfde
+       * week al op, dus de kaartdagen liggen dan al klaar.
+       */
+      const week =
+        (actie.soort === 'vulAan' && actie.bereik === 'week') || actie.soort === 'chauffeur' || actie.soort === 'kopieer'
       const eerste = PLAN_ACTIEF && actie.soort === 'vulAan' && actie.eerste === true && !career.bedrijf.rooster
       const { dagen, ankers, weken } = await dagroostersVoor(career.bedrijf, dag - 1, dag + (week ? 7 : 1), {
         weken: eerste

@@ -265,10 +265,15 @@ const geldvelden = (c: PlanCijfers): number[] => [
   klopt('te laat: een stuk vooraan voor de centrale, de rest eigen', b1.stuk !== undefined && b1.stuk.stand.bron === 'centrale' && b1.stand.wie.soort === 'eigen', b1)
   klopt('te laat: het stuk eindigt bij de eerste rit na 40 minuten', b1.stuk !== undefined && b1.stuk.tot >= 400 && b1.stuk.van === 360)
   klopt('telling: 2 open', plan.telling.open === 2, plan.telling)
-  const c = afrekening({ ...b, vandaag }, plan)
-  // Het uitzendbureau heeft op niveau 0 één kracht: het tweede gat (later op de dag) valt uit.
-  klopt('uitzend in de afrekening, tot het maximum', c.uitzend.diensten === plan.uitzend.max && c.uitzend.kosten > 0, c.uitzend)
-  klopt('wat de centrale niet kan vullen, valt uit (boete, reputatie)', c.uitgevallen.rituren > 0 && c.uitgevallen.boete > 0 && b1.stuk?.stand.wie.soort === 'liggen', c.uitgevallen)
+  // De centrale neemt eerst een vrije collega (deel C, kiesAutomatisch): die kost niets extra.
+  klopt('plots gat: eerst een vrije collega', a1.stand.wie.soort === 'collega' && b1.stuk?.stand.wie.soort === 'collega', { a1: a1.stand, stuk: b1.stuk?.stand })
+  // Zonder vrije collega's: het uitzendbureau (op niveau 0 één kracht), het tweede gat valt uit.
+  const alleen = { ...b, vandaag, personeel: (b.personeel ?? []).filter((m) => m.id === 3 || m.id === 4) }
+  const pz = dagplan(alleen, dagen, 1)
+  const c = afrekening(alleen, pz)
+  const bz = pz.kaarten[0].omlopen[1].diensten[0]
+  klopt('uitzend in de afrekening, tot het maximum', c.uitzend.diensten === pz.uitzend.max && c.uitzend.kosten > 0, c.uitzend)
+  klopt('wat de centrale niet kan vullen, valt uit (boete, reputatie)', c.uitgevallen.rituren > 0 && c.uitgevallen.boete > 0 && bz.stuk?.stand.wie.soort === 'liggen', c.uitgevallen)
   klopt('plotse gaten: hele centen', geldvelden(c).every(Number.isInteger))
 }
 

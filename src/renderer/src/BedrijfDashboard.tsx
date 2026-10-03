@@ -10,6 +10,9 @@ import {
 import type { DagPlan, PlanCijfers } from '../../core/planTypen'
 import { useLanguage, useT } from './language'
 import { Grafiek } from './BedrijfGrafiek'
+import { UitvalMeldingen } from './UitvalMeldingen'
+import { aandachtUitval } from './uitvalAandacht'
+import { ZelfRijdenTegel } from './ZelfRijden'
 import { type Focus, type Naar, type Tab, useGeld, Tegel, Paneel, Staatbalk, Boeken } from './BedrijfDelen'
 
 /* ------------------------------------------------------------------ */
@@ -102,7 +105,8 @@ export function Dashboard({
         const m = (bedrijf.personeel ?? []).find((x) => x.id === id)
         if (m) lijst.push({ soort: 'let', tekst: tr('bd.plan.stilChauffeur', { naam: m.naam }), tab: 'planning', focus: { dag: plan.dag, medewerker: id } })
       }
-      // SLOT deel B: ...aandachtUitval(bedrijf, plan) komt hier bij de integratie.
+      // Uitval van vanochtend (deel B): wie ziek of te laat is, welke bus pech heeft.
+      lijst.push(...aandachtUitval(bedrijf, plan, taal))
     } else {
       if (prognose.benodigd > 0 && prognose.dekking < 1)
         lijst.push({
@@ -124,11 +128,11 @@ export function Dashboard({
         lijst.push({ soort: 'laat', tekst: tr('bd.alert.unhappy', { name: m.naam }), tab: 'personeel' })
     }
     return lijst
-  }, [bedrijf, plan])
+  }, [bedrijf, plan, taal])
 
   return (
     <div className="bd-dashboard">
-      {/* SLOT deel B: <UitvalMeldingen bedrijf plan naar /> bovenaan; SLOT deel D: <ZelfRijdenTegel /> bij de tegels. */}
+      <UitvalMeldingen bedrijf={bedrijf} plan={plan} naar={naar} />
       <div className="bd-tegels">
         <Tegel
           titel={tr('bd.cash')}
@@ -191,6 +195,8 @@ export function Dashboard({
           </span>
         </Tegel>
       </div>
+
+      {plan && <ZelfRijdenTegel plan={plan} />}
 
       <div className="bd-rij">
         <Paneel titel={tr('bd.chart.cash')} breed>

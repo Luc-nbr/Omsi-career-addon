@@ -20,10 +20,10 @@ import './uitval.css'
  * centrale met een uitzendkracht of huurbus zou vullen (of zou laten vallen)
  * zelf zo in: zonder spoedtoeslag, want die rekent alleen de centrale.
  *
- * TIJDELIJK: het ontwerp zet hier `<OpenDiensten compact>` van deel C neer.
- * Dat bestand bestaat in deze tak nog niet; `UitvalLijst` doet hetzelfde
- * met `invulOpties` (ook van C). Bij het samenvoegen kan de integrator het
- * ene door het andere vervangen.
+ * Het ontwerp zet hier `<OpenDiensten compact>` van deel C neer. Bij het
+ * samenvoegen is `UitvalLijst` gebleven: die doet hetzelfde met `invulOpties`
+ * (ook van C), maar zegt er wie ziek of te laat is en welke bus pech heeft
+ * bij. De volledige lijst open diensten staat onder het rooster in de Planning.
  */
 export function Ochtendvenster({
   bedrijf,

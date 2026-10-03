@@ -10,6 +10,7 @@ import {
 } from './bedrijf'
 import { kiesAutomatisch, type CentraleContext, type Gat } from './invulling'
 import { bevoegd, blokVan, overlapt, PLAN, toets, type Blok } from './planregels'
+import { ontleedDienst, ontleedOmloop, zoekDienst, zoekOmloop } from './planSleutel'
 import {
   boete,
   busKosten,
@@ -27,7 +28,6 @@ import type {
   ConflictSoort,
   Dagrooster,
   DagPlan,
-  KaartDag,
   DienstSleutel,
   DienstVanDag,
   InvulDoel,
@@ -65,63 +65,8 @@ import type {
  * in het venster en in main.
  */
 
-/*
- * OMWEG: de sleutelhulpjes hieronder staan ook in bedrijfsplan.ts, maar dat
- * bestand trekt calendar.ts mee (node:path en fs), en dit bestand draait ook
- * in het venster (useDagplan, Planning). Tot de integratie de pure hulpjes
- * van bedrijfsplan.ts in een eigen bestand zet, staan ze hier nog een keer,
- * letterlijk gelijk.
- */
-export function ontleedOmloop(s: string): { mapFolder: string; lineFile: string; days: number; tourNumber: string } | undefined {
-  const a = s.indexOf('|')
-  const b = a < 0 ? -1 : s.indexOf('|', a + 1)
-  const c = b < 0 ? -1 : s.indexOf('|', b + 1)
-  if (c < 0) return undefined
-  const days = Number(s.slice(b + 1, c))
-  if (!Number.isInteger(days)) return undefined
-  return { mapFolder: s.slice(0, a), lineFile: s.slice(a + 1, b), days, tourNumber: s.slice(c + 1) }
-}
-
-export function ontleedDienst(s: string): { omloop: OmloopSleutel; deel: number } | undefined {
-  const at = s.lastIndexOf('|')
-  if (at < 0) return undefined
-  const deel = Number(s.slice(at + 1))
-  const omloop = s.slice(0, at)
-  if (!Number.isInteger(deel) || deel < 1 || !ontleedOmloop(omloop)) return undefined
-  return { omloop, deel }
-}
-
-function zoekOmloop(r: Dagrooster, s: OmloopSleutel): { kaart: KaartDag; omloop: OmloopVanDag } | undefined {
-  for (const kaart of r.kaarten) {
-    const omloop = kaart.omlopen.find((o) => o.sleutel === s)
-    if (omloop) return { kaart, omloop }
-  }
-  return undefined
-}
-
-function zoekDienst(r: Dagrooster, s: DienstSleutel): { kaart: KaartDag; omloop: OmloopVanDag; dienst: DienstVanDag } | undefined {
-  const o = ontleedDienst(s)
-  const z = o && zoekOmloop(r, o.omloop)
-  const dienst = z?.omloop.diensten.find((d) => d.sleutel === s)
-  return z && dienst ? { ...z, dienst } : undefined
-}
-
-const DAGNAMEN = ['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'] as const
-
-/** Waarvoor een dagmasker geldt (gelijk aan `maskerDagen` in bedrijfsplan.ts). */
-export function maskerDagen(days: number): {
-  dagen: Array<(typeof DAGNAMEN)[number]>
-  feestdag: boolean
-  periode?: 'school' | 'break'
-} {
-  const school = (days & (1 << 8)) !== 0
-  const vakantie = (days & (1 << 9)) !== 0
-  return {
-    dagen: DAGNAMEN.filter((_, i) => (days & (1 << i)) !== 0),
-    feestdag: (days & (1 << 7)) !== 0,
-    ...(school && !vakantie ? { periode: 'school' as const } : vakantie && !school ? { periode: 'break' as const } : {})
-  }
-}
+// De sleutelhulpjes komen uit planSleutel.ts (puur, ook in het venster); hier doorgegeven voor de schermen.
+export { maskerDagen, ontleedDienst, ontleedOmloop } from './planSleutel'
 
 /** De planning staat aan: main rekent af op het plan en migreert oude bedrijven (deel A). */
 export const PLAN_ACTIEF = true

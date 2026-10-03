@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type JSX } from 'react'
 import type { Bedrijf as BedrijfStaat, EigenBus, Medewerker } from '../../core/bedrijf'
-import { ontleedDienst, ontleedOmloop } from '../../core/bedrijfsplan'
+import { ontleedDienst, ontleedOmloop } from '../../core/planSleutel'
 import type { MapGeometry } from '../../core/geo'
 import type {
   DagPlan,
@@ -14,6 +14,7 @@ import type {
   PlanOmloop
 } from '../../core/planTypen'
 import type { RitOpties } from '../../shared/bedrijfApi'
+import { useZelfRijden } from './ZelfRijden'
 import { formatDate, formatTime } from '../../shared/format'
 import { loose, type Language, type TextKey } from '../../shared/i18n'
 import { maakSporen, plekOpKlok, vertragingVan, type Track, type VlootPlek } from '../../shared/vloot'
@@ -88,7 +89,10 @@ interface Live {
 
 const SNELHEDEN: Snelheid[] = [1, 10, 60]
 
-export function Vlootkaart({ bedrijf, plan, lopend, naar, onZelfRijden }: Props): JSX.Element {
+export function Vlootkaart({ bedrijf, plan, lopend, naar, onZelfRijden: eigen }: Props): JSX.Element {
+  // Zonder eigen handler: het keuzevenster van Zelf rijden (deel D), als er een provider om de app staat.
+  const zr = useZelfRijden()
+  const onZelfRijden = eigen ?? ((dienst: DienstSleutel, opties: RitOpties) => zr.open(dienst, opties))
   const tr = useT()
   const taal = useLanguage()
 

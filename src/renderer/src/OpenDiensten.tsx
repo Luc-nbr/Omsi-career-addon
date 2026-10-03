@@ -2,10 +2,11 @@ import { useMemo, useState, type JSX } from 'react'
 import type { Bedrijf as BedrijfStaat } from '../../core/bedrijf'
 import { invulOpties, openRijen, uitzendOver, type InvulOptie, type OpenRij } from '../../core/invulling'
 import type { BusKeuze, BusWie, DagPlan, DienstSleutel, InvulDoel, InvulKeuze, LopendeRit, Wie } from '../../core/planTypen'
-import { ontleedDienst } from '../../core/bedrijfsplan'
+import { ontleedDienst } from '../../core/planSleutel'
 import { formatTime } from '../../shared/format'
 import { loose, type Language } from '../../shared/i18n'
 import { Paneel, useGeld, type Handel } from './BedrijfDelen'
+import { useZelfRijden } from './ZelfRijden'
 import { useLanguage, useT } from './language'
 import './opendiensten.css'
 
@@ -19,15 +20,6 @@ import './opendiensten.css'
  * `compact` is voor het ochtendvenster: per rij alleen de voorgestelde keuze
  * en [Meer…].
  */
-
-/*
- * Zelf rijden hoort bij deel D (`useZelfRijden` in ZelfRijden.tsx), en dat
- * bestand staat nog niet op deze tak. Bij het samenvoegen wordt dit
- * `useZelfRijden()`; tot dan staat de knop er niet.
- */
-function useZelfRijdenTijdelijk(): { open(dienst?: DienstSleutel): void } | undefined {
-  return undefined
-}
 
 const LOCALE: Record<Language, string> = { en: 'en-GB', de: 'de-DE', fr: 'fr-FR', nl: 'nl-NL' }
 
@@ -101,7 +93,8 @@ export function OpenDiensten({
   const geld = useGeld()
   const [bezig, setBezig] = useState(false)
   const [tonen, setTonen] = useState(false)
-  const zelf = useZelfRijdenTijdelijk()
+  // Zelf rijden (deel D): zonder ZelfRijdenProvider eromheen doet open() niets.
+  const zelf = useZelfRijden()
   const { rijen, uitbesteed, uitbesteedKosten } = useMemo(() => openRijen(bedrijf, plan), [bedrijf, plan])
 
   /* Eén handeling tegelijk: een dubbelklik gaf anders een fout terwijl het lukte. */

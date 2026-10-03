@@ -20,6 +20,7 @@ import {
   type Medewerker
 } from '../../core/bedrijf'
 import { PLAN } from '../../core/planregels'
+import { pechKans } from '../../core/uitval'
 import { besparingBus, besparingChauffeur } from '../../core/plantarief'
 import type {
   Conflict,
@@ -54,6 +55,9 @@ import type { Language } from '../../shared/i18n'
 import { loose, type TextKey } from '../../shared/i18n'
 import { useLanguage, useT } from './language'
 import { type Focus, type Handel, type Naar, useGeld } from './BedrijfDelen'
+import { OpenDiensten } from './OpenDiensten'
+import { UitvalMeldingen } from './UitvalMeldingen'
+import { useZelfRijden } from './ZelfRijden'
 import './planning.css'
 
 /*
@@ -135,15 +139,8 @@ export function maskerTekst(days: number, tr: ReturnType<typeof useT>): string {
   return m.periode ? `${tekst} (${tr(m.periode === 'school' ? 'bd.masker.school' : 'bd.masker.break')})` : tekst
 }
 
-/**
- * De pechkans van een bus per dag (ontwerp §5.1, formule van deel B).
- * OMWEG: deel B levert `pechKans` in core/uitval.ts; tot de integratie staat
- * dezelfde formule hier.
- */
-export function pechkans(bus: EigenBus, monteurs: number): number {
-  const remming = Math.min(0.4, monteurs * 0.1)
-  return (0.01 + (Math.max(0, 70 - bus.staat) / 70) * 0.06) * (1 - remming)
-}
+/** De pechkans van een bus per dag (ontwerp §5.1): de formule van deel B, voor het wagenpark en de zijbalk. */
+export const pechkans: (bus: EigenBus, monteurs: number) => number = pechKans
 
 /**
  * Een gemiddelde dienst en omloop van de concessies, uit de weken in de
@@ -245,6 +242,7 @@ export function Planning({ bedrijf: b, plan, cijfers, lopend, handel, naar, focu
   const taal = useLanguage()
   const geld = useGeld()
   const smal = useSmal()
+  const zelf = useZelfRijden()
   const f = bedrijfsfactoren(b)
   const mensen = useMemo(() => new Map((b.personeel ?? []).map((m) => [m.id, m])), [b.personeel])
   const bussen = useMemo(() => new Map((b.bussen ?? []).map((x) => [x.nummer, x])), [b.bussen])
@@ -862,7 +860,19 @@ export function Planning({ bedrijf: b, plan, cijfers, lopend, handel, naar, focu
           )}
           {!vandaag && <p className="bd-rustig bd-klein">{tr('bd.plan.toekomst')}</p>}
           <div className="pl-popknoppen">
-            {/* SLOT deel D: [Zelf rijden] via useZelfRijden().open(dienst); komt bij de integratie. */}
+            {/* Zelf rijden (deel D): het keuzevenster toetst zelf of het kan. */}
+            {vandaag && pd && !lopend && !pd.jij?.nu && (
+              <button
+                type="button"
+                className="bd-knop"
+                onClick={() => {
+                  setPop(undefined)
+                  zelf.open(pd.dienst.sleutel)
+                }}
+              >
+                {tr('bd.rit.knop')}
+              </button>
+            )}
             {pd && pd.roosterId !== undefined && (
               <button
                 type="button"
@@ -1180,7 +1190,7 @@ export function Planning({ bedrijf: b, plan, cijfers, lopend, handel, naar, focu
 
   return (
     <div className="pl-planning" onClick={() => setMenu(undefined)}>
-      {/* SLOT deel B: <UitvalMeldingen bedrijf plan naar /> bovenaan (ontwerp §5.2). */}
+      {vandaag && <UitvalMeldingen bedrijf={b} plan={planVandaag} naar={naar} />}
       <header className="pl-kopregel">
         <h2>{titel}</h2>
         {dagPlan.kaarten.length > 1 && (
@@ -1420,7 +1430,7 @@ export function Planning({ bedrijf: b, plan, cijfers, lopend, handel, naar, focu
       <div className="pl-werk">
         <div className="pl-hoofd">
           {alleOmlopen.length === 0 ? null : smal ? lijst : weergave === 'mensen' ? mensenRooster : perOmloop}
-          {/* SLOT deel B en C: <UitvalMeldingen …/> en <OpenDiensten bedrijf plan handel lopend /> onder het rooster. */}
+          {vandaag && planVandaag && <OpenDiensten bedrijf={b} plan={planVandaag} handel={handel} lopend={lopend} />}
         </div>
         {zijbalk}
       </div>

@@ -1049,7 +1049,7 @@ export function App(): JSX.Element {
         .bedrijfRitBus(pad)
         .then((uit) => {
           setCareer(uit.payload);
-          if (uit.fout === "eigen") setNote(t(language, "bd.rit.busVast"));
+          if (uit.fout) setNote(t(language, `bd.fout.${uit.fout}` as const));
         })
         .catch(() => undefined);
     },

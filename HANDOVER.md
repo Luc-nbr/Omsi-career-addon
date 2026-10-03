@@ -694,6 +694,58 @@ hoort niet onder je handen opnieuw op te komen (`probe-beweging.cjs`,
 
 ## 5. Openstaand werk
 
+### 5.00000000000 De planning van het busbedrijf — delen A-E samengevoegd (03-10-2026)
+
+Tak `claude/busbedrijf-samen`. De delen A-E (ontwerp
+`design/ontwerpen/busbedrijf-planning.md`) zijn samengevoegd en ingehaakt in
+de schil; **`PLAN_ACTIEF` staat aan** (`core/rooster.ts`). Alleen gebouwd en
+met de pure proeven nagerekend; Luc test zelf in de app. Nog niet op master,
+nog niet gepubliceerd.
+
+- **A, Planning** (`Planning.tsx`, `core/rooster.ts`): rooster per omloop en
+  per mens/bus, slepen of tik-tik, vul aan/leegmaken, weekstrook, conflicten;
+  `dagplan` en `afrekening` rekenen elke dag af. Dashboard, Personeel en Markt
+  rekenen met het plan.
+- **B, Uitval** (`core/uitval.ts`): ziek, te laat, pech; meldingen bovenaan
+  Dashboard en Planning, de afsluitknop met de vraag wat de centrale kost, en
+  daarna het ochtendvenster.
+- **C, Open diensten** (`core/invulling.ts`, `OpenDiensten.tsx`): onder het
+  rooster in de Planning; de centrale (`kiesAutomatisch`) neemt eerst een vrije
+  collega, dan een uitzendkracht, dan liggen.
+- **D, Zelf rijden** (`ZelfRijden.tsx`, `core/bedrijfsrit.ts`, main
+  `bedrijf:rit`/`:ritBus`): knop in de zijbalk, tegel op het dashboard, knop
+  in de popover van de Planning, in Open diensten en op de kaart; banner
+  boven de tabs zolang er een bedrijfsrit aangenomen is.
+- **E, Kaart** (`Vlootkaart.tsx`, `shared/vloot.ts`, `core/lijnplan.ts`): de
+  vloot live op de OMSI-kaart, met eigen klok als OMSI niet speelt.
+
+Bij het samenvoegen centraal veranderd:
+
+- `core/planSleutel.ts` (nieuw): de pure sleutelhulpjes (`ontleedOmloop`,
+  `zoekDienst`, `maskerDagen`, `bedrijfsdatum`, ...). Ze stonden in
+  `bedrijfsplan.ts`, dat calendar.ts en timetable.ts (node:fs) meetrekt; de
+  renderer-build brak toen `invulling.ts` ze daar haalde. `bedrijfsplan.ts`
+  geeft ze door, de kopie in `rooster.ts` is weg.
+- `InvulFout` kreeg `'te-lang'` (een collega boven 10 uur), `fundament.ts`
+  kreeg `bd.fout.eigen` en `bd.fout.gestart` (voor `bedrijfRitBus`).
+- Main haalt voor `bedrijf:rooster` met `chauffeur` en `kopieer` de hele week
+  op (te lang toetsen op elke dag, beide maskers vinden).
+- De schil (`Bedrijf.tsx`) bewaart het plan van `useDagplan` en de `Focus`
+  van `naar(tab, focus)`, en zet alles in `ZelfRijdenProvider`.
+- De planfixture heeft weer Überliege-ritten in omloop A (`n % 4 === 0`).
+
+Proeven (allemaal groen): `probe-planfixture` 51, `probe-rooster` 73,
+`probe-uitval` 53, `probe-invullen` 64, `probe-lijnplan` 41, `probe-bedrijf`
+145, `probe-bedrijfsklok` 40, `probe-teksten`. Nog niet gemaakt: de
+Electron-proeven `probe-planning.cjs`, `probe-ochtend.cjs`,
+`probe-opendiensten.cjs`, `probe-bedrijfsrit.cjs`, `screenshot-vlootkaart.cjs`,
+en de rondgang van §9.1 stap 2 met schermafdrukken.
+
+Bekende gaten: "niet geïnstalleerd in OMSI" per bus ontbreekt in de zijbalk
+van de Planning; het ochtendvenster gebruikt `UitvalLijst` (B) in plaats van
+`<OpenDiensten compact>`; de vertraging van "jij" op de kaart is een
+schatting.
+
 ### 5.0000000000 openOMSI live: de Lua-plugin omsihub en de leesbron (02-10-2026)
 
 Snel gebouwd op verzoek van Luc ("zo snel mogelijk een werkende versie", zonder

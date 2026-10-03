@@ -1,5 +1,5 @@
 import { aanHetWerk, bedrijfsfactoren, isInzetbaar, type Bedrijf, type Busvorm, type EigenBus } from './bedrijf'
-import { ontleedDienst, ontleedOmloop } from './bedrijfsplan'
+import { ontleedDienst, ontleedOmloop } from './planSleutel'
 import { PLAN, bevoegd, blokVan, overlapt, toets, werkMinuten, type Blok } from './planregels'
 import { boete, busKosten, chauffeurKosten, overurenKosten, reputatieVerlies, toeslagGeldt, vergoeding } from './plantarief'
 import type {
@@ -641,7 +641,11 @@ export function zetInvulling(
   switch (k.soort) {
     case 'collega': {
       if (!aanHetWerk(b, 'chauffeur').some((m) => m.id === k.id)) return { fout: 'weg' }
-      if (!collegaPast(b, plan, werkVanPlan(plan), k.id, blokVoor(plek, doel.soort))) return { fout: 'bezet' }
+      if (!collegaPast(b, plan, werkVanPlan(plan), k.id, blokVoor(plek, doel.soort))) {
+        // Een te lange werkdag heeft een eigen melding; overlap en nog-niet-binnen blijven 'bezet'.
+        const t = toets(werkVanPlan(plan)[k.id] ?? [], blokVoor(plek, doel.soort))
+        return { fout: t.teLang && !t.dubbel ? 'te-lang' : 'bezet' }
+      }
       lijst[doel.dienst] = { soort: 'collega', id: k.id }
       break
     }
